@@ -291,6 +291,9 @@ impl ScriptWorld {
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<()> {
         let index = id.index;
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
         let actor = &mut self.actors[index];
         if self.updates.animation_system
             && !actor
@@ -312,6 +315,13 @@ impl ScriptWorld {
                 animation
                     .playback
                     .force_request_with_sounds(group, 0, ticks, &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {

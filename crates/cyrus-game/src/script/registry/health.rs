@@ -201,6 +201,9 @@ impl ScriptWorld {
                     .nominal_ticks
                     .context("selected action nominal ticks unavailable")?;
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let event_context = super::effects::ActorEventContext::capture(self, id);
+                let event_camera = &mut self.camera;
+                let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
                 let animation = actor
@@ -211,6 +214,13 @@ impl ScriptWorld {
                     animation
                         .playback
                         .force_request_with_sounds(56, 0, ticks, &mut |sound| {
+                            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                                return event_context.dispatch(
+                                    flags,
+                                    event_camera.as_mut(),
+                                    event_effects,
+                                );
+                            }
                             sounds(
                                 id,
                                 ScriptSound::Animation {
@@ -345,6 +355,9 @@ impl ScriptWorld {
                 .nominal_ticks
                 .context("selected reaction nominal ticks unavailable")?;
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -355,6 +368,13 @@ impl ScriptWorld {
                 animation
                     .playback
                     .force_request_with_sounds(group, 0, ticks, &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             ScriptSound::Animation {
@@ -409,6 +429,9 @@ impl ScriptWorld {
             let group = u16::try_from(group)
                 .context("selected death override outside animation group range")?;
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -418,6 +441,9 @@ impl ScriptWorld {
             match animation
                 .playback
                 .select_death_override_with_sounds(group, ticks, &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         ScriptSound::Animation {
@@ -481,6 +507,9 @@ impl ScriptWorld {
                 self.globals.set_player_death_override_group(group)?;
             }
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -493,6 +522,9 @@ impl ScriptWorld {
                 0,
                 ticks,
                 &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         ScriptSound::Animation {
@@ -812,6 +844,9 @@ impl ScriptWorld {
                     .nominal_ticks
                     .context("selected death nominal ticks unavailable")?;
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let event_context = super::effects::ActorEventContext::capture(self, id);
+                let event_camera = &mut self.camera;
+                let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
                 let animation = actor.animation.as_mut().expect("validated animation");
@@ -820,6 +855,13 @@ impl ScriptWorld {
                     0,
                     ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             ScriptSound::Animation {

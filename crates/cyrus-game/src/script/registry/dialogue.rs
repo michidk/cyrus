@@ -57,6 +57,21 @@ impl ScriptWorld {
     ) -> Result<i32> {
         let index = self.resolve(id)?;
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let mut events = super::effects::ActorEventDispatch {
+            context: super::effects::ActorEventContext::capture(self, id),
+            camera: self.camera.as_mut(),
+            effects: &mut self.effects,
+        };
+        let mut emit = |actor, sound| {
+            if let crate::script::ScriptSound::Animation {
+                sound: cyrus_world::animation::AnimationSound::Event { flags },
+                ..
+            } = sound
+            {
+                return events.dispatch(flags);
+            }
+            sounds(actor, sound)
+        };
         present_taunt(
             &mut self.actors[index],
             &mut self.globals,
@@ -67,7 +82,7 @@ impl ScriptWorld {
             playback,
             nominal_ticks,
             animation_admitted,
-            sounds,
+            &mut emit,
         )
     }
 

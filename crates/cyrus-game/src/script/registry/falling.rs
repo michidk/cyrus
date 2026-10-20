@@ -218,6 +218,9 @@ impl ScriptWorld {
         if health == 0 {
             if self.updates.animation_system {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let event_context = super::effects::ActorEventContext::capture(self, id);
+                let event_camera = &mut self.camera;
+                let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
                 let animation = actor
@@ -229,6 +232,13 @@ impl ScriptWorld {
                     0,
                     environment.ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {
@@ -313,6 +323,9 @@ impl ScriptWorld {
         if let Some((group, change)) = effect {
             if self.updates.animation_system {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let event_context = super::effects::ActorEventContext::capture(self, id);
+                let event_camera = &mut self.camera;
+                let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
                 let animation = actor
@@ -324,6 +337,13 @@ impl ScriptWorld {
                     0,
                     environment.ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {
@@ -404,6 +424,9 @@ impl ScriptWorld {
         )?;
         if let Some(group) = request.filter(|_| self.updates.animation_system) {
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -415,6 +438,9 @@ impl ScriptWorld {
                 0,
                 environment.ticks,
                 &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         super::super::ScriptSound::Animation {
@@ -582,6 +608,9 @@ impl ScriptWorld {
         };
         if let Some(group) = request.filter(|_| self.updates.animation_system) {
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -593,6 +622,9 @@ impl ScriptWorld {
                 0,
                 environment.ticks,
                 &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         super::super::ScriptSound::Animation {
@@ -736,6 +768,9 @@ impl ScriptWorld {
             );
             if let Some(request) = request.filter(|_| self.updates.animation_system) {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let event_context = super::effects::ActorEventContext::capture(self, id);
+                let event_camera = &mut self.camera;
+                let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
                 let animation = actor
@@ -743,6 +778,9 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("validated falling animation");
                 let mut emit = |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         super::super::ScriptSound::Animation {

@@ -78,6 +78,7 @@ pub(super) struct CombatReceiver<'a> {
     world: u32,
     id: ScriptActorId,
     position: Option<[i32; 3]>,
+    events: Option<super::effects::ActorEventDispatch<'a>>,
 }
 impl<'a> CombatReceiver<'a> {
     pub(super) fn new(
@@ -96,7 +97,12 @@ impl<'a> CombatReceiver<'a> {
             world,
             id,
             position,
+            events: None,
         })
+    }
+    pub(super) fn with_events(mut self, events: super::effects::ActorEventDispatch<'a>) -> Self {
+        self.events = Some(events);
+        self
     }
     fn update_weapon_transition(
         &mut self,
@@ -142,6 +148,13 @@ impl<'a> CombatReceiver<'a> {
                 animation
                     .playback
                     .request_with_sounds(group, 0, nominal_ticks, &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return self
+                                .events
+                                .as_mut()
+                                .context("combat actor-event services unavailable")?
+                                .dispatch(flags);
+                        }
                         sounds(
                             self.id,
                             crate::script::ScriptSound::Animation {
@@ -205,6 +218,13 @@ impl<'a> CombatReceiver<'a> {
                 0,
                 nominal_ticks,
                 &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return self
+                            .events
+                            .as_mut()
+                            .context("combat actor-event services unavailable")?
+                            .dispatch(flags);
+                    }
                     sounds(
                         self.id,
                         crate::script::ScriptSound::Animation {
@@ -349,6 +369,13 @@ impl<'a> CombatReceiver<'a> {
                     let frame = animation
                         .playback
                         .force_request_with_sounds(91, 0, inputs.nominal_ticks, &mut |sound| {
+                            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                                return self
+                                    .events
+                                    .as_mut()
+                                    .context("combat actor-event services unavailable")?
+                                    .dispatch(flags);
+                            }
                             sounds(
                                 self.id,
                                 crate::script::ScriptSound::Animation {
@@ -399,6 +426,20 @@ impl<'a> CombatReceiver<'a> {
                 source
                     .context("combat entry prepared taunt source unavailable")?
                     .with_playback(&mut |playback| {
+                        let events = &mut self.events;
+                        let mut emit = |actor, sound| {
+                            if let crate::script::ScriptSound::Animation {
+                                sound: cyrus_world::animation::AnimationSound::Event { flags },
+                                ..
+                            } = sound
+                            {
+                                return events
+                                    .as_mut()
+                                    .context("combat taunt actor-event services unavailable")?
+                                    .dispatch(flags);
+                            }
+                            sounds(actor, sound)
+                        };
                         super::dialogue::present_taunt(
                             self.actor,
                             self.globals,
@@ -409,7 +450,7 @@ impl<'a> CombatReceiver<'a> {
                             playback,
                             inputs.nominal_ticks,
                             inputs.taunt_animation_admitted,
-                            sounds,
+                            &mut emit,
                         )
                         .map(|_| ())
                     })?;
@@ -429,6 +470,11 @@ impl ScriptWorld {
         let index = self.resolve(id)?;
         self.resolve(player)?;
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let events = super::effects::ActorEventDispatch {
+            context: super::effects::ActorEventContext::capture(self, id),
+            camera: self.camera.as_mut(),
+            effects: &mut self.effects,
+        };
         CombatReceiver::new(
             &mut self.actors[index],
             &mut self.globals,
@@ -436,6 +482,7 @@ impl ScriptWorld {
             id,
             position,
         )
+        .map(|receiver| receiver.with_events(events))
     }
 
     /// Validate the selected player's assigned item against current shared ownership.

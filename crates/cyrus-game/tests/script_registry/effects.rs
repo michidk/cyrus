@@ -441,3 +441,571 @@ fn actor_events_spawn_surface_effects_in_bit_order_and_shake_the_camera() {
     // A surface bit without a known stored surface fails instead of skipping.
     assert!(world.apply_actor_events(&[event(1, None)]).is_err());
 }
+
+#[test]
+fn animation_stage_commits_actor_events_before_a_later_sound_failure() {
+    use cyrus_world::animation::AnimationSound;
+    let (mut world, mut data, models) = static_model_fixture({
+        let mut scripts = cache();
+        add_standalone_receivers(&mut scripts);
+        scripts
+    });
+    let actor = world.id(0).unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = serde_json::json!("animation_table");
+    definition["animation_groups"] = serde_json::json!([{
+        "group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":0},
+            {"opcode":11,"value":22},
+            {"opcode":4,"sound_param":9,"volume_shift":0},
+            {"opcode":0,"frame_reference":1},{"opcode":1}
+        ]
+    }]);
+    world
+        .initialize_map_animation(actor, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.set_actor_surface(actor, 1).unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        })
+        .unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    world
+        .prepare_ordinary_collision_query(actor, &scene, &data, [10, 30], &[actor])
+        .unwrap();
+    world
+        .prepare_environment_effects(&source(4, false))
+        .unwrap();
+    world
+        .advance(
+            actor,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| panic!("initial frame selected before event commands")),
+            None,
+            100,
+        )
+        .unwrap();
+    let mut emitted = Vec::new();
+    let error = world
+        .advance(
+            actor,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |receiver, sound| {
+                assert_eq!(receiver, actor);
+                emitted.push(sound);
+                anyhow::bail!("later sound failure witness")
+            }),
+            None,
+            100,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("later sound failure witness"));
+    assert!(matches!(
+        emitted.as_slice(),
+        [ScriptSound::Animation {
+            sound: AnimationSound::Play { effect: 9, .. },
+            ..
+        }]
+    ));
+    assert_eq!(world.camera().unwrap().shake, 32);
+    let active = world
+        .environmental_effects()
+        .unwrap()
+        .active()
+        .map(|(_, effect)| effect.descriptor)
+        .collect::<Vec<_>>();
+    assert_eq!(active, [0x2500, 0x2500]);
+    assert!(world.actors()[actor.index].failure().is_some());
+}
+
+#[test]
+fn map_animation_initialization_keeps_a_shake_before_a_sound_failure() {
+    use cyrus_world::animation::AnimationSound;
+    let (mut world, mut data, _) = static_model_fixture({
+        let mut scripts = cache();
+        add_standalone_receivers(&mut scripts);
+        scripts
+    });
+    let actor = world.id(0).unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = serde_json::json!("animation_table");
+    definition["animation_groups"] = serde_json::json!([{
+        "group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":11,"value":16},
+            {"opcode":4,"sound_param":9,"volume_shift":0},
+            {"opcode":0,"frame_reference":0},{"opcode":1}
+        ]
+    }]);
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        })
+        .unwrap();
+    let mut emitted = Vec::new();
+    let error = world
+        .initialize_map_animation(actor, &data, 0, &mut |_, sound| {
+            emitted.push(sound);
+            anyhow::bail!("initialization sound failure witness")
+        })
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("initialization sound failure witness"));
+    assert!(matches!(
+        emitted.as_slice(),
+        [ScriptSound::Animation {
+            sound: AnimationSound::Play { effect: 9, .. },
+            ..
+        }]
+    ));
+    assert_eq!(world.camera().unwrap().shake, 32);
+    assert!(world.actors()[actor.index].failure().is_some());
+}
+
+#[test]
+fn animation_events_without_matching_bits_need_no_external_sound_or_effect_services() {
+    for flags in [0, 0x10000, 15] {
+        let (mut world, mut data, _) = static_model_fixture({
+            let mut scripts = cache();
+            add_standalone_receivers(&mut scripts);
+            scripts
+        });
+        let actor = world.id(0).unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "LOGIC")
+            .unwrap();
+        definition["model_load_path"] = serde_json::json!("animation_table");
+        definition["animation_groups"] = serde_json::json!([{
+            "group_index":0,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":11,"value":flags},
+                {"opcode":0,"frame_reference":0},
+                {"opcode":11,"value":flags},
+                {"opcode":0,"frame_reference":1},{"opcode":1}
+            ]
+        }]);
+        world.set_actor_surface(actor, 0).unwrap();
+        world
+            .initialize_map_animation(actor, &data, 0, &mut |_, _| {
+                panic!("actor event reached audio adapter")
+            })
+            .unwrap();
+        world
+            .advance(
+                actor,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        world
+            .advance(
+                actor,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(world.animation_frame(actor).unwrap(), Some(1));
+    }
+}
+
+#[test]
+fn automatic_model_phase_keeps_initialization_events_when_later_admission_fails() {
+    use bevy::prelude::*;
+    use cyrus_assets::{
+        animation::Animations,
+        collision::{ModelVisibility, VisibilityNode},
+    };
+    use cyrus_game::script::{ScriptActors, ScriptStatus, ScriptView};
+    use cyrus_world::animation::AnimationRequest;
+    let mut scripts = cache();
+    scripts.instances.truncate(1);
+    add_standalone_receivers(&mut scripts);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, _) = static_model_fixture(scripts.clone());
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = serde_json::json!("animation_table");
+    definition["animation_groups"] = serde_json::json!([{
+        "group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":11,"value":16},{"opcode":0,"frame_reference":0},{"opcode":1}
+        ]
+    }]);
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        })
+        .unwrap();
+    world
+        .prepare_model_admission(
+            &ModelVisibility {
+                center: [0; 3],
+                half_extent: 100,
+                nodes: vec![VisibilityNode {
+                    children: [None; 8],
+                    objects: vec![60000],
+                }],
+            },
+            1,
+        )
+        .unwrap();
+    let (mut app, prepared, _) = revisit_test_app(&scripts);
+    app.add_message::<cyrus_world::animation::AnimationTick>()
+        .add_message::<cyrus_world::sound::SoundCue>();
+    let source = prepared.animations.clone();
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .insert(source.id(), data)
+        .unwrap();
+    app.insert_resource(prepared)
+        .insert_resource(AnimationRequest(source.clone()))
+        .insert_resource(ScriptView {
+            source,
+            position: [0; 3],
+        });
+    app.update();
+    app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
+    app.insert_resource(State::new(cyrus_game::AppState::InGame));
+    app.update();
+    app.update();
+    let status = format!("{:?}", app.world().resource::<ScriptStatus>());
+    assert!(
+        status.contains("PVO selected object outside prepared tables"),
+        "{status}"
+    );
+    let actors = app.world().resource::<ScriptActors>();
+    let world = actors.current.as_ref().unwrap();
+    assert_eq!(
+        world.camera().unwrap().shake,
+        32,
+        "the later model-stage error must retain the earlier authored event"
+    );
+}
+
+#[test]
+fn selected_death_animation_events_allocate_before_the_death_controller_effect() {
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        for (index, name, value) in [(3, "health", 40), (105, "skip_death", 1)] {
+            scripts.definition.attributes[index] = name.into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert(name.into(), value);
+        }
+        let function_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "SetHealth".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::ObjectCall {
+            call: Call {
+                function_id,
+                function: "SetHealth".into(),
+                kind: CallKind::Function,
+                target: Object::Player,
+                arguments: vec![Value::Integer { value: 0 }],
+            },
+        };
+    });
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap()["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "group_index":134,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":11,"value":1},{"opcode":0,"frame_reference":0},{"opcode":1}
+            ]
+        }));
+    world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
+    let player = world.id(index).unwrap();
+    let timing = ScriptInputs {
+        nominal_ticks: Some(0),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(player, ScriptStage::Entry, timing, None, None, 100)
+        .unwrap();
+    world.set_actor_surface(player, 2).unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        })
+        .unwrap();
+    let hud = ScriptHud::default();
+    let mut random = EngineRandom::from_state(42);
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                hud: Some(&hud),
+                death_suppressed: Some(false),
+                ..timing
+            },
+            None,
+            Some(&mut random),
+            100,
+        )
+        .unwrap();
+    assert_eq!(
+        world
+            .globals()
+            .selected_health()
+            .unwrap()
+            .death()
+            .unwrap()
+            .mode(),
+        2
+    );
+    // The retained death mode chooses its own effect; the current surface gates the
+    // authored animation event independently.
+    world.set_actor_surface(player, 5).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player])
+        .unwrap();
+    let mut effects = source(1, false);
+    effects
+        .images
+        .insert(0x2580, effects.images[&0x2500].clone());
+    world.prepare_environment_effects(&effects).unwrap();
+    let mut sounds = Vec::new();
+    for _ in 0..8 {
+        world
+            .advance_player_controller(
+                player,
+                cyrus_game::script::OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                ClockStep {
+                    nominal_ticks: 0,
+                    frame_scale: 256,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, sound| {
+                    sounds.push(sound);
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+    assert!(
+        sounds
+            .iter()
+            .any(|sound| matches!(sound, ScriptSound::Positional { effect: 71, .. })),
+        "death effect admission was not exercised"
+    );
+    let slots = world
+        .environmental_effects()
+        .unwrap()
+        .active()
+        .map(|(slot, effect)| (slot, effect.descriptor))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        slots,
+        [(0, 0x2580)],
+        "the authored event must allocate before the later death effect exhausts the shared pool"
+    );
+    assert!(!sounds.iter().any(|sound| matches!(
+        sound,
+        ScriptSound::Animation {
+            sound: cyrus_world::animation::AnimationSound::Event { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
+fn initialization_events_allocate_before_water_model_effects_in_the_shared_pool() {
+    for capacity in [1, 2] {
+        let (scripts, world, mut data, scene) = player_walking_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap()["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":140,"anim_id":1,"anim_type":0,"commands":[
+                    {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}
+                ]
+            }));
+        let mut world =
+            replace_health_test_animation(world, &scripts, &mut data, index, 140, |saved| {
+                saved["actors"][index]["model"]["current"] = serde_json::Value::Null;
+                saved["actors"][index]["model"]["position"] =
+                    serde_json::json!([10.0_f32.to_bits(), 75.0_f32.to_bits(), 30.0_f32.to_bits()]);
+            });
+        let player = world.id(index).unwrap();
+        world
+            .prepare_ordinary_collision_shape(player, &data, &scene)
+            .unwrap();
+        world
+            .advance(
+                player,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        world
+            .prepare_model_admission(&Default::default(), scene.collision.placements.len())
+            .unwrap();
+        world.set_actor_surface(player, 2).unwrap();
+        world
+            .initialize_camera_pose(CameraPose {
+                position: [0; 3],
+                angles: [0; 3],
+            })
+            .unwrap();
+        let mut effects = source(capacity, false);
+        effects
+            .images
+            .insert(0x2580, effects.images[&0x2500].clone());
+        world.prepare_environment_effects(&effects).unwrap();
+        let actor = world.id(0).unwrap();
+        world
+            .prepare_ordinary_collision_shape(actor, &data, &scene)
+            .unwrap();
+        world.set_actor_surface(actor, 5).unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "LOGIC")
+            .unwrap();
+        definition["model_load_path"] = serde_json::json!("animation_table");
+        definition["raan_entries"] = serde_json::json!([{"file_path":"PLAYER.3D","frame_count":1}]);
+        definition["animation_groups"] = serde_json::json!([{
+            "group_index":0,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":11,"value":1},{"opcode":0,"frame_reference":0},{"opcode":1}
+            ]
+        }]);
+        world
+            .initialize_map_animation(actor, &data, 0, &mut |_, _| {
+                panic!("actor event reached audio adapter")
+            })
+            .unwrap();
+        world.set_actor_surface(actor, 0).unwrap();
+        let hud = ScriptHud::default();
+        world
+            .refresh_automatic_models(
+                &data,
+                [0; 3],
+                Some(&scene),
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                Some(&mut EngineRandom::from_state(42)),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+        assert_eq!(
+            world.model_position(player).unwrap(),
+            Some([10.0, 58.0, 30.0])
+        );
+        let slots = world
+            .environmental_effects()
+            .unwrap()
+            .active()
+            .map(|(slot, effect)| (slot, effect.descriptor))
+            .collect::<Vec<_>>();
+        assert_eq!(slots, [(0, 0x2580), (1, 0x2500)][..capacity as usize]);
+    }
+}

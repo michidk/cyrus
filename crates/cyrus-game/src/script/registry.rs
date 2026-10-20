@@ -1573,7 +1573,9 @@ impl ScriptWorld {
 
     /// Initialize an ordinary placed animation-table model using shared nominal ticks.
     /// This does not grant update eligibility or initialize standalone player roles.
-    /// Sound failures are sticky because already-dispatched effects cannot be rolled back.
+    /// Actor events execute against this world's camera/effect owners at their command;
+    /// the callback receives sounds and transitions. Failures are sticky because
+    /// already-dispatched effects cannot be rolled back.
     pub fn initialize_map_animation(
         &mut self,
         id: ScriptActorId,
@@ -1588,6 +1590,9 @@ impl ScriptWorld {
         } else {
             Default::default()
         };
+        let events = effects::ActorEventContext::capture(self, id);
+        let camera = &mut self.camera;
+        let effects = &mut self.effects;
         let actor = &mut self.actors[index];
         let placement = actor
             .placement()
@@ -1607,6 +1612,9 @@ impl ScriptWorld {
             actor.name(),
             ticks,
             &mut |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return events.dispatch(flags, camera.as_mut(), effects);
+                }
                 sounds(
                     id,
                     super::ScriptSound::Animation {
@@ -1660,6 +1668,9 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        let events = effects::ActorEventContext::capture(self, id);
+        let camera = &mut self.camera;
+        let effects = &mut self.effects;
         let actor = &mut self.actors[index];
         if let Some(error) = actor.failure() {
             anyhow::bail!("{error}");
@@ -1715,6 +1726,9 @@ impl ScriptWorld {
         let result = animation
             .playback
             .select_default_with_sounds(group, ticks, &mut |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return events.dispatch(flags, camera.as_mut(), effects);
+                }
                 sounds(
                     id,
                     super::ScriptSound::Animation {
@@ -1766,7 +1780,8 @@ impl ScriptWorld {
     }
     /// Construct a standalone player role's animation and combat association once.
     /// The caller owns entry position/surface snapshots for synchronous sounds and
-    /// supplies the existing nominal ticks. This does not advance player controls.
+    /// supplies the existing nominal ticks. Actor events execute against this world's
+    /// current logical pose and camera/effect owners. This does not advance controls.
     pub fn initialize_player_animation(
         &mut self,
         id: ScriptActorId,
@@ -1780,6 +1795,9 @@ impl ScriptWorld {
         } else {
             Default::default()
         };
+        let events = effects::ActorEventContext::capture(self, id);
+        let camera = &mut self.camera;
+        let effects = &mut self.effects;
         let actor = &mut self.actors[index];
         anyhow::ensure!(
             matches!(
@@ -1819,7 +1837,14 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        match crate::player::placement::initial_role_animation(data, actor.name(), ticks, sounds) {
+        let mut emit = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                return events.dispatch(flags, camera.as_mut(), effects);
+            }
+            sounds(sound)
+        };
+        match crate::player::placement::initial_role_animation(data, actor.name(), ticks, &mut emit)
+        {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 if matches!(actor.source, ScriptActorSource::AlternatePlayer) {
@@ -2550,28 +2575,54 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
-        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
-        let mut emit = |sound| match &mut **sound_handler.borrow_mut() {
-            Some(sounds) => sounds(
-                id,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        let actor_events = effects::ActorEventContext::capture(self.registry, id);
+        let player_events =
+            player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
+        // Camera tasks own the camera instead of animation playback; animation tasks
+        // share these local dispatch borrows between receiver and selected-player cursors.
+        let (event_camera, task_camera) = if camera_inputs.is_some() {
+            (None, self.registry.camera.as_mut())
+        } else {
+            (self.registry.camera.as_mut(), None)
         };
-        let mut emit_player = |sound| match (&mut **sound_handler.borrow_mut(), player_sound) {
-            (Some(sounds), Some((player, position, surface))) => sounds(
-                player,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            _ => anyhow::bail!("selected player animation sound handler absent"),
+        let event_services = std::cell::RefCell::new((event_camera, &mut self.registry.effects));
+        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
+        let mut emit = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                let (camera, effects) = &mut *event_services.borrow_mut();
+                return actor_events.dispatch(flags, camera.as_deref_mut(), effects);
+            }
+            match &mut **sound_handler.borrow_mut() {
+                Some(sounds) => sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+            }
+        };
+        let mut emit_player = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                let context = player_events
+                    .as_ref()
+                    .context("selected player actor event unavailable")?;
+                let (camera, effects) = &mut *event_services.borrow_mut();
+                return context.dispatch(flags, camera.as_deref_mut(), effects);
+            }
+            match (&mut **sound_handler.borrow_mut(), player_sound) {
+                (Some(sounds), Some((player, position, surface))) => sounds(
+                    player,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                _ => anyhow::bail!("selected player animation sound handler absent"),
+            }
         };
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
@@ -2663,17 +2714,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }),
             camera: camera_inputs.and_then(
                 |(requested_slot, bound_pose, (receiver, selected_player))| {
-                    self.registry
-                        .camera
-                        .as_mut()
-                        .map(|state| super::tasks::CameraCall {
-                            state,
-                            requested_slot,
-                            bound_pose,
-                            receiver,
-                            selected_player,
-                            update: camera_update_handle,
-                        })
+                    task_camera.map(|state| super::tasks::CameraCall {
+                        state,
+                        requested_slot,
+                        bound_pose,
+                        receiver,
+                        selected_player,
+                        update: camera_update_handle,
+                    })
                 },
             ),
             player_face: player_face.map(|state| super::tasks::PlayerFaceCall {
@@ -3327,16 +3375,24 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .context("animation requires nominal_ticks")?;
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
-        let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(
-                id,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        let events = effects::ActorEventContext::capture(self.registry, id);
+        let camera = &mut self.registry.camera;
+        let effects = &mut self.registry.effects;
+        let mut emit = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                return events.dispatch(flags, camera.as_mut(), effects);
+            }
+            match &mut self.sounds {
+                Some(sounds) => sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+            }
         };
         let animation = self.registry.actors[self.index]
             .animation
@@ -3825,13 +3881,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "beginCombat selected actor belongs to an expired or absent world"
             );
             let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+            let events = effects::ActorEventDispatch {
+                context: effects::ActorEventContext::capture(self.registry, id),
+                camera: self.registry.camera.as_mut(),
+                effects: &mut self.registry.effects,
+            };
             let mut receiver = weapon::CombatReceiver::new(
                 &mut self.registry.actors[self.index],
                 &mut self.registry.globals,
                 self.world,
                 id,
                 position,
-            )?;
+            )?
+            .with_events(events);
             let mut emit = |actor, sound| {
                 self.sounds
                     .as_deref_mut()
@@ -4643,16 +4705,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("PlayAnimation requires nominal_ticks")?;
             let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
             let surface = self.registry.actors[self.index].surface;
-            let mut emit = |sound| match &mut self.sounds {
-                Some(sounds) => sounds(
-                    id,
-                    super::ScriptSound::Animation {
-                        sound,
-                        surface,
-                        position,
-                    },
-                ),
-                None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+            let events = effects::ActorEventContext::capture(self.registry, id);
+            let camera = &mut self.registry.camera;
+            let effects = &mut self.registry.effects;
+            let mut emit = |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return events.dispatch(flags, camera.as_mut(), effects);
+                }
+                match &mut self.sounds {
+                    Some(sounds) => sounds(
+                        id,
+                        super::ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    ),
+                    None => {
+                        anyhow::bail!("world actor {}: animation sound handler absent", id.index)
+                    }
+                }
             };
             let animation = self.registry.actors[self.index]
                 .animation
@@ -5089,28 +5161,54 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
-        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
-        let mut emit = |sound| match &mut **sound_handler.borrow_mut() {
-            Some(sounds) => sounds(
-                id,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        let actor_events = effects::ActorEventContext::capture(self.registry, id);
+        let player_events =
+            player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
+        // Camera tasks own the camera instead of animation playback; animation tasks
+        // share these local dispatch borrows between receiver and selected-player cursors.
+        let (event_camera, task_camera) = if camera_inputs.is_some() {
+            (None, self.registry.camera.as_mut())
+        } else {
+            (self.registry.camera.as_mut(), None)
         };
-        let mut emit_player = |sound| match (&mut **sound_handler.borrow_mut(), player_sound) {
-            (Some(sounds), Some((player, position, surface))) => sounds(
-                player,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            _ => anyhow::bail!("selected player animation sound handler absent"),
+        let event_services = std::cell::RefCell::new((event_camera, &mut self.registry.effects));
+        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
+        let mut emit = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                let (camera, effects) = &mut *event_services.borrow_mut();
+                return actor_events.dispatch(flags, camera.as_deref_mut(), effects);
+            }
+            match &mut **sound_handler.borrow_mut() {
+                Some(sounds) => sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+            }
+        };
+        let mut emit_player = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                let context = player_events
+                    .as_ref()
+                    .context("selected player actor event unavailable")?;
+                let (camera, effects) = &mut *event_services.borrow_mut();
+                return context.dispatch(flags, camera.as_deref_mut(), effects);
+            }
+            match (&mut **sound_handler.borrow_mut(), player_sound) {
+                (Some(sounds), Some((player, position, surface))) => sounds(
+                    player,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                _ => anyhow::bail!("selected player animation sound handler absent"),
+            }
         };
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
@@ -5208,17 +5306,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 }),
                 camera: camera_inputs.and_then(
                     |(requested_slot, bound_pose, (receiver, selected_player))| {
-                        self.registry
-                            .camera
-                            .as_mut()
-                            .map(|state| super::tasks::CameraCall {
-                                state,
-                                requested_slot,
-                                bound_pose,
-                                receiver,
-                                selected_player,
-                                update: camera_update_handle,
-                            })
+                        task_camera.map(|state| super::tasks::CameraCall {
+                            state,
+                            requested_slot,
+                            bound_pose,
+                            receiver,
+                            selected_player,
+                            update: camera_update_handle,
+                        })
                     },
                 ),
                 player_face: player_face.map(|state| super::tasks::PlayerFaceCall {

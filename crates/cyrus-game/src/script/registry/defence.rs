@@ -476,6 +476,9 @@ impl ScriptWorld {
             });
             let ticks = inputs.nominal_ticks.context("nominal ticks unavailable")?;
             let position = Some(self.sight_position(index)?);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[index];
             let surface = actor.surface;
             let animation = actor
@@ -519,6 +522,15 @@ impl ScriptWorld {
                         animation
                             .playback
                             .request_with_sounds(group, 0, ticks, &mut |sound| {
+                                if let cyrus_world::animation::AnimationSound::Event { flags } =
+                                    sound
+                                {
+                                    return event_context.dispatch(
+                                        flags,
+                                        event_camera.as_mut(),
+                                        event_effects,
+                                    );
+                                }
                                 sounds(
                                     id,
                                     crate::script::ScriptSound::Animation {

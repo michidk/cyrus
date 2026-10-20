@@ -160,6 +160,9 @@ impl ScriptWorld {
             ),
         };
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
         let actor = &mut self.actors[index];
         let control = actor
             .control
@@ -191,6 +194,13 @@ impl ScriptWorld {
                     0,
                     environment.ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {

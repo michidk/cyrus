@@ -6,6 +6,11 @@
 //! both active and released records; older active-only snapshots still restore.
 //! Hosts call `ScriptWorld::draw_environment_effects` once per actual scene draw.
 //! Source: preservation's SOUP environmental effect frame-submission contract.
+//!
+//! Animation actor events execute at their command, before subsequent sounds and
+//! water/death pool allocations. Playback borrows actor-local inputs separately
+//! from the world's effect pool and camera so earlier effects survive later errors.
+//! See preservation's [actor-event rules](https://michidk.github.io/redguard-preservation/engine/animation.html#actor-events).
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
@@ -266,6 +271,99 @@ pub(super) fn death_effect_point(point: [i32; 3], camera: [i32; 3]) -> [i32; 3] 
     result
 }
 
+/// Actor-local inputs retained while animation playback mutably owns its cursor.
+/// Capturing absent inputs is allowed: zero, unknown and surface-mismatched bits
+/// never query collision, camera or pool services.
+pub(super) struct ActorEventContext {
+    actor: ScriptActorId,
+    surface: Option<u8>,
+    position: Option<[i32; 3]>,
+    height: Option<i32>,
+    camera_ready: bool,
+}
+
+/// Event owners borrowed separately from a combat receiver's actor and globals.
+pub(super) struct ActorEventDispatch<'a> {
+    pub context: ActorEventContext,
+    pub camera: Option<&'a mut super::super::camera::CameraState>,
+    pub effects: &'a mut Option<EnvironmentalEffects>,
+}
+
+impl ActorEventDispatch<'_> {
+    pub(super) fn dispatch(&mut self, flags: u32) -> Result<()> {
+        self.context
+            .dispatch(flags, self.camera.as_deref_mut(), self.effects)
+    }
+}
+
+impl ActorEventContext {
+    pub(super) fn capture(world: &ScriptWorld, actor: ScriptActorId) -> Self {
+        Self {
+            actor,
+            surface: world.actors[actor.index].surface,
+            position: super::animation_sound_position(world.spatial.as_ref(), actor.index),
+            height: world.actors[actor.index]
+                .collision
+                .as_ref()
+                .map(|shape| shape.positive_extent[1]),
+            camera_ready: world
+                .camera
+                .as_ref()
+                .is_some_and(|camera| world.spatial(camera.camera_actor).is_ok()),
+        }
+    }
+
+    pub(super) fn dispatch(
+        &self,
+        flags: u32,
+        mut camera: Option<&mut super::super::camera::CameraState>,
+        effects: &mut Option<EnvironmentalEffects>,
+    ) -> Result<()> {
+        for (bit, surface, descriptor) in ACTOR_EVENT_EFFECTS {
+            if flags & bit == 0 {
+                continue;
+            }
+            let stored = self.surface.with_context(|| {
+                format!(
+                    "actor {} event: stored surface unavailable",
+                    self.actor.index
+                )
+            })?;
+            if stored != surface {
+                continue;
+            }
+            let position = self.position.with_context(|| {
+                format!(
+                    "actor {} event: logical position unavailable",
+                    self.actor.index
+                )
+            })?;
+            let camera = camera
+                .as_ref()
+                .context("actor event published camera unavailable")?;
+            ensure!(self.camera_ready, "actor event camera pose not initialized");
+            let mut point = death_effect_point(position, camera.current.position);
+            let height = self
+                .height
+                .context("ordinary collision shape not prepared")?;
+            point[1] = point[1]
+                .wrapping_add(height.wrapping_mul(256))
+                .wrapping_add(1536);
+            effects
+                .as_mut()
+                .context("actor event environmental effect spawning unavailable")?
+                .spawn(descriptor, point)?;
+        }
+        if flags & ACTOR_EVENT_SHAKE != 0 {
+            camera
+                .as_mut()
+                .context("actor event camera session unavailable")?
+                .add_shake();
+        }
+        Ok(())
+    }
+}
+
 impl ScriptWorld {
     /// Bind the exact installed source after its presentation host has prepared it.
     /// Rebinding preserves live slots and rejects changed source bytes within a world.
@@ -327,51 +425,19 @@ impl ScriptWorld {
             .context("environmental effect spawning unavailable")?
             .spawn(descriptor, point)
     }
-    /// Apply captured actor events in emission order. Each surface-gated bit spawns its effect at
+    /// Apply explicitly supplied inspection events in order. Automatic animation
+    /// dispatch uses the borrowed command handler and never queues these records.
+    /// Each surface-gated bit spawns its effect at
     /// the actor's position (the position captured with the event, else the current one) only when
     /// the actor's stored surface matches; the shake bit adds one camera shake impulse. A bit that
     /// needs unavailable surface, camera, extent or effect-pool state fails instead of skipping.
     pub fn apply_actor_events(&mut self, events: &[ActorEvent]) -> Result<()> {
         for event in events {
-            for (bit, surface, descriptor) in ACTOR_EVENT_EFFECTS {
-                if event.flags & bit == 0 {
-                    continue;
-                }
-                let stored = event.surface.with_context(|| {
-                    format!(
-                        "actor {} event: stored surface unavailable",
-                        event.actor.index
-                    )
-                })?;
-                if stored != surface {
-                    continue;
-                }
-                let position = match event.position {
-                    Some(position) => position,
-                    None => self.spatial(event.actor)?.local.position,
-                };
-                let camera = self
-                    .camera
-                    .as_ref()
-                    .context("actor event published camera unavailable")?;
-                self.spatial(camera.camera_actor)
-                    .context("actor event camera pose not initialized")?;
-                let mut point = death_effect_point(position, camera.current.position);
-                let height = self.ordinary_collision_shape(event.actor)?.positive_extent[1];
-                point[1] = point[1]
-                    .wrapping_add(height.wrapping_mul(256))
-                    .wrapping_add(1536);
-                self.effects
-                    .as_mut()
-                    .context("actor event environmental effect spawning unavailable")?
-                    .spawn(descriptor, point)?;
-            }
-            if event.flags & ACTOR_EVENT_SHAKE != 0 {
-                self.camera
-                    .as_mut()
-                    .context("actor event camera session unavailable")?
-                    .add_shake();
-            }
+            self.resolve(event.actor)?;
+            let mut context = ActorEventContext::capture(self, event.actor);
+            context.surface = event.surface;
+            context.position = event.position.or(context.position);
+            context.dispatch(event.flags, self.camera.as_mut(), &mut self.effects)?;
         }
         Ok(())
     }

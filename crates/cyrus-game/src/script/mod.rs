@@ -22,6 +22,11 @@
 //! does not establish automatic scheduler admission or complete gameplay support.
 //! Missing required ownership and unsupported branches return contextual errors.
 //!
+//! Animation actor events execute synchronously inside each world-owned playback
+//! callback, using the shared camera and environmental-effect pool. The audio host
+//! receives sounds and transition decisions. Earlier event effects remain applied
+//! if a later command or world phase fails; ordinary traversal never batches events.
+//!
 //! [`ModelPreparation`] captures model geometry and stored positions before
 //! [`SceneSubmission`] and [`OrdinaryUpdates`]. Both [`OrdinaryPhase`] calls borrow
 //! the same host services; only simulation advances ordinary actors. Effect hosts

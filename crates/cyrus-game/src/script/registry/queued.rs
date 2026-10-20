@@ -172,6 +172,9 @@ impl super::ScriptWorld {
         };
         let origin = self.spatial(id)?.local.position[1];
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
         let actor = &mut self.actors[index];
         let control = actor.control.as_mut().expect("validated jump control");
         control.stable_position_valid = false;
@@ -186,6 +189,9 @@ impl super::ScriptWorld {
                 .as_mut()
                 .expect("validated jump animation receiver");
             let mut emit = |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                }
                 sounds(
                     id,
                     super::super::ScriptSound::Animation {
@@ -299,6 +305,9 @@ impl super::ScriptWorld {
             .filter(|_| self.updates.animation_system)
         {
             let position = super::animation_sound_position(self.spatial.as_ref(), id.index);
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let actor = &mut self.actors[id.index];
             let surface = actor.surface;
             let animation = actor
@@ -309,6 +318,13 @@ impl super::ScriptWorld {
                 animation
                     .playback
                     .request_with_sounds(group, 0, environment.ticks, &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {

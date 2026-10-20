@@ -88,6 +88,9 @@ impl ScriptWorld {
             if let Some(group) = idle {
                 let position = world.spatial(id)?.local.position;
                 let surface = world.actor_surface(id)?;
+                let event_context = super::effects::ActorEventContext::capture(world, id);
+                let event_camera = &mut world.camera;
+                let event_effects = &mut world.effects;
                 let animation = world.actors[id.index]
                     .animation
                     .as_mut()
@@ -97,6 +100,13 @@ impl ScriptWorld {
                     0,
                     timing.nominal_ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {
@@ -286,6 +296,9 @@ impl ScriptWorld {
         if let Some(group) = result.group {
             let position = self.spatial(id)?.local.position;
             let surface = self.actor_surface(id)?;
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let animation = self.actors[index]
                 .animation
                 .as_mut()
@@ -295,6 +308,9 @@ impl ScriptWorld {
                 0,
                 timing.nominal_ticks,
                 &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
                     sounds(
                         id,
                         super::super::ScriptSound::Animation {
@@ -714,6 +730,9 @@ impl ScriptWorld {
                 .context("walking control unavailable")?
                 .motion_classification = 6;
             let surface = self.actor_surface(id)?;
+            let event_context = super::effects::ActorEventContext::capture(self, id);
+            let event_camera = &mut self.camera;
+            let event_effects = &mut self.effects;
             let animation = self.actors[id.index]
                 .animation
                 .as_mut()
@@ -732,6 +751,13 @@ impl ScriptWorld {
                     timing.frame_scale,
                     timing.nominal_ticks,
                     &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
                         sounds(
                             id,
                             super::super::ScriptSound::Animation {
