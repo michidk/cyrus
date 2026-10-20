@@ -74,12 +74,13 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 24,
+        version: 25,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
+        lineup_distance: None,
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,
@@ -17095,7 +17096,11 @@ fn native_failure_preserves_written_flags_and_restores_runtime() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     let error = world.step(id, Thread::Main, 20).unwrap_err();
-    assert!(format!("{error:#}").contains("PlayerLineUp"));
+    // Without a selected player the lineup owner cannot be built, so the native fails.
+    assert!(
+        format!("{error:#}").contains("lineup selected player unavailable"),
+        "{error:#}"
+    );
     assert_eq!(world.flags(), [73]);
     assert!(world.actors()[0].runtime().unwrap().failure().is_some());
     assert!(world.step(id, Thread::Main, 20).is_err());
@@ -26974,8 +26979,16 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
     };
     // The receiver stands where the player does; the target is 8 map units ahead (+Z) and the
     // final heading (receiver heading 0 + angle 1024 + 1024) is the player's own, so no turn runs.
-    for function in ["PlayerParallelLineUp", "PlayerPickupLineUp"] {
+    // The pickup and parallel natives add their offsets unrotated; PlayerLineUp rotates them by the
+    // reference heading plus the angle (half a turn here) and picks its mode from the distance.
+    for (function, lineup_distance, z_offset) in [
+        ("PlayerParallelLineUp", None, 2048),
+        ("PlayerPickupLineUp", None, 2048),
+        ("PlayerLineUp", Some(0), -2048),
+        ("PlayerLineUp", Some(i32::MAX), -2048),
+    ] {
         let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+            scripts.lineup_distance = lineup_distance;
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
                 name: function.into(),
@@ -26997,7 +27010,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     vec![
                         Value::Integer { value: 1024 },
                         Value::Integer { value: 0 },
-                        Value::Integer { value: 2048 },
+                        Value::Integer { value: z_offset },
                     ],
                 ),
                 set_flag(7),
@@ -27088,7 +27101,11 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 break;
             }
         }
-        assert_eq!(world.flags(), [7], "{function}: positions {positions:?}");
+        assert_eq!(
+            world.flags(),
+            [7],
+            "{function} {lineup_distance:?}: positions {positions:?}"
+        );
         let receiver = world.spatial(map).unwrap().local.position;
         let end = world.spatial(player).unwrap().local.position;
         assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);

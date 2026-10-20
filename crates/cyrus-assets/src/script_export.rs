@@ -196,7 +196,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 24,
+        version: 25,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
@@ -205,6 +205,10 @@ pub fn prepare_source(
         in_combat_threshold: combat
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
+            .map(|value| value.wrapping_shl(8)),
+        lineup_distance: system
+            .game
+            .lineup_distance
             .map(|value| value.wrapping_shl(8)),
         node_timer: combat.as_ref().and_then(|combat| combat.misc.node_timer),
         non_engaged_spacing: combat

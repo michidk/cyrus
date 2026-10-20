@@ -426,6 +426,10 @@ pub struct Scripts {
     pub combat_defenses: Vec<combat::Defense>,
     /// Installed fighting-query horizontal threshold in Q8 units, with wrapping conversion.
     pub in_combat_threshold: Option<i32>,
+    /// Installed `SYSTEM.INI` `lineup_distance` in Q8 units, with wrapping conversion: the
+    /// player-to-receiver distance above which `PlayerLineUp` approaches rather than aligns closely.
+    #[serde(default)]
+    pub lineup_distance: Option<i32>,
     /// Installed multiple-attacker angular spacing threshold, without scaling.
     pub non_engaged_spacing: Option<i32>,
     /// Installed misc sword_clank_1/2 effect IDs; omissions remain unavailable.
@@ -456,7 +460,7 @@ impl Scripts {
         let bytes = serde_json::to_vec(&(
             self.version,
             (&self.combat_attacks, &self.combat_defenses, &self.weapons),
-            self.in_combat_threshold,
+            (self.in_combat_threshold, self.lineup_distance),
             (
                 self.non_engaged_spacing,
                 self.node_timer,
@@ -478,7 +482,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 24,
+            self.version == 25,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

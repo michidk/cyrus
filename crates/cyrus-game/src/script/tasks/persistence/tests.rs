@@ -3745,12 +3745,36 @@ impl crate::script::lineup::LineupPort for LineupLog {
     }
     fn set_called_flags(&mut self, _: bool) {}
     fn abandon(&mut self, _: bool) {}
+    fn response_masked(&self) -> bool {
+        false
+    }
+    fn response_age_over(&self) -> bool {
+        false
+    }
+    fn set_hook_flag(&mut self) {}
+    fn clear_hook_flag(&mut self) {}
 }
 
 impl crate::script::lineup::LineupHost for LineupLog {
-    fn reference(&mut self) -> anyhow::Result<([i32; 3], u16)> {
-        Ok(self.reference)
+    fn reference(
+        &mut self,
+        _: Option<u32>,
+    ) -> anyhow::Result<(u32, crate::script::lineup::Reference)> {
+        Ok((
+            0,
+            crate::script::lineup::Reference {
+                position: self.reference.0,
+                heading: self.reference.1,
+            },
+        ))
     }
+    fn receiver_distance(&mut self) -> anyhow::Result<i32> {
+        Ok(0)
+    }
+    fn lineup_distance(&mut self) -> anyhow::Result<i32> {
+        Ok(0)
+    }
+    fn set_lineup_result(&mut self, _: i32) {}
     fn failure(&mut self) -> Option<anyhow::Error> {
         None
     }

@@ -473,6 +473,14 @@ enum Task {
     },
     /// `PlayerParallelLineUp`: the plain mover.
     ParallelLineUp,
+    /// `PlayerLineUp`: the distance mode chosen on the first invocation, the fallback flag and
+    /// the close mode's retained reference actor index.
+    LineUp {
+        initialized: bool,
+        approach: bool,
+        fallback: bool,
+        reference: Option<u32>,
+    },
 }
 impl Task {
     fn complete(
@@ -985,12 +993,12 @@ impl Task {
                 let port = services
                     .lineup
                     .context("lineup selected-player state unavailable")?;
-                let (position, heading) = port.reference()?;
-                let angle = (i32::from(heading) + angle.integer()?) & 0x7ff;
+                let (_, reference) = port.reference(None)?;
+                let angle = (i32::from(reference.heading) + angle.integer()?) & 0x7ff;
                 let target = [
-                    position[0].wrapping_add(x_offset.integer()?),
-                    position[1],
-                    position[2].wrapping_add(z_offset.integer()?),
+                    reference.position[0].wrapping_add(x_offset.integer()?),
+                    reference.position[1],
+                    reference.position[2].wrapping_add(z_offset.integer()?),
                 ];
                 let result = match self {
                     Self::PickupLineUp { fallback } => {
@@ -1006,6 +1014,44 @@ impl Task {
                 if let Some(error) = port.failure() {
                     return Err(error);
                 }
+                result == 0
+            }
+            Self::LineUp {
+                initialized,
+                approach,
+                fallback,
+                reference,
+            } => {
+                use super::lineup::{AlignState, approach_mover, close_mover};
+                let [angle, x_offset, z_offset] = arguments else {
+                    anyhow::bail!("PlayerLineUp takes three arguments");
+                };
+                let port = services
+                    .lineup
+                    .context("lineup selected-player state unavailable")?;
+                if !*initialized {
+                    // A strictly greater distance selects approach mode; equality closes in.
+                    *approach = port.receiver_distance()? > port.lineup_distance()?;
+                    *initialized = true;
+                }
+                let (index, aligned) = port.reference(if *approach { None } else { *reference })?;
+                reference.get_or_insert(index);
+                let mut state = AlignState {
+                    fallback: *fallback,
+                };
+                let offsets = [x_offset.integer()?, z_offset.integer()?];
+                let angle = angle.integer()?;
+                let result = if *approach {
+                    approach_mover(&mut *port, &mut state, angle, offsets, aligned)
+                } else {
+                    close_mover(&mut *port, &mut state, angle, offsets, aligned)
+                };
+                *fallback = state.fallback;
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                let result = result?;
+                port.set_lineup_result(result);
                 result == 0
             }
             Self::PlayerFace => {
@@ -2147,6 +2193,17 @@ impl NativeTasks {
                 "PlayerPickupLineUp requires task encoding"
             );
             Task::PickupLineUp { fallback: false }
+        } else if function.eq_ignore_ascii_case("PlayerLineUp") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "PlayerLineUp requires task encoding"
+            );
+            Task::LineUp {
+                initialized: false,
+                approach: false,
+                fallback: false,
+                reference: None,
+            }
         } else if function.eq_ignore_ascii_case("PlayerParallelLineUp") {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -2261,7 +2318,7 @@ impl NativeTasks {
     /// Whether `token` is a `PlayerFaceObj` continuation, which needs the selected player's state.
     /// Whether `function` is a lineup native, which needs the selected player's alignment owner.
     pub(super) fn is_lineup_function(function: &str) -> bool {
-        ["PlayerPickupLineUp", "PlayerParallelLineUp"]
+        ["PlayerPickupLineUp", "PlayerParallelLineUp", "PlayerLineUp"]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
     }
@@ -2270,7 +2327,7 @@ impl NativeTasks {
     pub(super) fn is_lineup_task(&self, token: u64) -> bool {
         matches!(
             self.tasks.get(&token),
-            Some(Task::PickupLineUp { .. } | Task::ParallelLineUp)
+            Some(Task::PickupLineUp { .. } | Task::ParallelLineUp | Task::LineUp { .. })
         )
     }
 

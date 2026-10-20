@@ -5,7 +5,7 @@
 //! fails with it rather than continuing on a guess.
 use super::{GameHost, ScriptActorId};
 use crate::script::alignment::{self, CloseStep, Facing};
-use crate::script::lineup::{LineupHost, LineupPort, StepPort, close_step_run};
+use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use anyhow::{Context, Result};
 
 pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
@@ -467,6 +467,39 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
         let flags = &mut self.host.registry.globals.locomotion_called;
         *flags = if value { *flags | 0xf } else { *flags & !0xf };
     }
+    fn response_masked(&self) -> bool {
+        self.host.registry.actors[self.player.index]
+            .control
+            .as_ref()
+            .is_some_and(|control| {
+                alignment::fallback_response(
+                    control.body_response_flags,
+                    control.collision_transition_flags,
+                )
+            })
+    }
+    fn response_age_over(&self) -> bool {
+        self.host.registry.actors[self.player.index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.collision_response_age > 8)
+    }
+    fn set_hook_flag(&mut self) {
+        if let Some(control) = self.host.registry.actors[self.player.index]
+            .control
+            .as_mut()
+        {
+            control.script_control |= 2;
+        }
+    }
+    fn clear_hook_flag(&mut self) {
+        if let Some(control) = self.host.registry.actors[self.player.index]
+            .control
+            .as_mut()
+        {
+            control.script_control &= !2;
+        }
+    }
     fn abandon(&mut self, clear_hook_flag: bool) {
         self.host.registry.globals.native_command_return = 6;
         if clear_hook_flag
@@ -480,14 +513,47 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
 }
 
 impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
-    fn reference(&mut self) -> Result<([i32; 3], u16)> {
+    fn reference(&mut self, retained: Option<u32>) -> Result<(u32, Reference)> {
+        let index = match retained {
+            Some(index) => index as usize,
+            None => self.host.index,
+        };
+        anyhow::ensure!(
+            index != self.player.index,
+            "lineup reference is the selected player"
+        );
         let local = self
             .host
             .registry
-            .spatial(self.host.registry.id(self.host.index)?)
-            .context("lineup receiver pose unavailable")?
+            .spatial(self.host.registry.id(index)?)
+            .context("lineup reference pose unavailable")?
             .local;
-        Ok((local.position, local.angles[1]))
+        Ok((
+            index as u32,
+            Reference {
+                position: local.position,
+                heading: local.angles[1],
+            },
+        ))
+    }
+    fn receiver_distance(&mut self) -> Result<i32> {
+        let receiver = self
+            .host
+            .registry
+            .query_position(self.host.registry.id(self.host.index)?)?;
+        let player = self.host.registry.query_position(self.player)?;
+        crate::script::spatial::rounded_distance(std::array::from_fn(|axis| {
+            player[axis].wrapping_sub(receiver[axis])
+        }))
+    }
+    fn lineup_distance(&mut self) -> Result<i32> {
+        self.host
+            .registry
+            .lineup_distance
+            .context("installed lineup distance unavailable; re-export the script cache")
+    }
+    fn set_lineup_result(&mut self, result: i32) {
+        self.host.registry.globals.lineup_result = Some(result);
     }
     fn failure(&mut self) -> Option<anyhow::Error> {
         self.error.take()

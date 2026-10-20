@@ -380,6 +380,7 @@ pub struct ScriptWorld {
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
+    lineup_distance: Option<i32>,
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
     node_timer: Option<i32>,
@@ -854,6 +855,7 @@ impl ScriptWorld {
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
+            lineup_distance: scripts.lineup_distance,
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
             node_timer: scripts.node_timer,
@@ -3594,8 +3596,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             index: self.index,
         };
         if function.eq_ignore_ascii_case("PlayerLineUp") {
+            // Unknown until the native stores this invocation's return value.
             self.registry.globals.lineup_result = None;
-            anyhow::bail!("PlayerLineUp alignment execution unavailable; shared result unknown");
         }
         if kind == CallKind::Function
             && [
@@ -5274,6 +5276,7 @@ mod fighting_tests {
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
+            lineup_distance: None,
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],
             node_timer: None,

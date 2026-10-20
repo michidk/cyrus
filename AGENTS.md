@@ -282,9 +282,10 @@ Activate/Attack binding when supplied actor state permits it. Unknown actor
 eligibility rejects use. Ordinary compass use reads logical-player control,
 surface, animation and attributes. Ordinary prompt activation also reads live
 receiver/player state, installed RTX and the held Activate binding. Standalone
-player initialization establishes the shared lineup result. Unsupported
-`PlayerLineUp` execution invalidates it and blocks later ordinary activation;
-complete alignment and conversation progression remain unavailable. Scripts and
+player initialization establishes the shared lineup result. `PlayerLineUp`,
+`PlayerPickupLineUp` and `PlayerParallelLineUp` run as native tasks that walk the
+selected player to the target; object-side lineups and conversation progression
+remain unavailable. Script caches need re-export (schema 25). Scripts and
 the HUD share session inventory
 through `AddItem`, `DropItem`, `HaveItem` and `SelectItem`. Recursive prerequisites,
 ordered acquisition/removal lists and starting acquisitions use that owner.

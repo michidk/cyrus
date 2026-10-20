@@ -72,12 +72,13 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 24,
+        version: 25,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
+        lineup_distance: None,
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,
@@ -4052,7 +4053,12 @@ fn unsupported_lineup_invalidates_ordinary_activation_admission() {
             30,
         )
         .unwrap_err();
-    assert!(format!("{error:#}").contains("shared result unknown"));
+    // A function-encoded call is not the installed task encoding; the native fails and leaves
+    // the shared result unknown.
+    assert!(
+        format!("{error:#}").contains("PlayerLineUp requires task encoding"),
+        "{error:#}"
+    );
     let error = world
         .ordinary_activation_overlay(&hud, 0, false, 24)
         .unwrap_err();

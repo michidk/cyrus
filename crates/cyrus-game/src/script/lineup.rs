@@ -36,6 +36,14 @@ pub trait LineupPort {
     fn set_called_flags(&mut self, value: bool);
     /// Report a stale collision response: return state 6.
     fn abandon(&mut self, clear_hook_flag: bool);
+    /// The packed collision-response word carries a mark that makes alignment fall back.
+    fn response_masked(&self) -> bool;
+    /// The collision-response age is above eight updates.
+    fn response_age_over(&self) -> bool;
+    /// Set the player's alignment flag (script-control bit 2).
+    fn set_hook_flag(&mut self);
+    /// Clear the player's alignment flag.
+    fn clear_hook_flag(&mut self);
 }
 
 /// The player state a directional step helper moves and, when it rejects the step, restores.
@@ -78,10 +86,145 @@ pub fn close_step_run<P: StepPort>(port: &mut P, step: CloseStep, x: i32, z: i32
 /// The owner of the selected player's alignment: the helpers plus the reference actor and any
 /// failure a helper met (the helpers answer conservatively and the call then fails).
 pub trait LineupHost: LineupPort {
-    /// The receiving actor's position and heading.
-    fn reference(&mut self) -> anyhow::Result<([i32; 3], u16)>;
+    /// The reference actor and its pose: the retained actor index when one is given, otherwise the
+    /// receiving actor.
+    fn reference(&mut self, retained: Option<u32>) -> anyhow::Result<(u32, Reference)>;
+    /// The rounded three-axis distance between the player and the receiving actor.
+    fn receiver_distance(&mut self) -> anyhow::Result<i32>;
+    /// The installed lineup distance in Q8 units.
+    fn lineup_distance(&mut self) -> anyhow::Result<i32>;
+    /// Store `PlayerLineUp`'s return value as the shared player-lineup result.
+    fn set_lineup_result(&mut self, result: i32);
     /// The first failure a helper met, if any.
     fn failure(&mut self) -> Option<anyhow::Error>;
+}
+
+/// The reference actor `PlayerLineUp` aligns to: its position and heading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reference {
+    pub position: [i32; 3],
+    pub heading: u16,
+}
+
+/// The target and final heading of an alignment: the reference heading plus `angle`, the offsets
+/// rotated by it and added to the reference's X/Z.
+fn rotated_target(
+    angle: i32,
+    offsets: [i32; 2],
+    reference: Reference,
+) -> anyhow::Result<(u16, [i32; 2])> {
+    let heading = ((i32::from(reference.heading) + angle) & 0x7ff) as u16;
+    let [x, z] = cyrus_world::transform::rotate_offset(offsets, heading)?;
+    Ok((
+        heading,
+        [
+            x.wrapping_add(reference.position[0]),
+            z.wrapping_add(reference.position[2]),
+        ],
+    ))
+}
+
+/// Complete the turn to the final heading: still turning keeps the alignment going; finished, the
+/// default animation request ends it, clearing the alignment flag.
+fn finish_turn<P: LineupPort + ?Sized>(port: &mut P, heading: u16) -> i32 {
+    if port.turn_to((heading + 0x400) & 0x7ff) {
+        return 1;
+    }
+    if port.default_animation() {
+        port.clear_hook_flag();
+        0
+    } else {
+        1
+    }
+}
+
+/// The retained fallback flag of `PlayerLineUp`'s movers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AlignState {
+    pub fallback: bool,
+}
+
+/// One directional step toward the point when movement is permitted; a failed step sets the
+/// fallback.
+fn align_step<P: LineupPort + ?Sized>(
+    port: &mut P,
+    state: &mut AlignState,
+    step: CloseStep,
+    x: i32,
+    z: i32,
+) {
+    if port.permitted(x, z) && !port.step(step, x, z) {
+        state.fallback = true;
+    }
+}
+
+/// `PlayerLineUp`'s approach mover (the player is far from the receiver): face the destination
+/// and walk forward, snapping and turning to the final heading on arrival. The fallback faces the
+/// reference's own position instead. Zero when done, one while continuing.
+pub fn approach_mover<P: LineupPort + ?Sized>(
+    port: &mut P,
+    state: &mut AlignState,
+    angle: i32,
+    offsets: [i32; 2],
+    reference: Reference,
+) -> anyhow::Result<i32> {
+    if state.fallback || port.response_masked() {
+        if port.face_point(reference.position[0], reference.position[2]) {
+            return Ok(1);
+        }
+        port.abandon(true);
+        return Ok(0);
+    }
+    port.level_roll();
+    port.set_hook_flag();
+    let (heading, [x, z]) = rotated_target(angle, offsets, reference)?;
+    if port.arrival(x, z) {
+        return Ok(finish_turn(port, heading));
+    }
+    if !port.face_point(x, z) {
+        align_step(port, state, CloseStep::Forward, x, z);
+        if port.response_masked() && port.response_age_over() {
+            state.fallback = true;
+        }
+    }
+    Ok(1)
+}
+
+/// `PlayerLineUp`'s close mover: turn to the final heading, then step in the direction the
+/// bearing to the destination selects. The fallback only turns to the final heading.
+pub fn close_mover<P: LineupPort + ?Sized>(
+    port: &mut P,
+    state: &mut AlignState,
+    angle: i32,
+    offsets: [i32; 2],
+    reference: Reference,
+) -> anyhow::Result<i32> {
+    let final_heading = ((i32::from(reference.heading) + angle) & 0x7ff) as u16;
+    if state.fallback {
+        if port.turn_to((final_heading + 0x400) & 0x7ff) {
+            return Ok(1);
+        }
+        if !port.default_animation() {
+            return Ok(1);
+        }
+        port.abandon(true);
+        return Ok(0);
+    }
+    port.level_roll();
+    port.set_hook_flag();
+    let (heading, [x, z]) = rotated_target(angle, offsets, reference)?;
+    if port.arrival(x, z) {
+        return Ok(finish_turn(port, heading));
+    }
+    if port.turn_to((heading + 0x400) & 0x7ff) {
+        return Ok(1);
+    }
+    let bearing = port.relative_bearing(x, z);
+    align_step(port, state, close_step(bearing), x, z);
+    if port.response_masked() {
+        state.fallback = true;
+    }
+    Ok(1)
 }
 
 /// The pickup mover's retained state: the fallback flag.
@@ -196,6 +339,8 @@ mod tests {
         called: i32,
         state: i32,
         hook: bool,
+        masked: bool,
+        age_over: bool,
     }
 
     impl Scripted {
@@ -257,6 +402,18 @@ mod tests {
             if clear_hook_flag {
                 self.hook = false;
             }
+        }
+        fn response_masked(&self) -> bool {
+            self.masked
+        }
+        fn response_age_over(&self) -> bool {
+            self.age_over
+        }
+        fn set_hook_flag(&mut self) {
+            self.hook = true;
+        }
+        fn clear_hook_flag(&mut self) {
+            self.hook = false;
         }
     }
 
@@ -419,6 +576,8 @@ mod tests {
                 called: 7,
                 state: 0,
                 hook: true,
+                masked: false,
+                age_over: false,
             };
             let mut state = PickupState {
                 fallback: row.fallback != 0,
@@ -451,6 +610,247 @@ mod tests {
             if row.m == 0 {
                 assert_eq!(u8::from(state.fallback), row.fb, "{label}");
             }
+        }
+    }
+
+    #[test]
+    fn the_lineup_movers_match_the_original_routines_with_logged_helpers() {
+        // Rows from the original approach (0) and close (1) movers in an emulator with their leaf
+        // helpers stubbed to scripted answers: the scenario (collision-response word and age,
+        // player pose, reference pose, angle, offsets, retained fallback, alignment flag), the
+        // scripted answers, then the helper calls the original made, its return, return state,
+        // alignment flag and fallback flag.
+        #[derive(serde::Deserialize)]
+        struct Row {
+            k: u8,
+            mask: u32,
+            age: u8,
+            heading: u16,
+            pos: [i32; 2],
+            rp: [i32; 2],
+            rh: u16,
+            angle: i32,
+            off: [i32; 2],
+            fb: u8,
+            flag: u8,
+            script: BTreeMap<String, Vec<i32>>,
+            log: Vec<Vec<serde_json::Value>>,
+            ret: i32,
+            state: i32,
+            flag_out: u8,
+            fb_out: u32,
+        }
+        let rows: Vec<Row> = serde_json::from_str(
+            r#"[
+{"k":0,"mask":0,"age":3,"heading":2047,"pos":[5000,-2560],"rp":[3000,256],"rh":1900,"angle":2100,"off":[256,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,0,0],"face":[0,1,0,1,1,1],"arrive":[1,1,0,1,1,1],"permit":[1,0,1,1,0,0],"fwd":[1,0,0,0,1,0],"right":[1,1,1,1,1,0],"back":[0,1,0,1,0,0],"left":[0,0,1,1,1,1],"anim":[0,0,1,1,1,1],"turn":[0,1,0,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",3319,427],["turn",928],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":3,"heading":0,"pos":[0,256],"rp":[3000,0],"rh":1900,"angle":0,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[0,1,0,1,1,1],"face":[1,1,1,0,0,0],"arrive":[0,0,1,1,0,1],"permit":[0,1,1,1,0,1],"fwd":[0,1,1,0,1,1],"right":[1,1,1,0,0,0],"back":[1,0,1,1,1,1],"left":[0,1,0,1,1,1],"anim":[0,1,0,0,1,0],"turn":[1,1,0,0,1,1],"err":[1,0,1,0,1,1],"path":[1]},"log":[["arrive",2107,-2413],["turn",876]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":0,"pos":[256,-2560],"rp":[256,-2560],"rh":1900,"angle":1900,"off":[2048,-2560],"fb":1,"flag":3,"script":{"roll":[0,1,0,1,1,0],"face":[1,0,1,1,1,1],"arrive":[0,1,1,1,1,1],"permit":[0,0,0,0,1,0],"fwd":[0,0,1,1,0,0],"right":[0,1,1,0,1,1],"back":[1,1,1,0,1,0],"left":[0,0,1,0,1,1],"anim":[1,0,1,1,1,1],"turn":[0,0,1,1,0,1],"err":[1,0,1,0,1,1],"path":[1]},"log":[["face",256,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":32,"age":3,"heading":2047,"pos":[0,256],"rp":[3000,256],"rh":1024,"angle":1024,"off":[2048,0],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,1,0],"arrive":[0,1,1,0,1,0],"permit":[1,1,1,0,0,1],"fwd":[0,1,1,1,1,0],"right":[1,1,1,1,1,1],"back":[1,1,1,0,0,0],"left":[0,1,1,0,0,1],"anim":[1,1,1,1,1,1],"turn":[0,1,1,1,1,0],"err":[1,1,0,0,1,0],"path":[1]},"log":[["arrive",5048,256],["turn",1024],["permit",5048,256],["right",5048,256]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":256,"age":3,"heading":2047,"pos":[256,9000],"rp":[-512,256],"rh":1900,"angle":1900,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[0,1,0,1,1,1],"face":[0,0,1,0,0,1],"arrive":[1,1,1,1,1,1],"permit":[0,0,1,1,0,1],"fwd":[1,1,1,1,1,0],"right":[1,0,0,1,1,1],"back":[0,1,1,0,0,1],"left":[1,1,1,1,0,1],"anim":[1,1,1,1,1,1],"turn":[1,1,0,1,1,1],"err":[1,0,0,0,0,1],"path":[1]},"log":[["face",-512,256]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":8,"age":9,"heading":700,"pos":[0,0],"rp":[0,400],"rh":1900,"angle":1900,"off":[256,0],"fb":0,"flag":1,"script":{"roll":[0,1,0,1,1,0],"face":[1,0,0,1,1,1],"arrive":[0,1,0,1,1,1],"permit":[0,0,1,1,1,0],"fwd":[1,1,0,0,1,1],"right":[1,0,0,0,1,1],"back":[1,1,1,1,1,1],"left":[1,1,0,1,0,1],"anim":[1,1,1,1,0,0],"turn":[1,0,0,1,0,1],"err":[0,1,1,1,0,0],"path":[1]},"log":[["arrive",157,198],["turn",728]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1024,"pos":[-512,9000],"rp":[256,0],"rh":0,"angle":300,"off":[-512,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,1,0],"face":[0,1,0,1,1,1],"arrive":[1,1,1,1,0,0],"permit":[1,1,1,1,0,1],"fwd":[0,1,1,0,0,1],"right":[1,1,1,1,0,1],"back":[1,0,1,1,1,0],"left":[1,0,1,1,1,0],"anim":[1,1,1,0,0,1],"turn":[1,1,0,0,1,1],"err":[1,1,1,1,0,0],"path":[1]},"log":[["arrive",1983,-1958],["turn",1324]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":100,"pos":[-512,-2560],"rp":[256,0],"rh":1900,"angle":2100,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,0],"face":[0,0,1,1,1,1],"arrive":[1,1,0,1,0,1],"permit":[0,1,1,0,1,1],"fwd":[1,0,1,1,0,0],"right":[1,1,1,1,1,0],"back":[1,0,0,1,0,1],"left":[0,0,1,1,1,1],"anim":[1,0,1,0,1,1],"turn":[1,1,0,0,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",330,245],["turn",928]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":1500,"pos":[0,-2560],"rp":[0,-2560],"rh":1024,"angle":1900,"off":[0,256],"fb":0,"flag":3,"script":{"roll":[0,1,1,0,1,0],"face":[0,1,0,1,1,1],"arrive":[1,0,1,0,0,1],"permit":[1,1,0,0,1,1],"fwd":[1,1,1,0,0,0],"right":[1,0,1,1,1,0],"back":[0,1,1,1,0,1],"left":[0,1,1,1,1,1],"anim":[1,1,1,1,1,0],"turn":[1,1,0,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",-112,-2790],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":100,"pos":[0,9000],"rp":[256,0],"rh":1024,"angle":1900,"off":[256,256],"fb":1,"flag":3,"script":{"roll":[1,1,1,1,0,0],"face":[1,0,0,0,0,1],"arrive":[0,0,0,1,0,0],"permit":[1,1,0,1,1,0],"fwd":[0,0,1,1,0,1],"right":[0,0,0,0,1,1],"back":[0,0,0,1,1,1],"left":[1,1,0,1,1,1],"anim":[1,1,1,0,1,1],"turn":[0,1,1,1,0,0],"err":[1,0,1,1,1,1],"path":[1]},"log":[["turn",1900],["anim"]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":0,"mask":32,"age":0,"heading":700,"pos":[-512,-2560],"rp":[3000,-2560],"rh":1900,"angle":1024,"off":[0,0],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,0,1],"face":[1,1,0,1,1,1],"arrive":[1,0,0,1,1,1],"permit":[1,1,0,1,1,0],"fwd":[1,1,1,0,0,1],"right":[1,1,1,1,1,0],"back":[0,1,1,0,0,0],"left":[0,0,0,1,0,1],"anim":[0,1,1,0,1,1],"turn":[1,1,0,1,1,1],"err":[0,1,1,1,0,1],"path":[1]},"log":[["face",3000,-2560]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":2,"age":9,"heading":100,"pos":[-512,0],"rp":[0,256],"rh":1024,"angle":1024,"off":[2048,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,1],"face":[1,0,0,0,0,1],"arrive":[0,1,1,1,1,1],"permit":[0,0,1,1,1,1],"fwd":[1,0,1,1,0,0],"right":[1,0,0,0,1,0],"back":[1,0,0,1,1,0],"left":[0,1,1,1,1,1],"anim":[1,1,1,1,1,1],"turn":[0,1,1,0,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",2048,512],["turn",1024],["permit",2048,512]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":2,"age":0,"heading":1500,"pos":[-512,-2560],"rp":[256,256],"rh":0,"angle":1024,"off":[256,0],"fb":0,"flag":1,"script":{"roll":[0,1,1,0,1,0],"face":[0,0,0,1,1,1],"arrive":[1,0,0,1,1,1],"permit":[0,1,0,0,0,1],"fwd":[1,1,1,1,0,1],"right":[1,1,1,1,1,0],"back":[0,1,1,0,1,1],"left":[0,0,1,1,1,1],"anim":[1,0,0,1,1,1],"turn":[0,1,1,0,1,1],"err":[1,0,1,0,1,0],"path":[1]},"log":[["face",256,256]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":8,"age":0,"heading":700,"pos":[256,0],"rp":[0,400],"rh":0,"angle":2100,"off":[2048,-2560],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,0,1],"face":[1,1,0,1,0,0],"arrive":[0,1,1,1,1,1],"permit":[1,1,1,1,0,1],"fwd":[1,1,0,0,1,0],"right":[0,1,1,1,1,1],"back":[0,1,1,1,1,0],"left":[1,1,1,1,1,1],"anim":[1,1,1,1,0,1],"turn":[1,0,1,0,1,1],"err":[0,0,1,0,1,1],"path":[1]},"log":[["arrive",2429,-1802],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":9,"heading":1500,"pos":[-512,256],"rp":[-512,0],"rh":0,"angle":1024,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[0,1,1,1,1,1],"arrive":[1,1,1,1,1,0],"permit":[1,0,0,1,1,1],"fwd":[1,0,1,1,1,1],"right":[1,1,1,1,1,1],"back":[1,0,0,1,1,1],"left":[1,1,1,1,1,0],"anim":[1,1,0,0,0,0],"turn":[1,1,0,0,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["face",-512,0]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":0,"pos":[5000,256],"rp":[256,400],"rh":1900,"angle":1024,"off":[2048,0],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,1],"face":[0,1,1,1,0,1],"arrive":[1,0,1,1,0,0],"permit":[0,1,0,0,1,1],"fwd":[1,1,1,1,1,1],"right":[0,1,1,0,1,1],"back":[1,0,1,1,1,0],"left":[1,0,1,1,1,1],"anim":[1,1,1,1,0,1],"turn":[0,1,0,1,1,1],"err":[1,0,1,1,1,1],"path":[1]},"log":[["arrive",-1584,1298],["turn",1900],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":32,"age":3,"heading":100,"pos":[5000,9000],"rp":[-512,256],"rh":1024,"angle":1024,"off":[-512,-2560],"fb":0,"flag":1,"script":{"roll":[1,0,1,0,1,0],"face":[1,1,1,1,1,1],"arrive":[1,0,1,1,0,0],"permit":[0,1,1,0,0,1],"fwd":[1,1,1,1,1,1],"right":[1,0,1,0,0,1],"back":[1,1,1,0,1,0],"left":[0,1,0,0,0,1],"anim":[1,0,0,1,1,1],"turn":[1,1,1,0,1,0],"err":[1,1,0,1,1,0],"path":[1]},"log":[["face",-512,256]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":8,"age":0,"heading":1024,"pos":[5000,9000],"rp":[-512,0],"rh":1024,"angle":1900,"off":[-512,0],"fb":1,"flag":1,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,1,0,1,1],"arrive":[1,1,0,1,1,1],"permit":[1,0,1,0,0,1],"fwd":[0,1,0,1,1,0],"right":[1,1,1,0,0,0],"back":[1,1,1,1,0,1],"left":[1,1,1,1,1,0],"anim":[1,1,1,1,0,1],"turn":[1,1,0,0,0,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["turn",1900]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":0,"age":0,"heading":1500,"pos":[0,9000],"rp":[-512,0],"rh":300,"angle":300,"off":[-512,0],"fb":1,"flag":1,"script":{"roll":[1,1,1,0,0,1],"face":[1,1,0,0,0,1],"arrive":[1,1,1,1,1,1],"permit":[1,1,1,0,1,0],"fwd":[1,1,0,1,0,1],"right":[1,1,1,1,1,0],"back":[1,1,1,1,0,1],"left":[0,1,1,0,1,0],"anim":[1,0,1,1,1,1],"turn":[1,0,1,1,1,1],"err":[1,0,0,1,1,1],"path":[1]},"log":[["face",-512,0]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":0,"age":3,"heading":1024,"pos":[0,9000],"rp":[-512,-2560],"rh":1900,"angle":0,"off":[-512,0],"fb":0,"flag":3,"script":{"roll":[1,1,0,0,1,1],"face":[1,1,1,1,1,0],"arrive":[1,1,1,1,1,0],"permit":[1,1,0,1,0,1],"fwd":[1,1,1,0,1,0],"right":[0,1,0,1,1,1],"back":[1,1,1,1,0,0],"left":[1,1,1,1,0,1],"anim":[0,1,1,1,1,1],"turn":[1,1,1,0,0,1],"err":[0,1,1,1,0,0],"path":[1]},"log":[["arrive",-972,-2335],["turn",876]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":9,"heading":2047,"pos":[0,0],"rp":[256,256],"rh":1900,"angle":0,"off":[2048,256],"fb":0,"flag":1,"script":{"roll":[1,0,1,0,1,1],"face":[1,1,0,0,1,1],"arrive":[1,1,0,0,1,0],"permit":[0,1,1,1,1,1],"fwd":[0,0,1,1,1,1],"right":[0,1,0,1,1,1],"back":[1,0,1,1,1,1],"left":[1,1,1,1,1,0],"anim":[1,0,0,0,1,1],"turn":[1,1,1,0,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",2209,-412],["turn",876]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":0,"heading":1500,"pos":[0,-2560],"rp":[256,400],"rh":1024,"angle":1900,"off":[0,-2560],"fb":1,"flag":1,"script":{"roll":[1,1,1,0,1,1],"face":[1,0,1,1,0,1],"arrive":[1,0,0,1,0,0],"permit":[0,1,0,0,1,1],"fwd":[1,1,1,0,1,1],"right":[1,1,0,0,0,1],"back":[0,1,0,1,1,1],"left":[1,0,0,1,0,1],"anim":[1,1,1,0,1,1],"turn":[0,1,0,1,0,1],"err":[1,1,0,1,1,1],"path":[1]},"log":[["turn",1900],["anim"]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":0,"mask":2,"age":0,"heading":1024,"pos":[5000,9000],"rp":[256,256],"rh":0,"angle":1900,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,1,0],"face":[0,1,1,1,0,0],"arrive":[0,0,1,1,1,0],"permit":[1,0,1,1,1,1],"fwd":[1,1,0,0,1,1],"right":[1,0,1,1,1,1],"back":[1,0,1,0,0,1],"left":[1,1,0,1,0,1],"anim":[0,0,0,0,0,1],"turn":[1,1,0,1,1,1],"err":[1,0,1,0,0,1],"path":[1]},"log":[["face",256,256]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":32,"age":0,"heading":1024,"pos":[0,-2560],"rp":[256,-2560],"rh":1900,"angle":300,"off":[2048,256],"fb":1,"flag":1,"script":{"roll":[1,0,1,1,0,1],"face":[0,0,1,0,1,1],"arrive":[1,1,1,1,1,1],"permit":[0,1,0,1,1,1],"fwd":[1,1,1,1,0,1],"right":[0,1,1,1,1,1],"back":[1,0,1,1,1,0],"left":[1,1,0,1,1,1],"anim":[1,1,1,0,0,0],"turn":[0,0,0,0,0,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["turn",1176],["anim"]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":0,"mask":2,"age":3,"heading":1024,"pos":[5000,9000],"rp":[256,256],"rh":0,"angle":2100,"off":[256,0],"fb":0,"flag":3,"script":{"roll":[1,0,0,1,0,0],"face":[1,0,1,0,1,1],"arrive":[1,0,0,1,1,1],"permit":[1,0,0,1,0,1],"fwd":[1,1,0,0,1,0],"right":[0,0,1,1,0,0],"back":[1,1,0,1,0,1],"left":[0,0,0,1,1,0],"anim":[0,1,1,1,1,1],"turn":[1,1,1,0,0,0],"err":[0,1,1,1,1,1],"path":[1]},"log":[["face",256,256]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":3,"heading":1024,"pos":[256,-2560],"rp":[-512,-2560],"rh":1900,"angle":1024,"off":[2048,0],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,0,1],"face":[1,0,1,1,1,1],"arrive":[0,0,1,1,0,1],"permit":[1,1,1,1,1,1],"fwd":[0,0,0,0,1,0],"right":[1,1,0,0,1,1],"back":[1,1,1,1,1,0],"left":[1,0,0,1,1,1],"anim":[0,1,0,1,1,0],"turn":[0,0,0,0,0,0],"err":[1,1,1,0,0,1],"path":[1]},"log":[["arrive",-2352,-1662],["turn",1900],["permit",-2352,-1662],["right",-2352,-1662]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":2,"age":9,"heading":2047,"pos":[-512,0],"rp":[256,400],"rh":300,"angle":2100,"off":[0,-2560],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,1,0],"face":[1,1,0,0,1,0],"arrive":[1,0,1,0,1,0],"permit":[0,1,1,0,0,1],"fwd":[1,1,1,0,1,1],"right":[1,1,0,0,0,1],"back":[0,0,1,1,1,1],"left":[0,1,1,0,0,1],"anim":[0,1,1,1,0,1],"turn":[1,1,1,1,0,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["face",256,400]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":8,"age":0,"heading":0,"pos":[0,256],"rp":[-512,0],"rh":1024,"angle":300,"off":[0,-2560],"fb":0,"flag":3,"script":{"roll":[0,0,0,0,1,0],"face":[0,1,1,0,1,0],"arrive":[0,1,1,1,0,1],"permit":[0,0,1,0,1,1],"fwd":[1,1,1,1,0,1],"right":[1,1,1,1,0,0],"back":[1,1,0,1,1,0],"left":[1,1,0,0,0,1],"anim":[1,0,1,0,1,1],"turn":[0,1,1,1,1,1],"err":[0,1,1,1,0,1],"path":[1]},"log":[["arrive",-2549,1550],["turn",300],["permit",-2549,1550]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":0,"heading":700,"pos":[-512,9000],"rp":[3000,400],"rh":1024,"angle":300,"off":[256,256],"fb":1,"flag":1,"script":{"roll":[0,1,1,1,0,1],"face":[0,0,1,1,1,1],"arrive":[0,1,1,1,1,0],"permit":[0,0,1,0,0,1],"fwd":[0,1,1,0,1,1],"right":[0,0,1,1,0,1],"back":[1,1,1,1,1,1],"left":[1,0,1,1,1,0],"anim":[1,1,0,0,1,1],"turn":[1,0,1,1,1,1],"err":[0,1,0,1,1,0],"path":[1]},"log":[["face",3000,400]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":32,"age":3,"heading":2047,"pos":[256,9000],"rp":[3000,-2560],"rh":0,"angle":2100,"off":[-512,256],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,0],"face":[1,1,0,1,0,0],"arrive":[0,1,1,1,1,1],"permit":[0,1,0,1,1,1],"fwd":[0,1,1,1,1,1],"right":[0,0,0,0,1,1],"back":[1,1,1,1,1,1],"left":[1,1,1,0,0,0],"anim":[0,1,0,1,0,1],"turn":[1,1,1,1,0,1],"err":[1,1,1,1,0,1],"path":[1]},"log":[["arrive",2454,-2389],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":2,"age":0,"heading":1500,"pos":[5000,256],"rp":[256,-2560],"rh":300,"angle":1024,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[1,0,1,1,1,1],"arrive":[1,0,0,1,1,0],"permit":[0,1,0,0,0,1],"fwd":[1,1,1,0,1,0],"right":[1,1,0,1,1,0],"back":[1,0,0,0,1,1],"left":[0,1,1,1,1,1],"anim":[0,0,0,1,1,0],"turn":[1,0,1,0,1,1],"err":[1,1,0,1,1,0],"path":[1]},"log":[["face",256,-2560]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":2,"age":0,"heading":1500,"pos":[256,256],"rp":[3000,-2560],"rh":0,"angle":1024,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,1,1],"face":[0,0,1,1,1,1],"arrive":[0,1,1,0,0,1],"permit":[0,1,0,1,1,1],"fwd":[1,1,0,1,1,0],"right":[1,1,1,0,1,0],"back":[1,1,1,1,0,1],"left":[1,0,1,1,1,1],"anim":[1,1,1,0,0,0],"turn":[1,1,0,0,1,1],"err":[0,0,1,1,0,1],"path":[1]},"log":[["arrive",952,0],["turn",0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":1500,"pos":[256,256],"rp":[3000,-2560],"rh":1024,"angle":0,"off":[256,1000],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,0],"face":[1,1,1,1,1,1],"arrive":[0,1,0,1,1,1],"permit":[1,0,1,1,0,0],"fwd":[1,1,1,1,1,1],"right":[0,1,1,1,1,1],"back":[1,1,1,1,1,0],"left":[0,1,0,1,1,0],"anim":[0,1,1,1,0,0],"turn":[0,1,1,0,1,0],"err":[0,1,1,0,1,1],"path":[1]},"log":[["arrive",2744,-3560],["face",2744,-3560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":0,"heading":700,"pos":[5000,256],"rp":[3000,400],"rh":0,"angle":2100,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[0,1,1,0,0,1],"face":[1,0,1,1,1,1],"arrive":[1,1,0,1,0,1],"permit":[1,0,0,1,1,1],"fwd":[0,1,1,1,0,1],"right":[0,0,1,0,0,1],"back":[1,1,0,1,0,0],"left":[0,0,0,1,1,1],"anim":[0,0,1,1,1,1],"turn":[1,1,0,1,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",2959,653],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1024,"pos":[5000,9000],"rp":[0,256],"rh":300,"angle":0,"off":[-512,-2560],"fb":1,"flag":3,"script":{"roll":[1,1,1,0,0,1],"face":[1,0,0,1,0,1],"arrive":[1,1,0,0,0,1],"permit":[1,0,1,1,1,0],"fwd":[1,1,1,1,0,1],"right":[0,1,0,1,1,1],"back":[1,1,1,1,0,1],"left":[1,1,0,1,1,0],"anim":[1,1,1,1,0,0],"turn":[1,0,1,1,0,0],"err":[0,1,0,1,1,0],"path":[1]},"log":[["face",0,256]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":256,"age":0,"heading":700,"pos":[0,-2560],"rp":[3000,400],"rh":1900,"angle":300,"off":[256,256],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,0,0],"face":[1,1,1,0,0,0],"arrive":[0,1,1,1,1,1],"permit":[1,1,0,1,1,0],"fwd":[0,0,1,1,1,1],"right":[1,0,1,0,1,1],"back":[0,1,1,1,0,1],"left":[1,1,1,1,0,0],"anim":[1,1,1,1,0,1],"turn":[1,1,1,1,1,1],"err":[0,1,0,1,1,1],"path":[1]},"log":[["arrive",3114,744],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":700,"pos":[5000,9000],"rp":[-512,-2560],"rh":1024,"angle":0,"off":[-512,0],"fb":1,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[0,1,1,0,0,0],"arrive":[1,1,1,1,1,1],"permit":[0,1,1,1,1,1],"fwd":[1,1,1,1,1,1],"right":[1,0,1,0,0,1],"back":[1,1,1,0,1,1],"left":[0,0,1,1,1,1],"anim":[1,1,0,1,1,1],"turn":[1,1,0,1,1,0],"err":[1,0,0,1,1,1],"path":[1]},"log":[["face",-512,-2560]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":0,"age":0,"heading":1500,"pos":[256,0],"rp":[-512,400],"rh":0,"angle":1024,"off":[-512,256],"fb":1,"flag":1,"script":{"roll":[1,1,0,1,1,1],"face":[1,1,0,0,0,0],"arrive":[0,0,1,0,1,0],"permit":[0,0,0,1,0,1],"fwd":[1,1,0,0,1,0],"right":[0,1,1,0,1,1],"back":[1,1,1,1,1,1],"left":[1,0,1,1,0,1],"anim":[0,1,1,1,0,0],"turn":[1,0,1,1,1,0],"err":[1,0,1,0,1,1],"path":[1]},"log":[["turn",0]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":256,"age":3,"heading":100,"pos":[-512,256],"rp":[0,400],"rh":0,"angle":2100,"off":[2048,0],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[0,1,1,1,1,0],"arrive":[0,1,1,1,1,1],"permit":[1,1,0,1,1,1],"fwd":[0,1,1,1,1,1],"right":[0,1,0,1,1,0],"back":[0,0,1,0,1,1],"left":[0,1,0,1,1,1],"anim":[0,1,1,1,1,1],"turn":[1,0,1,1,1,1],"err":[1,0,0,0,1,1],"path":[1]},"log":[["face",0,400]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":1500,"pos":[256,0],"rp":[3000,-2560],"rh":300,"angle":2100,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,0,1,0,0,1],"face":[1,0,1,1,1,0],"arrive":[0,0,1,1,1,1],"permit":[1,0,1,0,0,0],"fwd":[1,1,1,0,0,0],"right":[0,0,1,1,1,1],"back":[0,1,1,1,1,1],"left":[1,1,1,1,0,1],"anim":[1,0,1,1,1,1],"turn":[1,1,1,0,1,0],"err":[0,1,1,1,1,1],"path":[1]},"log":[["arrive",2774,-2439],["turn",1376]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":0,"heading":700,"pos":[256,-2560],"rp":[3000,-2560],"rh":1024,"angle":300,"off":[0,256],"fb":1,"flag":1,"script":{"roll":[1,0,1,0,1,1],"face":[0,1,1,1,0,0],"arrive":[1,1,0,1,1,0],"permit":[0,0,1,1,1,1],"fwd":[1,0,1,1,0,0],"right":[1,1,1,1,1,1],"back":[1,1,1,1,0,1],"left":[1,1,1,1,1,0],"anim":[1,1,0,1,1,1],"turn":[1,0,1,1,1,1],"err":[1,0,1,0,1,1],"path":[1]},"log":[["face",3000,-2560]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":2,"age":9,"heading":100,"pos":[-512,0],"rp":[3000,-2560],"rh":1900,"angle":1024,"off":[256,0],"fb":0,"flag":3,"script":{"roll":[0,1,1,0,1,0],"face":[0,1,1,1,1,0],"arrive":[0,1,1,1,1,0],"permit":[1,1,0,1,0,0],"fwd":[0,0,1,1,1,0],"right":[0,1,1,1,0,1],"back":[0,0,1,1,0,0],"left":[1,0,1,1,0,0],"anim":[1,1,1,0,1,1],"turn":[1,0,0,1,1,1],"err":[1,1,1,1,0,0],"path":[1]},"log":[["arrive",2770,-2448],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":3,"heading":2047,"pos":[5000,9000],"rp":[-512,256],"rh":1900,"angle":300,"off":[-512,1000],"fb":0,"flag":3,"script":{"roll":[1,0,1,0,0,0],"face":[1,1,1,0,1,1],"arrive":[0,0,1,1,1,1],"permit":[1,1,0,0,1,1],"fwd":[1,1,1,1,1,1],"right":[0,1,1,1,1,0],"back":[0,1,0,0,1,1],"left":[1,1,1,1,1,1],"anim":[1,1,0,0,1,1],"turn":[0,0,1,1,1,0],"err":[0,0,1,1,1,1],"path":[1]},"log":[["face",-512,256]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":2,"age":9,"heading":700,"pos":[5000,256],"rp":[256,400],"rh":1024,"angle":300,"off":[0,256],"fb":1,"flag":3,"script":{"roll":[1,1,1,0,0,1],"face":[1,1,1,1,1,0],"arrive":[1,0,1,1,0,1],"permit":[1,1,1,0,1,0],"fwd":[0,0,0,1,0,0],"right":[1,0,1,0,1,0],"back":[0,1,1,1,0,1],"left":[1,1,0,1,1,0],"anim":[0,1,1,1,1,1],"turn":[1,1,1,1,1,0],"err":[0,1,1,1,1,1],"path":[1]},"log":[["turn",300]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":32,"age":3,"heading":1024,"pos":[5000,-2560],"rp":[3000,-2560],"rh":1024,"angle":0,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,0,0],"face":[1,1,1,0,1,1],"arrive":[1,0,1,1,1,0],"permit":[1,1,1,1,1,1],"fwd":[0,1,1,1,0,1],"right":[1,1,0,1,1,1],"back":[1,1,1,1,1,1],"left":[1,1,1,0,1,1],"anim":[1,0,0,0,0,0],"turn":[0,1,1,0,1,1],"err":[1,0,1,0,0,0],"path":[1]},"log":[["face",3000,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":9,"heading":2047,"pos":[-512,0],"rp":[3000,256],"rh":1900,"angle":300,"off":[0,-2560],"fb":1,"flag":3,"script":{"roll":[1,1,0,1,1,0],"face":[1,0,1,0,1,1],"arrive":[1,1,0,1,1,1],"permit":[1,1,1,1,0,1],"fwd":[1,1,1,0,0,1],"right":[0,1,0,1,1,0],"back":[0,0,0,1,0,1],"left":[1,1,1,1,0,0],"anim":[1,1,1,1,1,0],"turn":[1,1,0,1,0,0],"err":[0,1,0,0,1,1],"path":[1]},"log":[["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":2,"age":0,"heading":1024,"pos":[0,256],"rp":[-512,256],"rh":1900,"angle":1900,"off":[0,256],"fb":1,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,1,0,1,0],"arrive":[0,1,1,0,0,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,1,1,0,1],"right":[0,1,0,0,1,0],"back":[1,1,1,0,0,1],"left":[0,1,1,1,1,0],"anim":[1,1,1,1,1,1],"turn":[0,0,0,1,0,1],"err":[0,0,0,1,1,0],"path":[1]},"log":[["face",-512,256]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":8,"age":0,"heading":2047,"pos":[-512,-2560],"rp":[-512,256],"rh":1024,"angle":1024,"off":[0,0],"fb":1,"flag":1,"script":{"roll":[0,0,1,1,1,1],"face":[1,1,1,1,1,1],"arrive":[1,1,1,0,1,1],"permit":[1,1,1,0,0,0],"fwd":[1,1,1,1,0,0],"right":[0,1,1,1,0,1],"back":[1,1,0,0,1,1],"left":[0,0,1,1,1,1],"anim":[1,1,1,1,1,1],"turn":[1,0,1,1,1,1],"err":[1,1,0,1,1,1],"path":[1]},"log":[["turn",1024]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":8,"age":9,"heading":0,"pos":[-512,256],"rp":[256,256],"rh":300,"angle":0,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,1,1],"arrive":[1,0,1,0,0,1],"permit":[0,0,1,1,1,0],"fwd":[1,0,1,1,1,1],"right":[1,1,1,1,1,0],"back":[1,1,0,0,1,0],"left":[1,0,1,1,1,0],"anim":[1,1,1,0,1,1],"turn":[1,0,1,1,1,0],"err":[0,0,1,0,1,1],"path":[1]},"log":[["arrive",52,411],["turn",1324]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":1500,"pos":[-512,0],"rp":[-512,256],"rh":0,"angle":2100,"off":[2048,256],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,0],"face":[0,0,1,1,0,0],"arrive":[1,0,0,1,1,1],"permit":[1,0,1,1,0,0],"fwd":[0,0,0,0,1,1],"right":[1,0,0,1,0,1],"back":[1,0,0,1,0,0],"left":[1,1,0,1,0,1],"anim":[1,1,1,0,1,0],"turn":[1,0,1,0,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",1469,834],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":2,"age":3,"heading":700,"pos":[5000,0],"rp":[256,-2560],"rh":0,"angle":1900,"off":[2048,256],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,0,0],"face":[1,1,1,1,0,1],"arrive":[0,1,1,0,1,1],"permit":[0,1,1,1,0,1],"fwd":[0,0,0,1,0,0],"right":[1,1,1,1,0,1],"back":[1,1,1,1,0,1],"left":[1,0,0,1,1,0],"anim":[1,1,0,0,1,1],"turn":[1,0,1,1,1,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["face",256,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":100,"pos":[-512,-2560],"rp":[3000,400],"rh":0,"angle":0,"off":[256,256],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[1,0,1,0,1,1],"arrive":[1,0,1,1,1,0],"permit":[1,1,1,1,1,1],"fwd":[1,1,1,1,0,1],"right":[1,1,1,1,0,1],"back":[0,1,0,1,1,1],"left":[1,1,1,1,1,0],"anim":[0,1,0,1,1,0],"turn":[1,1,1,1,0,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",3256,656],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":9,"heading":1024,"pos":[0,9000],"rp":[256,0],"rh":0,"angle":2100,"off":[-512,0],"fb":1,"flag":1,"script":{"roll":[0,1,0,1,1,1],"face":[1,1,1,0,1,0],"arrive":[0,0,1,1,0,0],"permit":[0,1,1,1,1,1],"fwd":[1,0,1,1,0,0],"right":[1,1,0,0,1,0],"back":[0,0,1,1,1,1],"left":[1,1,0,0,1,1],"anim":[1,0,1,1,0,1],"turn":[0,1,0,0,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["face",256,0]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":8,"age":9,"heading":100,"pos":[0,256],"rp":[0,-2560],"rh":0,"angle":0,"off":[-512,-2560],"fb":0,"flag":1,"script":{"roll":[0,0,1,1,0,1],"face":[1,0,0,1,0,0],"arrive":[1,0,1,1,0,1],"permit":[0,1,1,1,1,0],"fwd":[0,0,0,0,1,1],"right":[0,1,1,0,1,1],"back":[0,0,0,1,1,1],"left":[1,1,1,1,1,1],"anim":[1,1,1,1,1,1],"turn":[1,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",-512,-5120],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":2,"age":9,"heading":0,"pos":[-512,256],"rp":[3000,-2560],"rh":1024,"angle":0,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,0,1,1,1,0],"face":[1,1,1,0,1,1],"arrive":[1,0,1,1,0,1],"permit":[1,1,0,1,1,1],"fwd":[0,0,0,1,0,1],"right":[1,1,0,0,0,1],"back":[1,1,0,1,0,1],"left":[1,0,0,1,0,1],"anim":[0,1,1,1,0,1],"turn":[1,1,1,0,1,1],"err":[1,1,0,1,0,1],"path":[1]},"log":[["face",3000,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":2,"age":9,"heading":700,"pos":[5000,256],"rp":[-512,0],"rh":0,"angle":1024,"off":[2048,-2560],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,0,1],"face":[1,0,0,1,0,0],"arrive":[1,1,1,1,0,1],"permit":[1,1,1,1,1,1],"fwd":[1,0,1,1,0,1],"right":[1,1,1,1,1,1],"back":[0,1,1,1,1,0],"left":[1,0,0,1,1,0],"anim":[1,1,1,1,0,1],"turn":[0,1,1,1,0,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["arrive",-2560,2560],["turn",0],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":32,"age":0,"heading":1500,"pos":[0,0],"rp":[-512,400],"rh":0,"angle":2100,"off":[0,0],"fb":1,"flag":1,"script":{"roll":[0,0,0,0,1,0],"face":[1,0,0,0,0,1],"arrive":[1,0,1,1,1,1],"permit":[1,0,1,0,1,1],"fwd":[0,1,1,0,0,0],"right":[0,1,1,1,1,1],"back":[0,1,1,1,1,0],"left":[0,1,1,1,0,1],"anim":[0,1,1,1,0,0],"turn":[0,1,1,1,0,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["face",-512,400]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":256,"age":9,"heading":2047,"pos":[256,9000],"rp":[256,0],"rh":1024,"angle":300,"off":[0,0],"fb":0,"flag":3,"script":{"roll":[1,0,1,1,1,0],"face":[0,1,1,1,1,1],"arrive":[1,1,1,0,1,1],"permit":[1,1,1,1,1,1],"fwd":[1,1,1,1,0,1],"right":[1,1,1,0,1,1],"back":[1,1,1,1,1,1],"left":[1,1,0,1,1,1],"anim":[1,1,1,1,1,1],"turn":[0,0,0,1,1,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["arrive",256,0],["turn",300],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":0,"age":3,"heading":2047,"pos":[0,0],"rp":[0,-2560],"rh":0,"angle":0,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,0,1,0,1],"arrive":[1,0,1,1,1,1],"permit":[1,1,0,1,1,1],"fwd":[1,1,0,1,0,1],"right":[0,0,1,0,0,1],"back":[0,0,0,1,1,0],"left":[0,1,0,1,0,0],"anim":[1,1,0,1,0,1],"turn":[1,1,1,0,1,0],"err":[0,1,0,1,1,1],"path":[1]},"log":[["arrive",256,-5120],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":2047,"pos":[-512,9000],"rp":[3000,0],"rh":0,"angle":1024,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,1,1],"face":[1,1,1,0,0,1],"arrive":[1,1,1,0,0,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,1,1,1,1],"right":[1,0,1,1,1,0],"back":[1,1,1,0,1,1],"left":[1,0,0,1,1,1],"anim":[1,1,1,1,1,0],"turn":[1,0,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",3000,-1000],["turn",0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":0,"heading":100,"pos":[5000,0],"rp":[-512,0],"rh":0,"angle":1024,"off":[-512,0],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,0],"face":[1,0,1,1,1,1],"arrive":[1,1,1,1,1,0],"permit":[1,1,0,1,1,1],"fwd":[1,0,1,0,0,1],"right":[0,1,1,1,1,1],"back":[1,1,1,0,0,0],"left":[1,1,1,0,0,1],"anim":[0,1,1,1,1,1],"turn":[0,1,0,0,1,0],"err":[1,0,1,1,0,1],"path":[1]},"log":[["face",-512,0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":0,"pos":[-512,-2560],"rp":[-512,256],"rh":1900,"angle":1024,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[0,1,0,0,0,0],"face":[1,0,1,0,1,1],"arrive":[1,1,1,0,1,1],"permit":[0,0,0,1,0,0],"fwd":[1,1,0,1,1,0],"right":[0,0,1,1,0,1],"back":[1,0,0,0,1,1],"left":[1,0,1,1,1,1],"anim":[0,1,1,1,0,0],"turn":[1,1,1,1,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",381,2669],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":2047,"pos":[5000,0],"rp":[0,400],"rh":1024,"angle":0,"off":[256,0],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,0,1],"face":[1,0,1,1,1,0],"arrive":[1,1,0,0,1,1],"permit":[1,1,0,1,1,1],"fwd":[0,1,1,1,1,1],"right":[1,1,1,0,1,1],"back":[1,0,1,1,0,1],"left":[1,1,1,1,1,0],"anim":[1,1,1,1,1,1],"turn":[1,0,1,1,1,0],"err":[0,1,1,1,0,1],"path":[1]},"log":[["arrive",-256,400],["turn",0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":2047,"pos":[-512,0],"rp":[256,256],"rh":0,"angle":300,"off":[-512,1000],"fb":1,"flag":3,"script":{"roll":[0,1,0,0,0,1],"face":[1,1,1,1,1,1],"arrive":[1,0,1,1,1,1],"permit":[1,1,0,1,1,1],"fwd":[1,1,0,1,1,0],"right":[0,1,0,1,1,1],"back":[1,1,0,1,0,1],"left":[1,1,1,1,1,1],"anim":[1,1,1,0,0,1],"turn":[1,1,0,1,0,1],"err":[0,0,1,1,0,1],"path":[1]},"log":[["turn",1324]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":256,"age":9,"heading":700,"pos":[-512,256],"rp":[256,256],"rh":0,"angle":300,"off":[2048,1000],"fb":0,"flag":3,"script":{"roll":[0,1,1,0,1,0],"face":[1,0,1,0,0,0],"arrive":[1,0,0,0,1,0],"permit":[1,0,1,1,1,1],"fwd":[1,0,1,1,0,1],"right":[1,0,1,0,1,0],"back":[1,1,1,1,1,0],"left":[1,1,1,1,1,1],"anim":[1,1,1,0,1,1],"turn":[1,1,1,0,1,0],"err":[1,1,1,0,1,0],"path":[1]},"log":[["face",256,256]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":3,"heading":1500,"pos":[5000,0],"rp":[256,0],"rh":0,"angle":1900,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,0,0,1,1],"arrive":[0,1,0,0,1,0],"permit":[1,1,1,1,0,0],"fwd":[1,1,0,1,0,1],"right":[1,1,0,1,0,0],"back":[1,1,0,0,1,0],"left":[1,1,1,0,0,1],"anim":[1,0,0,1,1,1],"turn":[0,1,0,1,1,0],"err":[1,0,1,1,1,1],"path":[1]},"log":[["arrive",974,-3199],["turn",876],["permit",974,-3199],["back",974,-3199]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":256,"age":0,"heading":100,"pos":[-512,0],"rp":[-512,256],"rh":300,"angle":0,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,1],"face":[1,0,0,1,1,1],"arrive":[1,0,0,1,1,1],"permit":[1,1,0,1,0,0],"fwd":[0,0,1,1,0,1],"right":[1,1,0,0,1,0],"back":[1,0,1,1,1,1],"left":[0,0,0,0,1,1],"anim":[1,1,1,0,1,0],"turn":[0,0,1,0,1,1],"err":[1,1,0,0,0,1],"path":[1]},"log":[["face",-512,256]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":0,"age":9,"heading":1024,"pos":[-512,256],"rp":[256,400],"rh":300,"angle":0,"off":[-512,0],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,0,0,1,1],"arrive":[1,1,1,1,0,1],"permit":[1,1,1,0,1,1],"fwd":[0,0,1,1,0,1],"right":[1,1,0,1,1,0],"back":[1,1,0,1,1,1],"left":[0,1,1,1,1,1],"anim":[0,1,0,1,1,1],"turn":[1,0,0,1,1,0],"err":[0,0,0,1,0,0],"path":[1]},"log":[["arrive",-54,-7],["turn",1324]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":3,"heading":2047,"pos":[-512,0],"rp":[3000,400],"rh":0,"angle":0,"off":[0,1000],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,1,0],"arrive":[1,1,1,0,1,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,0,1,1,1],"right":[1,1,0,0,1,1],"back":[0,1,1,0,1,1],"left":[0,1,1,1,1,1],"anim":[1,0,0,1,1,1],"turn":[1,1,0,0,1,0],"err":[0,0,0,0,0,0],"path":[1]},"log":[["arrive",3000,1400],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":1024,"pos":[0,0],"rp":[0,256],"rh":1024,"angle":2100,"off":[0,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,0],"face":[1,1,1,1,1,1],"arrive":[1,0,1,1,0,0],"permit":[1,1,0,1,0,0],"fwd":[0,0,0,0,1,1],"right":[0,1,1,1,1,1],"back":[0,1,1,0,0,1],"left":[1,1,0,1,1,0],"anim":[1,1,1,0,1,1],"turn":[0,0,0,0,1,0],"err":[0,1,1,0,0,0],"path":[1]},"log":[["arrive",-407,2783],["turn",52],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":0,"age":3,"heading":1024,"pos":[5000,-2560],"rp":[0,0],"rh":1900,"angle":0,"off":[-512,256],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,0,0,0,1],"arrive":[0,1,1,1,0,1],"permit":[0,1,0,0,1,0],"fwd":[1,0,0,1,1,0],"right":[1,1,1,1,1,1],"back":[0,0,1,1,1,1],"left":[1,1,1,0,1,1],"anim":[1,1,1,1,1,0],"turn":[1,1,1,1,0,0],"err":[1,1,1,0,0,0],"path":[1]},"log":[["arrive",-348,455],["face",-348,455]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":9,"heading":700,"pos":[-512,9000],"rp":[256,0],"rh":1900,"angle":300,"off":[-512,0],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,0,1],"face":[1,1,1,1,1,0],"arrive":[0,0,1,1,1,0],"permit":[0,1,1,0,1,1],"fwd":[0,1,1,1,1,1],"right":[0,1,1,1,0,1],"back":[0,1,1,0,0,1],"left":[1,1,0,0,1,1],"anim":[1,1,0,1,1,0],"turn":[1,1,1,1,1,1],"err":[0,1,0,0,1,1],"path":[1]},"log":[["arrive",-201,-230],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":700,"pos":[0,256],"rp":[0,400],"rh":1024,"angle":0,"off":[-512,0],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,1,1],"face":[1,0,0,1,1,1],"arrive":[0,1,1,1,1,0],"permit":[0,1,1,1,1,1],"fwd":[1,0,0,0,1,1],"right":[0,1,0,1,0,1],"back":[0,1,1,1,1,1],"left":[1,1,1,1,0,1],"anim":[1,1,1,1,1,1],"turn":[1,1,0,1,1,1],"err":[1,0,1,1,0,0],"path":[1]},"log":[["arrive",512,400],["face",512,400]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":1500,"pos":[0,256],"rp":[-512,400],"rh":300,"angle":1900,"off":[256,0],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,0],"face":[0,0,1,1,1,1],"arrive":[1,1,0,1,1,0],"permit":[0,0,0,0,0,1],"fwd":[1,1,1,0,1,1],"right":[1,0,1,0,1,1],"back":[1,1,1,1,1,1],"left":[1,1,1,0,1,1],"anim":[0,0,0,1,1,0],"turn":[0,1,0,1,0,1],"err":[0,0,1,1,1,1],"path":[1]},"log":[["arrive",-283,515],["turn",1176],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1500,"pos":[5000,-2560],"rp":[256,0],"rh":1024,"angle":2100,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[1,0,0,1,1,1],"face":[0,1,1,0,1,1],"arrive":[0,1,0,1,0,0],"permit":[0,1,0,1,0,0],"fwd":[1,1,0,1,1,0],"right":[1,1,1,1,1,0],"back":[1,1,1,0,0,1],"left":[0,0,1,1,1,1],"anim":[1,1,1,1,0,1],"turn":[0,1,1,1,1,0],"err":[1,0,1,1,1,1],"path":[1]},"log":[["arrive",-403,2487],["face",-403,2487],["permit",-403,2487]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":3,"heading":2047,"pos":[0,9000],"rp":[-512,-2560],"rh":0,"angle":1024,"off":[2048,0],"fb":1,"flag":3,"script":{"roll":[0,1,1,0,1,1],"face":[1,1,1,1,0,1],"arrive":[1,1,1,1,1,0],"permit":[1,0,1,1,1,1],"fwd":[1,0,1,1,0,1],"right":[1,1,1,1,1,1],"back":[0,0,1,1,1,0],"left":[1,0,1,1,1,0],"anim":[1,0,1,1,1,1],"turn":[0,1,1,1,0,0],"err":[1,0,1,1,1,1],"path":[1]},"log":[["turn",0],["anim"]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":0,"mask":32,"age":0,"heading":2047,"pos":[-512,0],"rp":[0,0],"rh":1900,"angle":0,"off":[2048,0],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,1,1],"face":[1,1,1,0,1,1],"arrive":[1,1,0,1,1,0],"permit":[1,0,0,1,1,0],"fwd":[1,1,0,0,0,0],"right":[0,1,1,1,1,1],"back":[0,1,0,1,1,0],"left":[1,1,1,0,1,1],"anim":[1,1,0,0,1,0],"turn":[1,0,0,1,0,1],"err":[1,0,1,1,1,1],"path":[1]},"log":[["face",0,0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":700,"pos":[-512,256],"rp":[-512,400],"rh":0,"angle":300,"off":[256,1000],"fb":1,"flag":1,"script":{"roll":[0,1,0,1,1,0],"face":[1,1,1,1,1,1],"arrive":[0,1,0,1,1,0],"permit":[1,1,0,0,0,1],"fwd":[0,1,1,1,0,1],"right":[1,0,1,1,1,1],"back":[0,1,0,0,0,1],"left":[1,0,1,1,1,1],"anim":[0,1,1,0,0,0],"turn":[1,1,1,1,1,0],"err":[1,1,1,1,0,1],"path":[1]},"log":[["turn",1324]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":256,"age":0,"heading":1024,"pos":[0,256],"rp":[-512,0],"rh":1900,"angle":1024,"off":[-512,1000],"fb":1,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[0,0,1,0,0,1],"arrive":[1,1,0,1,1,1],"permit":[1,1,1,0,0,0],"fwd":[1,1,0,1,1,1],"right":[1,1,1,1,1,1],"back":[1,1,0,1,1,1],"left":[0,0,1,1,1,1],"anim":[0,0,1,0,1,1],"turn":[1,0,1,0,1,0],"err":[0,0,0,1,1,1],"path":[1]},"log":[["face",-512,0]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":0,"age":0,"heading":100,"pos":[-512,9000],"rp":[3000,256],"rh":1900,"angle":0,"off":[2048,1000],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,0,0],"face":[1,0,1,0,0,1],"arrive":[1,0,1,1,1,1],"permit":[1,1,1,0,0,1],"fwd":[1,1,1,1,0,1],"right":[0,0,1,1,1,1],"back":[1,1,1,1,1,1],"left":[1,1,1,0,1,0],"anim":[0,1,1,0,1,1],"turn":[1,1,0,1,1,0],"err":[1,0,1,1,0,1],"path":[1]},"log":[["arrive",5279,256],["turn",876]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":2047,"pos":[0,9000],"rp":[3000,400],"rh":0,"angle":0,"off":[-512,-2560],"fb":1,"flag":1,"script":{"roll":[0,0,0,1,1,0],"face":[1,1,1,0,0,0],"arrive":[1,1,1,0,1,1],"permit":[0,1,0,1,1,1],"fwd":[1,1,0,1,0,0],"right":[1,1,1,0,1,1],"back":[1,1,0,1,1,1],"left":[1,1,1,1,1,1],"anim":[1,0,1,1,1,1],"turn":[1,0,1,1,1,0],"err":[0,1,1,1,0,1],"path":[1]},"log":[["face",3000,400]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":2,"age":3,"heading":0,"pos":[0,9000],"rp":[-512,-2560],"rh":1900,"angle":1024,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,1,0],"face":[1,1,1,1,1,0],"arrive":[0,0,1,1,1,0],"permit":[1,0,1,1,0,1],"fwd":[0,1,1,1,0,1],"right":[1,1,0,0,0,0],"back":[0,1,0,1,1,1],"left":[1,0,0,0,1,1],"anim":[0,1,1,1,0,0],"turn":[1,1,1,1,1,0],"err":[1,0,0,1,1,1],"path":[1]},"log":[["arrive",-624,-2790],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":3,"heading":1024,"pos":[256,9000],"rp":[-512,-2560],"rh":0,"angle":2100,"off":[0,0],"fb":1,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[1,0,1,1,1,0],"arrive":[0,1,1,0,1,0],"permit":[0,1,0,0,1,1],"fwd":[0,1,0,0,0,1],"right":[0,1,1,0,0,1],"back":[1,1,1,0,1,0],"left":[0,1,1,1,0,0],"anim":[0,1,0,1,1,1],"turn":[1,1,1,1,0,1],"err":[1,1,0,1,1,1],"path":[1]},"log":[["face",-512,-2560]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":8,"age":3,"heading":0,"pos":[256,9000],"rp":[-512,0],"rh":1900,"angle":1024,"off":[256,-2560],"fb":0,"flag":3,"script":{"roll":[0,0,0,0,0,0],"face":[1,1,1,1,1,0],"arrive":[1,0,1,1,0,0],"permit":[1,0,1,1,1,0],"fwd":[1,1,0,1,0,1],"right":[0,0,1,1,1,1],"back":[1,1,1,1,1,1],"left":[1,0,1,0,1,1],"anim":[1,1,1,0,1,0],"turn":[1,1,1,0,1,1],"err":[0,1,1,0,1,1],"path":[1]},"log":[["arrive",381,2413],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1024,"pos":[0,9000],"rp":[256,400],"rh":300,"angle":2100,"off":[0,1000],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,1,0,1,1],"arrive":[1,1,1,1,0,1],"permit":[0,1,1,0,1,1],"fwd":[0,1,1,0,0,1],"right":[0,1,1,1,0,0],"back":[0,1,0,1,1,1],"left":[1,0,1,1,0,0],"anim":[1,1,1,1,1,0],"turn":[1,1,0,1,1,0],"err":[1,1,1,0,1,1],"path":[1]},"log":[["arrive",-626,871],["turn",1376]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":0,"heading":700,"pos":[256,9000],"rp":[-512,0],"rh":1024,"angle":1900,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,0],"face":[1,1,0,0,1,0],"arrive":[1,1,0,1,0,1],"permit":[0,0,1,0,0,1],"fwd":[1,1,0,1,1,1],"right":[1,1,1,1,1,0],"back":[0,0,1,0,1,0],"left":[1,1,1,1,1,1],"anim":[1,0,1,1,1,1],"turn":[1,1,1,1,1,0],"err":[1,1,0,1,0,0],"path":[1]},"log":[["arrive",381,2413],["turn",1900]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":2047,"pos":[256,-2560],"rp":[-512,400],"rh":0,"angle":1900,"off":[2048,256],"fb":0,"flag":1,"script":{"roll":[0,0,1,1,0,1],"face":[0,1,0,0,1,1],"arrive":[0,1,1,1,1,1],"permit":[1,1,0,0,1,1],"fwd":[1,1,0,1,1,1],"right":[1,1,0,1,1,1],"back":[0,1,0,1,1,0],"left":[0,1,1,1,1,1],"anim":[0,1,1,1,1,0],"turn":[1,1,1,0,1,0],"err":[1,1,1,1,0,0],"path":[1]},"log":[["arrive",1441,-268],["face",1441,-268],["permit",1441,-268],["fwd",1441,-268]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":0,"pos":[256,9000],"rp":[256,0],"rh":1900,"angle":1900,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[0,0,1,0,0,1],"face":[1,1,1,1,1,1],"arrive":[1,1,0,0,1,1],"permit":[1,1,0,1,1,1],"fwd":[1,0,0,1,0,0],"right":[1,1,0,0,1,1],"back":[1,1,0,1,1,0],"left":[0,0,1,1,1,0],"anim":[1,0,0,1,1,1],"turn":[1,0,1,1,0,1],"err":[1,0,0,1,1,0],"path":[1]},"log":[["arrive",-1605,-1777],["turn",728]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":9,"heading":100,"pos":[0,256],"rp":[3000,400],"rh":0,"angle":1024,"off":[256,0],"fb":1,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[0,1,1,0,1,0],"arrive":[1,1,0,1,1,1],"permit":[1,1,1,0,1,1],"fwd":[0,1,1,1,1,1],"right":[0,1,1,1,1,0],"back":[1,1,1,1,0,1],"left":[1,1,1,0,1,0],"anim":[0,1,1,0,1,1],"turn":[1,0,0,1,1,0],"err":[1,0,1,0,1,1],"path":[1]},"log":[["face",3000,400]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":8,"age":3,"heading":1024,"pos":[-512,-2560],"rp":[256,256],"rh":300,"angle":0,"off":[-512,-2560],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,1,0,0,1],"arrive":[0,1,0,1,1,1],"permit":[1,0,0,0,1,0],"fwd":[1,0,0,0,1,1],"right":[0,0,0,1,0,1],"back":[0,1,1,1,1,0],"left":[1,1,0,1,1,1],"anim":[1,0,1,1,1,0],"turn":[0,1,0,0,0,1],"err":[1,1,0,0,0,0],"path":[1]},"log":[["arrive",1983,-1702],["turn",1324],["permit",1983,-1702],["left",1983,-1702]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":700,"pos":[0,256],"rp":[-512,0],"rh":1900,"angle":1900,"off":[-512,256],"fb":1,"flag":3,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,1,1,1,1],"arrive":[0,1,1,1,1,1],"permit":[1,1,0,1,0,0],"fwd":[1,0,1,1,1,1],"right":[1,1,0,0,0,0],"back":[1,1,0,1,1,1],"left":[0,1,1,1,1,0],"anim":[1,1,1,1,0,1],"turn":[1,1,1,1,1,1],"err":[0,0,0,0,1,1],"path":[1]},"log":[["face",-512,0]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":32,"age":3,"heading":700,"pos":[256,9000],"rp":[0,0],"rh":1900,"angle":2100,"off":[0,1000],"fb":1,"flag":3,"script":{"roll":[1,0,1,1,1,0],"face":[0,1,0,1,1,1],"arrive":[1,0,1,1,1,1],"permit":[1,1,0,0,1,1],"fwd":[1,1,0,1,1,1],"right":[1,1,1,1,0,1],"back":[1,1,0,1,1,1],"left":[1,0,1,1,0,1],"anim":[1,1,0,1,1,1],"turn":[1,0,1,1,0,1],"err":[1,1,1,1,0,0],"path":[1]},"log":[["turn",928]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":0,"mask":8,"age":9,"heading":1024,"pos":[-512,9000],"rp":[256,0],"rh":1024,"angle":2100,"off":[0,0],"fb":0,"flag":1,"script":{"roll":[1,0,0,1,0,1],"face":[1,1,1,1,1,0],"arrive":[0,1,1,1,1,0],"permit":[1,0,0,1,1,1],"fwd":[1,1,1,1,1,1],"right":[0,1,1,1,0,0],"back":[1,0,1,0,0,1],"left":[0,1,0,1,1,0],"anim":[0,0,1,1,0,1],"turn":[1,1,0,0,1,0],"err":[1,0,1,0,1,1],"path":[1]},"log":[["arrive",256,0],["face",256,0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":1024,"pos":[5000,-2560],"rp":[256,-2560],"rh":1900,"angle":2100,"off":[-512,1000],"fb":0,"flag":1,"script":{"roll":[0,1,1,0,0,1],"face":[1,1,0,1,1,0],"arrive":[1,1,0,0,1,1],"permit":[0,0,1,1,0,1],"fwd":[1,1,1,1,1,0],"right":[1,1,0,0,0,1],"back":[1,0,1,0,1,1],"left":[0,1,0,1,1,1],"anim":[1,1,1,0,1,1],"turn":[1,1,1,1,0,1],"err":[1,0,0,1,1,0],"path":[1]},"log":[["arrive",56,-1454],["turn",928]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":3,"heading":700,"pos":[0,-2560],"rp":[-512,400],"rh":1024,"angle":1024,"off":[0,0],"fb":1,"flag":3,"script":{"roll":[1,1,1,0,0,1],"face":[0,1,1,1,1,0],"arrive":[1,1,0,1,1,0],"permit":[1,1,1,0,1,1],"fwd":[1,0,1,1,1,0],"right":[0,0,0,1,1,1],"back":[1,0,1,1,1,1],"left":[1,1,1,1,0,0],"anim":[1,0,1,1,0,1],"turn":[1,1,1,1,1,0],"err":[1,1,1,1,0,1],"path":[1]},"log":[["face",-512,400]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":256,"age":9,"heading":2047,"pos":[-512,256],"rp":[256,256],"rh":0,"angle":1024,"off":[2048,1000],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[1,1,1,1,1,1],"arrive":[1,1,1,1,1,0],"permit":[1,0,1,1,1,1],"fwd":[1,1,1,0,1,1],"right":[0,1,1,1,1,1],"back":[1,0,1,1,1,1],"left":[0,1,1,0,0,1],"anim":[1,1,1,0,1,1],"turn":[0,1,0,0,1,1],"err":[0,0,1,1,0,1],"path":[1]},"log":[["arrive",-1792,-744],["turn",0],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":32,"age":3,"heading":0,"pos":[-512,-2560],"rp":[3000,256],"rh":0,"angle":0,"off":[2048,256],"fb":0,"flag":1,"script":{"roll":[0,0,1,1,0,1],"face":[1,0,1,0,1,1],"arrive":[0,1,1,1,0,0],"permit":[0,1,1,1,0,0],"fwd":[1,1,0,0,1,0],"right":[1,0,1,0,1,1],"back":[1,0,0,0,1,1],"left":[0,1,1,1,0,1],"anim":[1,1,1,1,1,1],"turn":[1,1,0,0,1,1],"err":[1,1,1,0,0,0],"path":[1]},"log":[["face",3000,256]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":1024,"pos":[-512,9000],"rp":[3000,0],"rh":1024,"angle":1024,"off":[-512,0],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,1,0,0,1],"arrive":[1,1,1,1,0,0],"permit":[1,1,1,1,1,1],"fwd":[1,1,1,0,1,0],"right":[0,0,0,0,1,0],"back":[1,1,1,0,1,1],"left":[1,0,1,0,1,1],"anim":[1,0,0,1,1,1],"turn":[1,1,0,1,1,1],"err":[0,0,1,1,1,0],"path":[1]},"log":[["arrive",2488,0],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":700,"pos":[5000,-2560],"rp":[0,-2560],"rh":1024,"angle":2100,"off":[2048,1000],"fb":1,"flag":1,"script":{"roll":[1,0,1,0,1,0],"face":[1,1,1,1,1,1],"arrive":[0,1,0,0,1,1],"permit":[1,1,0,0,1,1],"fwd":[0,1,0,1,1,1],"right":[1,1,1,0,1,0],"back":[0,1,1,0,1,0],"left":[1,1,1,0,1,1],"anim":[1,1,1,0,1,1],"turn":[1,0,1,1,1,1],"err":[1,1,0,0,1,0],"path":[1]},"log":[["face",0,-2560]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":2,"age":9,"heading":0,"pos":[256,0],"rp":[3000,-2560],"rh":0,"angle":0,"off":[2048,256],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,1],"face":[1,1,1,1,1,0],"arrive":[1,0,1,0,0,0],"permit":[1,0,0,0,1,1],"fwd":[1,0,1,0,1,1],"right":[1,1,0,0,1,1],"back":[1,1,1,1,0,1],"left":[1,1,0,0,0,1],"anim":[1,1,1,1,0,1],"turn":[1,0,0,0,0,0],"err":[0,0,1,0,1,0],"path":[1]},"log":[["arrive",5048,-2304],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":700,"pos":[0,9000],"rp":[3000,-2560],"rh":300,"angle":300,"off":[256,-2560],"fb":1,"flag":3,"script":{"roll":[0,1,1,0,1,1],"face":[1,1,1,1,1,1],"arrive":[1,0,1,1,1,1],"permit":[1,1,0,1,1,1],"fwd":[1,0,0,1,0,1],"right":[1,0,1,1,1,1],"back":[0,0,1,1,0,0],"left":[1,0,0,1,0,1],"anim":[0,1,0,1,1,0],"turn":[1,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["face",3000,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":2,"age":9,"heading":100,"pos":[5000,0],"rp":[-512,0],"rh":0,"angle":1900,"off":[0,0],"fb":1,"flag":1,"script":{"roll":[1,1,0,1,1,1],"face":[0,0,1,1,1,0],"arrive":[1,1,1,1,0,1],"permit":[1,1,0,0,0,0],"fwd":[1,1,1,1,0,0],"right":[0,1,1,1,1,1],"back":[0,1,1,0,1,1],"left":[1,1,0,0,1,0],"anim":[1,1,1,1,1,1],"turn":[1,1,1,1,0,1],"err":[1,1,1,0,0,0],"path":[1]},"log":[["turn",876]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":0,"age":0,"heading":0,"pos":[256,0],"rp":[3000,0],"rh":300,"angle":1900,"off":[0,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,1],"face":[1,1,0,1,1,1],"arrive":[1,1,1,1,0,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,1,1,0,0],"right":[0,1,0,1,1,0],"back":[1,1,0,1,1,1],"left":[0,1,1,1,0,1],"anim":[0,1,0,1,0,0],"turn":[0,0,0,0,0,1],"err":[0,1,1,0,1,1],"path":[1]},"log":[["arrive",2550,893],["turn",1176],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":1024,"pos":[0,-2560],"rp":[256,256],"rh":0,"angle":1900,"off":[2048,-2560],"fb":1,"flag":1,"script":{"roll":[1,0,1,0,1,1],"face":[1,1,1,1,0,1],"arrive":[1,0,1,0,0,0],"permit":[0,0,1,0,0,1],"fwd":[1,1,1,1,0,1],"right":[0,1,1,1,1,1],"back":[1,1,1,1,1,0],"left":[0,0,1,1,1,1],"anim":[1,1,0,1,1,1],"turn":[0,1,1,1,0,1],"err":[0,1,1,0,1,0],"path":[1]},"log":[["turn",876],["anim"]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":0,"mask":8,"age":0,"heading":700,"pos":[0,256],"rp":[-512,-2560],"rh":1900,"angle":300,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[0,1,1,0,1,1],"face":[0,1,1,1,1,1],"arrive":[0,1,1,1,1,1],"permit":[0,0,1,1,1,1],"fwd":[0,1,1,1,1,1],"right":[1,0,0,1,0,1],"back":[0,1,1,0,0,0],"left":[0,1,0,1,0,1],"anim":[0,0,1,1,0,1],"turn":[1,0,1,1,0,1],"err":[0,1,1,1,1,1],"path":[1]},"log":[["arrive",-962,-1667],["face",-962,-1667],["permit",-962,-1667]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":3,"heading":700,"pos":[-512,9000],"rp":[0,-2560],"rh":1900,"angle":1900,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,0,1,1],"face":[1,0,1,0,0,1],"arrive":[0,0,1,1,1,1],"permit":[1,1,1,1,0,0],"fwd":[1,1,1,0,0,0],"right":[0,0,1,1,1,1],"back":[1,0,0,1,1,0],"left":[1,0,1,0,1,0],"anim":[0,1,1,1,1,1],"turn":[1,1,1,1,1,1],"err":[0,0,1,1,1,0],"path":[1]},"log":[["arrive",946,-2147],["turn",728]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":9,"heading":1500,"pos":[5000,256],"rp":[0,400],"rh":1024,"angle":300,"off":[2048,0],"fb":1,"flag":3,"script":{"roll":[0,1,1,0,0,1],"face":[1,1,1,1,0,1],"arrive":[1,1,0,0,1,1],"permit":[1,1,1,1,0,1],"fwd":[0,0,1,1,1,1],"right":[1,1,0,1,1,0],"back":[1,1,1,1,1,1],"left":[0,0,1,0,1,1],"anim":[1,1,1,1,1,0],"turn":[0,1,1,1,0,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["face",0,400]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":2,"age":3,"heading":2047,"pos":[256,-2560],"rp":[-512,256],"rh":1024,"angle":1024,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,0,1],"face":[1,1,1,1,0,1],"arrive":[1,1,1,0,1,0],"permit":[1,1,0,1,1,1],"fwd":[1,1,1,1,1,1],"right":[1,1,1,1,0,1],"back":[1,1,0,0,1,1],"left":[1,1,0,1,1,1],"anim":[1,1,1,1,1,1],"turn":[0,1,0,1,1,1],"err":[1,0,1,1,0,1],"path":[1]},"log":[["arrive",-256,1256],["turn",1024],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":1024,"pos":[256,9000],"rp":[256,400],"rh":300,"angle":1900,"off":[0,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,0],"face":[1,0,1,0,0,1],"arrive":[0,1,1,1,1,1],"permit":[0,1,0,1,1,1],"fwd":[1,0,1,1,1,0],"right":[1,1,0,1,0,0],"back":[1,1,1,0,1,1],"left":[0,0,1,0,0,1],"anim":[1,0,1,0,1,0],"turn":[1,1,0,0,1,0],"err":[1,1,1,0,1,1],"path":[1]},"log":[["arrive",1407,-1887],["face",1407,-1887]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":9,"heading":0,"pos":[0,256],"rp":[0,-2560],"rh":0,"angle":0,"off":[-512,1000],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,0,1],"face":[1,1,1,1,1,0],"arrive":[0,0,0,0,0,1],"permit":[1,0,0,1,1,1],"fwd":[0,0,1,1,0,1],"right":[1,0,1,1,1,1],"back":[0,0,0,0,1,1],"left":[1,0,1,1,1,1],"anim":[1,0,1,0,0,1],"turn":[1,1,0,1,1,1],"err":[0,0,1,0,1,1],"path":[1]},"log":[["arrive",-512,-1560],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":0,"heading":700,"pos":[5000,0],"rp":[256,256],"rh":0,"angle":1024,"off":[-512,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,0,0,1],"face":[1,1,1,1,0,0],"arrive":[1,0,0,0,1,1],"permit":[1,0,1,0,0,1],"fwd":[1,0,0,1,0,0],"right":[1,0,0,1,1,1],"back":[0,1,1,1,1,1],"left":[0,0,1,0,1,1],"anim":[1,1,1,1,1,1],"turn":[0,1,0,1,1,1],"err":[1,0,1,0,0,0],"path":[1]},"log":[["face",256,256]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":0,"pos":[5000,9000],"rp":[3000,256],"rh":0,"angle":300,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,1,1,0,1,1],"face":[0,1,1,0,0,0],"arrive":[1,0,0,1,0,1],"permit":[1,0,0,0,1,0],"fwd":[1,0,0,0,1,1],"right":[0,0,0,1,0,0],"back":[0,1,1,1,1,0],"left":[1,0,1,1,0,1],"anim":[1,1,1,1,1,1],"turn":[0,1,0,1,0,1],"err":[0,0,1,0,1,1],"path":[1]},"log":[["arrive",2359,1065],["turn",1324],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":700,"pos":[0,-2560],"rp":[0,256],"rh":300,"angle":1900,"off":[2048,0],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,0],"face":[1,0,1,1,1,0],"arrive":[1,1,0,1,1,1],"permit":[1,1,1,0,1,0],"fwd":[1,1,1,1,1,1],"right":[1,1,0,1,0,1],"back":[1,1,1,0,1,0],"left":[1,1,1,1,1,0],"anim":[0,0,1,1,0,1],"turn":[1,1,0,1,0,0],"err":[1,0,1,0,1,0],"path":[1]},"log":[["arrive",1829,1177],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":3,"heading":700,"pos":[256,256],"rp":[3000,256],"rh":300,"angle":2100,"off":[-512,0],"fb":1,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,1,0,1,1],"arrive":[0,1,0,1,1,1],"permit":[0,1,1,0,1,1],"fwd":[1,1,1,1,1,1],"right":[1,1,1,0,0,0],"back":[1,1,1,0,0,0],"left":[1,1,1,1,0,1],"anim":[1,0,0,1,1,1],"turn":[1,1,0,0,1,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["turn",1376]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":256,"age":0,"heading":1500,"pos":[-512,9000],"rp":[-512,-2560],"rh":300,"angle":0,"off":[0,0],"fb":1,"flag":1,"script":{"roll":[1,1,0,1,1,1],"face":[1,1,1,1,1,0],"arrive":[1,1,1,1,1,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,1,1,1,1],"right":[1,1,0,0,1,0],"back":[1,1,0,1,1,0],"left":[0,0,1,1,1,1],"anim":[0,1,1,0,1,1],"turn":[0,1,1,1,1,1],"err":[1,1,0,1,0,1],"path":[1]},"log":[["face",-512,-2560]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":32,"age":0,"heading":2047,"pos":[-512,0],"rp":[3000,256],"rh":0,"angle":0,"off":[0,256],"fb":0,"flag":3,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,1,1,1,1],"arrive":[1,0,1,1,1,0],"permit":[0,1,1,1,1,1],"fwd":[1,1,0,0,1,0],"right":[1,1,1,1,1,0],"back":[0,1,1,1,1,1],"left":[1,1,1,1,0,0],"anim":[0,0,1,1,0,0],"turn":[0,0,0,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",3000,512],["turn",1024],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":9,"heading":2047,"pos":[256,0],"rp":[3000,400],"rh":1900,"angle":2100,"off":[2048,0],"fb":1,"flag":1,"script":{"roll":[1,1,0,1,1,0],"face":[0,0,1,0,1,1],"arrive":[1,0,1,1,0,0],"permit":[1,1,1,1,0,1],"fwd":[1,1,1,1,1,0],"right":[1,1,0,0,1,1],"back":[1,0,1,1,1,0],"left":[1,0,0,0,1,1],"anim":[1,1,0,1,0,0],"turn":[0,0,1,0,1,1],"err":[0,1,1,0,1,1],"path":[1]},"log":[["face",3000,400]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":0,"age":0,"heading":1500,"pos":[5000,0],"rp":[-512,400],"rh":1024,"angle":300,"off":[-512,0],"fb":0,"flag":3,"script":{"roll":[1,1,1,0,1,1],"face":[1,1,0,1,1,0],"arrive":[1,1,1,1,0,1],"permit":[1,1,0,0,1,1],"fwd":[0,1,1,1,0,0],"right":[0,0,1,1,0,1],"back":[1,1,1,1,1,1],"left":[1,1,0,1,1,0],"anim":[1,0,0,1,1,0],"turn":[0,1,1,1,0,1],"err":[0,0,1,1,1,0],"path":[1]},"log":[["arrive",-202,807],["turn",300],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1024,"pos":[256,256],"rp":[256,256],"rh":0,"angle":300,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[0,1,1,1,1,0],"face":[1,0,0,1,0,1],"arrive":[1,1,1,0,1,0],"permit":[0,1,0,1,0,1],"fwd":[0,1,1,1,0,0],"right":[1,1,1,1,0,1],"back":[1,0,1,1,1,0],"left":[1,1,0,1,1,1],"anim":[1,0,0,1,1,0],"turn":[1,1,0,0,0,0],"err":[1,1,1,1,1,0],"path":[1]},"log":[["arrive",-540,862],["turn",1324]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":0,"pos":[256,-2560],"rp":[-512,0],"rh":0,"angle":0,"off":[-512,0],"fb":0,"flag":3,"script":{"roll":[1,0,1,0,0,1],"face":[1,1,0,1,1,1],"arrive":[1,1,1,1,0,1],"permit":[0,1,1,1,0,1],"fwd":[1,0,1,1,0,1],"right":[1,0,1,0,0,1],"back":[1,1,1,0,0,1],"left":[1,1,1,0,1,0],"anim":[0,1,0,0,1,1],"turn":[1,1,1,1,1,1],"err":[1,1,0,1,1,1],"path":[1]},"log":[["arrive",-1024,0],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":0,"heading":1024,"pos":[256,-2560],"rp":[0,256],"rh":0,"angle":1024,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[0,0,1,0,0,0],"face":[0,1,0,0,1,1],"arrive":[1,1,0,1,0,0],"permit":[1,1,1,1,1,1],"fwd":[1,0,1,1,1,1],"right":[1,0,1,1,1,0],"back":[1,1,1,1,1,0],"left":[1,1,1,0,1,1],"anim":[0,0,1,1,1,1],"turn":[0,0,1,0,1,0],"err":[1,1,1,0,1,1],"path":[1]},"log":[["face",0,256]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":8,"age":9,"heading":100,"pos":[256,256],"rp":[3000,-2560],"rh":1024,"angle":300,"off":[2048,256],"fb":0,"flag":3,"script":{"roll":[1,1,0,0,0,1],"face":[1,1,1,1,1,1],"arrive":[0,1,1,1,1,1],"permit":[1,0,0,1,0,1],"fwd":[0,1,1,1,1,1],"right":[1,0,1,0,1,1],"back":[1,1,1,1,1,1],"left":[0,0,1,0,1,1],"anim":[1,0,1,0,1,1],"turn":[1,0,0,0,1,0],"err":[0,1,1,1,0,1],"path":[1]},"log":[["arrive",1964,-4345],["turn",300]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":3,"heading":1500,"pos":[-512,-2560],"rp":[0,400],"rh":1900,"angle":1024,"off":[-512,0],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,1,1],"face":[0,1,0,1,0,0],"arrive":[1,1,0,1,1,1],"permit":[1,1,0,1,1,0],"fwd":[1,0,1,0,1,1],"right":[0,1,1,1,0,1],"back":[1,0,0,0,0,0],"left":[0,0,0,1,1,1],"anim":[1,1,1,1,1,1],"turn":[1,1,1,1,0,0],"err":[0,0,1,1,1,0],"path":[1]},"log":[["face",0,400]],"ret":0,"state":6,"flag_out":1,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":700,"pos":[0,-2560],"rp":[256,-2560],"rh":300,"angle":1900,"off":[2048,-2560],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,1],"face":[1,1,0,1,0,1],"arrive":[1,1,1,0,1,0],"permit":[0,0,1,1,1,1],"fwd":[1,0,1,0,1,1],"right":[1,1,0,1,1,0],"back":[0,1,1,1,1,1],"left":[1,1,1,1,0,1],"anim":[1,0,1,1,0,1],"turn":[1,0,1,1,1,0],"err":[1,0,1,1,1,0],"path":[1]},"log":[["arrive",3236,-3926],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1500,"pos":[0,9000],"rp":[0,256],"rh":1900,"angle":2100,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[0,0,1,1,1,0],"face":[0,1,1,1,1,0],"arrive":[0,1,1,1,1,1],"permit":[1,1,1,0,1,0],"fwd":[1,1,1,0,1,1],"right":[1,1,1,0,1,0],"back":[0,1,1,1,0,0],"left":[1,1,1,1,1,1],"anim":[0,0,1,1,1,1],"turn":[1,1,0,1,0,1],"err":[1,0,1,1,1,1],"path":[1]},"log":[["arrive",1217,-2788],["face",1217,-2788],["permit",1217,-2788],["fwd",1217,-2788]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":2047,"pos":[256,9000],"rp":[-512,0],"rh":1900,"angle":300,"off":[256,1000],"fb":1,"flag":1,"script":{"roll":[1,1,1,0,0,1],"face":[1,1,1,0,1,1],"arrive":[1,1,1,0,0,1],"permit":[0,1,1,1,1,0],"fwd":[1,1,1,1,1,0],"right":[1,0,0,0,1,0],"back":[1,1,1,1,0,1],"left":[1,1,0,0,1,0],"anim":[1,0,0,0,1,0],"turn":[1,0,1,1,1,1],"err":[1,1,1,0,1,1],"path":[1]},"log":[["turn",1176]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":0,"mask":0,"age":9,"heading":2047,"pos":[5000,9000],"rp":[3000,256],"rh":1024,"angle":1024,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,0],"face":[1,0,1,1,0,1],"arrive":[1,1,1,1,1,0],"permit":[1,0,0,1,1,1],"fwd":[0,1,0,1,1,1],"right":[0,1,1,1,1,1],"back":[0,1,0,1,1,1],"left":[0,1,1,1,0,1],"anim":[1,1,1,1,0,1],"turn":[1,1,1,0,0,1],"err":[1,1,1,1,1,0],"path":[1]},"log":[["arrive",3256,1256],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":3,"heading":1024,"pos":[-512,-2560],"rp":[256,256],"rh":300,"angle":300,"off":[0,-2560],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[1,1,1,1,0,1],"arrive":[1,1,0,1,0,1],"permit":[0,1,0,1,1,1],"fwd":[0,0,1,1,1,0],"right":[1,1,1,1,0,1],"back":[0,1,1,1,1,1],"left":[1,0,1,0,1,0],"anim":[0,1,1,1,1,1],"turn":[1,0,1,1,0,0],"err":[1,0,0,1,1,0],"path":[1]},"log":[["arrive",2723,939],["turn",1624]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":1500,"pos":[-512,9000],"rp":[256,-2560],"rh":1024,"angle":2100,"off":[256,256],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,0,1],"face":[1,0,1,1,1,1],"arrive":[1,0,1,0,1,1],"permit":[1,0,1,1,0,1],"fwd":[1,0,1,1,0,1],"right":[1,0,1,0,0,1],"back":[1,1,1,0,1,1],"left":[1,1,1,0,1,0],"anim":[1,1,1,0,1,1],"turn":[0,0,0,0,0,1],"err":[1,1,1,0,0,1],"path":[1]},"log":[["arrive",44,-2853],["turn",52],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":256,"age":0,"heading":100,"pos":[-512,9000],"rp":[0,-2560],"rh":0,"angle":1024,"off":[-512,1000],"fb":0,"flag":1,"script":{"roll":[0,1,0,1,1,0],"face":[1,1,1,0,1,1],"arrive":[1,1,0,1,0,1],"permit":[0,1,1,1,1,1],"fwd":[1,1,0,1,0,1],"right":[1,0,1,1,1,1],"back":[0,1,1,1,1,1],"left":[0,1,0,1,1,0],"anim":[0,0,1,1,0,1],"turn":[1,1,1,1,1,0],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",512,-3560],["turn",0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":9,"heading":2047,"pos":[-512,-2560],"rp":[-512,-2560],"rh":1900,"angle":300,"off":[256,-2560],"fb":0,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[1,0,1,1,1,1],"arrive":[1,1,1,0,0,1],"permit":[1,0,1,1,1,1],"fwd":[0,1,1,0,0,1],"right":[1,0,1,1,1,1],"back":[1,1,1,0,1,0],"left":[1,1,1,1,0,1],"anim":[1,0,1,0,1,1],"turn":[1,1,1,1,1,1],"err":[1,1,0,1,1,0],"path":[1]},"log":[["face",-512,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":2,"age":3,"heading":0,"pos":[5000,-2560],"rp":[256,-2560],"rh":300,"angle":300,"off":[256,-2560],"fb":0,"flag":3,"script":{"roll":[0,1,1,1,0,1],"face":[1,1,0,1,1,1],"arrive":[0,1,0,1,1,0],"permit":[1,1,1,1,1,1],"fwd":[0,0,1,1,1,1],"right":[1,1,0,1,0,1],"back":[1,1,0,0,0,1],"left":[1,0,1,1,1,0],"anim":[1,1,1,1,0,1],"turn":[1,1,1,1,0,0],"err":[1,1,1,0,0,1],"path":[1]},"log":[["arrive",2655,-1630],["turn",1624]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":700,"pos":[-512,0],"rp":[-512,0],"rh":1900,"angle":2100,"off":[256,-2560],"fb":1,"flag":3,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,1,0],"arrive":[1,1,1,1,1,1],"permit":[1,1,1,0,1,0],"fwd":[1,1,1,0,1,1],"right":[1,0,0,1,1,0],"back":[0,1,1,0,1,0],"left":[0,1,1,1,1,1],"anim":[0,0,1,0,1,1],"turn":[0,1,1,1,1,0],"err":[1,1,1,1,0,1],"path":[1]},"log":[["face",-512,0]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":0,"age":0,"heading":0,"pos":[-512,9000],"rp":[256,0],"rh":300,"angle":1024,"off":[-512,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,0,1,0],"face":[0,1,0,1,1,0],"arrive":[1,1,1,1,1,1],"permit":[0,1,1,0,1,1],"fwd":[1,0,1,0,1,1],"right":[1,0,1,1,1,1],"back":[0,0,1,1,0,1],"left":[0,1,1,1,1,1],"anim":[0,1,1,1,1,1],"turn":[1,1,1,0,0,0],"err":[0,1,1,1,1,1],"path":[1]},"log":[["arrive",1362,-198],["turn",300]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":256,"age":3,"heading":1500,"pos":[256,-2560],"rp":[-512,400],"rh":300,"angle":300,"off":[0,256],"fb":1,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[0,0,1,0,1,1],"arrive":[0,1,0,1,0,1],"permit":[0,1,0,0,1,0],"fwd":[1,0,1,1,1,1],"right":[1,1,1,1,1,1],"back":[1,0,0,0,0,1],"left":[0,1,1,0,1,1],"anim":[1,0,1,0,0,1],"turn":[1,0,0,1,1,1],"err":[1,1,1,0,1,0],"path":[1]},"log":[["face",-512,400]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":32,"age":0,"heading":700,"pos":[-512,9000],"rp":[256,256],"rh":300,"angle":1900,"off":[0,-2560],"fb":0,"flag":1,"script":{"roll":[0,0,0,1,1,1],"face":[1,1,0,1,1,1],"arrive":[1,1,1,0,0,1],"permit":[1,1,1,1,1,0],"fwd":[1,1,1,1,1,0],"right":[1,0,1,1,1,1],"back":[0,1,1,1,0,0],"left":[1,1,1,1,1,0],"anim":[1,1,1,1,1,0],"turn":[0,1,0,0,1,0],"err":[0,0,1,1,1,1],"path":[1]},"log":[["arrive",1407,-2031],["turn",1176],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":2,"age":0,"heading":1024,"pos":[5000,-2560],"rp":[-512,-2560],"rh":300,"angle":2100,"off":[0,0],"fb":0,"flag":3,"script":{"roll":[1,0,0,1,0,1],"face":[1,1,1,1,1,1],"arrive":[0,1,1,1,0,1],"permit":[0,0,1,1,1,1],"fwd":[1,0,1,1,1,0],"right":[1,1,1,1,1,0],"back":[0,1,0,1,0,0],"left":[1,0,1,1,1,1],"anim":[1,1,1,0,1,1],"turn":[1,0,1,1,1,1],"err":[1,1,1,0,1,0],"path":[1]},"log":[["face",-512,-2560]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":9,"heading":0,"pos":[-512,0],"rp":[256,256],"rh":300,"angle":0,"off":[2048,-2560],"fb":0,"flag":3,"script":{"roll":[1,0,1,0,1,0],"face":[0,1,1,0,1,1],"arrive":[0,1,1,1,0,1],"permit":[1,1,0,1,1,1],"fwd":[1,1,0,0,1,1],"right":[1,1,1,1,0,0],"back":[1,0,0,0,1,1],"left":[0,0,1,1,1,1],"anim":[0,1,1,0,0,1],"turn":[0,0,1,1,1,0],"err":[1,1,1,0,0,1],"path":[1]},"log":[["arrive",3533,336],["turn",1324],["permit",3533,336],["right",3533,336]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":1024,"pos":[-512,256],"rp":[-512,400],"rh":300,"angle":1024,"off":[0,-2560],"fb":1,"flag":3,"script":{"roll":[1,1,1,0,1,1],"face":[1,1,1,1,0,1],"arrive":[0,0,0,1,1,1],"permit":[1,0,1,1,0,1],"fwd":[1,1,0,0,1,1],"right":[1,1,1,1,0,1],"back":[1,0,0,1,0,0],"left":[1,1,0,0,1,1],"anim":[1,0,1,0,1,1],"turn":[1,1,1,0,0,1],"err":[1,0,1,1,1,0],"path":[1]},"log":[["face",-512,400]],"ret":1,"state":0,"flag_out":3,"fb_out":1},
+{"k":1,"mask":0,"age":9,"heading":700,"pos":[5000,0],"rp":[-512,-2560],"rh":300,"angle":2100,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,1],"face":[0,1,0,1,1,1],"arrive":[1,1,0,0,1,1],"permit":[1,1,1,1,1,0],"fwd":[1,1,1,1,1,1],"right":[1,1,1,0,0,1],"back":[1,0,0,1,0,1],"left":[0,1,0,1,1,1],"anim":[1,1,0,0,0,1],"turn":[0,0,0,1,1,1],"err":[1,1,0,0,0,1],"path":[1]},"log":[["arrive",-738,-2439],["turn",1376],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":0,"mask":2,"age":0,"heading":100,"pos":[5000,-2560],"rp":[0,0],"rh":1024,"angle":0,"off":[256,256],"fb":0,"flag":3,"script":{"roll":[1,0,1,1,0,0],"face":[1,1,1,0,1,1],"arrive":[1,1,1,1,1,0],"permit":[1,1,0,1,1,1],"fwd":[1,1,1,0,1,1],"right":[0,1,1,1,1,0],"back":[0,1,1,0,1,0],"left":[1,1,1,1,0,1],"anim":[1,1,1,0,1,1],"turn":[1,0,1,1,0,0],"err":[1,1,0,0,1,0],"path":[1]},"log":[["face",0,0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":256,"age":9,"heading":2047,"pos":[5000,-2560],"rp":[256,0],"rh":1024,"angle":0,"off":[0,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,0],"face":[0,1,1,0,1,0],"arrive":[0,1,0,1,1,1],"permit":[1,1,1,0,1,1],"fwd":[1,1,1,1,1,1],"right":[1,1,0,0,1,1],"back":[0,1,1,1,1,1],"left":[0,1,0,0,1,1],"anim":[1,0,1,0,1,1],"turn":[1,1,1,1,1,0],"err":[1,1,0,1,1,0],"path":[1]},"log":[["arrive",256,2560],["turn",0]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":700,"pos":[0,9000],"rp":[256,400],"rh":1024,"angle":2100,"off":[-512,-2560],"fb":0,"flag":3,"script":{"roll":[1,0,0,1,1,1],"face":[1,1,0,1,1,0],"arrive":[1,1,1,1,1,0],"permit":[1,1,0,1,1,0],"fwd":[1,0,1,0,1,1],"right":[1,0,1,0,0,1],"back":[1,1,1,1,0,0],"left":[1,1,0,0,0,1],"anim":[0,0,1,0,1,1],"turn":[0,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",355,3009],["turn",52],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":2,"age":0,"heading":100,"pos":[-512,256],"rp":[3000,0],"rh":300,"angle":1900,"off":[-512,1000],"fb":0,"flag":3,"script":{"roll":[0,0,1,1,1,0],"face":[1,0,0,0,1,0],"arrive":[1,1,0,0,1,0],"permit":[0,1,1,1,1,0],"fwd":[1,1,1,0,1,1],"right":[1,1,1,0,1,1],"back":[0,1,1,1,0,0],"left":[0,1,0,1,0,0],"anim":[0,0,1,0,1,1],"turn":[0,1,0,0,0,1],"err":[0,1,1,0,1,1],"path":[1]},"log":[["arrive",2093,663],["turn",1176],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":100,"pos":[256,-2560],"rp":[256,-2560],"rh":1024,"angle":2100,"off":[2048,-2560],"fb":1,"flag":3,"script":{"roll":[0,0,0,0,1,0],"face":[0,1,1,0,0,0],"arrive":[1,1,0,1,1,0],"permit":[1,1,1,1,1,1],"fwd":[0,1,0,1,0,1],"right":[1,1,1,1,1,1],"back":[1,1,0,1,1,1],"left":[1,0,1,1,1,1],"anim":[1,1,1,1,0,0],"turn":[1,0,1,1,1,1],"err":[0,1,1,0,1,1],"path":[1]},"log":[["face",256,-2560]],"ret":0,"state":6,"flag_out":1,"fb_out":1},
+{"k":1,"mask":0,"age":3,"heading":1500,"pos":[256,256],"rp":[-512,0],"rh":300,"angle":1900,"off":[0,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,0,1],"arrive":[1,1,1,1,1,1],"permit":[1,0,0,1,0,1],"fwd":[0,1,0,0,1,1],"right":[1,0,1,0,0,1],"back":[0,1,1,1,1,1],"left":[1,1,1,0,1,0],"anim":[1,0,1,1,0,0],"turn":[1,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",-627,229],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":700,"pos":[0,9000],"rp":[-512,256],"rh":0,"angle":1900,"off":[2048,1000],"fb":0,"flag":1,"script":{"roll":[1,0,0,0,1,1],"face":[1,1,1,1,1,0],"arrive":[1,1,1,1,1,1],"permit":[1,1,0,0,0,0],"fwd":[1,1,1,0,1,0],"right":[1,1,0,1,1,1],"back":[0,1,0,1,1,0],"left":[1,1,1,1,1,1],"anim":[1,1,1,1,1,0],"turn":[1,0,0,1,1,0],"err":[0,0,0,1,1,1],"path":[1]},"log":[["arrive",1767,256],["turn",876]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":3,"heading":0,"pos":[5000,0],"rp":[3000,0],"rh":0,"angle":2100,"off":[256,1000],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,0,1],"face":[1,0,1,1,0,0],"arrive":[1,0,1,1,0,0],"permit":[1,1,0,1,0,0],"fwd":[1,1,1,1,1,1],"right":[0,0,1,0,1,0],"back":[0,0,0,1,0,1],"left":[1,0,1,0,1,1],"anim":[0,1,1,1,1,1],"turn":[1,0,1,0,1,1],"err":[1,0,0,0,1,1],"path":[1]},"log":[["arrive",3094,1028],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":9,"heading":700,"pos":[-512,0],"rp":[0,-2560],"rh":1024,"angle":1024,"off":[-512,0],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,0,0],"face":[1,1,0,0,1,1],"arrive":[1,1,1,1,0,0],"permit":[1,1,1,0,1,1],"fwd":[0,0,0,1,1,1],"right":[1,0,0,1,0,1],"back":[1,1,1,0,1,0],"left":[1,0,0,1,1,0],"anim":[0,1,0,0,1,1],"turn":[1,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",-512,-2560],["turn",1024]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":0,"age":0,"heading":0,"pos":[0,9000],"rp":[-512,256],"rh":1024,"angle":300,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[0,0,1,0,0,1],"face":[1,0,0,0,1,1],"arrive":[1,1,0,0,1,1],"permit":[1,1,1,1,0,1],"fwd":[0,0,1,0,1,1],"right":[0,1,0,1,0,1],"back":[1,0,1,1,1,1],"left":[0,1,0,0,1,1],"anim":[0,0,1,0,1,1],"turn":[0,0,0,1,0,1],"err":[1,1,0,1,1,1],"path":[1]},"log":[["arrive",129,-553],["turn",300],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":0,"heading":2047,"pos":[256,256],"rp":[3000,-2560],"rh":0,"angle":1024,"off":[2048,0],"fb":0,"flag":3,"script":{"roll":[0,1,0,1,0,1],"face":[1,0,1,0,1,0],"arrive":[1,0,0,1,1,0],"permit":[1,1,1,1,1,0],"fwd":[1,1,1,0,1,0],"right":[0,1,1,0,0,0],"back":[0,1,1,0,0,0],"left":[1,1,1,1,0,1],"anim":[1,1,1,1,1,1],"turn":[0,0,0,1,0,1],"err":[1,0,1,0,1,0],"path":[1]},"log":[["arrive",952,-2560],["turn",0],["anim"]],"ret":0,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":2,"age":3,"heading":700,"pos":[-512,256],"rp":[0,0],"rh":300,"angle":0,"off":[-512,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,1,0],"face":[0,0,0,0,1,0],"arrive":[1,1,1,1,1,1],"permit":[1,0,1,1,1,1],"fwd":[1,1,0,0,1,1],"right":[1,0,1,0,1,1],"back":[0,0,0,1,1,1],"left":[1,1,0,1,0,1],"anim":[0,1,1,1,0,0],"turn":[0,0,1,0,1,1],"err":[0,0,1,0,1,1],"path":[1]},"log":[["arrive",1727,-1958],["turn",1324],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":2047,"pos":[5000,9000],"rp":[-512,-2560],"rh":0,"angle":300,"off":[256,1000],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,1,0],"face":[0,1,1,0,1,1],"arrive":[0,1,1,1,0,1],"permit":[0,0,1,1,1,1],"fwd":[0,0,0,0,0,0],"right":[0,1,1,0,0,1],"back":[0,0,1,0,1,1],"left":[1,0,1,0,1,1],"anim":[0,1,1,0,1,0],"turn":[1,0,0,1,0,1],"err":[0,1,0,1,0,1],"path":[1]},"log":[["arrive",-1153,-1751],["face",-1153,-1751],["permit",-1153,-1751]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":2,"age":0,"heading":1500,"pos":[5000,0],"rp":[3000,256],"rh":1900,"angle":300,"off":[2048,256],"fb":0,"flag":1,"script":{"roll":[1,1,1,0,1,1],"face":[1,1,1,0,1,0],"arrive":[1,0,0,1,1,1],"permit":[1,0,0,1,1,0],"fwd":[1,0,1,0,1,1],"right":[1,0,1,0,0,1],"back":[1,0,1,1,1,1],"left":[1,1,1,1,1,0],"anim":[1,1,1,1,0,1],"turn":[1,1,0,1,1,1],"err":[0,1,0,1,0,1],"path":[1]},"log":[["arrive",4714,1405],["turn",1176]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":0,"age":0,"heading":0,"pos":[256,256],"rp":[3000,0],"rh":0,"angle":0,"off":[2048,256],"fb":1,"flag":1,"script":{"roll":[1,1,1,0,0,1],"face":[1,0,1,1,1,1],"arrive":[1,1,1,1,1,0],"permit":[0,1,0,0,1,0],"fwd":[0,1,1,1,0,1],"right":[1,1,0,1,1,1],"back":[1,1,1,0,1,1],"left":[1,1,1,1,1,1],"anim":[0,1,1,1,0,1],"turn":[0,1,1,1,1,1],"err":[1,0,1,0,0,1],"path":[1]},"log":[["face",3000,0]],"ret":1,"state":0,"flag_out":1,"fb_out":1},
+{"k":1,"mask":256,"age":9,"heading":100,"pos":[-512,0],"rp":[3000,-2560],"rh":0,"angle":2100,"off":[256,-2560],"fb":0,"flag":1,"script":{"roll":[1,0,1,1,1,1],"face":[0,1,0,1,1,1],"arrive":[0,0,0,1,1,1],"permit":[1,1,1,1,1,0],"fwd":[0,0,1,1,0,0],"right":[1,1,1,0,1,1],"back":[0,0,1,1,1,1],"left":[0,1,1,0,1,1],"anim":[0,0,1,1,1,1],"turn":[1,1,1,1,1,1],"err":[0,0,0,0,0,1],"path":[1]},"log":[["arrive",3659,-5047],["turn",1076]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":32,"age":0,"heading":2047,"pos":[5000,-2560],"rp":[256,0],"rh":300,"angle":300,"off":[2048,-2560],"fb":0,"flag":1,"script":{"roll":[1,1,1,1,1,1],"face":[1,1,1,1,0,1],"arrive":[1,1,1,1,1,0],"permit":[1,0,0,0,1,1],"fwd":[1,1,0,1,1,1],"right":[1,1,1,1,1,0],"back":[1,0,0,1,1,0],"left":[1,1,1,1,1,1],"anim":[0,0,1,1,1,0],"turn":[0,1,0,1,1,0],"err":[1,1,1,1,0,0],"path":[1]},"log":[["face",256,0]],"ret":1,"state":0,"flag_out":1,"fb_out":0},
+{"k":1,"mask":32,"age":3,"heading":0,"pos":[5000,256],"rp":[3000,0],"rh":0,"angle":300,"off":[-512,1000],"fb":0,"flag":1,"script":{"roll":[1,0,1,0,1,1],"face":[1,1,1,1,1,1],"arrive":[1,0,0,0,1,0],"permit":[0,0,1,1,1,1],"fwd":[1,1,0,1,1,1],"right":[1,1,1,0,1,1],"back":[0,1,0,1,1,1],"left":[1,1,1,0,0,1],"anim":[0,1,0,1,0,1],"turn":[0,1,1,1,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",1894,198],["turn",1324],["anim"]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":0,"mask":8,"age":3,"heading":700,"pos":[256,9000],"rp":[-512,0],"rh":1900,"angle":1900,"off":[0,1000],"fb":0,"flag":1,"script":{"roll":[1,1,0,1,0,0],"face":[1,1,1,0,0,0],"arrive":[0,1,0,1,1,1],"permit":[0,1,1,1,1,1],"fwd":[1,1,0,0,1,1],"right":[1,0,1,1,0,1],"back":[1,0,0,1,1,1],"left":[1,1,0,1,0,1],"anim":[1,0,1,1,1,0],"turn":[1,1,1,0,0,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",276,615],["face",276,615]],"ret":1,"state":0,"flag_out":3,"fb_out":0},
+{"k":1,"mask":32,"age":0,"heading":700,"pos":[0,9000],"rp":[0,400],"rh":300,"angle":2100,"off":[0,0],"fb":0,"flag":3,"script":{"roll":[1,1,0,1,0,0],"face":[1,0,1,1,1,1],"arrive":[0,0,1,0,0,1],"permit":[0,1,1,1,1,1],"fwd":[1,1,1,0,1,1],"right":[1,0,0,0,1,0],"back":[1,0,0,1,1,1],"left":[1,1,1,1,1,1],"anim":[1,1,1,1,1,1],"turn":[1,0,0,0,1,1],"err":[1,1,1,1,1,1],"path":[1]},"log":[["arrive",0,400],["turn",1376]],"ret":1,"state":0,"flag_out":3,"fb_out":0}
+]"#,
+        )
+        .unwrap();
+        for (index, row) in rows.into_iter().enumerate() {
+            let mut port = Scripted {
+                stale: row.mask != 0 && row.age > 8,
+                heading: row.heading,
+                position: row.pos,
+                script: row.script,
+                used: BTreeMap::new(),
+                log: Vec::new(),
+                called: 7,
+                state: 0,
+                hook: row.flag & 2 != 0,
+                masked: row.mask & 0x1e2 != 0,
+                age_over: row.age > 8,
+            };
+            let reference = Reference {
+                position: [row.rp[0], 0, row.rp[1]],
+                heading: row.rh,
+            };
+            let mut state = AlignState {
+                fallback: row.fb != 0,
+            };
+            let result = if row.k == 0 {
+                approach_mover(&mut port, &mut state, row.angle, row.off, reference)
+            } else {
+                close_mover(&mut port, &mut state, row.angle, row.off, reference)
+            }
+            .unwrap();
+            let expected: Vec<(String, Vec<i32>)> = row
+                .log
+                .into_iter()
+                .map(|entry| {
+                    (
+                        entry[0].as_str().unwrap().to_owned(),
+                        entry[1..]
+                            .iter()
+                            .map(|value| value.as_i64().unwrap() as i32)
+                            .collect(),
+                    )
+                })
+                .collect();
+            let label = format!("row {index} mover {}", row.k);
+            assert_eq!(port.log, expected, "{label}");
+            assert_eq!(result, row.ret, "{label}");
+            assert_eq!(port.state, row.state, "{label}");
+            assert_eq!(u8::from(port.hook) * 2, row.flag_out & 2, "{label}");
+            assert_eq!(u32::from(state.fallback), row.fb_out, "{label}");
         }
     }
 

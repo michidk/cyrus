@@ -1,7 +1,8 @@
 # cyrus-assets
 
-Script cache schema 24 retains the installed falling-death limit in nominal ticks.
-Re-export older script caches; omitted limits remain unavailable.
+Script cache schema 25 retains the installed falling-death limit in nominal ticks and the
+installed lineup distance in Q8 units. Re-export older script caches; omitted limits remain
+unavailable.
 
 Validated portable animation, player, collision, environment, menu, HUD, movie and
 sound cache records. Data-only lookup and validation live with their serialized
