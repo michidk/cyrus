@@ -458,6 +458,7 @@ pub(crate) fn sample_clock(
             .is_some_and(|console| console.open)
         && actors.current.is_some()
         && actors.error.is_none()
+        && actors.world_loop_outcome.is_none()
         && prepared
             .view
             .as_ref()
@@ -861,6 +862,7 @@ pub fn run_ordinary(
         || logbook.is_some_and(|screen| screen.suspended())
         || console.is_some_and(|console| console.open)
         || actors.error.is_some()
+        || actors.world_loop_outcome.is_some()
     {
         return;
     }

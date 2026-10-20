@@ -41,9 +41,19 @@ struct MenuTiming {
     last_tick: u32,
 }
 
+/// Original caller context selects motion and the main-page restrictions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MenuContext {
+    #[default]
+    Startup,
+    Death,
+}
+
 /// Current installed menu selection and explicitly unsupported activation.
 #[derive(Resource, Default, Serialize)]
 pub struct MenuState {
+    pub context: MenuContext,
     /// True once the installed book is rendered and input can be accepted.
     pub ready: bool,
     pub page: u8,
@@ -80,9 +90,20 @@ pub struct MenuState {
     repeat_seconds: f32,
     #[serde(skip)]
     held_seconds: f32,
+    #[serde(skip)]
+    main_disabled: [bool; 2],
 }
 
 impl MenuState {
+    pub(super) fn main_entry_disabled(&self, page: u8, index: usize) -> bool {
+        page == 0
+            && match index {
+                0 => self.main_disabled[0],
+                5 => self.main_disabled[1],
+                _ => false,
+            }
+    }
+
     fn navigate(&mut self, direction: isize) -> bool {
         let Some(selected) = self.selected else {
             return false;
@@ -128,7 +149,8 @@ pub(super) fn register(app: &mut App) {
     app.init_resource::<cyrus_game::preferences::Preferences>()
         .init_asset::<MenuAsset>()
         .init_asset_loader::<MenuLoader>()
-        .add_systems(OnEnter(AppState::Menu), setup)
+        .add_systems(OnEnter(AppState::Menu), (pause_cameras, setup))
+        .add_systems(OnEnter(AppState::InGame), restore_cameras)
         .add_systems(
             Update,
             (fit_image, drive.before(cyrus_audio::ApplyPreferences))
@@ -141,10 +163,19 @@ fn setup(
     mut commands: Commands,
     assets: Res<AssetServer>,
     startup: Res<super::StartupPresentation>,
+    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
 ) {
     commands.spawn((Camera2d, StartupContent));
     commands.spawn((Sprite::default(), StartupContent));
     commands.insert_resource(MenuState {
+        context: if death.is_some() {
+            MenuContext::Death
+        } else {
+            MenuContext::Startup
+        },
+        main_disabled: death
+            .as_ref()
+            .map_or([true, true], |entry| [entry.override_group != 0; 2]),
         asset: if startup.menu == Handle::default() {
             assets.load("cache://menu/book.menu")
         } else {
@@ -247,9 +278,11 @@ pub(super) fn drive(
             .map(|(id, page)| (*id, page.selected))
             .collect();
         menu.repeat_seconds = book.repeat_seconds;
-        menu.motion = Some(BookMotion::opening(std::array::from_fn(|i| {
-            book.models[i].frames.len()
-        })));
+        let frames = std::array::from_fn(|i| book.models[i].frames.len());
+        menu.motion = Some(match menu.context {
+            MenuContext::Startup => BookMotion::opening(frames),
+            MenuContext::Death => BookMotion::death_entry(frames),
+        });
         menu.open(book, 0);
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
@@ -270,24 +303,23 @@ pub(super) fn drive(
         return;
     }
     let mut moving = menu.motion.as_ref().is_some_and(BookMotion::busy);
-    if moving {
-        if menu_tick {
-            menu.motion.as_mut().unwrap().tick(|effect| {
-                output.2.write(flat_sound(effect));
-            });
-            menu.dirty = true;
-        }
-    } else if menu.closing && menu_tick {
-        output.0.write(AppExit::Success);
-        return;
+    if moving && menu_tick {
+        menu.motion.as_mut().unwrap().tick(|effect| {
+            output.2.write(flat_sound(effect));
+        });
+        menu.dirty = true;
     }
     if menu_tick {
         clock.advance(sample);
         menu.timing.as_mut().unwrap().last_tick = sample;
     }
+    if menu.closing && !moving && menu_tick {
+        output.0.write(AppExit::Success);
+        return;
+    }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
-    if !moving {
+    if !moving && !menu.closing {
         if menu.capturing.is_some() {
             menu.blink_seconds += input.0.delta_secs();
             // Blink cadence is presentation policy; the original toggles on menu updates.
@@ -323,9 +355,13 @@ pub(super) fn drive(
                     }
                 }
             }
-        } else if keys.just_pressed(KeyCode::Escape) && menu.page != 0 {
-            let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
-            menu.open(book, target);
+        } else if keys.just_released(KeyCode::Escape) {
+            if menu.page != 0 {
+                let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
+                menu.open(book, target);
+            } else if menu.context == MenuContext::Death && !menu.main_disabled[1] {
+                next.set(AppState::InGame);
+            }
         } else {
             let directions = [
                 (KeyCode::ArrowUp, -1, false),
@@ -370,6 +406,13 @@ pub(super) fn drive(
             {
                 let entry = menu.entries[index].clone();
                 match entry.action {
+                    -1 if menu.context == MenuContext::Death && !menu.main_disabled[1] => {
+                        next.set(AppState::InGame);
+                    }
+                    -2 if menu.context == MenuContext::Death => {
+                        menu.unavailable =
+                            Some("Quit automatic-save preparation is unavailable.".into());
+                    }
                     -2 => {
                         #[cfg(target_arch = "wasm32")]
                         commands.write_message(super::QuitRequest);
@@ -379,7 +422,10 @@ pub(super) fn drive(
                             menu.closing = true;
                         }
                     }
-                    // shortcut: Load starts fresh until the save-slot system is implemented.
+                    2 if menu.context == MenuContext::Death => {
+                        menu.unavailable = Some("Saved-game selection is unavailable.".into());
+                    }
+                    // shortcut: Startup Load starts fresh until the save-slot system is implemented.
                     2 | 10 => {
                         if entry.action == 10 {
                             commands.queue(|world: &mut World| {
@@ -455,7 +501,7 @@ pub(super) fn drive(
                 if let Ok(mut sprite) = sprite.single_mut() {
                     sprite.image = menu.image.clone();
                 }
-                menu.ready = !moving;
+                menu.ready = !moving && !menu.closing;
                 menu.dirty = false;
             }
             Err(error) => {
@@ -465,7 +511,7 @@ pub(super) fn drive(
         }
     }
     if !menu.dirty {
-        menu.ready = !moving;
+        menu.ready = !moving && !menu.closing;
     }
     let message = menu.unavailable.clone().unwrap_or_default();
     if let Ok(mut notice) = output.1.single_mut() {
@@ -488,9 +534,18 @@ impl MenuState {
         self.entries = book.pages[&page]
             .entries
             .iter()
-            .map(|e| e.item.clone())
+            .enumerate()
+            .map(|(index, e)| {
+                let mut item = e.item.clone();
+                item.grayed |= self.main_entry_disabled(page, index);
+                item
+            })
             .collect();
-        self.selected = self.selections.get(&page).copied().flatten();
+        let start = self.selections.get(&page).copied().flatten().unwrap_or(0);
+        self.selected = (0..self.entries.len())
+            .map(|step| (start + step) % self.entries.len())
+            .find(|index| self.entries[*index].eligible());
+        self.selections.insert(page, self.selected);
         self.unavailable = self.persistence_error.clone();
         self.capturing = None;
         self.held_seconds = 0.0;
@@ -532,7 +587,18 @@ fn cleanup(
     clock: Option<ResMut<SimulationClock>>,
     time: Res<Time<Real>>,
     restored: Option<Res<cyrus_game::RestoredSessionEntry>>,
+    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    actors: Option<ResMut<cyrus_game::script::ScriptActors>>,
 ) {
+    if death.is_some() {
+        if restored.is_none()
+            && let Some(mut actors) = actors
+            && let Err(error) = actors.finish_death_book()
+        {
+            actors.report_runtime_error(format!("{error:#}"));
+        }
+        commands.remove_resource::<cyrus_game::script::DeathBookEntry>();
+    }
     if restored.is_none()
         && let Some(mut clock) = clock
         && let Some(timing) = menu.timing.take()
@@ -540,6 +606,31 @@ fn cleanup(
         clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
     }
     commands.remove_resource::<MenuState>();
+}
+
+#[derive(Component)]
+struct BookPausedCamera;
+
+fn pause_cameras(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
+) {
+    for (entity, mut camera) in &mut cameras {
+        if camera.is_active {
+            camera.is_active = false;
+            commands.entity(entity).insert(BookPausedCamera);
+        }
+    }
+}
+
+fn restore_cameras(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &mut Camera), With<BookPausedCamera>>,
+) {
+    for (entity, mut camera) in &mut cameras {
+        camera.is_active = true;
+        commands.entity(entity).remove::<BookPausedCamera>();
+    }
 }
 
 /// Enter the installed starting world after a completed New Game introduction,
@@ -656,6 +747,173 @@ mod tests {
             assert_eq!(clock.advance(sample).nominal_ticks, 1);
         }
         assert_eq!(clock.advance(sample).frame_scale, 512);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_death_book_restricts_resume_and_never_loads_a_fresh_world() {
+        use cyrus_assets::install::GameInstall;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = GameInstall::open(&root) else {
+            eprintln!("skipped: no install (death book)");
+            return;
+        };
+        let cache = std::env::temp_dir().join(format!("cyrus-death-book-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        let clock = SimulationClock::new(book.clock).unwrap();
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .init_state::<AppState>()
+        .init_asset::<MenuAsset>()
+        .init_asset::<Image>()
+        .init_asset::<Font>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<cyrus_game::preferences::Preferences>()
+        .init_resource::<cyrus_game::player::input::PlayerBindings>()
+        .add_message::<AppExit>()
+        .add_message::<SoundCue>()
+        .insert_resource(clock)
+        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(60),
+        ))
+        .add_systems(Update, drive);
+        let handle = app
+            .world_mut()
+            .resource_mut::<Assets<MenuAsset>>()
+            .add(book);
+        app.insert_resource(super::super::StartupPresentation {
+            menu: handle,
+            ..default()
+        });
+        app.insert_resource(cyrus_game::script::DeathBookEntry { override_group: 74 });
+        bevy::ecs::system::RunSystemOnce::run_system_once(app.world_mut(), setup).unwrap();
+        for _ in 0..12 {
+            app.update();
+        }
+        let menu = app.world().resource::<MenuState>();
+        assert!(menu.ready, "{:?}", menu.unavailable);
+        assert!(menu.entries[0].grayed);
+        assert!(menu.entries[5].grayed);
+        assert_ne!(menu.selected, Some(0));
+        assert_ne!(menu.selected, Some(5));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Escape);
+        app.update();
+        assert!(matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Unchanged
+        ));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        let load = app
+            .world()
+            .resource::<MenuState>()
+            .entries
+            .iter()
+            .position(|entry| entry.action == 2)
+            .unwrap();
+        app.world_mut().resource_mut::<MenuState>().selected = Some(load);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(
+            app.world().resource::<MenuState>().unavailable.as_deref(),
+            Some("Saved-game selection is unavailable.")
+        );
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        let quit = app
+            .world()
+            .resource::<MenuState>()
+            .entries
+            .iter()
+            .position(|entry| entry.action == -2)
+            .unwrap();
+        app.world_mut().resource_mut::<MenuState>().selected = Some(quit);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(
+            app.world().resource::<MenuState>().unavailable.as_deref(),
+            Some("Quit automatic-save preparation is unavailable.")
+        );
+        assert!(!app.world().resource::<MenuState>().closing);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_scope(|world, mut menu: Mut<MenuState>| {
+                menu.main_disabled = [false; 2];
+                menu.entries.clear();
+                let books = world.resource::<Assets<MenuAsset>>();
+                let handle = menu.asset.clone();
+                menu.open(books.get(&handle).unwrap(), 0);
+            });
+        assert!(!app.world().resource::<MenuState>().entries[5].grayed);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
+        app.update();
+        assert!(matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Unchanged
+        ));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Escape);
+        app.update();
+        assert!(matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Pending(AppState::InGame)
+        ));
+        std::fs::remove_dir_all(cache).unwrap();
+    }
+
+    #[test]
+    fn book_restores_only_cameras_it_paused() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let active = world.spawn((Camera3d::default(), Camera::default())).id();
+        let inactive = world
+            .spawn((
+                Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..default()
+                },
+            ))
+            .id();
+        world.run_system_once(pause_cameras).unwrap();
+        assert!(!world.get::<Camera>(active).unwrap().is_active);
+        assert!(world.get::<BookPausedCamera>(active).is_some());
+        assert!(world.get::<BookPausedCamera>(inactive).is_none());
+        world.run_system_once(restore_cameras).unwrap();
+        assert!(world.get::<Camera>(active).unwrap().is_active);
+        assert!(!world.get::<Camera>(inactive).unwrap().is_active);
+        assert!(world.get::<BookPausedCamera>(active).is_none());
     }
 
     #[test]

@@ -153,14 +153,15 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                 continue;
             }
             let selected = state.selections.get(page_id).copied().flatten() == Some(index)
-                && entry.item.eligible();
+                && entry.item.eligible()
+                && !state.main_entry_disabled(*page_id, index);
             let font = &book.fonts[usize::from(selected)];
             let surface = &mut surfaces[entry.texture];
             let style = if selected {
                 0
             } else if !entry.item.selectable {
                 3
-            } else if entry.item.grayed {
+            } else if entry.item.grayed || state.main_entry_disabled(*page_id, index) {
                 2
             } else {
                 1

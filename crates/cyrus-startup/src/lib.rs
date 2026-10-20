@@ -16,7 +16,7 @@ mod preparation;
 mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
-pub use menu::MenuState;
+pub use menu::{MenuContext, MenuState};
 #[cfg(not(target_arch = "wasm32"))]
 pub use preparation::LoadingPlugin;
 
@@ -102,6 +102,7 @@ struct StartupContent;
 impl Plugin for StartupPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartupPresentation>()
+            .init_resource::<cyrus_game::script::DeathDispatch>()
             .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
             .add_message::<QuitRequest>()
             .insert_resource(ClearColor(Color::BLACK))

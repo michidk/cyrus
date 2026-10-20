@@ -8,6 +8,29 @@ use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorldLoopExit;
 
+/// Main-dispatcher selection, retained outside saved gameplay and world replacement.
+/// Hosts update it when admitting an autosave, preparing a save or selecting a Load row.
+#[derive(Clone, Debug)]
+pub struct LastSaveSelection {
+    /// Original save-directory number; manual slots use 2 through 299.
+    pub slot: u16,
+    /// Owned description used by the last-game confirmation.
+    pub description: String,
+}
+
+/// Registered by a host that supplies the death book. Initial process state has no last save.
+/// This owner must not be reset on a world change or included in a gameplay snapshot.
+#[derive(Resource, Default)]
+pub struct DeathDispatch {
+    pub last_save: Option<LastSaveSelection>,
+}
+
+/// Context-three book entry, retained until the book returns to its dispatcher.
+#[derive(Resource)]
+pub struct DeathBookEntry {
+    pub override_group: i32,
+}
+
 /// Destination of a `LoadWorld(world, marker, heading)` call. The heading is masked to 0 through
 /// 2047 as preservation documents; the world index is validated against WORLD.INI by the scene
 /// preparation that consumes the [`SceneRequest`], which reports failure as `SceneLoadError`.
@@ -38,13 +61,15 @@ pub(crate) fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyho
 }
 
 /// Runs after actor and presentation work. A pending world destination takes
-/// priority without advancing the falling timer. Death dispatch remains explicit
-/// until the last-save/menu owner is available; it never starts a fresh world.
+/// priority without advancing the falling timer. The host can enter the no-save
+/// death book; unavailable confirmation/loading never starts a fresh world.
 pub(super) fn consume(
     mut actors: ResMut<ScriptActors>,
     mut commands: Commands,
     clock: Option<Res<crate::clock::SimulationClock>>,
     state: Option<Res<State<crate::AppState>>>,
+    dispatch: Option<Res<DeathDispatch>>,
+    mut next: Option<ResMut<NextState<crate::AppState>>>,
     mut checked: Local<Option<(u64, u32, u32)>>,
 ) {
     if actors.error.is_some() || state.is_some_and(|state| *state.get() != crate::AppState::InGame)
@@ -90,14 +115,40 @@ pub(super) fn consume(
             }
         }
         Ok(outcome) => {
-            actors.world_loop_outcome = Some(outcome);
-            let service = match outcome {
-                WorldLoopOutcome::Death => "last-save/menu dispatcher",
-                _ => "win dispatcher",
+            let result = match outcome {
+                WorldLoopOutcome::Death => (|| -> anyhow::Result<()> {
+                    let dispatch = dispatch
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("last-save/menu dispatcher unavailable"))?;
+                    if let Some(save) = &dispatch.last_save {
+                        anyhow::bail!(
+                            "last-save slot {} confirmation/loading unavailable",
+                            save.slot
+                        );
+                    }
+                    let group = world
+                        .globals()
+                        .player_death_override_group()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("death book: selected override owner unavailable")
+                        })?;
+                    let next = next.as_mut().ok_or_else(|| {
+                        anyhow::anyhow!("death book: application state unavailable")
+                    })?;
+                    commands.insert_resource(DeathBookEntry {
+                        override_group: group,
+                    });
+                    next.set(crate::AppState::Menu);
+                    Ok(())
+                })(),
+                _ => Err(anyhow::anyhow!("win dispatcher unavailable")),
             };
-            actors.report_runtime_error(format!(
-                "world {world_id} {outcome:?} world-loop outcome: {service} unavailable"
-            ));
+            actors.world_loop_outcome = Some(outcome);
+            if let Err(error) = result {
+                actors.report_runtime_error(format!(
+                    "world {world_id} {outcome:?} world-loop outcome: {error:#}"
+                ));
+            }
         }
         Err(error) => actors.report_runtime_error(format!("{error:#}")),
     }

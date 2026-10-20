@@ -155,12 +155,16 @@ fn request(assets: &AssetServer, music: &mut Music, track: u32) {
 }
 
 fn start_menu_track(
+    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     settings: Option<Res<SoundSettings>>,
     audio: Option<Res<Assets<AudioSource>>>,
     mut music: ResMut<Music>,
 ) {
+    if death.is_some() {
+        return;
+    }
     if music_enabled(&settings, &audio) {
         #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, MENU_TRACK);
@@ -350,6 +354,28 @@ fn pause_track(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn death_book_keeps_the_current_cd_track() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let mut settings = SoundSettings::parse("");
+        settings.music = true;
+        world.insert_resource(settings);
+        world.insert_resource(Assets::<AudioSource>::default());
+        world.insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        });
+        world.insert_resource(cyrus_game::script::DeathBookEntry { override_group: 74 });
+        world.insert_resource(Music {
+            track: Some(7),
+            ..default()
+        });
+        world.run_system_once(start_menu_track).unwrap();
+        let music = world.resource::<Music>();
+        assert_eq!(music.track, Some(7));
+        assert!(music.load.is_none());
+    }
 
     fn prepared_music(source: AudioSource, volume: i32, cinematic: bool) -> App {
         let mut app = App::new();

@@ -5,8 +5,12 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Menu cache revision preserving authored flags for caller-specific restrictions.
+pub const MENU_VERSION: u32 = 15;
+
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
+    pub version: u32,
     /// Installed shared game-clock settings, available before entering a world.
     pub clock: crate::script::ClockSettings,
     /// Installed WORLD.INI destination and marker, read through preservation.
@@ -103,6 +107,11 @@ pub struct MenuPicture {
 
 impl MenuAsset {
     pub fn validate(&self) -> anyhow::Result<()> {
+        ensure!(
+            self.version == MENU_VERSION,
+            "menu: cache version {} unsupported; re-export",
+            self.version
+        );
         self.clock.validate()?;
         ensure!(
             self.palette.len() == 256 && self.key_names.len() == 140,

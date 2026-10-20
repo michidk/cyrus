@@ -2247,6 +2247,23 @@ fn apply_player_lockout(
 }
 
 impl ScriptActors {
+    /// Run after the death book returns, before loading another game. Clear only
+    /// hit inhibition, retaining the override group, death progress and falling timer.
+    /// A replacement session must not apply this operation to its restored state.
+    pub fn finish_death_book(&mut self) -> Result<()> {
+        let globals = self
+            .current
+            .as_mut()
+            .map_or(&mut self.globals, |world| &mut world.globals);
+        globals
+            .selected_health
+            .as_mut()
+            .context("death book return: selected health unavailable")?
+            .set_hit_inhibited(false);
+        self.world_loop_outcome = None;
+        Ok(())
+    }
+
     /// Apply New Game's lockout cleanup and combat-queue reset before world replacement.
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {

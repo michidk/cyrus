@@ -103,7 +103,11 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
             .validate()
             .is_err()
     );
-    for page_id in [1, 2] {
+    assert_eq!(menu["version"], cyrus_assets::menu::MENU_VERSION);
+    let mut legacy = menu.clone();
+    legacy.as_object_mut().unwrap().remove("version");
+    assert!(serde_json::from_value::<cyrus_assets::menu::MenuAsset>(legacy).is_err());
+    for page_id in [0, 1, 2] {
         let installed = rgpre::import::menu_ini::MenuPage::parse(&ini, page_id).unwrap();
         let exported = menu["pages"][page_id.to_string()]["entries"]
             .as_array()
@@ -147,13 +151,15 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     assert!(
         entries
             .iter()
-            .filter(|entry| ![-2, 2, 3, 4, 10].contains(&entry["item"]["action"].as_i64().unwrap()))
+            .filter(
+                |entry| ![-2, -1, 2, 3, 4, 10].contains(&entry["item"]["action"].as_i64().unwrap())
+            )
             .all(|entry| entry["item"]["implemented"] == false)
     );
     assert!(
         entries
             .iter()
-            .filter(|entry| [2, 10].contains(&entry["item"]["action"].as_i64().unwrap()))
+            .filter(|entry| [-1, 2, 10].contains(&entry["item"]["action"].as_i64().unwrap()))
             .all(|entry| entry["item"]["implemented"] == true)
     );
     let display = menu["pages"]["5"]["entries"].as_array().unwrap();

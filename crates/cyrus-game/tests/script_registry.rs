@@ -25914,6 +25914,94 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
             .falling_elapsed(),
         Some(145)
     );
+
+    let world = app
+        .world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current
+        .take()
+        .unwrap();
+    let mut host = bevy::prelude::App::new();
+    host.add_plugins(cyrus_game::script::ScriptPlugin)
+        .init_resource::<cyrus_game::script::DeathDispatch>()
+        .init_resource::<bevy::prelude::NextState<cyrus_game::AppState>>()
+        .insert_resource(cyrus_game::clock::SimulationClock::new(scripts.clock).unwrap());
+    host.world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current = Some(world);
+    host.world_mut().run_schedule(bevy::prelude::Last);
+    assert_eq!(
+        host.world()
+            .resource::<cyrus_game::script::DeathBookEntry>()
+            .override_group,
+        0
+    );
+    assert!(matches!(
+        host.world()
+            .resource::<bevy::prelude::NextState<cyrus_game::AppState>>(),
+        bevy::prelude::NextState::Pending(cyrus_game::AppState::Menu)
+    ));
+    assert!(
+        !host
+            .world()
+            .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
+    );
+    assert_eq!(
+        host.world()
+            .resource::<cyrus_game::script::ScriptActors>()
+            .world_loop_outcome,
+        Some(WorldLoopOutcome::Death)
+    );
+
+    // An available save must reach confirmation, never the no-save book or a fresh world.
+    let world = host
+        .world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current
+        .take()
+        .unwrap();
+    let mut confirmation = bevy::prelude::App::new();
+    confirmation
+        .add_plugins(cyrus_game::script::ScriptPlugin)
+        .insert_resource(cyrus_game::script::DeathDispatch {
+            last_save: Some(cyrus_game::script::LastSaveSelection {
+                slot: 0,
+                description: "saved state".into(),
+            }),
+        })
+        .init_resource::<bevy::prelude::NextState<cyrus_game::AppState>>()
+        .insert_resource(cyrus_game::clock::SimulationClock::new(scripts.clock).unwrap());
+    confirmation
+        .world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current = Some(world);
+    confirmation.world_mut().run_schedule(bevy::prelude::Last);
+    assert!(
+        !confirmation
+            .world()
+            .contains_resource::<cyrus_game::script::DeathBookEntry>()
+    );
+    assert!(
+        !confirmation
+            .world()
+            .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
+    );
+    assert!(matches!(
+        confirmation
+            .world()
+            .resource::<bevy::prelude::NextState<cyrus_game::AppState>>(),
+        bevy::prelude::NextState::Unchanged
+    ));
+    assert_eq!(
+        confirmation
+            .world()
+            .resource::<cyrus_game::script::DeathDispatch>()
+            .last_save
+            .as_ref()
+            .unwrap()
+            .slot,
+        0
+    );
 }
 
 #[test]

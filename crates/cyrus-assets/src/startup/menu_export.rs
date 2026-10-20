@@ -72,13 +72,6 @@ pub(crate) fn prepare_menu(
     let mut pages = BTreeMap::new();
     for id in 0..=7 {
         let mut page = menu_ini::MenuPage::parse(ini, id).map_err(anyhow::Error::msg)?;
-        if id == 0 {
-            for entry in &mut page.entries {
-                if matches!(entry.action, 1 | -1) {
-                    entry.grayed = true;
-                }
-            }
-        }
         if id == 5 {
             page.entries.retain(|e| !matches!(e.action, 501..=503));
         }
@@ -170,7 +163,7 @@ pub(crate) fn prepare_menu(
     let directory = Path::new("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        14u32,
+        crate::menu::MENU_VERSION,
         &ini_bytes,
         (&world_bytes, &flash_bytes, &loading_font_bytes),
         &keys_bytes,
@@ -226,7 +219,7 @@ pub(crate) fn prepare_menu(
         let mut entries = Vec::new();
         for entry in &page.entries {
             entries.push(MenuEntry {
-                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 2 | 3 | 4 | 10 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
+                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | -1 | 2 | 3 | 4 | 10 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
                 position: entry.position, output_position: entry.output_position, justify: entry.justify, output_justify: entry.output_justify, slider: entry.slider, texture: surface(entry.texture)?,
             });
         }
@@ -276,6 +269,7 @@ pub(crate) fn prepare_menu(
         }
     }
     let book = MenuAsset {
+        version: crate::menu::MENU_VERSION,
         clock,
         new_game: crate::menu::NewGameEntry {
             world: new_game.world,

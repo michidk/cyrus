@@ -757,6 +757,33 @@ mod tests {
     use super::SelectedHealthState;
 
     #[test]
+    fn death_book_return_clears_only_inhibition_and_terminal_outcome() {
+        let mut actors = crate::script::ScriptActors::default();
+        actors.globals.selected_health = Some(SelectedHealthState::initialized(0));
+        actors.globals.initialize_player_controller();
+        actors.globals.set_player_death_override_group(74).unwrap();
+        let health = actors.globals.selected_health.as_mut().unwrap();
+        health.hit_inhibited = true;
+        health.falling_elapsed = Some(145);
+        health.death.as_mut().unwrap().progress = 99;
+        actors.world_loop_outcome = Some(crate::script::WorldLoopOutcome::Death);
+        actors.finish_death_book().unwrap();
+        let health = actors.globals.selected_health().unwrap();
+        assert!(!health.hit_inhibited());
+        assert_eq!(health.falling_elapsed(), Some(145));
+        assert_eq!(health.death().unwrap().progress(), 99);
+        assert_eq!(actors.globals.player_death_override_group(), Some(74));
+        assert!(actors.world_loop_outcome.is_none());
+        actors.globals.selected_health = None;
+        actors.world_loop_outcome = Some(crate::script::WorldLoopOutcome::Death);
+        assert!(actors.finish_death_book().is_err());
+        assert_eq!(
+            actors.world_loop_outcome,
+            Some(crate::script::WorldLoopOutcome::Death)
+        );
+    }
+
+    #[test]
     fn player_initialization_resets_death_counters_but_preserves_captured_position() {
         let mut globals = crate::script::GameplayGlobals::default();
         globals.selected_health = Some(

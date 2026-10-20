@@ -73,6 +73,9 @@ version-15 `.scripts` sidecar retains the validated SYSTEM.INI clock and ordinar
 origins, definitions, fresh-game flag values, locals, strings,
 initialized attributes, typed native hooks and explicit unsupported records. Placement records retain
 the original model name and complete model-mode byte for actor initialization.
+Menu cache schema 15 preserves authored Save/Continue flags for caller-specific
+runtime restrictions. Re-export older menu caches.
+
 The menu cache also carries the clock settings, using the same typed conversion
 and validation as world scripts. Its source stamp invalidates older menu exports.
 Preparation includes installed pages 0 through 7, including Save and Load layout.

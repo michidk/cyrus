@@ -34,6 +34,21 @@ struct CameraMove {
 }
 
 impl BookMotion {
+    /// Death context three uses the default short main-page entry, without a cover turn.
+    pub fn death_entry(frame_counts: [usize; 5]) -> Self {
+        let mut motion = Self {
+            pose: BookPose {
+                camera: [-4.0, -100.0, 240.0],
+                ..BookPose::default()
+            },
+            frame_counts,
+            turns: std::array::from_fn(|_| None),
+            camera: VecDeque::new(),
+        };
+        motion.request([0.0; 3], 0, 0.15);
+        motion
+    }
+
     pub fn opening(frame_counts: [usize; 5]) -> Self {
         let mut motion = Self {
             pose: BookPose {
@@ -318,6 +333,20 @@ mod tests {
         assert!(!motion.busy());
         assert_eq!(motion.pose.frames, [0; 5]);
         assert_eq!(motion.pose.camera, [0.0; 3]);
+    }
+
+    #[test]
+    fn death_entry_keeps_the_open_cover_and_settles_without_a_sound() {
+        let mut motion = BookMotion::death_entry([9, 9, 0, 9, 9]);
+        assert_eq!(motion.pose.frames, [0; 5]);
+        assert_eq!(motion.pose.camera, [-4.0, -100.0, 240.0]);
+        assert!(motion.tick(|_| panic!("death entry must not turn the cover")));
+        assert_eq!(motion.pose.camera, [-3.0, -84.0, 203.0]);
+        for _ in 0..5 {
+            assert!(motion.tick(|_| panic!("death entry cue")));
+        }
+        assert_eq!(motion.pose.camera, [0.0; 3]);
+        assert!(!motion.tick(|_| panic!("settled death entry cue")));
     }
 
     #[test]

@@ -53,7 +53,12 @@ quantization need a hardware comparison before claiming pixel-exact rendering.
 The book menu derives entries, layout, texture slots, widgets, and action IDs
 from `MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).
 Startup entry uses preservation's context-one cover sweep and delayed opening cue.
-Death context three has a separate short entry path; dispatch into it remains unavailable.
+Death context three uses its short entry path when the startup host has no retained
+last-save selection. It suspends ordinary actor updates, disables world cameras,
+and applies the selected actor override to Save/Continue availability. Returning
+clears hit inhibition and the terminal outcome. Available-save confirmation and
+loading and Quit automatic-save preparation remain explicitly unavailable;
+direct-scene hosts do not install this service.
 Its portable `cache/menu/book.menu` retains all authored model frames and topology,
 textures, indexed fonts, previews, and defaults. Native and browser builds project
 the current book pose and redraw neighboring-page text during camera entry, page
