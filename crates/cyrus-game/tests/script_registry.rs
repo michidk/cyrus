@@ -3090,6 +3090,21 @@ fn player_hanging_is_false_outside_the_hanging_state() {
 }
 
 #[test]
+fn speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000() {
+    // The helper's frame scale is 256, which maps values to themselves with the sign kept.
+    assert_eq!(run_native_calls(&[("SpeedScale", &[1234])]).unwrap(), 1234);
+    assert_eq!(run_native_calls(&[("SpeedScale", &[-300])]).unwrap(), -300);
+    let exit = |code: i32| {
+        let mut world = run_native_world(&[("MainloopExit", &[code])]).unwrap();
+        world.globals_mut().take_host_requests().mainloop_exit
+    };
+    assert_eq!(exit(4999), None);
+    assert_eq!(exit(5000), Some(5000));
+    assert_eq!(exit(-7), None, "the comparison is signed");
+    assert!(run_native_world(&[("SpeedScale", &[])]).is_err());
+}
+
+#[test]
 fn queue_movie_plays_five_through_ten_at_once_and_queues_the_rest_for_the_next_load() {
     let queued = |calls: &[(&str, &[i32])]| {
         let mut world = run_native_world(calls).unwrap();
@@ -15809,6 +15824,7 @@ fn session_request_natives_raise_requests_for_the_host() {
             push_player: true,
             pop_player: true,
             play_movie: None,
+            mainloop_exit: None,
         }
     );
     assert_eq!(

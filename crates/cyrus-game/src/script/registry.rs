@@ -4379,6 +4379,36 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("Animal") {
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("SpeedScale") {
+            let [value] = arguments else {
+                anyhow::bail!("SpeedScale requires one argument")
+            };
+            let scale = self
+                .inputs
+                .frame_scale
+                .context("SpeedScale requires frame_scale")?;
+            return Ok(CallResult::Complete(
+                value.integer()?.wrapping_mul(scale as i32) >> 8,
+            ));
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("MainloopExit") {
+            let [code] = arguments else {
+                anyhow::bail!("MainloopExit requires one argument")
+            };
+            let code = code.integer()?;
+            if code >= 5000 {
+                self.registry.globals.request_mut().mainloop_exit = Some(code);
+            }
+            return Ok(CallResult::Complete(0));
+        }
+        // updatePlayerViewAttrib is an empty routine in the original, with no portable result.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("updatePlayerViewAttrib") {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "updatePlayerViewAttrib requires no arguments"
+            );
+            return Ok(CallResult::CompleteWithoutValue);
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("QueueMovie") {
             let [movie] = arguments else {
                 anyhow::bail!("QueueMovie requires one argument")

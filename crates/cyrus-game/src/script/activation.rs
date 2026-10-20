@@ -234,6 +234,8 @@ pub struct HostRequests {
     /// `QueueMovie` named a movie from five through ten, which plays at once, outside the world
     /// load; the movie queue is empty afterwards.
     pub play_movie: Option<i32>,
+    /// `MainloopExit` code, retained when at least 5000; the main loop leaves with it.
+    pub mainloop_exit: Option<i32>,
 }
 impl GameplayGlobals {
     /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
