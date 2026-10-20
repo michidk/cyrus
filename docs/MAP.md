@@ -151,6 +151,7 @@ module where it is defined and regenerate.
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
+- `src/script/lineup.rs` — The pickup and plain player-alignment movers, as decision logic over a port.
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 - `src/script/maintenance.rs` — Ordered sound maintenance follows preservation's engine/sound.md.
 - `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
