@@ -253,13 +253,9 @@ impl ScriptWorld {
             .context("player turn control unavailable")?;
         let torch = control.torch_burning != 0;
         // Actor bytes +0x1b2 and +0x1b3: the falling and queued-motion bytes.
-        let free = control.falling_state == 0 && control.queued_motion == 0;
-        // The held walk key turns only with forward or backward, and silently.
-        let (turns, animates) = if held.walk {
-            (free && (held.forward || held.backward), false)
-        } else {
-            (free && matches!(control.living_state, 0 | 27), true)
-        };
+        let eligible = control.falling_state == 0
+            && control.queued_motion == 0
+            && (held.walk || matches!(control.living_state, 0 | 27));
         let running = matches!(
             self.actors[index]
                 .animation
@@ -267,22 +263,21 @@ impl ScriptWorld {
                 .and_then(|animation| animation.playback.current_group()),
             Some(18 | 30)
         );
-        let delta = self.globals.turn.delta(timing.frame_scale);
         let angles = self.spatial(id)?.local.angles;
-        let heading = if turns {
-            turn::turned(angles[1], delta)
-        } else {
-            angles[1]
-        };
-        let roll = if turns && animates {
-            turn::lean(angles[2], delta, running)
-        } else if running {
-            angles[2]
-        } else {
-            turn::relax(angles[2])
-        };
-        if turns && animates && delta != 0 {
-            let group = 14 + u16::from(delta > 0) + 2 * u16::from(torch);
+        let result = turn::ground_turn(
+            angles[1],
+            angles[2],
+            turn::GroundTurnInput {
+                delta: self.globals.turn.delta(timing.frame_scale),
+                running,
+                torch,
+                walk_key: held.walk,
+                forward_or_backward: held.forward || held.backward,
+                eligible,
+            },
+        );
+        let (heading, roll) = (result.heading, result.roll);
+        if let Some(group) = result.group {
             let position = self.spatial(id)?.local.position;
             let surface = self.actor_surface(id)?;
             let animation = self.actors[index]

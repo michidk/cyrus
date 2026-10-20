@@ -88,3 +88,61 @@ pub fn relax(roll: u16) -> u16 {
         0
     }
 }
+
+/// Inputs of one ordinary keyboard turn update for the sheathed grounded player.
+#[derive(Clone, Copy, Debug)]
+pub struct GroundTurnInput {
+    /// Scaled right minus scaled left amount, from [`GroundTurn::delta`].
+    pub delta: i64,
+    /// The current animation group is 18 or 30.
+    pub running: bool,
+    pub torch: bool,
+    /// The walk key (installed key_a) is held.
+    pub walk_key: bool,
+    /// Forward or backward is held.
+    pub forward_or_backward: bool,
+    /// Living state 0 or 27 with the falling and queued-motion bytes zero.
+    pub eligible: bool,
+}
+
+/// Heading, roll and turn animation group chosen by one keyboard turn update.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GroundTurnResult {
+    pub heading: u16,
+    pub roll: u16,
+    pub group: Option<u16>,
+}
+
+/// The keyboard turn rule of preservation's player.md "Ground-turn eligibility and animation".
+/// The held walk key turns only with forward or backward, silently and without banking.
+pub fn ground_turn(heading: u16, roll: u16, input: GroundTurnInput) -> GroundTurnResult {
+    let (turns, animates) = if input.walk_key {
+        (input.eligible && input.forward_or_backward, false)
+    } else {
+        (input.eligible, true)
+    };
+    let roll = if turns && animates {
+        if input.running {
+            lean(roll, input.delta, true)
+        } else if input.delta == 0 {
+            // The no-turn branch relaxes, then the general relaxation after it runs too.
+            relax(relax(roll))
+        } else {
+            relax(roll)
+        }
+    } else if input.running {
+        roll
+    } else {
+        relax(roll)
+    };
+    GroundTurnResult {
+        heading: if turns {
+            turned(heading, input.delta)
+        } else {
+            heading
+        },
+        roll,
+        group: (turns && animates && input.delta != 0)
+            .then(|| 14 + u16::from(input.delta > 0) + 2 * u16::from(input.torch)),
+    }
+}
