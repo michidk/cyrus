@@ -508,7 +508,7 @@ fn play(
         } => json!({"kind": "play", "authored": effect, "rate_offset_hz": rate_offset_hz}),
         AnimationSound::Stop => json!({"kind": "stop"}),
         AnimationSound::Forget => json!({"kind": "forget"}),
-        AnimationSound::Event { .. } => {
+        AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
             bail!("surface audio comparison covers sounds, not actor events")
         }
     };

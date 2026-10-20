@@ -17,14 +17,20 @@ enum Command {
         rate_shift: Option<i64>,
     },
     Event(u32),
+    Transition(u32),
     Unsupported(u8),
 }
 
 /// Authored animation operations dispatched synchronously by the actor's caller, in command order.
 /// The caller owns surface remapping, positional gains, channel allocation and its last handle.
-/// `Event` is not a sound: sound consumers ignore it and the world host owns its effects.
+/// `Event` and `Transition` are not sounds: sound consumers ignore them and the world host owns
+/// their effects and decisions.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnimationSound {
+    /// A forward `Transition` command's trigger mask. The host decides whether the transition is
+    /// taken; returning `Ok` continues with the next command, and an error stops playback, which
+    /// is how a host refuses a mask whose state it does not model. Reverse playback never asks.
+    Transition { mask: u32 },
     /// The actor-event service with the command's operand: a bit set the host maps to surface
     /// effects and a screen-shake impulse.
     Event { flags: u32 },
@@ -209,6 +215,12 @@ impl FrameSequence {
                         format!("{context} command {index}: event operand outside u32 range")
                     })?)
                 }
+                15 => match command["trigger_mask"].as_u64().map(u32::try_from) {
+                    Some(mask) => Command::Transition(mask.with_context(|| {
+                        format!("{context} command {index}: trigger mask outside u32 range")
+                    })?),
+                    None => Command::Unsupported(15),
+                },
                 12 => {
                     let value = command["value"].as_i64().with_context(|| {
                         format!("{context} command {index}: delay operand absent")
@@ -514,6 +526,19 @@ impl FrameSequence {
                     );
                     self.dispatch_sound(sounds, AnimationSound::Event { flags })?;
                     self.command = self.command.wrapping_add(step);
+                }
+                Command::Transition(_) if reverse => {
+                    self.command = self.command.wrapping_sub(1);
+                }
+                Command::Transition(mask) => {
+                    anyhow::ensure!(
+                        sounds.is_some(),
+                        "{} command {}: opcode 15 playback unsupported",
+                        self.context,
+                        self.command
+                    );
+                    self.dispatch_sound(sounds, AnimationSound::Transition { mask })?;
+                    self.command = self.command.wrapping_add(1);
                 }
                 Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {
                     self.command = self.command.wrapping_sub(1);

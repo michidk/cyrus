@@ -385,8 +385,10 @@ impl SoundFrame<'_, '_> {
                     AnimationSound::Forget => {
                         channels.animation.remove(actor);
                     }
-                    AnimationSound::Event { .. } => {
-                        warn_once!("sound: animation actor events belong to the world host");
+                    AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
+                        warn_once!(
+                            "sound: animation events and transitions belong to the world host"
+                        );
                     }
                 },
             }

@@ -302,3 +302,53 @@ fn reverse_boundary_sound_failure_restores_its_signed_cursor_and_sticky_error() 
             .contains("sound backend unavailable")
     );
 }
+
+#[test]
+fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
+    let transition = json!({"opcode":15,"trigger_mask":2,"start_frame":0,"target_group":36});
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = json!([
+        transition.clone(),
+        {"opcode":0,"frame_reference":70},
+        {"opcode":1}
+    ]);
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut seen = vec![];
+    let frame = actor
+        .request_with_sounds(7, 0, 0, &mut |event| {
+            seen.push(event);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        frame,
+        Some(70),
+        "the transition continues to the next command"
+    );
+    assert_eq!(seen, [AnimationSound::Transition { mask: 2 }]);
+    let mut refused = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let error = refused
+        .request_with_sounds(7, 0, 0, &mut |_| anyhow::bail!("combat state unmodelled"))
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("combat state unmodelled"),
+        "{error:#}"
+    );
+    let mut bare = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    assert!(
+        format!("{:#}", bare.request(7, 0, 0).unwrap_err())
+            .contains("opcode 15 playback unsupported")
+    );
+    // Reverse playback steps back over the command without asking the host.
+    let mut data = self::data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"][3] = transition;
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    actor.request(7, 0, 0).unwrap();
+    let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
+    saved["current"][1]["command"] = 3.into();
+    saved["reverse"] = true.into();
+    let mut actor =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_value(saved).unwrap())
+            .unwrap();
+    assert_eq!(actor.advance(0).unwrap(), Some(72));
+}

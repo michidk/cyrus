@@ -796,6 +796,26 @@ fn queued_step(
     });
 }
 
+/// Decide a forward animation `Transition` command. **Inferred** from the original's decision
+/// routine: masks 1 and 2 take the transition only when a jump-request word is set, and no
+/// shipped engine code ever sets it, so they continue with the next command; mask 8 acts only for
+/// the selected player, so every other actor continues; any other mask continues. Mask 4 reads a
+/// combat state byte and mask 8 for the selected player reads a combat input global, neither of
+/// which cyrus models, so those fail instead of guessing.
+fn transition_continues(
+    actor: ScriptActorId,
+    mask: u32,
+    selected_player: Option<ScriptActorId>,
+) -> anyhow::Result<()> {
+    match mask {
+        4 => anyhow::bail!("animation transition on the combat counter flag is unsupported"),
+        8 if Some(actor) == selected_player => {
+            anyhow::bail!("selected-player combat animation transition is unsupported")
+        }
+        _ => Ok(()),
+    }
+}
+
 fn send_actor_sound(
     actor: ScriptActorId,
     sound: super::super::ScriptSound,
@@ -805,9 +825,13 @@ fn send_actor_sound(
 ) -> anyhow::Result<()> {
     let cue = match sound {
         super::super::ScriptSound::Animation {
-            sound: cyrus_world::animation::AnimationSound::Event { .. },
+            sound:
+                cyrus_world::animation::AnimationSound::Event { .. }
+                | cyrus_world::animation::AnimationSound::Transition { .. },
             ..
-        } => anyhow::bail!("animation actor event outside an ordinary update is unsupported"),
+        } => anyhow::bail!(
+            "animation actor event or transition outside an ordinary update is unsupported"
+        ),
         super::super::ScriptSound::Animation {
             sound,
             surface,
@@ -998,7 +1022,17 @@ pub fn run_ordinary(
     // Actor events are not sounds: keep each with the surface and position captured when its
     // command ran, and apply them to the world once the stage that emitted them returns.
     let events = std::cell::RefCell::new(Vec::new());
+    let selected_player = world
+        .selected_player_index()
+        .and_then(|index| world.id(index).ok());
     let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
+        if let super::super::ScriptSound::Animation {
+            sound: cyrus_world::animation::AnimationSound::Transition { mask },
+            ..
+        } = sound
+        {
+            return transition_continues(actor, mask, selected_player);
+        }
         if let super::super::ScriptSound::Animation {
             sound: cyrus_world::animation::AnimationSound::Event { flags },
             surface,
@@ -1204,5 +1238,31 @@ pub fn run_ordinary(
         )
     {
         actors.error = Some(format!("camera frame: {error:#}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transitions_continue_except_the_unmodelled_combat_masks() {
+        let other = ScriptActorId {
+            generation: 1,
+            index: 3,
+        };
+        let player = ScriptActorId {
+            generation: 1,
+            index: 5,
+        };
+        for mask in [0, 1, 2, 3, 5, 16, 63] {
+            assert!(transition_continues(other, mask, Some(player)).is_ok());
+            assert!(transition_continues(player, mask, Some(player)).is_ok());
+        }
+        assert!(transition_continues(other, 8, Some(player)).is_ok());
+        assert!(transition_continues(other, 8, None).is_ok());
+        assert!(transition_continues(player, 8, Some(player)).is_err());
+        assert!(transition_continues(other, 4, Some(player)).is_err());
+        assert!(transition_continues(player, 4, None).is_err());
     }
 }
