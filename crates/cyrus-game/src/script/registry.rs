@@ -4077,6 +4077,50 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        // PlayerTurned, PlayerTurnedDirection and PlayerMovementSpeed read the selected player; the
+        // original also returns zero for an actor without its model handle, assumed present here.
+        if [
+            "PlayerTurned",
+            "PlayerTurnedDirection",
+            "PlayerMovementSpeed",
+        ]
+        .iter()
+        .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let player = self
+                .selected_player()
+                .with_context(|| format!("{function}: selected player unavailable"))?;
+            let index = self.registry.resolve(player)?;
+            if function.eq_ignore_ascii_case("PlayerMovementSpeed") {
+                let actor = &self.registry.actors[index];
+                let animation = actor
+                    .animation
+                    .as_ref()
+                    .context("PlayerMovementSpeed: selected-player animation unavailable")?;
+                let value = animation
+                    .playback
+                    .current_group()
+                    .and_then(super::player_status::movement_speed_attribute)
+                    .map_or(0, |attribute| i32::from(actor.attributes[attribute]));
+                return Ok(CallResult::Complete(value));
+            }
+            let spatial = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("spatial state not prepared")?
+                .actor(index)?;
+            let value = if function.eq_ignore_ascii_case("PlayerTurned") {
+                super::player_status::player_turned(spatial.local.angles, spatial.angle_history)
+            } else {
+                super::player_status::player_turned_direction(
+                    spatial.local.angles[1],
+                    spatial.angle_history[1],
+                )
+            };
+            return Ok(CallResult::Complete(value));
+        }
         // PlayerStatus classifies the selected player; the motion bytes are the inferred
         // actor bytes +0x1b1 through +0x1b3 and the living state +0x1b4.
         if function.eq_ignore_ascii_case("PlayerStatus") {
@@ -4698,11 +4742,31 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::Complete(i32::from(visible)));
         }
+        if function.eq_ignore_ascii_case("DistanceToLocation") {
+            let [location] = arguments else {
+                anyhow::bail!("DistanceToLocation requires one argument")
+            };
+            let mut inputs = self
+                .inputs
+                .player_query
+                .context("player query inputs unavailable")?;
+            let spatial = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("spatial state not prepared")?
+                .actor(self.index)?;
+            inputs.linked_position = Some(spatial.linked_position);
+            return Ok(CallResult::Complete(
+                spatial.location_distance(location.integer()?, inputs)?,
+            ));
+        }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("AcuratePlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
             || function.eq_ignore_ascii_case("PlayerLooking")
             || function.eq_ignore_ascii_case("PlayerArc")
+            || function.eq_ignore_ascii_case("PlayerArctan")
         {
             let mut inputs = self
                 .inputs

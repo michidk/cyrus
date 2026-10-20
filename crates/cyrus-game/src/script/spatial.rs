@@ -442,6 +442,31 @@ impl ActorSpatial {
         Ok((receiver_position, player_position))
     }
 
+    /// `DistanceToLocation`: the rounded Euclidean length, in Q8 units, from the receiver to the
+    /// selected location. A selector below zero or above the location count selects the home
+    /// location; one equal to the count reads past the table in the original and is unsupported.
+    pub fn location_distance(&self, location: i32, inputs: QueryInputs) -> Result<i32> {
+        let receiver = if self.parent.is_some() {
+            self.query_pose()?.position
+        } else {
+            inputs
+                .linked_position
+                .context("DistanceToLocation: linked-position state unavailable")?
+                .unwrap_or(self.local.position)
+        };
+        let count = i32::try_from(self.locations.len())
+            .context("DistanceToLocation: location count exceeds signed range")?;
+        let target = if location < 0 || location > count {
+            self.locations.first()
+        } else {
+            self.locations.get(location as usize)
+        }
+        .context("DistanceToLocation: location selector equals the location count: original out-of-range access unsupported")?;
+        rounded_distance(std::array::from_fn(|axis| {
+            receiver[axis].wrapping_sub(target[axis])
+        }))
+    }
+
     /// Distance the `RTX` task compares with `dialog_max_distance`: the rounded Euclidean length of
     /// the receiver-to-player difference, shifted right eight bits (arithmetic) to whole units.
     /// Unlike `PlayerDistance` it is not replaced by the `neversaydie` override.
@@ -464,8 +489,17 @@ impl ActorSpatial {
         let facing = name.eq_ignore_ascii_case("PlayerFacing");
         let looking = name.eq_ignore_ascii_case("PlayerLooking");
         let arc = name.eq_ignore_ascii_case("PlayerArc");
-        if !distance && !facing && !looking && !arc {
+        let arctan = name.eq_ignore_ascii_case("PlayerArctan");
+        if !distance && !facing && !looking && !arc && !arctan {
             return Ok(None);
+        }
+        if arctan {
+            ensure!(arguments.is_empty(), "PlayerArctan requires no arguments");
+            let (receiver, player) = self.distance_positions(inputs)?;
+            return Ok(Some(super::player_status::player_arctan([
+                receiver[0].wrapping_sub(player[0]),
+                receiver[2].wrapping_sub(player[2]),
+            ])));
         }
         if arc {
             let [offset, tolerance] = arguments else {
@@ -794,4 +828,89 @@ pub(super) fn query_bearing(x: i32, z: i32) -> u16 {
         (false, false) => angle,
     };
     ((-angle) & 2047) as u16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn receiver(position: [i32; 3], locations: Vec<[i32; 3]>) -> ActorSpatial {
+        let pose = Pose {
+            position,
+            angles: [0; 3],
+            matrix: Matrix::IDENTITY,
+        };
+        ActorSpatial {
+            local: pose,
+            locations,
+            effective: None,
+            previous_effective_position: None,
+            previous_local_position: position,
+            water_rollback_position: None,
+            angle_history: [0; 3],
+            initial_angles: [0; 3],
+            parent: None,
+            linked_position: None,
+            no_slave_rotation: false,
+            rotation_mode: 0,
+        }
+    }
+
+    fn inputs() -> QueryInputs {
+        QueryInputs {
+            player: None,
+            distance_override: None,
+            fallback_position: None,
+            linked_position: Some(None),
+        }
+    }
+
+    #[test]
+    fn distance_to_location_matches_the_original_routine() {
+        // Rows from the original routine in an emulator: receiver position, location, result.
+        type Row = ([i32; 3], [i32; 3], i32);
+        let rows: Vec<Row> = serde_json::from_str(
+            r#"[
+[[1000,2000,3000],[5000,6000,7000],6928],
+[[1000,2000,3000],[-2560,0,256],4920],
+[[1000,2000,3000],[100000,-20000,65536],119146],
+[[1000,2000,3000],[1000,2000,3000],0],
+[[1000,2000,3000],[-2000000000,5,5],2000001024],
+[[0,0,0],[5000,6000,7000],10488],
+[[0,0,0],[-2560,0,256],2573],
+[[0,0,0],[100000,-20000,65536],121223],
+[[0,0,0],[1000,2000,3000],3742],
+[[0,0,0],[-2000000000,5,5],2000000000],
+[[-5000,700,12345],[5000,6000,7000],12516],
+[[-5000,700,12345],[-2560,0,256],12353],
+[[-5000,700,12345],[100000,-20000,65536],119511],
+[[-5000,700,12345],[1000,2000,3000],11181],
+[[-5000,700,12345],[-2000000000,5,5],1999995008],
+[[2000000000,0,0],[5000,6000,7000],1999995008],
+[[2000000000,0,0],[-2560,0,256],2000002560],
+[[2000000000,0,0],[100000,-20000,65536],1999900032],
+[[2000000000,0,0],[1000,2000,3000],1999998976],
+[[2000000000,0,0],[-2000000000,5,5],294967296]
+]"#,
+        )
+        .unwrap();
+        for (position, location, expected) in rows {
+            let actor = receiver(position, vec![[0; 3], location]);
+            assert_eq!(
+                actor.location_distance(1, inputs()).unwrap(),
+                expected,
+                "{position:?} to {location:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn distance_to_location_selects_home_out_of_range_and_rejects_the_count() {
+        let actor = receiver([0; 3], vec![[256, 0, 0], [0, 512, 0]]);
+        assert_eq!(actor.location_distance(0, inputs()).unwrap(), 256);
+        assert_eq!(actor.location_distance(1, inputs()).unwrap(), 512);
+        assert_eq!(actor.location_distance(-1, inputs()).unwrap(), 256);
+        assert_eq!(actor.location_distance(3, inputs()).unwrap(), 256);
+        assert!(actor.location_distance(2, inputs()).is_err());
+    }
 }
