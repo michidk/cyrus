@@ -3,6 +3,7 @@ mod book_motion;
 mod confirmation;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
+mod last_game;
 mod loading;
 mod logbook;
 pub use logbook::LogbookPlugin;
@@ -18,6 +19,7 @@ mod preparation;
 mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
+pub use last_game::LastGameLoader;
 pub use menu::{MenuContext, MenuState};
 #[cfg(not(target_arch = "wasm32"))]
 pub use preparation::LoadingPlugin;
@@ -205,10 +207,18 @@ fn viewport_scale(size: Vec2) -> f32 {
     (size.x / 640.0).min(size.y / 480.0)
 }
 
-fn fit_image(
-    windows: Query<&Window>,
-    mut image: Query<&mut Transform, (With<StartupContent>, With<Sprite>)>,
-) {
+type FittedImages<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut Transform,
+    (
+        With<StartupContent>,
+        With<Sprite>,
+        Without<last_game::CapturedBackground>,
+    ),
+>;
+
+fn fit_image(windows: Query<&Window>, mut image: FittedImages) {
     if let (Ok(window), Ok(mut transform)) = (windows.single(), image.single_mut()) {
         transform.scale = Vec3::splat(viewport_scale(Vec2::new(window.width(), window.height())));
     }

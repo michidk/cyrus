@@ -61,10 +61,17 @@ enum Phase {
 struct Host {
     phase: Option<Phase>,
     result: Option<Result<Value>>,
+    last_game: bool,
+    diagnostics: bool,
 }
 
-pub fn register(app: &mut App) {
-    app.init_resource::<Host>().add_systems(PreUpdate, update);
+pub fn register(app: &mut App, diagnostics: bool) {
+    app.insert_resource(Host {
+        diagnostics,
+        ..Default::default()
+    })
+    .init_resource::<cyrus_startup::LastGameLoader>()
+    .add_systems(PreUpdate, update);
 }
 
 fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
@@ -77,6 +84,10 @@ fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
 
 impl Host {
     fn request(&mut self, request: Request, world: &mut World) -> Result<Value> {
+        ensure!(
+            !self.last_game,
+            "last-game restore owns the browser session host"
+        );
         if let Request::Result { id } = request {
             return match self.result.take() {
                 Some(result) => result.map(|mut value| {
@@ -89,6 +100,10 @@ impl Host {
         ensure!(
             self.phase.is_none() && self.result.is_none(),
             "browser session operation pending or result unread"
+        );
+        ensure!(
+            world.resource::<SessionBoundary>().is_idle(),
+            "session boundary pending or result unread"
         );
         let id = match request {
             Request::Capture { id } => {
@@ -230,11 +245,65 @@ impl Host {
 
 fn update(world: &mut World) {
     world.resource_scope(|world, mut host: Mut<Host>| {
+        if host.phase.is_none()
+            && host.result.is_none()
+            && world.resource::<SessionBoundary>().is_idle()
+        {
+            if let Some(save) = world
+                .resource_mut::<cyrus_startup::LastGameLoader>()
+                .take_request()
+            {
+                host.last_game = true;
+                host.phase = Some(Phase::Io(task(async move {
+                    let listing = storage::slots(&SlotRequest::List, "").await?;
+                    let slots = listing["slots"]
+                        .as_array()
+                        .context("save list omitted slots")?;
+                    let metadata = slots
+                        .iter()
+                        .find(|entry| entry["slot"].as_u64() == Some(u64::from(save.slot)))
+                        .with_context(|| format!("retained save slot {} absent", save.slot))?;
+                    let revision = metadata["revision"]
+                        .as_str()
+                        .context("retained slot revision absent")?
+                        .to_owned();
+                    let value = storage::slots(
+                        &SlotRequest::Load {
+                            slot: save.slot,
+                            revision,
+                        },
+                        "",
+                    )
+                    .await?;
+                    let text = value["document"]
+                        .as_str()
+                        .context("retained slot document absent")?;
+                    let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
+                        .with_context(|| format!("decoding retained save slot {}", save.slot))?;
+                    Ok(IoResult::Read(Box::new(snapshot)))
+                })));
+            }
+        }
         if let Some(phase) = host.phase.take() {
             match host.advance(phase, world) {
                 Ok(phase) => host.phase = phase,
                 Err(error) => host.result = Some(Err(error)),
             }
+        }
+        if host.last_game {
+            if let Some(result) = host.result.take() {
+                let completion = result.map(|_| ()).map_err(|error| format!("{error:#}"));
+                if let Err(error) = world
+                    .resource_mut::<cyrus_startup::LastGameLoader>()
+                    .finish(completion)
+                {
+                    error!("last-game completion rejected: {error:#}");
+                }
+                host.last_game = false;
+            }
+        }
+        if !host.diagnostics {
+            return;
         }
         let Some(window) = web_sys::window() else {
             return;

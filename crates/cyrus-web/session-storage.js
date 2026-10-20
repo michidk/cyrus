@@ -56,7 +56,7 @@ export async function operateSlots(name, encodedRequest, document) {
   }
   if (type === 'create' || type === 'overwrite') {
     check(typeof description === 'string' && description.length > 0 && description.length <= 64
-      && !/[^\x20-\x7e]/.test(description), 'description must contain 1..64 printable ASCII characters');
+      && !/[^\x0b\x0d\x20-\x7e]/.test(description), 'description must contain 1..64 original input characters');
     check(typeof document === 'string' && document.length > 0, 'empty session document');
     check(type !== 'overwrite' || slot !== 0, 'quick-save slot cannot be manually overwritten');
   }
@@ -66,7 +66,7 @@ export async function operateSlots(name, encodedRequest, document) {
   const validateMetadata = value => {
     check(value && Number.isInteger(value.slot) && value.slot >= 0 && value.slot <= 299
       && typeof value.description === 'string' && value.description.length > 0
-      && value.description.length <= 64 && !/[^\x20-\x7e]/.test(value.description)
+      && value.description.length <= 64 && !/[^\x0b\x0d\x20-\x7e]/.test(value.description)
       && Number.isSafeInteger(value.modified_ms) && value.modified_ms >= 0
       && typeof value.revision === 'string' && value.revision.length > 0, 'invalid slot metadata');
     return value;

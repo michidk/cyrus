@@ -25958,7 +25958,7 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
         Some(WorldLoopOutcome::Death)
     );
 
-    // An available save must reach confirmation, never the no-save book or a fresh world.
+    // Missing caller context remains unsupported; a known context requests confirmation.
     let world = host
         .world_mut()
         .resource_mut::<cyrus_game::script::ScriptActors>()
@@ -25973,6 +25973,7 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
                 slot: 0,
                 description: "saved state".into(),
             }),
+            book_context: None,
         })
         .init_resource::<bevy::prelude::NextState<cyrus_game::AppState>>()
         .insert_resource(cyrus_game::clock::SimulationClock::new(scripts.clock).unwrap());
@@ -26007,6 +26008,46 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
             .slot,
         0
     );
+    let world = confirmation
+        .world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current
+        .take()
+        .unwrap();
+    let mut live = bevy::prelude::App::new();
+    live.add_plugins(cyrus_game::script::ScriptPlugin)
+        .insert_resource(cyrus_game::script::DeathDispatch {
+            last_save: Some(cyrus_game::script::LastSaveSelection {
+                slot: 0,
+                description: "saved state".into(),
+            }),
+            book_context: Some(3),
+        })
+        .init_resource::<bevy::prelude::NextState<cyrus_game::AppState>>()
+        .insert_resource(cyrus_game::clock::SimulationClock::new(scripts.clock).unwrap());
+    live.world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current = Some(world);
+    live.world_mut().run_schedule(bevy::prelude::Last);
+    let entry = live.world().resource::<cyrus_game::script::LastGameEntry>();
+    assert_eq!(entry.retained_book_context, 3);
+    assert_eq!(entry.save.slot, 0);
+    assert_eq!(entry.save.description, "saved state");
+    assert!(
+        !live
+            .world()
+            .contains_resource::<cyrus_game::script::DeathBookEntry>()
+    );
+    assert!(
+        !live
+            .world()
+            .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
+    );
+    assert!(matches!(
+        live.world()
+            .resource::<bevy::prelude::NextState<cyrus_game::AppState>>(),
+        bevy::prelude::NextState::Pending(cyrus_game::AppState::Menu)
+    ));
 }
 
 #[test]

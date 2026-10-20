@@ -23,6 +23,16 @@ pub struct LastSaveSelection {
 #[derive(Resource, Default)]
 pub struct DeathDispatch {
     pub last_save: Option<LastSaveSelection>,
+    /// Last actual book entry context; absent until a menu host establishes it.
+    pub book_context: Option<u8>,
+}
+
+/// Available-save death confirmation, retaining its caller context until a choice.
+#[derive(Resource)]
+pub struct LastGameEntry {
+    pub save: LastSaveSelection,
+    pub override_group: i32,
+    pub retained_book_context: u8,
 }
 
 /// Context-three book entry, retained until the book returns to its dispatcher.
@@ -61,8 +71,8 @@ pub(crate) fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyho
 }
 
 /// Runs after actor and presentation work. A pending world destination takes
-/// priority without advancing the falling timer. The host can enter the no-save
-/// death book; unavailable confirmation/loading never starts a fresh world.
+/// priority without advancing the falling timer. The host requests retained-save
+/// confirmation or the no-save death book; loading never substitutes a fresh world.
 pub(super) fn consume(
     mut actors: ResMut<ScriptActors>,
     mut commands: Commands,
@@ -120,12 +130,6 @@ pub(super) fn consume(
                     let dispatch = dispatch
                         .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("last-save/menu dispatcher unavailable"))?;
-                    if let Some(save) = &dispatch.last_save {
-                        anyhow::bail!(
-                            "last-save slot {} confirmation/loading unavailable",
-                            save.slot
-                        );
-                    }
                     let group = world
                         .globals()
                         .player_death_override_group()
@@ -135,9 +139,23 @@ pub(super) fn consume(
                     let next = next.as_mut().ok_or_else(|| {
                         anyhow::anyhow!("death book: application state unavailable")
                     })?;
-                    commands.insert_resource(DeathBookEntry {
-                        override_group: group,
-                    });
+                    if let Some(save) = &dispatch.last_save {
+                        let retained_book_context = dispatch.book_context.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "last-save slot {}: retained book context unavailable",
+                                save.slot
+                            )
+                        })?;
+                        commands.insert_resource(LastGameEntry {
+                            save: save.clone(),
+                            override_group: group,
+                            retained_book_context,
+                        });
+                    } else {
+                        commands.insert_resource(DeathBookEntry {
+                            override_group: group,
+                        });
+                    }
                     next.set(crate::AppState::Menu);
                     Ok(())
                 })(),

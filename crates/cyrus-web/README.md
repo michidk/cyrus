@@ -30,10 +30,15 @@ The separate `cyrus-save-slots` database publishes metadata and complete session
 text in one strict transaction. Listing reads metadata only, newest timestamp
 first with ascending slot numbers on ties. Creation allocates the first free
 manual slot from 2 through 299 inside the write transaction. Revision tokens reject
-stale overwrite, load and delete requests. Descriptions currently support 1–64
-printable ASCII characters; other text is explicitly unsupported. Named diagnostic
+stale overwrite, load and delete requests. Descriptions support 1–64 original input characters, including byte codes 11
+and 13 alongside printable ASCII. Other text is explicitly unsupported. Named diagnostic
 snapshots are unchanged. These operations do not provide the book's dialogs,
 thumbnails, quick saves, autosaves or complete gameplay save eligibility.
+Retained-save death confirmation can load an existing slot through this host
+without capture mode. Missing slots, stale revisions and failed restoration
+report errors and retain the live session. Ordinary browser slot diagnostics do
+not yet update the retained last-save selection; manual book integration remains
+unavailable.
 Run `testSessionStorage()` and `testSessionSlots()` from
 `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify
 atomic publication, concurrent allocation, stale revisions and failed-write protection.

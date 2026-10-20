@@ -10,6 +10,29 @@ use std::net::{TcpStream, ToSocketAddrs};
 
 pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 
+/// Original slot identities with host revision tokens for stale-list protection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SlotOperation {
+    List,
+    Create {
+        description: String,
+    },
+    Overwrite {
+        slot: u16,
+        revision: String,
+        description: String,
+    },
+    Load {
+        slot: u16,
+        revision: String,
+    },
+    Delete {
+        slot: u16,
+        revision: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
@@ -39,6 +62,14 @@ pub enum Command {
     },
     /// Inspect native load completion; acknowledge only after receiving a terminal result.
     SessionLoadResult {
+        #[serde(default)]
+        acknowledge: bool,
+    },
+    /// Native diagnostic slots; operations use local state, never the install.
+    SessionSlots {
+        operation: SlotOperation,
+    },
+    SessionSlotsResult {
         #[serde(default)]
         acknowledge: bool,
     },

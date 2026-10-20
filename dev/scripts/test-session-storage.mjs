@@ -118,6 +118,9 @@ export async function testSessionSlots(operate = operateSlots) {
       await rejected({ type: 'create', description }, 'bad');
     }
     for (const slot of [-1, 300, 1.5]) await rejected({ type: 'delete', slot, revision: 'x' });
+    const originalInput = await operation({ type: 'create', description: 'Mixed\x0bcase\rtext' }, 'original input');
+    assert((await operation({ type: 'list' })).slots.some(entry => entry.description === 'Mixed\x0bcase\rtext'), 'original input characters did not round trip');
+    await operation({ type: 'delete', ...originalInput.slot });
     const max = await operation({ type: 'create', description: 'x'.repeat(64) }, 'max description');
     assert(max.slot.slot === 7, 'failed new save consumed its slot');
     await operation({ type: 'delete', ...replacement });

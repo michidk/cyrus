@@ -172,7 +172,9 @@ pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 pub use tasks::{NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot};
 pub(crate) use world_request::request_world;
-pub use world_request::{DeathBookEntry, DeathDispatch, LastSaveSelection, WorldLoopExit};
+pub use world_request::{
+    DeathBookEntry, DeathDispatch, LastGameEntry, LastSaveSelection, WorldLoopExit,
+};
 
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {

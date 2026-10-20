@@ -156,13 +156,14 @@ fn request(assets: &AssetServer, music: &mut Music, track: u32) {
 
 fn start_menu_track(
     death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     settings: Option<Res<SoundSettings>>,
     audio: Option<Res<Assets<AudioSource>>>,
     mut music: ResMut<Music>,
 ) {
-    if death.is_some() {
+    if death.is_some() || confirmation.is_some() {
         return;
     }
     if music_enabled(&settings, &audio) {
@@ -375,6 +376,18 @@ mod tests {
         let music = world.resource::<Music>();
         assert_eq!(music.track, Some(7));
         assert!(music.load.is_none());
+        world.remove_resource::<cyrus_game::script::DeathBookEntry>();
+        world.insert_resource(cyrus_game::script::LastGameEntry {
+            save: cyrus_game::script::LastSaveSelection {
+                slot: 17,
+                description: "Example".into(),
+            },
+            override_group: 74,
+            retained_book_context: 1,
+        });
+        world.run_system_once(start_menu_track).unwrap();
+        assert_eq!(world.resource::<Music>().track, Some(7));
+        assert!(world.resource::<Music>().load.is_none());
     }
 
     fn prepared_music(source: AudioSource, volume: i32, cinematic: bool) -> App {

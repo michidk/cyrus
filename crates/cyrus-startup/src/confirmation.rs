@@ -53,6 +53,10 @@ impl LastGameConfirmation {
         }
     }
 
+    pub fn accepting_input(&self) -> bool {
+        matches!(self.phase, Phase::Choosing)
+    }
+
     pub fn choice(&self) -> ConfirmationChoice {
         self.choice
     }
@@ -176,13 +180,19 @@ fn blend(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
         return;
     }
     let pixel = image.get_pixel_mut(x as u32, y as u32);
-    for c in 0..3 {
-        pixel[c] = ((u32::from(colour[c]) * u32::from(alpha)
-            + u32::from(pixel[c]) * (255 - u32::from(alpha))
-            + 127)
-            / 255) as u8;
+    let source_alpha = u32::from(alpha);
+    let destination_alpha = u32::from(pixel[3]);
+    let combined = source_alpha * 255 + destination_alpha * (255 - source_alpha);
+    if combined == 0 {
+        return;
     }
-    pixel[3] = 255;
+    for c in 0..3 {
+        pixel[c] = ((u32::from(colour[c]) * source_alpha * 255
+            + u32::from(pixel[c]) * destination_alpha * (255 - source_alpha)
+            + combined / 2)
+            / combined) as u8;
+    }
+    pixel[3] = ((combined + 127) / 255) as u8;
 }
 
 #[cfg(test)]

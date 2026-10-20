@@ -7,8 +7,8 @@ pub fn register(app: &mut App) {
         .and_then(|window| window.location().search().ok())
         .and_then(|query| web_sys::UrlSearchParams::new_with_str(&query).ok())
         .is_some_and(|query| query.has("capture"));
+    super::session::register(app, enabled);
     if enabled {
-        super::session::register(app);
         app.add_systems(
             Update,
             (sync_sky, sync_texture).run_if(in_state(cyrus_game::AppState::InGame)),

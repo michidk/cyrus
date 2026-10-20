@@ -26,6 +26,12 @@ pub enum SessionBoundaryResult {
 }
 
 impl SessionBoundary {
+    /// True only without a pending operation or an unread result. Host adapters
+    /// must not admit competing work that could consume another owner's result.
+    pub fn is_idle(&self) -> bool {
+        self.request.is_none() && self.result.is_none()
+    }
+
     /// Capture the current and visited census using retained host source handles.
     /// Missing historical sources reject; no world is initialized to fill a gap.
     pub fn capture_live(&mut self) -> Result<()> {

@@ -50,6 +50,8 @@ impl Plugin for ControlPlugin {
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
             .init_resource::<crate::session::NativeSessionLoad>()
+            .init_resource::<crate::session::slots::SlotStore>()
+            .init_resource::<cyrus_startup::LastGameLoader>()
             .add_systems(
                 PreUpdate,
                 (crate::session::poll, release_taps, handle)
@@ -190,9 +192,26 @@ fn handle(
                     break;
                 }
             }
+            Command::SessionSlots { operation } => {
+                commands.queue(move |world: &mut World| {
+                    let result = crate::session::request_slots(world, operation).map(|()| json!({"pending":true})).map_err(|error| format!("{error:#}"));
+                    let _ = reply.send(match result { Ok(value) => Response::ok(id, value), Err(error) => Response::err(id, error) });
+                });
+                break;
+            }
+            Command::SessionSlotsResult { acknowledge } => {
+                commands.queue(move |world: &mut World| {
+                    let result = crate::session::slots_result(world, acknowledge);
+                    let _ = reply.send(match result { Ok(value) => Response::ok(id, value), Err(error) => Response::err(id, format!("{error:#}")) });
+                });
+                break;
+            }
             Command::SessionLoad { path } => install.as_ref()
                 .ok_or_else(|| anyhow::anyhow!("native session install unavailable"))
-                .and_then(|install| native_load.start(path, (**install).clone()))
+                .and_then(|install| {
+                    anyhow::ensure!(session.as_ref().is_some_and(|boundary| boundary.is_idle()), "session boundary pending or result unread");
+                    native_load.start(path, (**install).clone())
+                })
                 .map(|()| json!({"pending":true}))
                 .map_err(|error| format!("{error:#}")),
             Command::SessionLoadResult { acknowledge } => {

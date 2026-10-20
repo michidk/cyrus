@@ -48,12 +48,15 @@ pub enum MenuContext {
     #[default]
     Startup,
     Death,
+    LastGame,
 }
 
 /// Current installed menu selection and explicitly unsupported activation.
 #[derive(Resource, Default, Serialize)]
 pub struct MenuState {
     pub context: MenuContext,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) last_game: Option<super::last_game::Presentation>,
     /// True once the installed book is rendered and input can be accepted.
     pub ready: bool,
     pub page: u8,
@@ -67,7 +70,7 @@ pub struct MenuState {
     pub selected: Option<usize>,
     pub unavailable: Option<String>,
     #[serde(skip)]
-    image: Handle<Image>,
+    pub(super) image: Handle<Image>,
     #[serde(skip)]
     pub(super) selections: BTreeMap<u8, Option<usize>>,
     #[serde(skip)]
@@ -85,13 +88,13 @@ pub struct MenuState {
     #[serde(skip)]
     closing: bool,
     #[serde(skip)]
-    asset: Handle<MenuAsset>,
+    pub(super) asset: Handle<MenuAsset>,
     #[serde(skip)]
     repeat_seconds: f32,
     #[serde(skip)]
     held_seconds: f32,
     #[serde(skip)]
-    main_disabled: [bool; 2],
+    pub(super) main_disabled: [bool; 2],
 }
 
 impl MenuState {
@@ -153,7 +156,11 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnEnter(AppState::InGame), restore_cameras)
         .add_systems(
             Update,
-            (fit_image, drive.before(cyrus_audio::ApplyPreferences))
+            (
+                fit_image,
+                super::last_game::drive.before(drive),
+                drive.before(cyrus_audio::ApplyPreferences),
+            )
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(OnExit(AppState::Menu), cleanup);
@@ -164,7 +171,27 @@ fn setup(
     assets: Res<AssetServer>,
     startup: Res<super::StartupPresentation>,
     death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    last_game: Option<Res<cyrus_game::script::LastGameEntry>>,
+    mut dispatch: Option<ResMut<cyrus_game::script::DeathDispatch>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
+    if let Some(entry) = last_game.as_deref() {
+        super::last_game::request_capture(&mut commands, &windows);
+        commands.insert_resource(MenuState {
+            context: MenuContext::LastGame,
+            last_game: Some(super::last_game::Presentation::new(entry)),
+            asset: if startup.menu == Handle::default() {
+                assets.load("cache://menu/book.menu")
+            } else {
+                startup.menu.clone()
+            },
+            ..default()
+        });
+        return;
+    }
+    if let Some(dispatch) = dispatch.as_deref_mut() {
+        dispatch.book_context = Some(if death.is_some() { 3 } else { 1 });
+    }
     commands.spawn((Camera2d, StartupContent));
     commands.spawn((Sprite::default(), StartupContent));
     commands.insert_resource(MenuState {
@@ -215,6 +242,9 @@ pub(super) fn drive(
         ResMut<NextState<AppState>>,
     ),
 ) {
+    if menu.last_game.is_some() {
+        return;
+    }
     let (assets, definitions) = assets;
     let (mut images, mut sprite) = rendering;
     let (mut preferences_state, mut bindings, mut commands, mut next) = runtime;
@@ -282,6 +312,7 @@ pub(super) fn drive(
         menu.motion = Some(match menu.context {
             MenuContext::Startup => BookMotion::opening(frames),
             MenuContext::Death => BookMotion::death_entry(frames),
+            MenuContext::LastGame => return,
         });
         menu.open(book, 0);
         menu.blink_on = true;
@@ -563,7 +594,7 @@ fn flat_sound(effect: usize) -> SoundCue {
 
 #[derive(Component)]
 pub(super) struct MenuNotice;
-fn notice(commands: &mut Commands, assets: &AssetServer, text: String) {
+pub(super) fn notice(commands: &mut Commands, assets: &AssetServer, text: String) {
     commands.spawn((
         StartupContent,
         MenuNotice,
@@ -605,16 +636,22 @@ fn cleanup(
     {
         clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
     }
+    commands.remove_resource::<cyrus_game::script::LastGameEntry>();
+    commands.remove_resource::<super::last_game::CapturedFrame>();
     commands.remove_resource::<MenuState>();
 }
 
 #[derive(Component)]
-struct BookPausedCamera;
+pub(super) struct BookPausedCamera;
 
 fn pause_cameras(
     mut commands: Commands,
     mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
+    confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
 ) {
+    if confirmation.is_some() {
+        return;
+    }
     for (entity, mut camera) in &mut cameras {
         if camera.is_active {
             camera.is_active = false;

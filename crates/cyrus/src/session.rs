@@ -1,11 +1,15 @@
 //! Native off-live document preparation; shared boundary owns validation and commit.
+pub(crate) mod slots;
+
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::{AssetServer, Resource, World};
 use cyrus_assets::{hud::HudAsset, install::GameInstall};
+use cyrus_control::SlotOperation;
 use cyrus_session::{
     RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult, SessionLoadAssets,
     SessionWorldAssets,
 };
+use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     path::Path,
@@ -18,6 +22,11 @@ pub(crate) struct NativeSessionLoad {
     submitted: bool,
     result: Option<Result<()>>,
     path: String,
+    slot_result: Option<Result<Value>>,
+    slot_worker: Option<Mutex<mpsc::Receiver<Result<Value>>>>,
+    capture: Option<slots::SavePlan>,
+    slot_load: bool,
+    last_game: bool,
 }
 
 struct PreparedLoad {
@@ -30,7 +39,7 @@ struct PreparedLoad {
 impl NativeSessionLoad {
     pub(crate) fn start(&mut self, path: String, install: GameInstall) -> Result<()> {
         ensure!(
-            self.worker.is_none() && !self.submitted && self.result.is_none(),
+            !self.busy() && self.result.is_none() && self.slot_result.is_none(),
             "native session load already pending or result unread"
         );
         let requested_path = path.clone();
@@ -50,7 +59,10 @@ impl NativeSessionLoad {
     }
 
     pub(crate) fn busy(&self) -> bool {
-        self.worker.is_some() || self.submitted
+        self.worker.is_some()
+            || self.submitted
+            || self.slot_worker.is_some()
+            || self.capture.is_some()
     }
 
     pub(crate) fn completion(&self) -> Option<std::result::Result<(), String>> {
@@ -73,11 +85,197 @@ impl NativeSessionLoad {
     }
 }
 
+pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Result<()> {
+    let mut state = world
+        .remove_resource::<NativeSessionLoad>()
+        .context("native session host absent")?;
+    let result = (|| -> Result<()> {
+        ensure!(
+            !state.busy() && state.result.is_none() && state.slot_result.is_none(),
+            "native session operation pending or result unread"
+        );
+        ensure!(
+            world
+                .get_resource::<SessionBoundary>()
+                .context("native session boundary absent")?
+                .is_idle(),
+            "session boundary pending or result unread"
+        );
+        let store = world.resource::<slots::SlotStore>().clone();
+        match operation {
+            SlotOperation::Create { .. } | SlotOperation::Overwrite { .. } => {
+                let plan = store.plan(operation)?;
+                retain_selection(world, plan.slot, plan.description.clone())?;
+                world.resource_mut::<SessionBoundary>().capture_live()?;
+                state.capture = Some(plan);
+            }
+            SlotOperation::Load { slot, revision } => {
+                let metadata = store.metadata(slot, Some(&revision))?;
+                let install = world
+                    .get_resource::<GameInstall>()
+                    .context("native session install unavailable")?
+                    .clone();
+                retain_selection(world, slot, metadata.description)?;
+                start_slot_load(&mut state, store, slot, Some(revision), install)?;
+                state.slot_load = true;
+            }
+            operation => {
+                let (sender, receiver) = mpsc::channel();
+                std::thread::Builder::new()
+                    .name("native save slots".into())
+                    .spawn(move || {
+                        let result = match operation {
+                            SlotOperation::List => store.list().map(|slots| json!({"slots":slots})),
+                            SlotOperation::Delete { slot, revision } => store
+                                .delete(slot, &revision)
+                                .map(|()| json!({"deleted":slot})),
+                            _ => unreachable!(),
+                        };
+                        let _ = sender.send(result);
+                    })?;
+                state.slot_worker = Some(Mutex::new(receiver));
+            }
+        }
+        Ok(())
+    })();
+    world.insert_resource(state);
+    result
+}
+
+fn retain_selection(world: &mut World, slot: u16, description: String) -> Result<()> {
+    world
+        .get_resource_mut::<cyrus_game::script::DeathDispatch>()
+        .context("native save selection: last-save dispatcher unavailable")?
+        .last_save = Some(cyrus_game::script::LastSaveSelection { slot, description });
+    Ok(())
+}
+
+fn start_slot_load(
+    state: &mut NativeSessionLoad,
+    store: slots::SlotStore,
+    slot: u16,
+    revision: Option<String>,
+    install: GameInstall,
+) -> Result<()> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("prepare saved slot".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let result = store
+                .read(slot, revision.as_deref())
+                .and_then(|(bytes, _)| prepare_bytes(&bytes, &install))
+                .with_context(|| format!("loading save slot {slot}"));
+            let _ = sender.send(result);
+        })?;
+    state.path = format!("slot {slot}");
+    state.worker = Some(Mutex::new(receiver));
+    Ok(())
+}
+
+pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value> {
+    let mut state = world.resource_mut::<NativeSessionLoad>();
+    ensure!(
+        !acknowledge || state.slot_result.is_some(),
+        "native slots have no terminal result"
+    );
+    let mut result = state
+        .slot_result
+        .as_ref()
+        .map(|result| {
+            result
+                .as_ref()
+                .cloned()
+                .map_err(|error| anyhow::anyhow!("{error:#}"))
+        })
+        .unwrap_or_else(|| Ok(json!({"pending":true})));
+    if state.slot_result.is_some()
+        && let Ok(value) = &mut result
+    {
+        value["pending"] = json!(false);
+    }
+    if acknowledge {
+        state.slot_result = None;
+    }
+    result
+}
+
 pub(crate) fn poll(world: &mut World) {
     let Some(mut state) = world.remove_resource::<NativeSessionLoad>() else {
         return;
     };
-    if state.submitted {
+    if !state.busy()
+        && state.result.is_none()
+        && state.slot_result.is_none()
+        && world
+            .get_resource::<SessionBoundary>()
+            .is_some_and(SessionBoundary::is_idle)
+    {
+        let request = world
+            .get_resource_mut::<cyrus_startup::LastGameLoader>()
+            .and_then(|mut loader| loader.take_request());
+        if let Some(save) = request {
+            state.last_game = true;
+            let result = world
+                .get_resource::<GameInstall>()
+                .cloned()
+                .context("native session install unavailable")
+                .and_then(|install| {
+                    start_slot_load(
+                        &mut state,
+                        world.resource::<slots::SlotStore>().clone(),
+                        save.slot,
+                        None,
+                        install,
+                    )
+                });
+            if let Err(error) = result {
+                state.result = Some(Err(error));
+            }
+        }
+    }
+    if let Some(worker) = &state.slot_worker {
+        let result = match worker.lock().unwrap().try_recv() {
+            Ok(result) => Some(result),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Some(Err(anyhow::anyhow!("native slot worker disconnected")))
+            }
+        };
+        if let Some(result) = result {
+            state.slot_worker = None;
+            state.slot_result = Some(result);
+        }
+    } else if state.capture.is_some() {
+        if let Some(result) = world.resource_mut::<SessionBoundary>().take_result() {
+            let plan = state.capture.take().unwrap();
+            let result = result.and_then(|result| match result {
+                SessionBoundaryResult::Captured(snapshot) => snapshot.encode_document(),
+                SessionBoundaryResult::Committed => {
+                    anyhow::bail!("native save received commit result")
+                }
+            });
+            match result {
+                Err(error) => state.slot_result = Some(Err(error)),
+                Ok(document) => {
+                    let store = world.resource::<slots::SlotStore>().clone();
+                    let (sender, receiver) = mpsc::channel();
+                    match std::thread::Builder::new()
+                        .name("publish save slot".into())
+                        .spawn(move || {
+                            let _ = sender.send(
+                                store
+                                    .publish(plan, &document)
+                                    .map(|slot| json!({"slot":slot})),
+                            );
+                        }) {
+                        Ok(_) => state.slot_worker = Some(Mutex::new(receiver)),
+                        Err(error) => state.slot_result = Some(Err(error.into())),
+                    }
+                }
+            }
+        }
+    } else if state.submitted {
         if let Some(result) = world.resource_mut::<SessionBoundary>().take_result() {
             state.submitted = false;
             state.result = Some(result.and_then(|result| match result {
@@ -103,12 +301,30 @@ pub(crate) fn poll(world: &mut World) {
             }
         }
     }
+    if let Some(result) = state.result.take() {
+        if state.last_game {
+            let completion = result.map_err(|error| format!("{error:#}"));
+            let _ = world
+                .resource_mut::<cyrus_startup::LastGameLoader>()
+                .finish(completion);
+            state.last_game = false;
+        } else if state.slot_load {
+            state.slot_result = Some(result.map(|()| json!({"committed":true})));
+            state.slot_load = false;
+        } else {
+            state.result = Some(result);
+        }
+    }
     world.insert_resource(state);
 }
 
 fn prepare(path: &Path, install: &GameInstall) -> Result<PreparedLoad> {
     let bytes = crate::storage::read(path)?.context("session document does not exist")?;
-    let snapshot = RuntimeSessionSnapshot::decode_document(&bytes)?;
+    prepare_bytes(&bytes, install)
+}
+
+fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
+    let snapshot = RuntimeSessionSnapshot::decode_document(bytes)?;
     let current_name = snapshot.current_scene_name();
     ensure!(
         cyrus_assets::scene::world_names(install)?
@@ -249,6 +465,46 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn slots_reject_competing_owners_and_retain_admitted_selection() -> Result<()> {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        let root = std::env::temp_dir().join(format!(
+            "cyrus-slot-admission-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        world.insert_resource(slots::SlotStore { root });
+        world.init_resource::<cyrus_game::script::DeathDispatch>();
+        world.resource_mut::<SessionBoundary>().capture_live()?;
+        assert!(request_slots(&mut world, SlotOperation::List).is_err());
+        assert!(
+            world
+                .resource::<cyrus_game::script::DeathDispatch>()
+                .last_save
+                .is_none()
+        );
+        // A fresh boundary models completion of the unrelated owner's operation.
+        world.insert_resource(SessionBoundary::default());
+        request_slots(
+            &mut world,
+            SlotOperation::Create {
+                description: "Retained description".into(),
+            },
+        )?;
+        let retained = world
+            .resource::<cyrus_game::script::DeathDispatch>()
+            .last_save
+            .as_ref()
+            .unwrap();
+        assert_eq!(retained.description, "Retained description");
+        assert!((2..=299).contains(&retained.slot));
+        assert!(request_slots(&mut world, SlotOperation::List).is_err());
+        assert!(slots_result(&mut world, true).is_err());
+        Ok(())
+    }
 
     #[test]
     fn malformed_document_finishes_with_path_context_without_replacing_live_state() -> Result<()> {

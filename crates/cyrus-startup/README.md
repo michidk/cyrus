@@ -56,15 +56,14 @@ Startup entry uses preservation's context-one cover sweep and delayed opening cu
 Death context three uses its short entry path when the startup host has no retained
 last-save selection. It suspends ordinary actor updates, disables world cameras,
 and applies the selected actor override to Save/Continue availability. Returning
-clears hit inhibition and the terminal outcome. Available-save confirmation and
-loading and Quit automatic-save preparation remain explicitly unavailable;
-direct-scene hosts do not install this service.
+clears hit inhibition and the terminal outcome. Quit automatic-save preparation
+remains unavailable; direct-scene hosts do not install this service.
 The shared `LastGameConfirmation` core applies the published Yes/No input ordering,
 context-three entry delay and release-before-return rules. Its CPU painter restores
 a supplied canonical capture for each redraw and uses installed MINIMENU artwork,
 REDSEL, and SYSTEM.INI colour/alpha styles. Menu cache schema 16 includes those
-assets and rejects older exports. This core is not yet connected to live death
-entry, GPU background capture or saved-game loading.
+assets and rejects older exports. Available-save death entry connects this core
+to window capture and host-owned saved-game requests.
 Its portable `cache/menu/book.menu` retains all authored model frames and topology,
 textures, indexed fonts, previews, and defaults. Native and browser builds project
 the current book pose and redraw neighboring-page text during camera entry, page
@@ -126,3 +125,10 @@ original never initialises, draws nothing but keeps its place in the layout. Man
 new-game resets and save integration remain unsupported. Scroll lighting is unsupported
 (the original's light inputs are unknown) and pixel-exact filtering still needs fidelity work. Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).
+
+Available-save death entry presents the installed last-game dialog over a captured
+world frame. Its input and byte-colour composition use the shared confirmation
+core. No enters the short death book; Yes submits the retained selection to the
+host's `LastGameLoader`. Missing capture or load support produces an explicit
+error. Native/browser rendered parity and successful restored-session acceptance
+remain unverified; image resizing still requires comparison.

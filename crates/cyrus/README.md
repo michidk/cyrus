@@ -137,3 +137,14 @@ terminal result remains available across repeated polls. Acknowledge it with
 that load owns the boundary. These diagnostics do not enable menu Load or
 establish original save eligibility. Installed rendered restoration and revisit
 acceptance remain unfinished.
+
+Native diagnostic `session_slots {operation}` supports list, create, overwrite,
+load and delete. Poll `session_slots_result` and acknowledge its terminal result
+with `acknowledge: true`. Create uses the first free manual slot; overwrite,
+load and delete require the listed revision. Files under `cyrus-config/slots`
+contain bounded metadata and an opaque cyrus session document, not original SAV
+files. Failed capture, preparation or publication does not replace accepted data.
+Admitted save/load selections retain the last-save slot and description for death
+confirmation. Its Yes choice restores that slot through the shared atomic session
+boundary; missing or malformed saves report errors without starting a fresh world.
+These diagnostics do not implement ordinary Save/Load pages or save eligibility.

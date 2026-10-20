@@ -283,6 +283,7 @@ module where it is defined and regenerate.
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
+- `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.
 - `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
@@ -343,6 +344,7 @@ module where it is defined and regenerate.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.
+- `src/session/slots.rs` — Native slot envelopes: bounded metadata followed by an opaque session document.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
 - `src/storage.rs` — Native byte storage shared by local preferences and cheat persistence.
 - `src/subtitles.rs` — Connect native speech metadata to subtitle presentation without coupling the backends.
