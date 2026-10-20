@@ -747,6 +747,175 @@ mod live {
         );
     }
 
+    /// A pose update backed by the camera pipeline with no obstacles and no terrain.
+    #[derive(Debug)]
+    struct PoseService {
+        bound: ([i32; 3], [u16; 3]),
+        hits: std::cell::RefCell<CameraHitSelection>,
+        published: std::cell::RefCell<Vec<(ScriptActorId, [i32; 3])>>,
+        fail: bool,
+    }
+    impl cyrus_game::script::camera::CameraUpdateService for PoseService {
+        fn update(
+            &self,
+            state: &mut cyrus_game::script::camera::CameraState,
+        ) -> anyhow::Result<()> {
+            anyhow::ensure!(!self.fail, "pose service failed");
+            let update = state.prepare_pose(
+                &self.hits.borrow(),
+                &cyrus_game::script::camera::CameraUpdateInputs {
+                    bound_position: self.bound.0,
+                    bound_angles: self.bound.1,
+                    movement: settings().movement,
+                    body_radius: 10.0,
+                    body_clearance: 5.0,
+                    terrain_enabled: false,
+                },
+                &mut Geometry { fail: false },
+            )?;
+            *state = update.state;
+            *self.hits.borrow_mut() = update.hits;
+            *self.published.borrow_mut() = update.actor_positions.to_vec();
+            Ok(())
+        }
+        fn take_published(&self) -> Vec<(ScriptActorId, [i32; 3])> {
+            std::mem::take(&mut *self.published.borrow_mut())
+        }
+    }
+
+    fn run_with(
+        world: &mut ScriptWorld,
+        stage: ScriptStage,
+        service: Option<&dyn cyrus_game::script::camera::CameraUpdateService>,
+    ) -> anyhow::Result<()> {
+        let hud = ScriptHud::default();
+        let id = world.id(0).unwrap();
+        world.advance(
+            id,
+            stage,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                camera_update: service,
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+    }
+
+    fn location_world(name: &str, arguments: &[i32], holding: bool) -> (ScriptWorld, PoseService) {
+        let mut data = scripts_calling(name, arguments);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        if holding {
+            data.actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("attr_110".into(), 1);
+        }
+        let mut world = prepared(&mut data);
+        world.initialize_camera_pose(start()).unwrap();
+        let pose = world.spatial(world.id(0).unwrap()).unwrap().local;
+        let service = PoseService {
+            bound: (pose.position, pose.angles),
+            hits: std::cell::RefCell::new(hits()),
+            published: Default::default(),
+            fail: false,
+        };
+        (world, service)
+    }
+
+    #[test]
+    fn location_natives_run_the_pose_update_and_publish_the_camera_actor() {
+        for (name, arguments) in [
+            ("showObjLoc", vec![3, -2, 5]),
+            ("showObj", vec![3, -2, 5]),
+            ("showObjWorld", vec![3, -2, 5]),
+            ("showCyrusLoc", vec![3, -2, 5]),
+        ] {
+            let (mut world, service) = location_world(name, &arguments, false);
+            run_with(&mut world, BODY, Some(&service)).unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                1,
+                "{name}: the first invocation stays active"
+            );
+            let camera = world.camera().unwrap();
+            assert_eq!(camera.selected.index(), 2, "{name}");
+            assert_ne!(camera.current, start(), "{name}: the pose updated");
+            let actor = world.id(CAMERA).unwrap();
+            assert_eq!(
+                world.spatial(actor).unwrap().local.position,
+                camera.current.position,
+                "{name}: the camera actor carries the published pose"
+            );
+            run_with(&mut world, TASKS, Some(&service)).unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                0,
+                "{name}: the next invocation completes"
+            );
+            let camera = world.camera().unwrap();
+            assert_eq!(
+                (camera.scripted_active, camera.scripted_nesting),
+                (0, 0),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn location_native_without_the_update_service_fails_before_changing_the_camera() {
+        let (mut world, _) = location_world("showObjLoc", &[3, -2, 5], false);
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.selected, before.selected);
+        assert_eq!(camera.scripted_active, 0);
+        assert_eq!(camera.marks, before.marks);
+        assert_eq!(camera.current, before.current);
+    }
+
+    #[test]
+    fn failed_pose_update_leaves_the_camera_and_the_actor_untouched() {
+        let (mut world, mut service) = location_world("showObjLoc", &[3, -2, 5], false);
+        service.fail = true;
+        let before = world.camera().unwrap().clone();
+        let actor = world.id(CAMERA).unwrap();
+        let error = run_with(&mut world, BODY, Some(&service)).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("pose service failed"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
+        assert_eq!(
+            world.spatial(actor).unwrap().local.position,
+            start().position
+        );
+    }
+
+    #[test]
+    fn show_cyrus_loc_does_nothing_while_the_player_holds_a_weapon() {
+        let (mut world, service) = location_world("showCyrusLoc", &[3, -2, 5], true);
+        let before = world.camera().unwrap().clone();
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.scripted_active, 0);
+        assert_eq!(camera.current, before.current);
+        assert_eq!(camera.marks, before.marks);
+    }
+
     #[test]
     fn failed_update_changes_neither_the_session_nor_the_actor() {
         let mut world = world();

@@ -100,6 +100,8 @@ pub(super) struct CameraCall<'a> {
     pub receiver: Result<CameraTarget, String>,
     /// The selected player as a camera target, for the `showCyrus*` natives.
     pub selected_player: Result<CameraTarget, String>,
+    /// The owner's pose update for the location natives; absent means they cannot start.
+    pub update: Option<super::camera::CameraUpdateHandle<'a>>,
 }
 
 /// An actor a camera native points the camera at: its camera attributes and pose, plus the
@@ -353,6 +355,11 @@ enum Task {
         command: super::camera::ObjectPanCommand,
         counter: u32,
         pan: Option<super::camera::ObjectPanState>,
+    },
+    /// `showObj`, `showObjLoc`, `showObjWorld`, `showCyrus` and `showCyrusLoc`.
+    ShowLocation {
+        command: super::camera::LocationCommand,
+        counter: u32,
     },
     /// `lookObj`.
     Look {
@@ -655,6 +662,68 @@ impl Task {
                     camera
                         .state
                         .show_object_pan(&inputs, pan, counter, elapsed)?
+                }
+            }
+            Self::ShowLocation { command, counter } => {
+                let name = command.name();
+                let [x, y, z] = arguments else {
+                    anyhow::bail!("{name} requires three arguments");
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context(format!("{name} requires elapsed input"))?;
+                let camera = services
+                    .camera
+                    .context(format!("{name} camera session unavailable"))?;
+                let target = if command.targets_selected_player() {
+                    camera.selected_player
+                } else {
+                    camera.receiver
+                }
+                .map_err(anyhow::Error::msg)?;
+                if command.targets_selected_player()
+                    && target.holding_weapon.map_err(anyhow::Error::msg)?
+                {
+                    return Ok(true);
+                }
+                let (bound_position, bound_angles) = target.pose.map_err(anyhow::Error::msg)?;
+                let arguments = [x.integer()?, y.integer()?, z.integer()?];
+                // Only the first invocation runs the pose update; later ones never reach it.
+                let update = camera.update;
+                let mut run = |state: &mut super::camera::CameraState| match update {
+                    Some(service) => service.update(state),
+                    None => anyhow::bail!("{name} camera update service unavailable"),
+                };
+                !if command.world() {
+                    camera.state.show_world_location(
+                        &super::camera::WorldLocationInputs {
+                            actor: target.actor,
+                            camera_move: target.camera_move,
+                            attributes: target.offsets,
+                            position: arguments,
+                            bound_position,
+                            actor_position: bound_position,
+                            bound_angles,
+                        },
+                        counter,
+                        elapsed,
+                        &mut run,
+                    )?
+                } else {
+                    camera.state.show_location(
+                        &super::camera::LocationInputs {
+                            frame: command.frame(),
+                            actor: target.actor,
+                            camera_move: target.camera_move,
+                            attributes: target.offsets,
+                            arguments,
+                            bound_position,
+                            bound_angles,
+                        },
+                        counter,
+                        elapsed,
+                        &mut run,
+                    )?
                 }
             }
             Self::Look { counter, look } => {
@@ -1732,6 +1801,12 @@ impl NativeTasks {
                 counter: 0,
                 pan: None,
             }
+        } else if let Some(command) = super::camera::LocationCommand::named(function) {
+            anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
+            Task::ShowLocation {
+                command,
+                counter: 0,
+            }
         } else if function.eq_ignore_ascii_case("lookObj") {
             anyhow::ensure!(kind == CallKind::Task, "lookObj requires task encoding");
             Task::Look {
@@ -1855,6 +1930,7 @@ impl NativeTasks {
                 Task::ShowPlayer { .. }
                     | Task::ShowPlayerPan { .. }
                     | Task::ObjectPan { .. }
+                    | Task::ShowLocation { .. }
                     | Task::Look { .. }
             )
         )
@@ -1866,6 +1942,7 @@ impl NativeTasks {
             || function.eq_ignore_ascii_case("showPlayerPan")
             || function.eq_ignore_ascii_case("lookObj")
             || super::camera::ObjectPanCommand::named(function).is_some()
+            || super::camera::LocationCommand::named(function).is_some()
     }
     pub(super) fn cancel(&mut self, token: u64) -> Result<()> {
         self.tasks

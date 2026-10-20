@@ -177,6 +177,8 @@ pub struct ScriptInputs<'a> {
     pub lateral_step_clear: Option<bool>,
     /// Live receiver-bound queries take precedence over caller-sampled checks.
     pub locomotion_geometry: Option<LocomotionGeometry<'a>>,
+    /// The camera pose update the location natives run in their first invocation.
+    pub camera_update: Option<super::camera::CameraUpdateHandle<'a>>,
 }
 
 pub(crate) struct ScriptAnimation {
@@ -2419,6 +2421,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let camera_update_handle = self.inputs.camera_update;
         let camera_inputs = super::tasks::NativeTasks::camera_function(function).then(|| {
             (
                 self.camera_slot_request(),
@@ -2556,11 +2559,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             bound_pose,
                             receiver,
                             selected_player,
+                            update: camera_update_handle,
                         })
                 },
             ),
         };
-        match mode {
+        let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
                 (function, kind),
                 arguments,
@@ -2579,7 +2583,35 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     services,
                 )
             }
+        };
+        self.finish_camera_update(result.is_ok())?;
+        result
+    }
+
+    /// Apply the logical camera actor positions the location natives' pose update published, once
+    /// the native succeeded; a failed native discards them.
+    fn finish_camera_update(&mut self, succeeded: bool) -> Result<()> {
+        let Some(service) = self.inputs.camera_update else {
+            return Ok(());
+        };
+        let published = service.take_published();
+        if !succeeded {
+            return Ok(());
         }
+        for (id, position) in published {
+            let index = self.registry.resolve(id)?;
+            let spatial = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("camera publication: spatial state not prepared")?
+                .actor_mut(index)?;
+            spatial.local.position = position;
+            if let Some(effective) = &mut spatial.effective {
+                effective.position = position;
+            }
+        }
+        Ok(())
     }
 
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
@@ -4499,6 +4531,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .locomotion_operation(token);
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let camera_update_handle = self.inputs.camera_update;
         let camera_inputs = self.registry.actors[self.index]
             .tasks
             .is_camera_task(token)
@@ -4604,7 +4637,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     nominal_ticks,
                 },
             );
-        actor.tasks.poll(
+        let result = actor.tasks.poll(
             token,
             arguments,
             invocation,
@@ -4645,11 +4678,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                                 bound_pose,
                                 receiver,
                                 selected_player,
+                                update: camera_update_handle,
                             })
                     },
                 ),
             },
-        )
+        );
+        self.finish_camera_update(result.is_ok())?;
+        result
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
         self.registry.actors[self.index].tasks.cancel(token)

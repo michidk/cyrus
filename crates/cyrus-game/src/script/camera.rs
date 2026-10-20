@@ -765,6 +765,72 @@ impl ObjectPanCommand {
     }
 }
 
+/// The location camera natives. `Cyrus` natives target the selected player and return zero,
+/// without touching the camera, while that player holds a weapon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LocationCommand {
+    Object,
+    ObjectLoc,
+    ObjectWorld,
+    Cyrus,
+    CyrusLoc,
+}
+
+impl LocationCommand {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Object => "showObj",
+            Self::ObjectLoc => "showObjLoc",
+            Self::ObjectWorld => "showObjWorld",
+            Self::Cyrus => "showCyrus",
+            Self::CyrusLoc => "showCyrusLoc",
+        }
+    }
+
+    pub fn named(function: &str) -> Option<Self> {
+        [
+            Self::Object,
+            Self::ObjectLoc,
+            Self::ObjectWorld,
+            Self::Cyrus,
+            Self::CyrusLoc,
+        ]
+        .into_iter()
+        .find(|command| command.name().eq_ignore_ascii_case(function))
+    }
+
+    /// The axes the vector argument is given in; a world position is not a vector.
+    pub fn frame(self) -> VectorFrame {
+        match self {
+            Self::ObjectLoc | Self::CyrusLoc => VectorFrame::Actor,
+            Self::Object | Self::ObjectWorld | Self::Cyrus => VectorFrame::World,
+        }
+    }
+
+    /// Whether the arguments are a world position (`showObjWorld`).
+    pub fn world(self) -> bool {
+        self == Self::ObjectWorld
+    }
+
+    pub fn targets_selected_player(self) -> bool {
+        matches!(self, Self::Cyrus | Self::CyrusLoc)
+    }
+}
+
+/// The camera pose update a location native runs inside its first invocation. The owner supplies
+/// the geometry, hit history and settings and keeps them behind interior mutability (the handle is
+/// shared); the world applies the logical camera actor positions it publishes only after the
+/// native succeeded.
+pub trait CameraUpdateService: std::fmt::Debug {
+    /// Replace `state` with its updated pose. A failure must leave `state` untouched.
+    fn update(&self, state: &mut CameraState) -> Result<()>;
+    /// The camera actors' new positions from the updates since the last call.
+    fn take_published(&self) -> Vec<(super::ScriptActorId, [i32; 3])>;
+}
+
+/// Shared handle to the owner's update service for one scheduler pass.
+pub type CameraUpdateHandle<'a> = &'a dyn CameraUpdateService;
+
 /// Inputs of one `lookObj` invocation: the actor's camera attributes and pose, as for a
 /// location camera, and the task's duration.
 #[derive(Clone, Copy, Debug)]

@@ -217,6 +217,7 @@ impl Task {
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::ShowPlayerPan { .. } => ("showPlayerPan", 1, Some(CallKind::Task)),
             Self::ObjectPan { command, .. } => (command.name(), 4, Some(CallKind::Task)),
+            Self::ShowLocation { command, .. } => (command.name(), 3, Some(CallKind::Task)),
             Self::Look { .. } => ("lookObj", 1, Some(CallKind::Task)),
             Self::ObjectRotation => ("showObjRot", 4, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
