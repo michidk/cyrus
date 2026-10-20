@@ -1066,6 +1066,75 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
 }
 
 #[test]
+fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_step() {
+    let mut tasks = NativeTasks::default();
+    let args = [Argument::Integer(1), Argument::Integer(4)];
+    let mut position = [0; 3];
+    let mut angles = [0; 3];
+    let mut updates = vec![];
+    let locations = [[0, 0, 0], [0, 0, 10240]];
+    let mut step = |tasks: &mut NativeTasks, position: &mut [i32; 3], token| {
+        let invocation = Invocation {
+            elapsed: Some(0),
+            unpaused_tasks: 0,
+            unpaused_blocking_tasks: 0,
+        };
+        let mut spatial = Some(SpatialCall {
+            position,
+            angles: &mut angles,
+            frame_scale: 256,
+            turn: 0,
+            nominal_ticks: 1,
+            matrix: Matrix::IDENTITY,
+            slave: false,
+            locations: &locations,
+            effective_position: None,
+            player_position: None,
+            actor_index: 5,
+            map_updates: &mut updates,
+        });
+        match token {
+            None => {
+                assert_eq!(
+                    tasks
+                        .call(
+                            ("WanderToLocation", CallKind::Task),
+                            &args,
+                            invocation,
+                            &mut None,
+                            &mut spatial,
+                            NativeServices::default(),
+                        )
+                        .unwrap(),
+                    Some(CallResult::Pending(1))
+                );
+                false
+            }
+            Some(token) => tasks
+                .poll(
+                    token,
+                    &args,
+                    invocation,
+                    &mut None,
+                    &mut spatial,
+                    NativeServices::default(),
+                )
+                .unwrap(),
+        }
+    };
+    // 10240 / 4 = 2560 per update at scale 256; the fourth call is within one step and snaps.
+    step(&mut tasks, &mut position, None);
+    assert_eq!(position, [0, 0, 2560]);
+    assert!(!step(&mut tasks, &mut position, Some(1)));
+    assert_eq!(position, [0, 0, 5120]);
+    assert!(!step(&mut tasks, &mut position, Some(1)));
+    assert_eq!(position, [0, 0, 7680]);
+    assert!(step(&mut tasks, &mut position, Some(1)));
+    assert_eq!(position, [0, 0, 10240]);
+    assert_eq!(updates, vec![5]);
+}
+
+#[test]
 fn move_along_axis_rotates_each_step_and_completes_without_the_final_move() {
     let mut tasks = NativeTasks::default();
     let args = [

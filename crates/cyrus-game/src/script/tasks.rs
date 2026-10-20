@@ -410,6 +410,11 @@ enum Task {
         group: u16,
         started: bool,
     },
+    /// `WanderToLocation`: walks to a location at the speed fixed on the first call.
+    WanderLocation {
+        started: bool,
+        speed: i32,
+    },
     /// `MoveAlongAxis`: the delta, spread over the duration and rotated by the receiver's
     /// orientation; `target` is the delta retained at elapsed zero, `accumulated` the sum so far.
     AxisMovement {
@@ -1214,6 +1219,59 @@ impl Task {
                 }
                 !continues(duration, elapsed)
             }
+            Self::WanderLocation { started, speed } => {
+                let [location, duration] = arguments else {
+                    anyhow::bail!("WanderToLocation requires two arguments")
+                };
+                let (location, duration) = (location.integer()?, duration.integer()?);
+                let input = spatial
+                    .as_mut()
+                    .context("WanderToLocation requires receiver pose and frame_scale")?;
+                let count = i32::try_from(input.locations.len())
+                    .context("WanderToLocation location count exceeds signed range")?;
+                let target = if location < 0 || location > count {
+                    input
+                        .locations
+                        .first()
+                        .context("WanderToLocation home unavailable")?
+                } else {
+                    input.locations.get(location as usize).context("WanderToLocation selector equals location count: original out-of-range access unsupported")?
+                };
+                let source = if input.slave {
+                    input
+                        .effective_position
+                        .context("WanderToLocation attached receiver pose unavailable")?
+                } else {
+                    *input.position
+                };
+                let differences =
+                    std::array::from_fn(|axis| target[axis].wrapping_sub(source[axis]));
+                // Distance subtracts in the opposite order; wrapping makes this significant at MIN.
+                let distance = super::spatial::rounded_distance(std::array::from_fn(|axis| {
+                    source[axis].wrapping_sub(target[axis])
+                }))?;
+                if !*started {
+                    *speed = distance
+                        .checked_div(duration)
+                        .context("WanderToLocation division invalid")?;
+                    *started = true;
+                }
+                let direction = super::spatial::normalized_direction(differences);
+                let step = speed.wrapping_mul(input.frame_scale as i32) >> 8;
+                if !input.map_updates.contains(&input.actor_index) {
+                    input.map_updates.push(input.actor_index);
+                }
+                if distance > step {
+                    for (axis, component) in direction.into_iter().enumerate() {
+                        input.position[axis] = input.position[axis]
+                            .wrapping_add(((component >> 8).wrapping_mul(step)) >> 8);
+                    }
+                    false
+                } else {
+                    *input.position = *target;
+                    true
+                }
+            }
             Self::AxisMovement {
                 target,
                 accumulated,
@@ -1903,6 +1961,11 @@ impl NativeTasks {
             Task::Movement { target: 0 }
         } else if function.eq_ignore_ascii_case("sMoveByAxis") {
             Task::ScaledMovement { origin: 0 }
+        } else if function.eq_ignore_ascii_case("WanderToLocation") {
+            Task::WanderLocation {
+                started: false,
+                speed: 0,
+            }
         } else if function.eq_ignore_ascii_case("MoveAlongAxis") {
             Task::AxisMovement {
                 target: 0,
