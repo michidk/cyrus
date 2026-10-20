@@ -3018,6 +3018,66 @@ fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores()
 }
 
 #[test]
+fn player_hanging_is_false_outside_the_hanging_state() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "PlayerHanging".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, "PlayerHanging", &[]).operation,
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    assert!(
+        world
+            .actors()
+            .iter()
+            .any(|actor| matches!(actor.source, ScriptActorSource::Player))
+    );
+    let map = world.id(0).unwrap();
+    let hud = cyrus_game::script::ScriptHud::default();
+    let inputs = ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(
+            map,
+            ScriptStage::Body(cyrus_script::Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(
+        world.flags(),
+        [7],
+        "the call completed and the script resumed"
+    );
+}
+
+#[test]
 fn flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures() {
     let flat = |calls: &[(&str, &[i32])]| run_native_world(calls).unwrap().actors()[0].flat_state();
     assert_eq!(flat(&[("FlatOff", &[])]), None, "no record is created");

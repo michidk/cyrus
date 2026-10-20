@@ -4227,6 +4227,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 control.ground_kind == super::registry::ground::TERRAIN_KIND,
             )));
         }
+        // PlayerHanging: the player is in living state 15 on the ledge the receiver names. The
+        // ledge identity belongs to the ledge-entry controller, so state 15 stays unsupported.
+        if function.eq_ignore_ascii_case("PlayerHanging") {
+            anyhow::ensure!(arguments.is_empty(), "PlayerHanging requires no arguments");
+            let player = self
+                .selected_player()
+                .context("PlayerHanging: selected player unavailable")?;
+            let index = self.registry.resolve(player)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .context("PlayerHanging: selected-player control unavailable")?;
+            anyhow::ensure!(
+                control.living_state != 15,
+                "PlayerHanging: ledge hang identity unavailable"
+            );
+            return Ok(CallResult::Complete(0));
+        }
         // PlayerStatus classifies the selected player; the motion bytes are the inferred
         // actor bytes +0x1b1 through +0x1b3 and the living state +0x1b4.
         if function.eq_ignore_ascii_case("PlayerStatus") {
