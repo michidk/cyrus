@@ -301,6 +301,22 @@ struct ActorSnapshot {
     animation_failure: Option<String>,
     update_failure: Option<String>,
 }
+impl ScriptWorld {
+    /// Recreate the shells that were started after preparation, in saved order, so the saved actor
+    /// census matches. Anything else beyond the installed census stays a mismatch.
+    fn restore_started_shells(&mut self, saved: &[ActorSnapshot]) -> Result<()> {
+        for extra in saved.iter().skip(self.actors.len()) {
+            ensure!(
+                extra.source == "shell",
+                "world {}: saved actor census differs",
+                self.world
+            );
+            self.spawn_shell(&extra.name)?;
+        }
+        Ok(())
+    }
+}
+
 impl ActorSnapshot {
     fn capture(
         actor: &ScriptActor,
@@ -714,6 +730,7 @@ impl WorldSnapshot {
             self.world
         );
         let mut candidate = ScriptWorld::prepare(sources.scripts, generation)?;
+        candidate.restore_started_shells(&self.actors)?;
         ensure!(
             self.actors.len() == candidate.actors.len(),
             "world {}: saved actor census differs",
@@ -971,7 +988,8 @@ impl RegistrySnapshot {
                 "world {}: saved content differs",
                 saved.world
             );
-            let installed = ScriptWorld::prepare(source.scripts, saved.generation)?;
+            let mut installed = ScriptWorld::prepare(source.scripts, saved.generation)?;
+            installed.restore_started_shells(&saved.actors)?;
             ensure!(
                 saved.actors.len() == installed.actors.len(),
                 "world {}: saved actor census differs",

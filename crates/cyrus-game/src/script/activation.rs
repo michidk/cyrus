@@ -193,6 +193,8 @@ pub struct GameplayGlobals {
     pub(super) selected_ledge_result: Option<i32>,
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
+    /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
+    pub(super) item_use_latch: bool,
     pub(super) sound_maintenance: super::SoundMaintenance,
     pub(super) menu_state: u16,
     /// Items and highlight of the scripted menu, retained across world replacement.
@@ -525,6 +527,11 @@ impl GameplayGlobals {
     /// The topic-menu owner supplies the text selected from its installed entries.
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);
+    }
+    /// Allow the next item-use attempt: the ordinary update calls this once per world-loop
+    /// iteration, so an iteration admits one attempt.
+    pub fn end_item_use_attempt(&mut self) {
+        self.item_use_latch = false;
     }
     pub(super) fn lockout_player(&mut self, value: i32) -> u16 {
         let value = value as u16;
@@ -1277,6 +1284,7 @@ impl GameplayGlobals {
             selected_action_inhibition: saved.selected_action_inhibition,
             selected_ledge_result: saved.selected_ledge_result,
             world_loop_frame: saved.world_loop_frame,
+            item_use_latch: false,
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,
             menu: saved.menu,

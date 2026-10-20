@@ -186,6 +186,7 @@ module where it is defined and regenerate.
 - `src/script/registry/ground.rs` — Ordinary ground queries retain model ownership and selected-player fallback history.
 - `src/script/registry/hazard.rs` — The nonplayer step hazard test follows the original's destination surface classification.
 - `src/script/registry/health.rs` — Selected-player health services retain distinct publication and death ordering.
+- `src/script/registry/item_use.rs` — `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.

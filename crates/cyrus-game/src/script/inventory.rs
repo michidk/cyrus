@@ -27,6 +27,12 @@ struct SavedItem {
     hidden: bool,
 }
 
+/// What using an owned item starts: its type code and its use script with the instance limit.
+pub(super) struct ItemUse {
+    pub item_type: u32,
+    pub script: Option<(String, i32)>,
+}
+
 /// Opaque replacement inventory for whole-session candidate assembly.
 /// Construction from a snapshot never runs startup, acquisition or weapon callbacks.
 pub struct Inventory {
@@ -253,6 +259,42 @@ impl Inventory {
             .count
             .checked_add(admitted)
             .with_context(|| format!("AddItem({id}): count exceeds u32"))?;
+        Ok(())
+    }
+
+    /// Check that `id` can be used and report what using it starts.
+    pub(super) fn begin_use(&self, id: u16) -> Result<ItemUse> {
+        let item = self
+            .items
+            .get(&id)
+            .with_context(|| format!("UseItem({id}): ITEM.INI definition absent"))?;
+        anyhow::ensure!(item.count >= 1, "UseItem({id}): item not owned");
+        Ok(ItemUse {
+            item_type: item.item_type,
+            script: item
+                .use_script
+                .clone()
+                .map(|name| (name, item.script_instances)),
+        })
+    }
+
+    /// Consume a used item: drop one unit of each `drop_use_item_list` entry, drop one unit of the
+    /// item itself when that changed its count and flag bit two is set, and empty it when flag bit
+    /// four is set.
+    pub(super) fn finish_use(&mut self, id: u16) -> Result<()> {
+        let before = self.count(id)?;
+        let dropped = self.items[&id].drop_use_items.clone();
+        for other in dropped {
+            self.remove(other, 1)
+                .with_context(|| format!("ITEM.INI drop_use_item_list[{id}] item {other}"))?;
+        }
+        let flags = self.items[&id].flags;
+        if self.count(id)? != before && flags & 2 != 0 {
+            self.remove(id, 1)?;
+        }
+        if flags & 4 != 0 {
+            self.clear(id)?;
+        }
         Ok(())
     }
 

@@ -220,6 +220,11 @@ impl SpatialWorld {
         })
     }
 
+    /// Account for an actor started after preparation that has no spatial state, such as a shell.
+    pub(super) fn push_absent(&mut self) {
+        self.actors.push(None);
+    }
+
     pub fn initialize_player(
         &mut self,
         index: usize,

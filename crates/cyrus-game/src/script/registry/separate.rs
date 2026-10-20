@@ -3,6 +3,35 @@ use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
 use anyhow::{Result, ensure};
 
 impl ScriptWorld {
+    /// Start a shell script from its installed definition, as item use and shell-creating natives do.
+    /// The new shell runs from the next update, newest first. Fails when the world has no such script.
+    pub fn spawn_shell(&mut self, name: &str) -> Result<ScriptActorId> {
+        let index = self.actors.len();
+        let template = self.shell_templates.get(name);
+        ensure!(
+            template.is_some(),
+            "world {}: shell script {name} not installed",
+            self.world
+        );
+        let actor = super::ScriptActor::shell(self.world, index, name, template);
+        self.actors.push(actor);
+        if let Some(spatial) = &mut self.spatial {
+            spatial.push_absent();
+        }
+        self.id(index)
+    }
+
+    /// Running shells of one script: the count an item's instance limit is checked against.
+    pub fn running_shells(&self, name: &str) -> usize {
+        self.actors
+            .iter()
+            .filter(|actor| {
+                matches!(&actor.source, super::ScriptActorSource::Shell(shell) if shell == name)
+                    && actor.runtime.is_some()
+            })
+            .count()
+    }
+
     /// Run the shell scripts, newest first, before the ordinary actors. A shell has no map object:
     /// like a separate record it runs on cleared temporary attributes and control, with its locals,
     /// continuation and tasks retained, and in shell context. `KillMe` ends it for good.

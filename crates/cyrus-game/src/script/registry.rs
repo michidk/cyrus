@@ -25,6 +25,7 @@ mod flat;
 mod follow;
 pub(super) mod ground;
 pub(super) mod hazard;
+mod item_use;
 mod late;
 mod light;
 mod lineup;
@@ -333,7 +334,64 @@ pub struct ScriptActor {
     animation_failure: Option<String>,
     update_failure: Option<String>,
 }
+/// What starting a shell script needs from its installed definition: the shared program, its
+/// code origin and a copy of the initial local variables.
+struct ShellTemplate {
+    program: Arc<cyrus_script::program::Program>,
+    code_origin: u32,
+    locals: Vec<i32>,
+    namespace: Option<String>,
+    native_hook: Option<Call>,
+    combat_taunts: Vec<CombatTaunt>,
+    location_offsets: Vec<[i32; 3]>,
+}
+
 impl ScriptActor {
+    /// A shell actor: no map object, zeroed temporary attributes and no persistent control.
+    fn shell(world: u32, index: usize, name: &str, template: Option<&ShellTemplate>) -> Self {
+        let context = format!("world {world} instance {index} actor {name} script");
+        let (runtime, unavailable) = match template {
+            Some(template) => match Runtime::from_shared(
+                Arc::clone(&template.program),
+                CodeOrigin(template.code_origin),
+                template.locals.clone(),
+                context.clone(),
+            ) {
+                Ok(runtime) => (Some(runtime), None),
+                Err(error) => (None, Some(format!("{context}: {error:#}"))),
+            },
+            None => (None, Some(format!("{context}: program absent"))),
+        };
+        Self {
+            message_read: 0,
+            source: ScriptActorSource::Shell(name.to_owned()),
+            runtime_identifier: None,
+            namespace: template.and_then(|template| template.namespace.clone()),
+            native_hook: template.and_then(|template| template.native_hook.clone()),
+            combat_taunts: template
+                .map(|template| template.combat_taunts.clone())
+                .unwrap_or_default(),
+            runtime,
+            unavailable,
+            attributes: vec![0; 256],
+            control: None,
+            surface: None,
+            model: Default::default(),
+            collision: None,
+            player_movement: None,
+            light: None,
+            flat: None,
+            location_offsets: template
+                .map(|template| template.location_offsets.clone())
+                .unwrap_or_default(),
+            tasks: Default::default(),
+            native_commands: Default::default(),
+            animation: None,
+            animation_failure: None,
+            update_failure: None,
+        }
+    }
+
     pub fn name(&self) -> &str {
         self.source.name()
     }
@@ -412,6 +470,8 @@ pub struct ScriptWorld {
     updates: cyrus_assets::script::UpdateSettings,
     player_distance_override: bool,
     actors: Vec<ScriptActor>,
+    /// Installed script definitions a shell can be started from after preparation.
+    shell_templates: BTreeMap<String, ShellTemplate>,
     spatial: Option<super::spatial::SpatialWorld>,
     activation: super::ActivationState,
     globals: super::GameplayGlobals,
@@ -748,6 +808,24 @@ impl ScriptWorld {
                 }
             }
         }
+        let shell_templates: BTreeMap<String, ShellTemplate> = scripts
+            .actors
+            .iter()
+            .filter_map(|(name, actor)| {
+                Some((
+                    name.clone(),
+                    ShellTemplate {
+                        program: Arc::clone(&programs[name.as_str()]),
+                        code_origin: actor.code_origin,
+                        locals: actor.instance_variables.first()?.clone(),
+                        namespace: actor.namespace.clone(),
+                        native_hook: actor.native_hook.clone(),
+                        combat_taunts: actor.combat_taunts.clone(),
+                        location_offsets: actor.location_offsets.clone(),
+                    },
+                ))
+            })
+            .collect();
         let mut allocations = BTreeMap::<String, usize>::new();
         let mut allocate = |source: ScriptActorSource,
                             runtime_identifier: Option<i16>,
@@ -787,8 +865,7 @@ impl ScriptWorld {
                 }
                 _ => None,
             };
-            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6))
-                || matches!(&source, ScriptActorSource::Shell(_));
+            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6));
             let light = match &source {
                 ScriptActorSource::Map(placement) if placement.object_type == 6 => {
                     Some(light::LightState::authored(placement))
@@ -868,10 +945,11 @@ impl ScriptWorld {
         // list, so they run newest first (see `update_shells`).
         for name in &scripts.shells {
             let index = actors.len();
-            actors.push(allocate(
-                ScriptActorSource::Shell(name.clone()),
-                None,
+            actors.push(ScriptActor::shell(
+                scripts.world,
                 index,
+                name,
+                shell_templates.get(name),
             ));
         }
         for (name, source, identifier) in [
@@ -931,6 +1009,7 @@ impl ScriptWorld {
                 .map(|flag| flag.initial_value)
                 .collect(),
             actors,
+            shell_templates,
             task_calls,
             routed_caller: None,
             weapons: scripts.weapons.clone(),
@@ -4073,6 +4152,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.add_session_item(item, amount.integer()?)?;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("UseItem") {
+            let [item] = arguments else {
+                anyhow::bail!("UseItem requires one argument")
+            };
+            let item =
+                u16::try_from(item.integer()?).context("UseItem item ID outside u16 range")?;
+            self.use_item(item)?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("RemoveItem") {
             let [item] = arguments else {
                 anyhow::bail!("RemoveItem requires one argument")
@@ -5885,6 +5973,7 @@ mod fighting_tests {
             },
             player_distance_override: false,
             actors,
+            shell_templates: BTreeMap::new(),
             spatial: Some(spatial),
             activation: Default::default(),
             globals: Default::default(),

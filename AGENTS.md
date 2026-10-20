@@ -287,7 +287,9 @@ player initialization establishes the shared lineup result. `PlayerLineUp`,
 selected player to the target; object-side lineups and conversation progression
 remain unavailable. World shell scripts (`COMMON` and the map's own script, plus the debug
 shell when SYSTEM.INI `final_version` is off) run every update before the ordinary actors until
-`KillMe`; item use scripts and `shoot` creation remain unavailable. Script caches need re-export
+`KillMe`. The `UseItem` native starts a general item's use script as a shell, within the item's
+instance limit, and applies its drop list and use flags; weapon and torch items, a burning torch
+and `shoot` creation remain unavailable, and no inventory screen calls it yet. Script caches need re-export
 (schema 27). Scripts and
 the HUD share session inventory
 through `AddItem`, `DropItem`, `HaveItem` and `SelectItem`. Recursive prerequisites,

@@ -309,6 +309,28 @@ impl ScriptHud {
         }
     }
 
+    pub(super) fn begin_item_use(&self, id: u16) -> Result<super::inventory::ItemUse> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        match state.inventory.as_ref() {
+            Some(items) => items.begin_use(id),
+            None => anyhow::bail!("UseItem({id}): inventory unavailable"),
+        }
+    }
+
+    pub(super) fn finish_item_use(&self, id: u16) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        match state.inventory.as_mut() {
+            Some(items) => items.finish_use(id),
+            None => anyhow::bail!("UseItem({id}): inventory unavailable"),
+        }
+    }
+
+    /// Item zero is the compass: using it flips the shared flag.
+    pub(super) fn toggle_compass(&self) {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        state.compass_on = !state.compass_on;
+    }
+
     /// Selected record ID, independent of ownership or visibility; zero when closed.
     pub fn active_item(&self) -> Result<u16> {
         let state = self.0.lock().expect("script HUD lock poisoned");

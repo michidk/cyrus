@@ -28410,3 +28410,191 @@ fn block_message_handoff_gates_skip_unavailable_traversal_and_selected_death_que
         );
     }
 }
+
+#[test]
+fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_list() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "UseItem".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        let mut shell = scripts.actors["LOGIC"].clone();
+        shell.code_origin += 1000;
+        shell.header_index += 100;
+        scripts.actors.insert("ITEMSCR".into(), shell);
+        let call = Operation::ObjectCall {
+            call: Call {
+                function_id: id,
+                function: "UseItem".into(),
+                target: Object::Player,
+                kind: CallKind::Function,
+                arguments: vec![Value::Integer { value: 4 }],
+            },
+        };
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps =
+            [call, Operation::End { target: 0 }]
+                .into_iter()
+                .enumerate()
+                .map(|(index, operation)| {
+                    (
+                        index as u32,
+                        Step {
+                            next: index as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    let mut asset = inventory_asset(&[(0, 1), (4, 3), (5, 2)]);
+    {
+        let item = asset.inventory.get_mut(&4).unwrap();
+        item.use_script = Some("ITEMSCR".into());
+        item.script_instances = 1;
+        item.drop_use_items = vec![5];
+    }
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let map = world.id(0).unwrap();
+    let inputs = |hud| ScriptInputs {
+        hud: Some(hud),
+        shell_execution: Some(false),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let before = world.actors().len();
+    for _ in 0..2 {
+        world.globals_mut().end_item_use_attempt();
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                inputs(&hud),
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+    }
+    // The instance limit of one stopped the second start; each use dropped one unit of item 5.
+    assert_eq!(world.actors().len(), before + 1);
+    assert_eq!(world.running_shells("ITEMSCR"), 1);
+    assert_eq!(hud.inventory(None).unwrap().counts[&5], 0);
+    world
+        .update_shells(
+            inputs(&hud),
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert!(world.actors().last().unwrap().failure().is_none());
+}
+
+fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
+    cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: counts
+            .iter()
+            .map(|&(id, count)| {
+                (
+                    id,
+                    cyrus_assets::hud::InventoryItem {
+                        count,
+                        total: 100,
+                        player_max: 100,
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
+    }
+}
+
+#[test]
+fn a_shell_started_after_preparation_survives_a_snapshot_roundtrip() {
+    use cyrus_game::script::{ScriptActorSource, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    let mut shell = scripts.actors["LOGIC"].clone();
+    shell.code_origin += 1000;
+    shell.header_index += 100;
+    scripts.actors.insert("LATER".into(), shell);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, _) = static_model_fixture(scripts.clone());
+    let census = world.actors().len();
+    world.spawn_shell("LATER").unwrap();
+    assert_eq!(world.actors().len(), census + 1);
+    assert!(world.spawn_shell("ABSENT").is_err());
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let restored = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved.clone()).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 9,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(restored.actors().len(), census + 1);
+    assert!(matches!(
+        &restored.actors()[census].source,
+        ScriptActorSource::Shell(name) if name == "LATER"
+    ));
+    // Only shells may exceed the installed census.
+    let mut forged = saved;
+    forged["actors"][census]["source"] = serde_json::json!("map");
+    assert!(
+        ScriptWorld::from_snapshot(
+            serde_json::from_value(forged).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 9,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .is_err()
+    );
+}

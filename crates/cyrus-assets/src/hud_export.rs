@@ -239,6 +239,17 @@ pub(crate) fn prepare(
                 drop_add_items: list(&item.drop_add_item_list, "drop_add_item_list")?,
                 add_items: list(&item.add_item_list, "add_item_list")?,
                 remove_drop_items: list(&item.remove_drop_item_list, "remove_drop_item_list")?,
+                item_type: match item.item_type {
+                    None | Some(ItemType::General) => 0,
+                    Some(ItemType::Weapon) => 1,
+                    Some(ItemType::HandObject) => 2,
+                    Some(ItemType::Unknown(code)) => u32::try_from(code).with_context(|| {
+                        format!("hud: {item_path} type[{id}] = {code} is negative")
+                    })?,
+                },
+                use_script: item.use_script.clone(),
+                script_instances: item.script_instances.unwrap_or(0),
+                drop_use_items: list(&item.drop_use_item_list, "drop_use_item_list")?,
             },
         );
         if item.hide.unwrap_or(false) {

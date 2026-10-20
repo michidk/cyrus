@@ -90,4 +90,16 @@ pub struct InventoryItem {
     pub add_items: Vec<u16>,
     /// Recursively cleared only while the source retains a nonzero count.
     pub remove_drop_items: Vec<u16>,
+    /// ITEM.INI `type`; code 3 is the torch, code 1 the weapon.
+    #[serde(default)]
+    pub item_type: u32,
+    /// ITEM.INI `use_script`: the shell script item use starts.
+    #[serde(default)]
+    pub use_script: Option<String>,
+    /// ITEM.INI `script_instances`: concurrent use scripts allowed; zero or less is unlimited.
+    #[serde(default)]
+    pub script_instances: i32,
+    /// ITEM.INI `drop_use_item_list`: one unit of each is dropped when the item is used.
+    #[serde(default)]
+    pub drop_use_items: Vec<u16>,
 }
