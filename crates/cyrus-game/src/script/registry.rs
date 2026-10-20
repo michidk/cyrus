@@ -3694,6 +3694,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation([false; 3])?;
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("Resurrect") {
+            anyhow::ensure!(arguments.is_empty(), "Resurrect requires no arguments");
+            self.registry.release_held_walk_nodes(id)?;
+            let actor = &mut self.registry.actors[self.index];
+            let control = actor
+                .control
+                .as_mut()
+                .context("Resurrect: receiver lifecycle unavailable")?;
+            if control.killed || control.death_selector == 8 {
+                control.killed = false;
+                if let Some(profile) = control.combat.as_ref().map(|record| record.contact_profile)
+                {
+                    control.combat = super::CombatControlState::initialize(
+                        &actor.attributes,
+                        control.combat.as_ref(),
+                        &mut self.registry.next_combat_index,
+                        &self.registry.combat_attacks,
+                        profile,
+                    )
+                    .context("Resurrect: combat reinitialization")?;
+                }
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;

@@ -20680,6 +20680,72 @@ fn actor_navigation_restore_rejects_unknown_maps_and_unsupported_negative_indice
 }
 
 #[test]
+fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.definition.functions.push(Function {
+        name: "Resurrect".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    let first = actor.program.steps[&0].clone();
+    let mut second = Step {
+        next: 2,
+        operation: first.operation.clone(),
+    };
+    if let Operation::Assign { formula, .. } = &mut second.operation
+        && let Value::Call { call } = &mut formula.first
+    {
+        call.function_id = 2;
+        call.function = "Resurrect".into();
+    }
+    actor.program.steps = BTreeMap::from([
+        (0, Step { next: 1, ..first }),
+        (1, second),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, mut data) = navigation_owner_fixture();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    let owner = world.actors()[0].runtime_identifier.unwrap() as u8;
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":0,"destination":1});
+    saved["walk_nodes"]["maps"][0] = serde_json::json!([owner, owner]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            100,
+        )
+        .unwrap();
+    let control = world.actors()[0].control_state().unwrap();
+    // KillMe set the flag and selector 8; Resurrect cleared only the flag.
+    assert!(!control.killed);
+    assert_eq!(control.death_selector, 8);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(saved["walk_nodes"]["maps"][0], serde_json::json!([0, 0]));
+}
+
+#[test]
 fn actor_navigation_kill_me_releases_held_nodes_before_owned_sound_cleanup() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
     let mut scripts = random_scripts("KillMe", vec![], Object::Me);
