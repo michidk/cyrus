@@ -151,7 +151,8 @@ impl std::fmt::Debug for LocomotionGeometry<'_> {
 }
 
 /// Controls, clock and settings for one `menuProc` step: up and down are the first two bindings
-/// (forward and backward) and select is the fourth action binding.
+/// (forward and backward) and select is the fourth action binding. Elapsed BIOS ticks shorten the
+/// repeat delay only in updates that advance at least one nominal tick.
 fn menu_input(
     inputs: &ScriptInputs<'_>,
     dialogue: Option<&super::DialogueState>,
@@ -162,7 +163,7 @@ fn menu_input(
         down: held.backward,
         select: held.action,
         tick: inputs.combat_clock_sample?,
-        elapsed_delay: inputs.variable_timing?,
+        elapsed_delay: inputs.nominal_ticks? != 0,
         traverse_delay: i32::try_from(dialogue?.settings().menu_traverse_delay).ok()?,
     })
 }
@@ -180,9 +181,6 @@ pub struct ScriptInputs<'a> {
     pub activation_use_held: Option<bool>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
     pub combat_clock_sample: Option<u32>,
-    /// The original's variable-timing flag, which lets elapsed BIOS ticks shorten menu repeat
-    /// delays; absence is unknown.
-    pub variable_timing: Option<bool>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,

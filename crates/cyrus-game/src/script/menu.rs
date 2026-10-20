@@ -24,7 +24,7 @@ pub struct MenuInput {
     pub select: bool,
     /// Raw BIOS timer sample.
     pub tick: u32,
-    /// Whether elapsed BIOS ticks shorten the repeat delay (the original's variable-timing flag).
+    /// Whether elapsed BIOS ticks shorten the repeat delay: the update advanced a nominal tick.
     pub elapsed_delay: bool,
     /// Installed `menu_traverse_delay` in ticks.
     pub traverse_delay: i32,
@@ -247,7 +247,7 @@ mod tests {
     }
 
     /// Original `menuProc` steps from an emulator run over random controls and timer values:
-    /// `count traverse_delay variable_timing initial_highlight|` then per step `up,down,select,tick`
+    /// `count traverse_delay nominal_tick initial_highlight|` then per step `up,down,select,tick`
     /// followed by the original's result, highlight, committed item, repeat word, delay, last tick,
     /// select-pending, accepted and menu-active words.
     const ORACLE: &str = "\

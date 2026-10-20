@@ -2410,6 +2410,208 @@ fn hud_call(
     Ok(world.actors()[0].runtime().unwrap().variables()[0])
 }
 
+fn hud_calls(hud: &cyrus_game::script::ScriptHud, calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
+    let mut operations = vec![];
+    let mut functions = vec![];
+    for (index, (function, arguments)) in calls.iter().enumerate() {
+        operations.push(Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 3 + index as u16,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: (*function).into(),
+                        arguments: arguments
+                            .iter()
+                            .map(|value| Value::Integer { value: *value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
+            },
+        });
+        functions.push(Function {
+            name: (*function).into(),
+            param_count: arguments.len().try_into().unwrap(),
+            kind: CallKind::Function,
+        });
+    }
+    operations.push(Operation::End { target: 0 });
+    let mut data = scripts(operations);
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    actor.program.variables = vec![0];
+    actor.instance_variables = vec![vec![0]];
+    data.definition.functions.extend(functions);
+    data.content_id = data.content_identity()?;
+    let mut world = ScriptWorld::prepare(&data, 1)?;
+    world.advance(
+        world.id(0).unwrap(),
+        BODY,
+        cyrus_game::script::ScriptInputs {
+            hud: Some(hud),
+            ..Default::default()
+        },
+        None,
+        None,
+        30,
+    )?;
+    anyhow::ensure!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+}
+
+#[test]
+fn script_menu_items_take_installed_text_and_report_the_committed_value() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    hud.configure(&hud_asset(), &Preferences::default());
+    let tag = i32::from_le_bytes(*b"TEST");
+    let none = i32::from_le_bytes(*b"NONE");
+    // Nothing is committed yet, so the first item's value is reported; a label without an
+    // installed entry adds nothing.
+    let value = |calls: &[(&str, &[i32])]| hud_calls(&hud, calls).unwrap();
+    assert_eq!(
+        value(&[("menuAddItem", &[none, 0, 9]), ("menuSelection", &[])]),
+        0
+    );
+    assert_eq!(
+        value(&[
+            ("menuNew", &[]),
+            ("menuAddItem", &[tag, 0, 7]),
+            ("menuSelection", &[]),
+        ]),
+        7
+    );
+}
+
+#[test]
+fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
+    use cyrus_game::{
+        player::input::PlayerInput,
+        preferences::Preferences,
+        script::{PlayerControllerInput, ScriptHud, ScriptInputs},
+    };
+    let hud = ScriptHud::default();
+    hud.configure(&hud_asset(), &Preferences::default());
+    let call = |index: u16, name: &str, kind: CallKind, arguments: &[i32]| Operation::Call {
+        call: Call {
+            function_id: index,
+            kind,
+            target: Object::Me,
+            function: name.into(),
+            arguments: arguments
+                .iter()
+                .map(|value| Value::Integer { value: *value })
+                .collect(),
+        },
+    };
+    let test = i32::from_le_bytes(*b"TEST");
+    let empty = i32::from_le_bytes(*b"EMPT");
+    let mut data = scripts(vec![
+        call(3, "menuNew", CallKind::Function, &[]),
+        call(4, "menuAddItem", CallKind::Function, &[test, 0, 7]),
+        call(4, "menuAddItem", CallKind::Function, &[empty, 0, 8]),
+        call(5, "menuProc", CallKind::Task, &[]),
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 6,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: "menuSelection".into(),
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::Assign {
+            destination: Place::Flag { index: 0 },
+            formula: Formula {
+                first: Value::Integer { value: 7 },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.actors.get_mut("ACTOR").unwrap().program.variables = vec![0];
+    data.actors.get_mut("ACTOR").unwrap().instance_variables = vec![vec![0]];
+    for (name, param_count, kind) in [
+        ("menuNew", 0, CallKind::Function),
+        ("menuAddItem", 3, CallKind::Function),
+        ("menuProc", 0, CallKind::Task),
+        ("menuSelection", 0, CallKind::Function),
+    ] {
+        data.definition.functions.push(Function {
+            name: name.into(),
+            param_count,
+            kind,
+        });
+    }
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let mut variable = 0;
+    let rounds = [
+        (false, false, false),
+        (false, true, false),
+        (false, false, false),
+        (false, false, true),
+        (false, false, false),
+        (false, false, false),
+    ];
+    for (round, (up, down, select)) in rounds.into_iter().enumerate() {
+        let held = PlayerInput {
+            forward: up,
+            backward: down,
+            action: select,
+            ..Default::default()
+        };
+        let inputs = ScriptInputs {
+            hud: Some(&hud),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            combat_clock_sample: Some(100 + 10 * round as u32),
+            player_controller: Some(PlayerControllerInput {
+                held: &held,
+                walk_mode: false,
+            }),
+            ..Default::default()
+        };
+        for stage in [TASKS, BODY] {
+            world.advance(id, stage, inputs, None, None, 30).unwrap();
+        }
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        variable = world.actors()[0].runtime().unwrap().variables()[0];
+        if world.flags() == [7] {
+            break;
+        }
+    }
+    assert_eq!(
+        world.flags(),
+        [7],
+        "the menu task completed and the script resumed"
+    );
+    // The empty-text item matches the remembered (empty) highlight text, so it starts highlighted;
+    // down then wraps to the first item, which is committed on release.
+    assert_eq!(
+        variable, 7,
+        "down wrapped from the second item to the first"
+    );
+    assert_eq!(world.globals().menu_state(), 0, "the menu closed");
+}
+
 #[test]
 fn script_powerup_dispatch_validates_installed_frames_and_retains_slot_order() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
