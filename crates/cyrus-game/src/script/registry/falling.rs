@@ -379,6 +379,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated landing control")
             .falling_state = 0;
+        self.actors[index].sync_falling_motion();
         Ok(decision)
     }
 
@@ -467,6 +468,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated landing control")
             .falling_state = 0;
+        self.actors[index].sync_falling_motion();
         Ok(())
     }
 
@@ -603,6 +605,7 @@ impl ScriptWorld {
                 control.fall_origin_y = origin;
                 control.fall_timer = timer;
                 control.falling_state = 1;
+                self.actors[index].sync_falling_motion();
                 force_group
             }
         };
@@ -700,6 +703,7 @@ impl ScriptWorld {
         control.fall_origin_y = origin;
         control.fall_timer = timer;
         control.falling_state = 1;
+        self.actors[index].sync_falling_motion();
         Ok(true)
     }
 

@@ -17,7 +17,9 @@ enum Command {
         rate_shift: Option<i64>,
     },
     Event(u32),
-    Transition(u32),
+    /// Trigger mask and the third operand (`target_group`), the command index a taken mask-4
+    /// transition jumps to.
+    Transition(u32, u32),
     Unsupported(u8),
 }
 
@@ -27,7 +29,8 @@ enum Command {
 /// their effects and decisions.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnimationSound {
-    /// A forward `Transition` command's trigger mask. The host decides whether the transition is
+    /// A forward `Transition` command's trigger mask, for masks other than 4 (the sequence
+    /// decides mask 4 from the actor's falling byte). The host decides whether the transition is
     /// taken; returning `Ok` continues with the next command, and an error stops playback, which
     /// is how a host refuses a mask whose state it does not model. Reverse playback never asks.
     Transition { mask: u32 },
@@ -64,6 +67,8 @@ pub struct FrameSequence {
     type_two: bool,
     /// Transient: whether the pending request is the actor's default group, set per advance.
     pending_default: bool,
+    /// Transient: whether the actor's falling byte is nonzero, set per advance by the owner.
+    motion_active: bool,
     sound_requested: bool,
 }
 
@@ -215,11 +220,19 @@ impl FrameSequence {
                         format!("{context} command {index}: event operand outside u32 range")
                     })?)
                 }
-                15 => match command["trigger_mask"].as_u64().map(u32::try_from) {
-                    Some(mask) => Command::Transition(mask.with_context(|| {
-                        format!("{context} command {index}: trigger mask outside u32 range")
-                    })?),
-                    None => Command::Unsupported(15),
+                15 => match (
+                    command["trigger_mask"].as_u64().map(u32::try_from),
+                    command["target_group"].as_u64().map(u32::try_from),
+                ) {
+                    (Some(mask), Some(target)) => Command::Transition(
+                        mask.with_context(|| {
+                            format!("{context} command {index}: trigger mask outside u32 range")
+                        })?,
+                        target.with_context(|| {
+                            format!("{context} command {index}: transition target outside u32 range")
+                        })?,
+                    ),
+                    _ => Command::Unsupported(15),
                 },
                 12 => {
                     let value = command["value"].as_i64().with_context(|| {
@@ -261,6 +274,7 @@ impl FrameSequence {
             type_one: group_type.to_le_bytes()[0] == 1,
             type_two: group_type.to_le_bytes()[0] == 2,
             pending_default: false,
+            motion_active: false,
             sound_requested: false,
         })
     }
@@ -295,6 +309,10 @@ impl FrameSequence {
 
     pub(super) fn set_pending_default(&mut self, pending_default: bool) {
         self.pending_default = pending_default;
+    }
+
+    pub(super) fn set_motion_active(&mut self, motion_active: bool) {
+        self.motion_active = motion_active;
     }
 
     pub(super) fn forget_sound(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
@@ -539,10 +557,21 @@ impl FrameSequence {
                     self.dispatch_sound(sounds, AnimationSound::Event { flags })?;
                     self.command = self.command.wrapping_add(step);
                 }
-                Command::Transition(_) if reverse => {
+                Command::Transition(..) if reverse => {
                     self.command = self.command.wrapping_sub(1);
                 }
-                Command::Transition(mask) => {
+                // Mask 4 reads the actor's falling byte, which the caller supplies; taking it
+                // jumps to the third operand like a taken exit jump.
+                Command::Transition(4, target) => {
+                    if self.motion_active {
+                        self.exit_reached = true;
+                        self.command = target as i16;
+                        self.translation_suppressed = false;
+                    } else {
+                        self.command = self.command.wrapping_add(1);
+                    }
+                }
+                Command::Transition(mask, _) => {
                     anyhow::ensure!(
                         sounds.is_some(),
                         "{} command {}: opcode 15 playback unsupported",

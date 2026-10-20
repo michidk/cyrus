@@ -17,6 +17,9 @@ pub struct ActorAnimation {
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
+    /// Transient mirror of the actor's falling byte (nonzero), kept by the owner. It is not
+    /// saved: the owner sets it before the next advance.
+    motion_active: bool,
 }
 
 /// Saved current receiver and pending request for ordinary collision rollback.
@@ -202,11 +205,18 @@ impl ActorAnimation {
             frame_progress: 0,
             reverse: false,
             failure: None,
+            motion_active: false,
         })
     }
 }
 
 impl ActorAnimation {
+    /// Mirror whether the actor's falling byte is nonzero. A forward mask-4 `Transition`
+    /// command reads it; the owner refreshes it whenever the byte changes and before stepping.
+    pub fn set_motion_active(&mut self, active: bool) {
+        self.motion_active = active;
+    }
+
     /// Apply a caller-selected ordinary default outside shell execution.
     /// Replaces the old current default before its exit marker and separately
     /// retargets an old pending default, reusing this update's nominal ticks.
@@ -590,6 +600,7 @@ impl ActorAnimation {
                     self.pending
                         .is_some_and(|(pending, _)| pending == self.default),
                 );
+                sequence.set_motion_active(self.motion_active);
                 if let Some(reference) = sequence.advance_with_progress(
                     ticks,
                     exiting,

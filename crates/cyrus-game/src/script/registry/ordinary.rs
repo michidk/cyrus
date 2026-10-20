@@ -159,6 +159,7 @@ impl ScriptWorld {
                 continue;
             }
             let actor = &mut self.actors[id.index];
+            actor.sync_falling_motion();
             let selected_player = matches!(actor.source, super::ScriptActorSource::Player)
                 && inputs.player_controller.is_some();
             if actor.placement().is_none() && !selected_player {
@@ -817,15 +818,15 @@ fn queued_step(
 /// jump bit, which only the `SetAction` native sets. Cyrus does not implement `SetAction` (a
 /// script calling it fails), so that word is always clear and these masks continue with the next
 /// command. Mask 8 acts only for the selected player, so every other actor continues; any other
-/// mask continues. Mask 4 reads a combat record byte and mask 8 for the selected player reads a
-/// combat input flag, neither of which cyrus models, so those fail instead of guessing.
+/// mask continues. Mask 8 for the selected player reads a combat input flag cyrus does not model,
+/// so it fails instead of guessing. Mask 4 never reaches the host: the animation decides it from
+/// the falling byte.
 fn transition_continues(
     actor: ScriptActorId,
     mask: u32,
     selected_player: Option<ScriptActorId>,
 ) -> anyhow::Result<()> {
     match mask {
-        4 => anyhow::bail!("animation transition on the combat counter flag is unsupported"),
         8 if Some(actor) == selected_player => {
             anyhow::bail!("selected-player combat animation transition is unsupported")
         }
@@ -1243,7 +1244,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transitions_continue_except_the_unmodelled_combat_masks() {
+    fn transitions_continue_except_the_selected_players_combat_input() {
         let other = ScriptActorId {
             generation: 1,
             index: 3,
@@ -1252,14 +1253,12 @@ mod tests {
             generation: 1,
             index: 5,
         };
-        for mask in [0, 1, 2, 3, 5, 16, 63] {
+        for mask in [0, 1, 2, 3, 4, 5, 16, 63] {
             assert!(transition_continues(other, mask, Some(player)).is_ok());
             assert!(transition_continues(player, mask, Some(player)).is_ok());
         }
         assert!(transition_continues(other, 8, Some(player)).is_ok());
         assert!(transition_continues(other, 8, None).is_ok());
         assert!(transition_continues(player, 8, Some(player)).is_err());
-        assert!(transition_continues(other, 4, Some(player)).is_err());
-        assert!(transition_continues(player, 4, None).is_err());
     }
 }

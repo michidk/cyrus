@@ -332,6 +332,18 @@ impl ScriptActor {
     pub fn name(&self) -> &str {
         self.source.name()
     }
+
+    /// Mirror the falling byte into the animation, whose mask-4 `Transition` commands read it.
+    /// Call after every write to the byte and before an ordinary update steps the animation.
+    fn sync_falling_motion(&mut self) {
+        let active = self
+            .control
+            .as_ref()
+            .is_some_and(|control| control.falling_state != 0);
+        if let Some(animation) = self.animation.as_mut() {
+            animation.playback.set_motion_active(active);
+        }
+    }
     fn ordinary_collision_role(&self) -> bool {
         matches!(self.source, ScriptActorSource::Player)
             || self

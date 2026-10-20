@@ -304,6 +304,31 @@ fn reverse_boundary_sound_failure_restores_its_signed_cursor_and_sticky_error() 
 }
 
 #[test]
+fn a_mask_four_transition_follows_the_falling_byte_without_asking_the_host() {
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = json!([
+        {"opcode":15,"trigger_mask":4,"start_frame":0,"target_group":3},
+        {"opcode":0,"frame_reference":70},
+        {"opcode":1},
+        {"opcode":0,"frame_reference":80},
+        {"opcode":1}
+    ]);
+    for (falling, frame) in [(false, 70), (true, 80)] {
+        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+        actor.set_motion_active(falling);
+        let mut seen = vec![];
+        let shown = actor
+            .request_with_sounds(7, 0, 0, &mut |event| {
+                seen.push(event);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(shown, Some(frame), "falling {falling}");
+        assert!(seen.is_empty(), "mask 4 is decided without the host");
+    }
+}
+
+#[test]
 fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
     let transition = json!({"opcode":15,"trigger_mask":2,"start_frame":0,"target_group":36});
     let mut data = data();
