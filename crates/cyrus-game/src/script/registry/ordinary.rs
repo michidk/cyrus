@@ -190,6 +190,11 @@ impl ScriptWorld {
             let Some(control) = actor.control.as_mut() else {
                 continue;
             };
+            // KillMe leaves map actors allocated, but the ordinary loop no longer updates them.
+            // Resurrect clears this flag before the next admission.
+            if control.killed {
+                continue;
+            }
             if actor.attributes[26] != 0
                 && if actor.attributes[25] == 0 {
                     self.updates.disable_slaves
