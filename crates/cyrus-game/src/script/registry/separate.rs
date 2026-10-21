@@ -266,7 +266,8 @@ impl ScriptWorld {
         let selected = self.separate_actors(view)?.to_vec();
         for id in selected {
             let actor = &mut self.actors[id.index];
-            if actor.failure().is_some() || actor.unavailable().is_some() {
+            if actor.runtime.is_none() || actor.failure().is_some() || actor.unavailable().is_some()
+            {
                 continue;
             }
             actor.attributes.fill(0);
@@ -295,9 +296,15 @@ impl ScriptWorld {
                 Ok(())
             })();
             let actor = &mut self.actors[id.index];
+            // Separate records use temporary lifecycle state, so retain KillMe's terminal
+            // result before clearing that state for the next traversal.
+            let finished = actor.control.as_ref().is_some_and(|control| control.killed);
             actor.attributes.fill(0);
             actor.control = None;
             actor.surface = None;
+            if finished {
+                actor.runtime = None;
+            }
             if let Err(error) = result {
                 actor.update_failure = Some(format!(
                     "world {} instance {} actor {} separate update: {error:#}",

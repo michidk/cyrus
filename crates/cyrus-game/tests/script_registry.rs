@@ -10564,6 +10564,66 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
 }
 
 #[test]
+fn separate_kill_me_releases_the_actor_runtime_and_owned_sounds() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptSound};
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(1);
+    for instance in &mut scripts.instances {
+        instance.object_type = 2;
+        instance.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let mut sounds = Vec::new();
+    world
+        .update_separate(
+            [600, 600],
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |actor, sound| {
+                sounds.push((actor, sound));
+                Ok(())
+            },
+            100,
+        )
+        .unwrap();
+    assert!(matches!(
+        world.actors()[0].source,
+        ScriptActorSource::Map(_)
+    ));
+    assert!(world.actors()[0].runtime().is_none());
+    assert_eq!(sounds.len(), 1);
+    assert!(
+        sounds
+            .iter()
+            .all(|(_, sound)| matches!(sound, ScriptSound::StopOwned))
+    );
+    world
+        .update_separate(
+            [600, 600],
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |actor, sound| {
+                sounds.push((actor, sound));
+                Ok(())
+            },
+            100,
+        )
+        .unwrap();
+    assert!(world.actors()[0].failure().is_none());
+    assert_eq!(sounds.len(), 1);
+}
+
+#[test]
 fn shell_scripts_run_without_a_map_object_and_retain_locals() {
     use cyrus_game::script::{ScriptActorSource, ScriptInputs};
     let mut scripts = cache();
