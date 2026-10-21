@@ -71,6 +71,11 @@ impl ScriptWorld {
             .as_mut()
             .expect("created-object spatial state validated above")
             .push_created(&self.actors[index], position, angles, creator_index)?;
+        // Created records register an installed namespace under runtime identifier zero. The
+        // original keeps the first registration when that identifier is already present.
+        if self.actors[index].namespace.is_some() {
+            self.names.entry(0).or_insert(index);
+        }
         self.id(index)
     }
 
