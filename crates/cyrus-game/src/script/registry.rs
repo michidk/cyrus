@@ -6355,6 +6355,7 @@ mod fighting_tests {
             flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
             updates: cyrus_assets::script::UpdateSettings {
                 fall_death_ticks: 144,
+                fall_landing: None,
                 dummy_model_manager: false,
                 task_system: true,
                 animation_system: true,

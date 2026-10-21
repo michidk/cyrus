@@ -86,6 +86,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             fall_death_ticks: 144,
+            fall_landing: None,
             dummy_model_manager: false,
             task_system: true,
             animation_system: true,

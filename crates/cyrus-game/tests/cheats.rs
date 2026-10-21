@@ -534,6 +534,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
         },
         updates: UpdateSettings {
             fall_death_ticks: 144,
+            fall_landing: None,
             dummy_model_manager: false,
             task_system: true,
             animation_system: true,

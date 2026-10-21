@@ -63,12 +63,25 @@ impl ClockSettings {
     }
 }
 
+/// Installed landing thresholds: a fall strictly above `death_height` is fatal, strictly above
+/// `hurt_height` hurts by `hurt_zap`. Heights are map units, as SYSTEM.INI stores them.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FallLanding {
+    pub death_height: i32,
+    pub hurt_height: i32,
+    pub hurt_zap: i32,
+}
+
 /// Installed switches for ordinary actor updates, separate from per-actor control flags.
 /// Eligibility and stage ordering follow preservation's engine/animation.md and SOUP.md.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UpdateSettings {
     /// Falling-death limit in nominal ticks, with original signed clamp and wrapping conversion.
     pub fall_death_ticks: i32,
+    /// `[game] fall_death_height`, `fall_hurt_height` and `fall_hurt_zap` in map units; absent in
+    /// caches exported before the landing rule had a consumer (re-export).
+    #[serde(default)]
+    pub fall_landing: Option<FallLanding>,
     /// Effective dummy 3D manager, including installed static-angle conversion.
     /// Its animation-vertex queries return the zero vector.
     pub dummy_model_manager: bool,
@@ -97,6 +110,20 @@ impl UpdateSettings {
                 .context("SYSTEM.INI [game] player_fall_dead_time missing")?
                 .max(3)
                 .wrapping_mul(12),
+            fall_landing: Some(FallLanding {
+                death_height: settings
+                    .game
+                    .fall_death_height
+                    .context("SYSTEM.INI [game] fall_death_height missing")?,
+                hurt_height: settings
+                    .game
+                    .fall_hurt_height
+                    .context("SYSTEM.INI [game] fall_hurt_height missing")?,
+                hurt_zap: settings
+                    .game
+                    .fall_hurt_zap
+                    .context("SYSTEM.INI [game] fall_hurt_zap missing")?,
+            }),
             dummy_model_manager: dummy || convert,
             task_system: settings
                 .system
