@@ -3994,6 +3994,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        // The original's function table keeps only each handler, not the declared kind, so a task
+        // or multitask call of a function native runs the handler once and a zero return completes
+        // the task at once. Only natives whose handler is shown to return zero take this form.
+        let kind = if kind != CallKind::Function
+            && ["FlatAnimate", "FlatSound"]
+                .iter()
+                .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            CallKind::Function
+        } else {
+            kind
+        };
         if function.eq_ignore_ascii_case("PlayerLineUp") {
             // Unknown until the native stores this invocation's return value.
             self.registry.globals.lineup_result = None;

@@ -950,6 +950,34 @@ fn wait_continues_to_flag_change_and_missing_scale_does_not_poison_actor() {
     );
 }
 #[test]
+fn a_multitask_call_of_a_function_native_runs_it_as_the_function() {
+    // The original keeps only the handler per function, so FlatAnimate behaves the same whichever
+    // call type a script uses: the texture check of the function form fires for the multitask form.
+    for kind in [CallKind::Task, CallKind::Multitask] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                4,
+                "FlatAnimate",
+                kind,
+                [(1 << 7) | 2, 0, 0]
+                    .map(|value| Value::Integer { value })
+                    .to_vec(),
+            ),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "FlatAnimate".into(),
+            param_count: 3,
+            kind: CallKind::Function,
+        });
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let error = world.step(id, Thread::Main, 20).unwrap_err();
+        assert!(format!("{error:#}").contains("not installed"), "{error:#}");
+    }
+}
+#[test]
 fn wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot() {
     for duration in [i32::MIN, -1, 0, 1, 2] {
         let scripts = wait_cache(vec![
