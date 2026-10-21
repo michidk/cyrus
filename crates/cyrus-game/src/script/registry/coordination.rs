@@ -38,6 +38,9 @@ impl ScriptWorld {
         let Some(message) = self.peek_combat_message(id)? else {
             return Ok(());
         };
+        if message.code == 0xd005 {
+            return self.process_direct_damage_message(id, selected_player, inputs, random, sounds);
+        }
         if message.code != 0xd001 {
             return self.process_combat_message(id, selected_player);
         }
@@ -55,6 +58,52 @@ impl ScriptWorld {
         }
         let random = random.context("hit response random stream unavailable")?;
         self.process_hit_response_core(id, message.sender, inputs, random, sounds)
+    }
+
+    /// Consume a direct-damage message and respond: positional attribute-86 effect at volume
+    /// zero with a drawn pitch offset, receiver taunt category two, the direct-damage response,
+    /// then the coordinator tail without a death query: a nonselected receiver in coordination
+    /// state zero sends `0xd003` to the first waiting coordinator, or takes coordination one when
+    /// none matches. Neither actor's intent bits are cleared.
+    fn process_direct_damage_message(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+        inputs: super::ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let message = self
+            .consume_combat_message(id)?
+            .context("peeked direct-damage message disappeared before consume")?;
+        let random = random.context("direct-damage response random stream unavailable")?;
+        let index = self.resolve(id)?;
+        let effect = i32::from(self.actors[index].attributes[86]);
+        let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+        sounds(
+            id,
+            super::super::ScriptSound::Positional {
+                effect,
+                volume: 0,
+                rate_offset_hz,
+                position: self.sight_position(index)?,
+            },
+        )?;
+        self.request_hurt_combat_taunt(id, inputs, random, sounds)?;
+        self.process_direct_damage_response(id, message.sender, inputs, random, sounds)?;
+        let combat = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("direct-damage receiver combat unavailable")?;
+        if combat.attacker_selection_state == 0 && selected_player != Some(id) {
+            if let Some(coordinator) = self.ordinary_waiting_coordinator(message.sender)? {
+                self.send_combat_message(id, coordinator, 0xd003)?;
+            } else {
+                self.set_combat_coordination(id, 1)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn process_combat_message(

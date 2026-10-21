@@ -299,7 +299,8 @@ from the installed zero-spread, speed-one form. `GolemSteam` puffs steam at a
 random weapon attachment vertex of the Golem. `shoot` creates an object of an
 installed script (a projectile) at the receiver's rotated offset; created objects run their script
 every update until `KillMe` and survive saves. `shootPlayer` aims the created object at the selected player.
-`DragonBreath` and `projectileAI`'s movement and hit response remain unavailable. `LightTorch`,
+A direct-damage combat message (`0xd005`) is answered for nonplayer receivers; the selected player's
+branch, `DragonBreath` and `projectileAI`'s movement and hit response remain unavailable. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and

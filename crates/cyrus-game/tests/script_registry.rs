@@ -29449,3 +29449,63 @@ fn shoot_player_aims_the_created_object_at_the_selected_player() {
     assert!(distance <= 2.0, "yaw {yaw} against {expected}");
     assert_eq!(pose.angles[2], 0, "roll is zero");
 }
+
+#[test]
+fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_clearing_intent() {
+    use cyrus_game::script::ScriptInputs;
+    let (mut world, _, _) = coordination_message_fixture(|saved| {
+        saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 0.into();
+        saved["actors"][1]["control"]["combat"]["flags"] = 3.into();
+        saved["actors"][0]["control"]["combat"]["flags"] = 3.into();
+        saved["actors"][1]["attributes"][96] = 12.into();
+        saved["actors"][0]["attributes"][3] = 40.into();
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let receiver = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    let before = world.spatial(receiver).unwrap().local.position;
+    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    let mut sounds = Vec::new();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::default()),
+            &mut |actor, sound| {
+                sounds.push((actor, format!("{sound:?}")));
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        world.consume_combat_message(receiver).unwrap(),
+        None,
+        "consumed"
+    );
+    assert_ne!(
+        world.spatial(receiver).unwrap().local.position,
+        before,
+        "displaced"
+    );
+    assert_eq!(
+        world.actors()[receiver.index].attributes()[3],
+        28,
+        "40 - attribute 96"
+    );
+    for actor in [receiver, sender] {
+        let flags = world.actors()[actor.index]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .flags;
+        assert_eq!(flags, 3, "intent bits are not cleared");
+    }
+    assert!(sounds.iter().any(|(_, text)| text.contains("Positional")));
+}

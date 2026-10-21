@@ -74,6 +74,57 @@ impl ScriptWorld {
         }
         Ok(())
     }
+    /// The direct-damage response (`0xd005`) for a nonplayer receiver: displace it 3000 units away
+    /// from the sender, start its hit-reaction group (117) when it has animation, subtract the
+    /// sender's attribute 96 from its health (clamped to a byte) and, when that leaves it below
+    /// one, request receiver taunt category six and run contact death with selector zero. The
+    /// selected player's branch (death-animation override, weapon and stance reaction groups,
+    /// damage suppression, shared additive health) is unsupported and an explicit error.
+    pub(super) fn process_direct_damage_response(
+        &mut self,
+        receiver: ScriptActorId,
+        sender: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let receiver_index = self.resolve(receiver)?;
+        let sender_index = self.resolve(sender)?;
+        anyhow::ensure!(
+            self.selected_player_index() != Some(receiver_index),
+            "direct-damage response for the selected player unsupported"
+        );
+        let from = self.spatial(sender)?.local.position;
+        let origin = self.spatial(receiver)?.local.position;
+        let heading = super::super::spatial::query_bearing(
+            origin[0].wrapping_sub(from[0]),
+            origin[2].wrapping_sub(from[2]),
+        );
+        let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
+        self.spatial
+            .as_mut()
+            .context("direct damage spatial state unavailable")?
+            .actor_mut(receiver_index)?
+            .local
+            .position = moved;
+        if self.actors[receiver_index].animation.is_some() {
+            let ticks = inputs
+                .nominal_ticks
+                .context("direct damage nominal ticks unavailable")?;
+            self.request_ordinary_group(receiver, 117, false, ticks, sounds)?;
+        }
+        let damage = i32::from(self.actors[sender_index].attributes[96]);
+        let health = i32::from(self.actors[receiver_index].attributes[3])
+            .wrapping_sub(damage)
+            .clamp(0, 255);
+        self.actors[receiver_index].attributes[3] = health as u8;
+        if health < 1 {
+            self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
+            self.dispatch_contact_death(receiver, 0, inputs.nominal_ticks, sounds)?;
+        }
+        Ok(())
+    }
+
     /// Read attack-processing admission without advancing playback or marking contact.
     /// Reverse playback rejects processing before intent or motion queries. The signed
     /// command cursor admits the start-inclusive/end-exclusive active
