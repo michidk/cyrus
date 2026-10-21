@@ -5333,6 +5333,24 @@ fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
 }
 
 #[test]
+fn deep_water_strafes_need_the_edge_probe_after_the_lateral_step_check() {
+    for name in ["MoveLeft", "MoveRight"] {
+        let (mut world, id) = strafe_world(name, 8);
+        world.set_actor_surface(id, 2).unwrap();
+        let hud = locomotion_hud();
+        let error = strafe_stage(&mut world, id, BODY, &hud, Some(true)).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("edge probe input unavailable"),
+            "{name}: {error:#}"
+        );
+        // A blocked lateral step completes before the probe is consulted.
+        let (mut world, id) = strafe_world(name, 8);
+        world.set_actor_surface(id, 4).unwrap();
+        strafe_stage(&mut world, id, BODY, &hud, Some(false)).unwrap();
+    }
+}
+
+#[test]
 fn a_blocked_lateral_step_completes_without_moving_or_requesting_a_group() {
     for name in ["MoveLeft", "MoveRight"] {
         let (mut world, id) = strafe_world(name, 8);

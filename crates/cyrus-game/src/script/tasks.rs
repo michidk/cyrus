@@ -243,6 +243,8 @@ pub(super) struct LocomotionCall<'a> {
 pub(super) struct LocomotionAdmission {
     pub blocked_ahead_30: Option<bool>,
     pub forward_step_clear: Option<bool>,
+    /// Nonplayer deep-water edge probe of `MoveForward` and the ordinary strafes.
+    pub edge_probe_clear: Option<bool>,
     /// Lateral step check of an ordinary `MoveLeft` or `MoveRight`.
     pub lateral_step_clear: Option<bool>,
     pub walk_forward_mode: bool,
@@ -1545,24 +1547,32 @@ impl Task {
                     return Ok(true);
                 }
                 *receiver.direction = if walking { 6 } else { FORWARD_MOTION_DIRECTION };
-                let (group, step) = if walking {
-                    if state.holding_weapon || state.combat_mode {
-                        (31, state.walk_combat_step_attribute)
+                let mut halved = false;
+                let (group, step) =
+                    if walking {
+                        if state.holding_weapon || state.combat_mode {
+                            (31, state.walk_combat_step_attribute)
+                        } else {
+                            (
+                                if state.torch_burning { 21 } else { 20 },
+                                state.walk_step_attribute,
+                            )
+                        }
                     } else {
-                        (
-                            if state.torch_burning { 21 } else { 20 },
-                            state.walk_step_attribute,
-                        )
-                    }
-                } else {
-                    match forward_plan(&state) {
-                        ForwardPlan::Done => return Ok(true),
-                        ForwardPlan::NeedsEdgeProbe => anyhow::bail!(
-                            "MoveForward in deep water unsupported: edge probe input unavailable"
-                        ),
-                        ForwardPlan::Proceed { group, step } => (group, step),
-                    }
-                };
+                        match forward_plan(&state) {
+                            ForwardPlan::Done => return Ok(true),
+                            ForwardPlan::NeedsEdgeProbe => {
+                                if !motion.admission.edge_probe_clear.with_context(|| {
+                                    format!("{name} edge probe input unavailable")
+                                })? {
+                                    return Ok(true);
+                                }
+                                halved = true;
+                                (142, state.forward_step_attribute)
+                            }
+                            ForwardPlan::Proceed { group, step } => (group, step),
+                        }
+                    };
                 let input = animation.as_mut().with_context(|| {
                     format!("{name} requires prepared animation and explicit nominal ticks")
                 })?;
@@ -1589,6 +1599,8 @@ impl Task {
                         state.step_adjustment,
                         if walking && step == 0 {
                             i32::from(state.forward_step_attribute / 2)
+                        } else if halved {
+                            (i32::from(step) << 8) >> 1
                         } else {
                             i32::from(step) << 8
                         },
@@ -1643,10 +1655,19 @@ impl Task {
                     .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
                 let (group, step, turn) = match admission {
                     StrafeAdmission::Combat { group, step, turn } => (group, step, turn),
-                    StrafeAdmission::OutsideCombat { group } => {
+                    StrafeAdmission::OutsideCombat { group }
+                    | StrafeAdmission::DeepWater { group } => {
                         if !motion.admission.lateral_step_clear.with_context(|| {
                             format!("{name} lateral step check input unavailable")
                         })? {
+                            return Ok(true);
+                        }
+                        if matches!(admission, StrafeAdmission::DeepWater { .. })
+                            && !motion
+                                .admission
+                                .edge_probe_clear
+                                .with_context(|| format!("{name} edge probe input unavailable"))?
+                        {
                             return Ok(true);
                         }
                         if input.animation.has_group(group) {
@@ -1662,10 +1683,13 @@ impl Task {
                             *input.frame = frame.or(*input.frame);
                         }
                         if motion.animation_system
-                            && !input
-                                .animation
-                                .current_group()
-                                .is_some_and(|current| strafe.ordinary_groups().contains(&current))
+                            && !input.animation.current_group().is_some_and(|current| {
+                                if matches!(admission, StrafeAdmission::DeepWater { .. }) {
+                                    current == group
+                                } else {
+                                    strafe.ordinary_groups().contains(&current)
+                                }
+                            })
                         {
                             return Ok(!continues(duration, elapsed));
                         }
@@ -1691,9 +1715,9 @@ impl Task {
                         }
                         return Ok(!continues(duration, elapsed));
                     }
-                    StrafeAdmission::Unsupported => anyhow::bail!(
-                        "{name} in deep water or hanging at an edge unsupported: edge probe and hanging-edge test"
-                    ),
+                    StrafeAdmission::Unsupported => {
+                        anyhow::bail!("{name} hanging at an edge unsupported: lateral edge test")
+                    }
                     StrafeAdmission::Refused => unreachable!("refusal returned above"),
                 };
                 let already_strafing = input.animation.current_group().is_some_and(|current| {

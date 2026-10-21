@@ -3567,9 +3567,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }
             LocomotionOperation::Strafe(strafe) => {
                 // Only the ordinary dry stance runs the lateral check; combat strafes skip it.
+                let strafe_plan = super::locomotion::strafe_admission(state, strafe);
                 if matches!(
-                    super::locomotion::strafe_admission(state, strafe),
+                    strafe_plan,
                     super::locomotion::StrafeAdmission::OutsideCombat { .. }
+                        | super::locomotion::StrafeAdmission::DeepWater { .. }
                 ) {
                     let direction = match strafe {
                         super::locomotion::Strafe::Left => hazard::OrdinaryStepDirection::Left,
@@ -3585,6 +3587,17 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         geometry.environment,
                         sounds,
                     )?);
+                    if matches!(
+                        strafe_plan,
+                        super::locomotion::StrafeAdmission::DeepWater { .. }
+                    ) && admission.lateral_step_clear == Some(true)
+                    {
+                        admission.edge_probe_clear = Some(self.registry.edge_probe_clear(
+                            id,
+                            strafe.motion_direction(),
+                            geometry.ground.scene,
+                        )?);
+                    }
                 }
             }
             LocomotionOperation::Forward | LocomotionOperation::WalkForward => {
@@ -3607,16 +3620,27 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                                 sounds,
                             )?
                         });
-                    } else if (control.movement_flags >> 4) & 3 < 3 {
-                        admission.forward_step_clear = self.registry.forward_step_clear(
-                            id,
-                            geometry.environment.selected_player,
-                            self.inputs
-                                .frame_scale
-                                .context("MoveForward requires frame_scale")?
-                                as i32,
-                            Some(obstacle()),
-                        )?;
+                    } else {
+                        if super::locomotion::forward_plan(&state)
+                            == super::locomotion::ForwardPlan::NeedsEdgeProbe
+                        {
+                            admission.edge_probe_clear = Some(self.registry.edge_probe_clear(
+                                id,
+                                super::locomotion::FORWARD_MOTION_DIRECTION,
+                                geometry.ground.scene,
+                            )?);
+                        }
+                        if (control.movement_flags >> 4) & 3 < 3 {
+                            admission.forward_step_clear = self.registry.forward_step_clear(
+                                id,
+                                geometry.environment.selected_player,
+                                self.inputs
+                                    .frame_scale
+                                    .context("MoveForward requires frame_scale")?
+                                    as i32,
+                                Some(obstacle()),
+                            )?;
+                        }
                     }
                 }
             }

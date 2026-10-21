@@ -128,6 +128,42 @@ impl ScriptWorld {
         Ok(clear)
     }
 
+    /// The nonplayer deep-water edge probe: whether the terrain point one step of 16384 from the
+    /// receiver, along the motion direction (4 left, 5 right, 3 and 7 backward, otherwise forward)
+    /// rotated by its matrix, is free of an uncovered steep rock edge. The caller applies it to
+    /// deep-water receivers only; a world without terrain passes (preservation engine/SOUP.md,
+    /// "Nonplayer deep-water and edge probe").
+    pub fn edge_probe_clear(
+        &self,
+        id: ScriptActorId,
+        direction: u8,
+        scene: &crate::player::data::PlayerScene,
+    ) -> Result<bool> {
+        let Some(terrain) = &scene.terrain else {
+            return Ok(true);
+        };
+        let offset = match direction {
+            4 => [-0x4000, 0, 0],
+            5 => [0x4000, 0, 0],
+            3 | 7 => [0, 0, -0x4000],
+            _ => [0, 0, 0x4000],
+        };
+        let spatial = self.spatial(id)?;
+        let rotated = spatial.local.matrix.transform(offset)?;
+        let position = spatial.local.position;
+        let point = [
+            i64::from(position[0].wrapping_add(rotated[0])),
+            i64::from(position[1]),
+            i64::from(position[2].wrapping_add(rotated[2])),
+        ];
+        let assignments = scene
+            .collision
+            .texture_surfaces
+            .as_ref()
+            .context("edge probe SURFACE.INI assignments unavailable; re-export world")?;
+        terrain.edge_blocked(point, assignments)
+    }
+
     /// `MoveForward`'s forward step check. `None` when the check needs the collision query and
     /// none was supplied. Passes outright for a receiver whose lifecycle byte is 7 and whose
     /// attribute 1 has bit 0 clear, and for one whose attribute 1 has bit 1 clear (no hazard test);

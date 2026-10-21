@@ -164,8 +164,11 @@ impl Strafe {
 pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
-    /// Deep water (edge probe) or hanging at an edge: not implemented.
+    /// Hanging at an edge (lifecycle byte 15): not implemented.
     Unsupported,
+    /// Outside combat stance in deep water: after the lateral step check and the edge probe pass,
+    /// request `group` (143) and move by the attribute byte 10 step.
+    DeepWater { group: u16 },
     /// Outside combat stance, on dry ground: after the lateral step check passes, request `group`
     /// and move by the attribute byte 10 step.
     OutsideCombat { group: u16 },
@@ -184,8 +187,10 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             step: state.strafe_step_attribute,
             turn: state.strafe_turn_attribute,
         }
-    } else if state.living_state == 15 || matches!(state.surface, 2 | 4) {
+    } else if state.living_state == 15 {
         StrafeAdmission::Unsupported
+    } else if matches!(state.surface, 2 | 4) {
+        StrafeAdmission::DeepWater { group: 143 }
     } else {
         StrafeAdmission::OutsideCombat {
             group: strafe.ordinary_group(state.torch_burning),
@@ -255,9 +260,9 @@ pub fn forward_admitted(state: &BackwardState) -> bool {
 pub enum ForwardPlan {
     /// Combat stance with a combat move already selected: the call completes without moving.
     Done,
-    /// Deep water outside combat stance needs the edge probe, which is not available here.
+    /// Deep water outside combat stance: the edge probe must pass first.
     NeedsEdgeProbe,
-    /// Request `group`, then move by `step` whole units (halved distance in deep water).
+    /// Request `group`, then move by `step` whole units.
     Proceed { group: u16, step: u8 },
 }
 
@@ -567,23 +572,20 @@ mod tests {
             ),
             StrafeAdmission::OutsideCombat { group: 27 }
         );
-        for unsupported in [
-            BackwardState {
-                living_state: 15,
-                ..ready()
-            },
-            BackwardState {
-                surface: 2,
-                ..ready()
-            },
-            BackwardState {
-                surface: 4,
-                ..ready()
-            },
-        ] {
+        assert_eq!(
+            strafe_admission(
+                BackwardState {
+                    living_state: 15,
+                    ..ready()
+                },
+                Strafe::Right
+            ),
+            StrafeAdmission::Unsupported
+        );
+        for surface in [2, 4] {
             assert_eq!(
-                strafe_admission(unsupported, Strafe::Right),
-                StrafeAdmission::Unsupported
+                strafe_admission(BackwardState { surface, ..ready() }, Strafe::Right),
+                StrafeAdmission::DeepWater { group: 143 }
             );
         }
         for refused in [

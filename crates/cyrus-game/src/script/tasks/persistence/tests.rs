@@ -4218,6 +4218,53 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
 }
 
 #[test]
+fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_call() {
+    use crate::script::tasks::{LocomotionAdmission, LocomotionCall, MotionCall};
+    for (probe, expected) in [(Some(false), Some(true)), (None, None)] {
+        let mut counters = 48;
+        let mut direction = 0;
+        let mut called = 0;
+        let result = Task::Forward.complete(
+            &[Argument::Integer(4)],
+            Invocation {
+                elapsed: Some(0),
+                unpaused_tasks: 0,
+                unpaused_blocking_tasks: 0,
+            },
+            &mut None,
+            &mut None,
+            NativeServices {
+                locomotion: Some(LocomotionCall {
+                    state: Ok(crate::script::locomotion::BackwardState {
+                        surface: 2,
+                        ..Default::default()
+                    }),
+                    admission: LocomotionAdmission {
+                        edge_probe_clear: probe,
+                        forward_admitted: Some(true),
+                        ..Default::default()
+                    },
+                    animation_system: false,
+                    motion: Some(MotionCall {
+                        direction: &mut direction,
+                        counters: &mut counters,
+                    }),
+                    called: &mut called,
+                }),
+                ..Default::default()
+            },
+        );
+        match expected {
+            Some(done) => assert_eq!(result.unwrap(), done),
+            None => assert!(
+                format!("{:#}", result.unwrap_err()).contains("edge probe input unavailable")
+            ),
+        }
+        assert_eq!((direction, called), (2, 0));
+    }
+}
+
+#[test]
 fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots() {
     use crate::script::tasks::{LocomotionAdmission, LocomotionCall};
     let mut called = 0;
