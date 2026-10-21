@@ -1,6 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
-use cyrus_game::script::ScriptWorld;
+use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Argument, CallResult, Host, Target, Thread};
 use std::collections::BTreeMap;
@@ -165,6 +165,82 @@ fn cache() -> Scripts {
     };
     scripts.content_id = scripts.content_identity().unwrap();
     scripts
+}
+
+#[test]
+fn created_objects_use_identifier_zero_and_first_namespace_registration_wins() {
+    let mut scripts = cache();
+    scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
+    let mut created = scripts.actors["LOGIC"].clone();
+    created.instances = 1;
+    created.namespace = Some("projectile".into());
+    created.instance_variables = vec![vec![0]];
+    created.program.strings = vec!["projectile".into()];
+    scripts.definition.references = vec!["angle.vy".into()];
+    created.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Read {
+                            place: Place::Property {
+                                object: Object::Named { string: 0 },
+                                reference: 0,
+                            },
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.actors.insert("PROJECTILE".into(), created);
+    scripts.content_id = scripts.content_identity().unwrap();
+
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let creator = world.id(0).unwrap();
+    let first = world
+        .create_object(creator, "PROJECTILE", [0, 0, 0], [0, 111, 0])
+        .unwrap();
+    let second = world
+        .create_object(creator, "PROJECTILE", [0, 0, 0], [0, 222, 0])
+        .unwrap();
+
+    for id in [first, second] {
+        let actor = &world.actors()[id.index];
+        assert_eq!(actor.runtime_identifier, Some(0));
+        assert_eq!(actor.namespace.as_deref(), Some("projectile"));
+    }
+
+    world
+        .advance(
+            second,
+            ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[second.index].runtime().unwrap().variables(),
+        [111]
+    );
 }
 #[test]
 fn map_animation_initialization_retains_independent_frames_and_rejects_reinitialization() {
