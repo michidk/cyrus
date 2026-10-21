@@ -5,11 +5,8 @@ use anyhow::{Context, Result};
 
 /// Items the sword key looks for, in order; the third is used without being selected.
 const SWORDS: [u16; 3] = [1, 13, 75];
-/// Health potions the health key drinks, in order, with the health below which they heal a fixed
-/// amount and that amount; at or above it the health is set to its maximum.
-const POTIONS: [(u16, u8, i32); 3] = [(0x42, 0x56, 15), (4, 0x56, 15), (0x41, 0x60, 5)];
-/// The empty flask a drunk-out potion leaves behind.
-const FLASK: u16 = 0x40;
+/// The installed health potion and the health below which it heals a fixed amount.
+const POTION: (u16, u8, i32) = (4, 0x56, 15);
 const MAXIMUM_HEALTH: i32 = 100;
 
 impl ScriptWorld {
@@ -105,12 +102,10 @@ impl GameHost<'_, '_, '_, '_> {
         if health >= MAXIMUM_HEALTH {
             return Ok(());
         }
-        let Some(&(potion, threshold, heal)) = POTIONS
-            .iter()
-            .find(|(potion, ..)| hud.item_count(*potion).is_ok_and(|count| count != 0))
-        else {
+        let (potion, threshold, heal) = POTION;
+        if hud.item_count(potion)? == 0 {
             return Ok(());
-        };
+        }
         let id = self.registry.id(self.index)?;
         let sounds = self
             .sounds
@@ -135,11 +130,6 @@ impl GameHost<'_, '_, '_, '_> {
             )?;
         }
         hud.drop_one(potion)?;
-        // A drunk-out potion of the first and last kinds leaves an empty flask, selected.
-        if potion != 4 && hud.item_count(potion)? == 0 {
-            self.add_session_item(FLASK, 1)?;
-            hud.select_item(FLASK)?;
-        }
         Ok(())
     }
 }

@@ -28946,7 +28946,7 @@ fn player_collide_natives_read_the_selected_players_contact_lists() {
 }
 
 #[test]
-fn quick_health_key_drinks_the_first_owned_potion_once_and_leaves_a_flask() {
+fn quick_health_key_drinks_the_installed_health_potion_once() {
     use cyrus_game::script::{QuickKeys, ScriptInputs};
     let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
     let player = world
@@ -28958,7 +28958,7 @@ fn quick_health_key_drinks_the_first_owned_potion_once_and_leaves_a_flask() {
         .unwrap();
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(
-        &inventory_asset(&[(4, 1), (0x40, 0), (0x41, 0), (0x42, 0)]),
+        &inventory_asset(&[(4, 1)]),
         &cyrus_game::preferences::Preferences::default(),
     );
     world.set_attribute_for_test(player, 3, 40);
@@ -28987,11 +28987,6 @@ fn quick_health_key_drinks_the_first_owned_potion_once_and_leaves_a_flask() {
         hud.inventory(None).unwrap().counts[&4],
         0,
         "one potion drunk"
-    );
-    assert_eq!(
-        hud.inventory(None).unwrap().counts[&0x40],
-        0,
-        "this kind leaves no flask"
     );
     world
         .run_quick_keys(inputs(), &mut random, &mut |_, _| Ok(()))
