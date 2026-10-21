@@ -2372,6 +2372,10 @@ impl NativeTaskMode {
 }
 
 impl NativeTasks {
+    /// Whether any native task record is live, which the original keeps as a word on the actor.
+    pub(super) fn is_active(&self) -> bool {
+        !self.tasks.is_empty()
+    }
     pub(super) fn locomotion_operation(&self, token: u64) -> Option<LocomotionOperation> {
         match self.tasks.get(&token)? {
             Task::Backward => Some(LocomotionOperation::Backward),

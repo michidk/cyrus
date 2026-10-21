@@ -88,7 +88,7 @@ pub fn ordinary_directional_motion(
 /// Entry decision after selector, recovery and horizontal-displacement services.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OrdinaryFallEntry {
-    RestorePrevious { force_group: u16 },
+    RestoreStable { force_group: u16 },
     Start { force_group: Option<u16> },
 }
 
@@ -103,7 +103,7 @@ pub fn ordinary_fall_entry(
 ) -> OrdinaryFallEntry {
     if matches!(current_group, 18 | 30) {
         if exit_reached {
-            return OrdinaryFallEntry::RestorePrevious {
+            return OrdinaryFallEntry::RestoreStable {
                 force_group: default_group,
             };
         }
@@ -585,14 +585,18 @@ impl ScriptWorld {
             holding,
         );
         let request = match entry {
-            OrdinaryFallEntry::RestorePrevious { force_group } => {
-                let previous = self.spatial(id)?.previous_local_position;
+            OrdinaryFallEntry::RestoreStable { force_group } => {
+                let stable = self.actors[index]
+                    .control
+                    .as_ref()
+                    .expect("validated fall entry control")
+                    .stable_local_position;
                 self.spatial
                     .as_mut()
                     .context("animated fall entry spatial state unavailable")?
                     .actor_mut(index)?
                     .local
-                    .position = previous;
+                    .position = stable;
                 Some(force_group)
             }
             OrdinaryFallEntry::Start { force_group } => {

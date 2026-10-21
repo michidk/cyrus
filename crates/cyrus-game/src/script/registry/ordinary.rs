@@ -235,9 +235,8 @@ impl ScriptWorld {
                     .as_ref()
                     .expect("admitted ordinary control");
                 anyhow::ensure!(
-                    control.queued_motion == 0
-                        && (control.falling_state == 0
-                            || (!selected_player && self.actors[id.index].attributes[1] & 4 != 0)),
+                    (control.queued_motion == 0 && control.falling_state == 0)
+                        || (!selected_player && self.actors[id.index].attributes[1] & 4 != 0),
                     "ordinary queued motion stage unsupported"
                 );
                 let collision = if self.actors[id.index].attributes[1] != 0 {

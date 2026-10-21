@@ -8765,7 +8765,7 @@ fn ordinary_animated_fall_entry_distinguishes_rollback_from_start() {
     for group in [18, 30] {
         assert_eq!(
             ordinary_fall_entry(group, 7, true, 1, true),
-            OrdinaryFallEntry::RestorePrevious { force_group: 7 }
+            OrdinaryFallEntry::RestoreStable { force_group: 7 }
         );
         assert_eq!(
             ordinary_fall_entry(group, 7, false, 0, true),
@@ -30033,4 +30033,93 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.falling_state, 0);
     assert_eq!(world.actors()[id.index].attributes()[3], health_before);
+}
+
+#[test]
+fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+    let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+    attributes.insert("attr_1".into(), 4);
+    attributes.insert("attr_32".into(), 32);
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+        placement.object_type = 1;
+        placement.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, mut data, models) = static_model_fixture_at(scripts.clone(), None, [600, 20, 600]);
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = "animation_table".into();
+    definition["animation_groups"] = serde_json::json!([0, 32, 33, 34, 35, 39, 40, 38].map(
+        |group| serde_json::json!({
+            "group_index":group,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
+        })
+    ));
+    let stable = [7 * 256, 5000, 9 * 256];
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, 0, 0, |saved| {
+        saved["actors"][0]["control"]["directional_state"] = serde_json::json!([1, 2]);
+        saved["actors"][0]["control"]["stable_local_position"] = serde_json::json!(stable);
+    });
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, 7).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.post_collide_height = 50;
+    let mut random = cyrus_game::random::EngineRandom::default();
+    world
+        .update_ordinary(
+            &data,
+            [600, 600],
+            OrdinaryInputs {
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    fine_ticks: Some(8),
+                    step_fps: Some(12),
+                    ..Default::default()
+                },
+                scene: Some(&scene),
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    let queued_before = world.actors()[id.index]
+        .control_state()
+        .unwrap()
+        .queued_motion;
+    world
+        .update_ordinary(
+            &data,
+            [600, 600],
+            OrdinaryInputs {
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    fine_ticks: Some(8),
+                    step_fps: Some(12),
+                    ..Default::default()
+                },
+                scene: Some(&scene),
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    let actor = &world.actors()[id.index];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    let control = actor.control_state().unwrap();
+    assert_eq!(control.directional_state, [0, 0]);
+    // The jump entry's queued state ran one arbitration and survived to the next update.
+    assert_ne!(queued_before, 0);
+    assert_eq!(world.spatial(id).unwrap().local.position[0], stable[0]);
 }

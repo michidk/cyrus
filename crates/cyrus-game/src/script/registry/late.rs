@@ -184,8 +184,49 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Support missed: start or continue an animated fall. The selector, previous-position
-    /// recovery and static-model entry services are not ported and refuse explicitly.
+    /// Walking off an edge: restore the stable position, enter the ordinary jump with
+    /// motion 8, force its group and run the queued arbitration once.
+    fn recover_ordinary_fall_entry(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        fine_ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let actor = &mut self.actors[id.index];
+        let control = actor
+            .control
+            .as_mut()
+            .context("fall recovery control unavailable")?;
+        for byte in &mut control.directional_state {
+            *byte &= !3;
+        }
+        let stable = control.stable_local_position;
+        let torch = control.torch_burning != 0;
+        let task_active = actor.tasks.is_active();
+        self.spatial
+            .as_mut()
+            .context("fall recovery spatial state unavailable")?
+            .actor_mut(id.index)?
+            .local
+            .position = stable;
+        self.begin_ordinary_jump(id, query.animations, 8, task_active, environment, sounds)?;
+        if self.updates.animation_system {
+            self.request_ordinary_group(
+                id,
+                if torch { 35 } else { 34 },
+                true,
+                environment.ticks,
+                sounds,
+            )?;
+        }
+        self.resolve_ordinary_queued_motion(id, query, environment, fine_ticks, 0, sounds)?;
+        Ok(())
+    }
+
+    /// Support missed: start or continue an animated fall. The selector
+    /// and static-model entry services are not ported and refuse explicitly.
     fn miss_ordinary_support(
         &mut self,
         id: ScriptActorId,
@@ -218,12 +259,14 @@ impl ScriptWorld {
             id.index
         );
         ensure!(
-            (control.jump_selector == 0 || control.jump_selector.abs_diff(24) >= 4)
-                && control.directional_state.iter().all(|byte| byte & 3 == 0),
-            "world {} instance {}: fall entry selector and previous-position recovery unsupported",
+            control.jump_selector == 0 || control.jump_selector.abs_diff(24) >= 4,
+            "world {} instance {}: fall entry selector service unsupported",
             self.world,
             id.index
         );
+        if control.directional_state.iter().any(|byte| byte & 3 != 0) {
+            return self.recover_ordinary_fall_entry(id, query, environment, fine_ticks, sounds);
+        }
         let group = self.actors[id.index]
             .animation
             .as_ref()
@@ -312,6 +355,35 @@ impl ScriptWorld {
         };
         let (prevalidation, support) =
             self.query_ordinary_point_support(id, support_query, environment, sounds)?;
+        let mut queued_handled = false;
+        if mask & 4 != 0 && !special {
+            let control = self.actors[id.index]
+                .control
+                .as_ref()
+                .expect("admitted ground control");
+            if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
+                ensure!(
+                    environment.selected_player != Some(id),
+                    "world {} instance {}: queued selected-player edge service unsupported",
+                    self.world,
+                    id.index
+                );
+                queued_handled = self.resolve_ordinary_queued_motion(
+                    id,
+                    query,
+                    environment,
+                    fine_ticks.context("queued motion needs the step's fine-tick increment")?,
+                    0,
+                    sounds,
+                )?;
+                ensure!(
+                    queued_handled,
+                    "world {} instance {}: queued motion left unhandled before the ground response is unsupported",
+                    self.world,
+                    id.index
+                );
+            }
+        }
         if mask & 4 != 0 {
             let living_state = self.actors[id.index]
                 .control
@@ -325,7 +397,7 @@ impl ScriptWorld {
                     ticks,
                     sounds,
                 )?;
-            } else if !special {
+            } else if !special && !queued_handled {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(

@@ -305,7 +305,9 @@ target beyond the minimum range, and the item swap when it dies; the smoke and f
 from animated vertices is not yet compared with the original in a running world. `projectileAI`'s
 movement and hit response remain unavailable. Animated nonplayer actors with ground response fall when support is
 missing and land with the installed `[game]` thresholds (script caches need re-export for them); the selected
-player's fall, static-model falls, and the jump-group and walking-off-an-edge entries remain unavailable. `LightTorch`,
+player's fall, static-model falls and the jump-selector and jump-group entries remain unavailable. The
+walk-off recovery entry and queued jump motion run, but nothing in the walking code sets the directional-state
+bytes that select the recovery yet. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and
