@@ -30,10 +30,8 @@ impl ScriptWorld {
     ) -> Result<i32> {
         let result = (|| -> Result<i32> {
             let index = self.resolve(id)?;
-            let query_position = self.query_position(id)?;
-            let retained_query_position = (self.actors[index].attributes[26] != 0
-                || self.spatial(id)?.linked_position.is_some())
-            .then_some(query_position);
+            let reads_query_position = self.actors[index].attributes[26] != 0
+                || self.spatial(id)?.linked_position.is_some();
             let position = self.spatial(id)?.local.position;
             let movement_flags = self.actors[index]
                 .control
@@ -62,7 +60,11 @@ impl ScriptWorld {
                         .as_mut()
                         .context("coordinate walking requires synchronous sounds")?,
                 )?;
-                let origin = retained_query_position.unwrap_or(self.spatial(id)?.local.position);
+                let origin = if reads_query_position {
+                    self.query_position(id)?
+                } else {
+                    self.spatial(id)?.local.position
+                };
                 let bearing = super::super::spatial::query_bearing(
                     destination[0].wrapping_sub(origin[0]),
                     destination[2].wrapping_sub(origin[2]),
