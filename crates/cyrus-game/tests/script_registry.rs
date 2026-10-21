@@ -9291,11 +9291,9 @@ fn stable_recovery_requires_own_query_and_keeps_terrain_position() {
     scene.terrain =
         Some(TerrainGround::new(vec![40; 256 * 256], vec![true; 256 * 256], None).unwrap());
     assert!(
-        world
+        !world
             .query_stable_recovery(id, &prepared, &scene, &data)
-            .unwrap_err()
-            .to_string()
-            .contains("water or grid edge unsupported")
+            .unwrap()
     );
 }
 

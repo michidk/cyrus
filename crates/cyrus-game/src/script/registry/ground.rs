@@ -251,10 +251,14 @@ impl ScriptWorld {
             }
         }
         if let Some(terrain) = &scene.terrain {
-            let height = terrain
-                .sample(probe.start.map(|coordinate| i64::from(coordinate) * 256))
-                .context("stable recovery terrain water or grid edge unsupported")?;
-            return probe.accepts_terrain(height.height);
+            // A water cell or an outside-grid probe has no terrain support. The
+            // original recovery branch rejects it and lets its caller restore
+            // the retained stable position; it is not malformed scene data.
+            if let Some(height) =
+                terrain.sample(probe.start.map(|coordinate| i64::from(coordinate) * 256))
+            {
+                return probe.accepts_terrain(height.height);
+            }
         }
         Ok(false)
     }
