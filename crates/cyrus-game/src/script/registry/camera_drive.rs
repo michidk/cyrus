@@ -43,6 +43,7 @@ impl CameraFrameState {
         self.world = None;
         self.hits = None;
         self.published = None;
+        self.terrain = None;
     }
 }
 
@@ -169,6 +170,7 @@ pub(super) fn begin<'a>(
     if state.world != Some(world.generation()) {
         state.hits = None;
         state.published = None;
+        state.terrain = None;
     }
     let actors = world.ordinary_actors(view)?.to_vec();
     let mut hits = state.hits.take().unwrap_or_else(empty_hits);
