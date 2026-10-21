@@ -421,8 +421,9 @@ impl ScriptWorld {
         let actor = &mut self.actors[index];
         let control = actor.control.as_ref().expect("admitted point control");
         let navigation = control.navigation;
+        // Phase zero selects its own map during route initialization.
         anyhow::ensure!(
-            navigation.map.is_some(),
+            navigation.map.is_some() || self.globals.native_command.point_phase == 0,
             "ordinary combat routed point navigation unsupported: map selection"
         );
         actor.attributes[1] = 12;
@@ -434,10 +435,12 @@ impl ScriptWorld {
         );
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 1 | 2 | 8 | 9 | 11 | 21 | 22 | 27),
+            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 21 | 22 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
-        if phase == 8 {
+        if phase == 0 {
+            self.initialize_point_route(id, inputs, sounds)?;
+        } else if phase == 8 {
             if let Some(result) = self.advance_point_route(id, point, inputs)? {
                 return Ok(result);
             }
@@ -548,6 +551,33 @@ impl ScriptWorld {
             self.map_updates.push(index);
         }
         Ok(1)
+    }
+
+    /// Phase zero: release the held nodes, admit the default animation, then search for a free
+    /// node. A hit makes it the next node and selects phase one; a miss keeps phase zero and
+    /// leaves the receiver without a map.
+    fn initialize_point_route(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<()> {
+        self.release_held_walk_nodes(id)?;
+        self.admit_point_default(id, inputs, sounds)?;
+        self.release_held_walk_nodes(id)?;
+        let found = self.nearest_free_walk_node(id)?;
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("admitted point control")
+            .navigation
+            .map = found.map(|(map, _)| map);
+        if let Some((_, node)) = found {
+            // The claim result never changes the initialization result.
+            self.assign_walk_node(id, node as i32, super::super::WalkNodeSlot::Next)?;
+            self.globals.native_command.point_phase = 1;
+        }
+        Ok(())
     }
 
     pub(super) fn complete_point(&mut self, id: ScriptActorId, result: u8) -> Result<i32> {

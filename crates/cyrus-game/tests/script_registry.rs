@@ -23655,6 +23655,47 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
 }
 
 #[test]
+fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_a_map() {
+    use cyrus_game::script::ScriptInputs;
+    for (position, hit) in [([0, 0, 0], true), ([90_000_000, 0, 90_000_000], false)] {
+        let (mut world, ..) = free_node_fixture(
+            serde_json::json!([{"node_count":2,"walk_nodes":[walk_node([0,0,0]),walk_node([5,0,0])]}]),
+            0,
+            |saved| {
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(position);
+                saved["actors"][0]["control"]["point_command"]["phase"] = 0.into();
+            },
+        );
+        let id = world.id(0).unwrap();
+        let result = world
+            .move_ordinary_point(
+                id,
+                [1000000, 0, 1000000],
+                0,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut |_, _| Ok(())),
+            )
+            .unwrap();
+        assert_eq!(result, 1, "the wrapper stays pending");
+        let control = world.actors()[0].control_state().unwrap();
+        if hit {
+            assert_eq!(control.navigation.map, Some(0));
+            assert_eq!(control.navigation.next, 0);
+            assert_eq!(control.point_command.phase, 1);
+        } else {
+            assert_eq!(control.navigation.map, None);
+            assert_eq!(control.navigation.next, -1);
+            assert_eq!(control.point_command.phase, 0);
+        }
+    }
+}
+
+#[test]
 fn point_node_facing_turns_then_selects_walk_or_shared_random_delay() {
     use cyrus_game::script::{CombatControlState, ScriptHud, ScriptInputs};
     for phase in [1, 27] {
