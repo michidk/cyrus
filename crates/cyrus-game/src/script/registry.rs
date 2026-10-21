@@ -4090,14 +4090,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
         {
-            let actor = &mut self.registry.actors[self.index];
-            let placement = actor.placement();
-            let position = placement
-                .map(|placement| placement.map_position.map(|value| value as i32))
-                .unwrap_or_default();
-            let light = actor
-                .light
-                .get_or_insert_with(|| light::LightState::dynamic(position));
             let values = arguments
                 .iter()
                 .map(|argument| argument.integer())
@@ -4110,6 +4102,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 _ => 1,
             };
             anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
+            let actor = &mut self.registry.actors[self.index];
+            let placement = actor.placement();
+            let position = placement
+                .map(|placement| placement.map_position.map(|value| value as i32))
+                .unwrap_or_default();
+            let light = actor
+                .light
+                .get_or_insert_with(|| light::LightState::dynamic(position));
             // Stored values keep their low sixteen bits, as the original's word stores do.
             match name.as_str() {
                 "light" => {

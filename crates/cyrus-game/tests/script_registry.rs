@@ -3152,6 +3152,7 @@ fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() 
 
 #[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(&str, &[i32])]| {
         run_native_world(calls).unwrap().actors()[0]
             .light_state()
@@ -3198,10 +3199,21 @@ fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores()
         serde_json::json!([0, 0, 9]),
         "the size effect has its own words, apart from the flicker's"
     );
-    assert!(
-        run_native_world(&[("Light", &[1])]).is_err(),
-        "wrong argument count"
-    );
+    let mut malformed = random_scripts("Light", vec![Value::Integer { value: 1 }], Object::Me);
+    malformed.definition.functions[1].param_count = 1;
+    let mut world = ScriptWorld::prepare(&malformed, 1).unwrap();
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("wrong argument count"));
+    assert!(world.actors()[0].light_state().is_none());
 }
 
 #[test]
