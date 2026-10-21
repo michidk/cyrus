@@ -57,10 +57,7 @@ impl ScriptWorld {
             .as_ref()
             .context("created objects need spatial state")?;
         anyhow::ensure!(
-            spatial
-                .actors
-                .get(creator_index)
-                .is_some_and(Option::is_some),
+            spatial.actor(creator_index).is_ok(),
             "created object creator has no spatial state"
         );
         let mut actor = super::ScriptActor::created(self.world, index, key, template);
