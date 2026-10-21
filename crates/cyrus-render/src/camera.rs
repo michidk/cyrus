@@ -129,7 +129,11 @@ fn flycam_controller(
 /// engine X axis mirrored, and the scene axes negate X and Y (**Inferred** from the camera
 /// orientation stage's angles for known offsets; the comparison with the original decides).
 pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Option<Transform> {
-    let angles = camera.pose.angles.map(|angle| (angle & 2047) as u16);
+    // The renderer consumes the interpolated render pose.  The logical pose may
+    // already have advanced to the next camera position while the render camera
+    // is still gliding toward it; using `pose.angles` here would make angle glide
+    // ineffective even though position glide is honored below.
+    let angles = camera.render.angles.map(|angle| (angle & 2047) as u16);
     let forward = cyrus_world::transform::Matrix::orientation(angles)
         .transform([0, 0, 256])
         .ok()?;
@@ -322,6 +326,31 @@ fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn driven_view_uses_render_angles_during_a_glide() {
+        let camera = cyrus_game::script::PublishedCamera {
+            pose: cyrus_game::script::camera::CameraPose {
+                position: [0, 0, 0],
+                angles: [0, 0, 0],
+            },
+            render: cyrus_game::script::camera::RenderPose {
+                position: [0.0, 0.0, 0.0],
+                angles: [0, 512, 0],
+            },
+        };
+        let transform = driven_view_transform(&camera).expect("valid camera pose");
+        let expected = cyrus_world::transform::Matrix::orientation([0, 512, 0])
+            .transform([0, 0, 256])
+            .expect("orientation transform");
+        let expected = Vec3::new(
+            expected[0] as f32,
+            -(expected[1] as f32),
+            expected[2] as f32,
+        )
+        .normalize();
+        assert!(transform.forward().dot(expected) > 0.999);
+    }
 
     #[test]
     fn game_camera_disables_multisampling() {
