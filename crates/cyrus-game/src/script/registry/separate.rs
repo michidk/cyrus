@@ -44,18 +44,36 @@ impl ScriptWorld {
         let Some((key, template)) = installed else {
             anyhow::bail!("world {}: script {name} not installed", self.world)
         };
+        // Validate every failure that `push_created` can report before appending the
+        // actor record. Allocation is a paired actor/spatial operation; leaving an
+        // actor behind when spatial admission rejects its pose would shift all later
+        // ScriptActorId indices and make the registry internally inconsistent.
+        anyhow::ensure!(
+            angles.iter().all(|angle| *angle < 2048),
+            "created object angles outside wrapped range"
+        );
+        let spatial = self
+            .spatial
+            .as_ref()
+            .context("created objects need spatial state")?;
+        anyhow::ensure!(
+            spatial
+                .actors
+                .get(creator_index)
+                .is_some_and(Option::is_some),
+            "created object creator has no spatial state"
+        );
         let mut actor = super::ScriptActor::created(self.world, index, key, template);
         actor
             .control
             .as_mut()
             .expect("created objects allocate control")
             .creator = Some(creator_index);
-        let spatial = self
-            .spatial
-            .as_mut()
-            .context("created objects need spatial state")?;
         self.actors.push(actor);
-        spatial.push_created(&self.actors[index], position, angles, creator_index)?;
+        self.spatial
+            .as_mut()
+            .expect("created-object spatial state validated above")
+            .push_created(&self.actors[index], position, angles, creator_index)?;
         self.id(index)
     }
 
