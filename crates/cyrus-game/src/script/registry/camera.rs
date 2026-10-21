@@ -131,7 +131,7 @@ impl ScriptWorld {
     }
 
     /// Clear all six task slots of another actor, as `KillMyTasks` does for its receiver.
-    fn cancel_actor_tasks(&mut self, index: usize) -> Result<()> {
+    pub(super) fn cancel_actor_tasks(&mut self, index: usize) -> Result<()> {
         let actor = &mut self.actors[index];
         match actor.runtime.as_mut() {
             Some(runtime) => runtime.cancel_tasks_with(|token| actor.tasks.cancel(token)),
