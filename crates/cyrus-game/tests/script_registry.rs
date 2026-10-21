@@ -29002,3 +29002,60 @@ fn quick_health_key_drinks_the_first_owned_potion_once_and_leaves_a_flask() {
         "nothing left to drink"
     );
 }
+
+#[test]
+fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weapon() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "CollidePlayerWeapon".into(),
+            param_count: 4,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, "CollidePlayerWeapon", &[0, 0, 0, 10240]).operation,
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(1, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    let map = world.id(0).unwrap();
+    world
+        .advance(
+            map,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            100,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[0].runtime().unwrap().variables()[0],
+        0,
+        "no drawn weapon, no swing"
+    );
+}

@@ -198,15 +198,26 @@ impl ScriptWorld {
             } else {
                 self.actor_model_point(candidate, data, statics, i32::from(profile.vertex))?
             };
-            if profile.radius != 0 {
-                anyhow::ensure!(
-                    *self.actors[candidate_index]
-                        .attributes
-                        .get(126)
-                        .context("candidate attribute 126 unavailable")?
-                        == 0,
-                    "attribute 126 sphere/segment contact unsupported"
-                );
+            if profile.radius != 0
+                && *self.actors[candidate_index]
+                    .attributes
+                    .get(126)
+                    .context("candidate attribute 126 unavailable")?
+                    != 0
+            {
+                // The sphere/segment query with both segment ends at the receiver's retained
+                // combat point: the point and radius shift right eight bits.
+                let tip = self.actors[self.resolve(id)?]
+                    .model
+                    .weapon
+                    .as_ref()
+                    .context("receiver weapon endpoints unavailable")?
+                    .endpoints[1];
+                return Ok(cyrus_collision::distance::point_in_sphere(
+                    tip,
+                    point.map(|value| value >> 8),
+                    i32::from(profile.radius) >> 8,
+                ));
             }
             if !self.combat_contact_orientation(id, point)? {
                 return Ok(false);

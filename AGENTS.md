@@ -293,7 +293,8 @@ items draw the sword. `DrawSword` runs the weapon draw admission. `shoot` creati
 unavailable, and no inventory screen calls `UseItem` yet. `PlayerCollide` and `PlayerCollideStatic`
 read the contact lists of the selected player's body pass. The installed quick
 sword and quick health keys run in the world loop: the sword key draws, sheathes or uses the
-first owned of the three swords, and the health key drinks the first owned potion. `LightTorch`,
+first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and
+attribute 126's weapon-tip contact test read the retained combat weapon endpoints. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and

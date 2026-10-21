@@ -5516,6 +5516,48 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(touching)));
         }
+        // CollidePlayerWeapon(x, y, z, radius): while the selected player swings a drawn weapon,
+        // whether the weapon tip is within the radius of the point offset from the receiver.
+        if function.eq_ignore_ascii_case("CollidePlayerWeapon") {
+            anyhow::ensure!(arguments.len() == 4, "{function} requires four arguments");
+            let player = self
+                .selected_player()
+                .context("CollidePlayerWeapon selected player unavailable")?;
+            let player_index = self.registry.resolve(player)?;
+            let (holding, _, _) = self.actor_weapon_predicates(player_index, "IsHoldingWeapon")?;
+            let actor = &self.registry.actors[player_index];
+            let swinging = actor
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.decision.attack_state == 1);
+            if !holding || actor.attributes[105] == 1 || !swinging {
+                return Ok(CallResult::Complete(0));
+            }
+            let tip = actor
+                .model
+                .weapon
+                .as_ref()
+                .context(
+                    "CollidePlayerWeapon: the selected player's weapon endpoints are unavailable",
+                )?
+                .endpoints[1];
+            let receiver = self.registry.id(self.index)?;
+            let origin = self.registry.query_position(receiver)?;
+            let offsets = [
+                arguments[0].integer()?,
+                arguments[1].integer()?,
+                arguments[2].integer()?,
+            ];
+            let center = std::array::from_fn(|axis| origin[axis].wrapping_add(offsets[axis]) >> 8);
+            return Ok(CallResult::Complete(i32::from(
+                cyrus_collision::distance::point_in_sphere(
+                    tip,
+                    center,
+                    arguments[3].integer()? >> 8,
+                ),
+            )));
+        }
         if function.eq_ignore_ascii_case("PlayerStand") {
             anyhow::ensure!(arguments.is_empty(), "PlayerStand requires no arguments");
             let player = self
