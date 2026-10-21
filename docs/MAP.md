@@ -41,6 +41,7 @@ module where it is defined and regenerate.
 - `src/music.rs` — Read-only CD and world track preparation.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
 - `src/native/geometry.rs` — Shared rgpre geometry export; game sidecars and preview presentation are separate.
+- `src/overlay.rs` — Installed GXA images that scripts draw over the world frame (`ViewGXA`).
 - `src/player.rs` — Serialized player scene inputs, before game-owned runtime preparation.
 - `src/player_export.rs` — Shared preparation of player inputs through preservation's parsers.
 - `src/player_export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
@@ -310,6 +311,7 @@ module where it is defined and regenerate.
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
+- `src/overlay.rs` — Installed GXA images that a running `ViewGXA` task draws over the world frame.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 
