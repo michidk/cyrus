@@ -822,7 +822,27 @@ impl ScriptWorld {
                 }
             }
         }
-        let actor = &self.actors[index];
+        self.run_ordinary_falling_writer(
+            id,
+            animated,
+            fine_ticks,
+            additional_ticks,
+            post_collide_height,
+        )?;
+        Ok(true)
+    }
+
+    /// The vertical writer that follows every falling request, including the one
+    /// a fresh entry makes.
+    pub(super) fn run_ordinary_falling_writer(
+        &mut self,
+        id: ScriptActorId,
+        animated: bool,
+        fine_ticks: u32,
+        additional_ticks: u32,
+        post_collide_height: u32,
+    ) -> Result<()> {
+        let actor = &self.actors[self.resolve(id)?];
         let suppressed = animated
             && actor
                 .animation
@@ -831,7 +851,7 @@ impl ScriptWorld {
         let timer = actor
             .control
             .as_ref()
-            .expect("validated falling control")
+            .context("ordinary falling control unavailable")?
             .fall_timer;
         let input = super::vertical::OrdinaryVerticalInputs::for_falling(
             timer,
@@ -840,8 +860,7 @@ impl ScriptWorld {
             post_collide_height,
             suppressed,
         )?;
-        self.apply_ordinary_falling_vertical(id, input)?;
-        Ok(true)
+        self.apply_ordinary_falling_vertical(id, input)
     }
 }
 

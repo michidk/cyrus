@@ -303,7 +303,9 @@ A direct-damage combat message (`0xd005`) is answered for every receiver, includ
 player. `DragonBreath` and `DragonBreathTask` run the dragon's smoke while it speaks, its fireball at a
 target beyond the minimum range, and the item swap when it dies; the smoke and fireball placement
 from animated vertices is not yet compared with the original in a running world. `projectileAI`'s
-movement and hit response remain unavailable. `LightTorch`,
+movement and hit response remain unavailable. Animated nonplayer actors with ground response fall when support is
+missing and land with the installed `[game]` thresholds (script caches need re-export for them); the selected
+player's fall, static-model falls, and the jump-group and walking-off-an-edge entries remain unavailable. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and

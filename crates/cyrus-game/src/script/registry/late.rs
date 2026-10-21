@@ -5,6 +5,8 @@ use cyrus_collision::ground::SelectedSupport;
 
 pub(super) struct OrdinaryLateInputs {
     pub ticks: u32,
+    pub fine_ticks: Option<u32>,
+    pub step_fps: Option<u32>,
     pub weapon: Option<super::weapon::WeaponInputs>,
 }
 
@@ -124,6 +126,127 @@ impl ScriptWorld {
         })?)
     }
 
+    /// Support regained while falling: threshold response, then the landing request.
+    fn land_ordinary_fall(
+        &mut self,
+        id: ScriptActorId,
+        data: &cyrus_assets::animation::Animations,
+        environment: super::transition::ObstacleEnvironment,
+        weapon: Option<super::weapon::WeaponInputs>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let landing = self.updates.fall_landing.with_context(|| {
+            format!(
+                "world {} instance {}: fall landing thresholds missing; re-export scripts",
+                self.world, id.index
+            )
+        })?;
+        let settings = super::super::OrdinaryLandingSettings {
+            death_height: landing.death_height,
+            hurt_height: landing.hurt_height,
+            hurt_zap: landing.hurt_zap,
+        };
+        let combat_mode = self.actors[id.index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .is_some_and(|combat| combat.flags & 4 != 0);
+        let selected_holding = weapon
+            .and_then(|input| self.resolve(input.selected_player).ok().map(|i| (i, input)))
+            .and_then(|(index, input)| {
+                let actor = &self.actors[index];
+                let control = actor.control.as_ref()?;
+                let animation = actor.animation.as_ref()?;
+                let (holding, _, _) = super::super::activation::weapon_predicates(
+                    control.living_state,
+                    Some(super::super::ActivationAnimation {
+                        group: animation.playback.current_group(),
+                    }),
+                    control.combat_death_default.is_some(),
+                    control.weapon_drawn,
+                    actor.attributes[110],
+                    input.item_system_ready,
+                    input.shell_execution,
+                );
+                Some(holding)
+            });
+        let decision = self.resolve_ordinary_landing_damage(
+            id,
+            data,
+            environment,
+            settings,
+            Some(combat_mode),
+            sounds,
+        )?;
+        if decision == super::super::OrdinaryLandingDecision::Ordinary {
+            self.complete_ordinary_landing(id, data, environment, selected_holding, sounds)?;
+        }
+        Ok(())
+    }
+
+    /// Support missed: start or continue an animated fall. The selector, previous-position
+    /// recovery and static-model entry services are not ported and refuse explicitly.
+    fn miss_ordinary_support(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        fine_ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let post = query.scene.settings.post_collide_height;
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("support miss control unavailable")?;
+        if control.falling_state != 0 {
+            self.continue_ordinary_falling(
+                id,
+                query.animations,
+                environment,
+                fine_ticks,
+                0,
+                post,
+                sounds,
+            )?;
+            return Ok(());
+        }
+        ensure!(
+            environment.selected_player != Some(id),
+            "world {} instance {}: selected-player fall entry unsupported",
+            self.world,
+            id.index
+        );
+        ensure!(
+            (control.jump_selector == 0 || control.jump_selector.abs_diff(24) >= 4)
+                && control.directional_state.iter().all(|byte| byte & 3 == 0),
+            "world {} instance {}: fall entry selector and previous-position recovery unsupported",
+            self.world,
+            id.index
+        );
+        let group = self.actors[id.index]
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        ensure!(
+            !matches!(group, Some(41..=43)),
+            "world {} instance {}: fall entry from a jump group's displacement unsupported",
+            self.world,
+            id.index
+        );
+        ensure!(
+            query.animations.actor(self.actors[id.index].name())?["model_load_path"].as_str()
+                == Some("animation_table"),
+            "world {} instance {}: static-model fall entry gate unsupported",
+            self.world,
+            id.index
+        );
+        if self.complete_ordinary_animated_fall_entry(id, query.animations, environment, sounds)? {
+            self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn resolve_ordinary_late_collision(
         &mut self,
         id: ScriptActorId,
@@ -133,7 +256,12 @@ impl ScriptWorld {
         recovery: super::recovery::OrdinaryStableRecoveryInputs<'_>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let OrdinaryLateInputs { ticks, weapon } = inputs;
+        let OrdinaryLateInputs {
+            ticks,
+            fine_ticks,
+            step_fps,
+            weapon,
+        } = inputs;
         let environment = super::transition::ObstacleEnvironment {
             selected_player: weapon.map(|input| input.selected_player),
             auto_grab: false,
@@ -154,9 +282,12 @@ impl ScriptWorld {
             .as_ref()
             .context("late collision control unavailable")?;
         let special = (10..=19).contains(&control.living_state);
+        let falling = control.falling_state != 0;
         ensure!(
-            control.falling_state == 0,
-            "falling support probe distance owner unavailable"
+            !falling || !special,
+            "world {} instance {}: falling in a special state is unsupported",
+            self.world,
+            id.index
         );
         if !special {
             self.resolve_ordinary_obstacle_wrapper(id, obstacle_query(), environment, sounds)?;
@@ -164,8 +295,23 @@ impl ScriptWorld {
         if mask & 8 != 0 {
             self.resolve_ordinary_overlap_stage(id, obstacle_query(), environment, sounds)?;
         }
+        // An animated actor that is falling probes a shorter column once the measured FPS
+        // reaches ten; static models always use the full distance.
+        let support_query = if falling && environment.selected_player != Some(id) {
+            let fps = step_fps.context("falling support probe needs the step's measured FPS")?;
+            super::ground::OrdinaryGroundQuery {
+                distance: if fps >= 10 {
+                    (query.distance >> 2) * 3
+                } else {
+                    query.distance
+                },
+                ..query
+            }
+        } else {
+            query
+        };
         let (prevalidation, support) =
-            self.query_ordinary_point_support(id, query, environment, sounds)?;
+            self.query_ordinary_point_support(id, support_query, environment, sounds)?;
         if mask & 4 != 0 {
             let living_state = self.actors[id.index]
                 .control
@@ -187,14 +333,25 @@ impl ScriptWorld {
                     "state-specific ground response owner unavailable"
                 );
                 ensure!(
-                    control.queued_motion == 0 && control.falling_state == 0,
-                    "airborne ground response timing and terrain veto unavailable"
+                    control.queued_motion == 0,
+                    "queued ground response timing unavailable"
                 );
+                if falling {
+                    ensure!(
+                        environment.selected_player != Some(id),
+                        "world {} instance {}: falling selected-player edge service unsupported",
+                        self.world,
+                        id.index
+                    );
+                }
                 if let Some(support) = support.as_ref() {
                     ensure!(
                         control.sliding_state == 0,
                         "slide termination damage settings unavailable"
                     );
+                    if falling {
+                        self.land_ordinary_fall(id, query.animations, environment, weapon, sounds)?;
+                    }
                     let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
                     let height = i32::try_from(
                         support.actor_height(extent, query.scene.settings.standing_height),
@@ -217,7 +374,13 @@ impl ScriptWorld {
                         .expect("admitted ground control")
                         .falling_state = 0;
                 } else {
-                    anyhow::bail!("support miss requires falling entry and vertical timing owner");
+                    self.miss_ordinary_support(
+                        id,
+                        query,
+                        environment,
+                        fine_ticks.context("falling needs the step's fine-tick increment")?,
+                        sounds,
+                    )?;
                 }
             }
             self.retain_ordinary_stable_position(id)?;

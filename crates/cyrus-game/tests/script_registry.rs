@@ -29929,3 +29929,108 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
     }
     assert!(sounds.iter().any(|(_, text)| text.contains("Positional")));
 }
+
+#[test]
+fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = cache();
+    scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
+        death_height: 568,
+        hurt_height: 300,
+        hurt_zap: 10,
+    });
+    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+    let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+    attributes.insert("attr_1".into(), 4);
+    attributes.insert("attr_32".into(), 32);
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (mut world, mut data, models) = static_model_fixture_at(scripts, None, [600, 20, 600]);
+    let id = world.id(0).unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = "animation_table".into();
+    definition["animation_groups"] =
+        serde_json::json!([0, 56, 57, 65].map(|group| serde_json::json!({
+            "group_index":group,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
+        })));
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.set_actor_surface(id, 7).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.post_collide_height = 50;
+    let start_y = world.spatial(id).unwrap().local.position[1];
+    let mut random = cyrus_game::random::EngineRandom::default();
+    let mut step = |world: &mut ScriptWorld, scene: &cyrus_game::player::data::PlayerScene| {
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(8),
+                        step_fps: Some(12),
+                        ..Default::default()
+                    },
+                    scene: Some(scene),
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[id.index].failure().is_none(),
+            "{:?}",
+            world.actors()[id.index].failure()
+        );
+    };
+    step(&mut world, &scene);
+    let control = world.actors()[id.index].control_state().unwrap();
+    assert_eq!(control.falling_state, 1);
+    assert_eq!(control.fall_origin_y, start_y + 32 * 256);
+    // Entry runs the writer once: factor[30] is 256, so Y is unchanged and the byte timer drops by eight.
+    assert_eq!(
+        (
+            control.fall_timer,
+            world.spatial(id).unwrap().local.position[1]
+        ),
+        (22, start_y)
+    );
+    step(&mut world, &scene);
+    let factor = 256 * (900 - 7 * 7) / 900;
+    assert_eq!(
+        world.spatial(id).unwrap().local.position[1],
+        start_y + 32 * 256 - 32 * factor
+    );
+    assert_eq!(
+        world.actors()[id.index].control_state().unwrap().fall_timer,
+        14
+    );
+    // Terrain at the actor's height returns support: the fall ends without damage and
+    // the landing animation request clears the falling byte.
+    let y_map = i16::try_from(world.spatial(id).unwrap().local.position[1] >> 8).unwrap();
+    scene.terrain = Some(
+        cyrus_collision::ground::TerrainGround::new(
+            vec![y_map + 3; 256 * 256],
+            vec![false; 256 * 256],
+            None,
+        )
+        .unwrap(),
+    );
+    let health_before = world.actors()[id.index].attributes()[3];
+    step(&mut world, &scene);
+    let control = world.actors()[id.index].control_state().unwrap();
+    assert_eq!(control.falling_state, 0);
+    assert_eq!(world.actors()[id.index].attributes()[3], health_before);
+}

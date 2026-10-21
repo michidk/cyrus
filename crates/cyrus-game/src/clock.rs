@@ -76,6 +76,8 @@ pub struct SimulationClock {
     nominal_fraction: u32,
     fine_fraction: u32,
     warmup: u8,
+    /// FPS the exposed step used: twelve during the startup countdown, else measured.
+    step_fps: u32,
 }
 
 impl SimulationClock {
@@ -171,6 +173,11 @@ impl SimulationClock {
             nominal_fraction: snapshot.nominal_fraction,
             fine_fraction: snapshot.fine_fraction,
             warmup: snapshot.warmup,
+            step_fps: if snapshot.warmup != 0 {
+                12
+            } else {
+                snapshot.measured
+            },
         })
     }
 
@@ -188,6 +195,12 @@ impl SimulationClock {
     /// Last exposed timing, retained across checkpoint restoration until advance.
     pub fn step(&self) -> ClockStep {
         self.step
+    }
+
+    /// Measured FPS of the last exposed step (twelve during the startup countdown,
+    /// unsmoothed and unclamped), which ordinary falling reads to size its support probe.
+    pub fn fps(&self) -> u32 {
+        self.step_fps
     }
 
     /// Completed 18-BIOS-tick measurement intervals from the last advance.
@@ -216,6 +229,7 @@ impl SimulationClock {
             nominal_fraction: 0,
             fine_fraction: 0,
             warmup: 12,
+            step_fps: 12,
         })
     }
 
@@ -315,6 +329,7 @@ impl SimulationClock {
         let fine = self.fine_fraction + self.next_scale;
         self.nominal_fraction = nominal & 255;
         self.fine_fraction = fine & 31;
+        self.step_fps = if warmup { 12 } else { self.measured };
         self.step = if warmup {
             self.warmup -= 1;
             ClockStep {

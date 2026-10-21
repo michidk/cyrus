@@ -213,6 +213,9 @@ pub struct ScriptInputs<'a> {
     pub combat_clock_sample: Option<u32>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
+    /// Whole finer-counter increments and the measured FPS of this update's clock step.
+    pub fine_ticks: Option<u32>,
+    pub step_fps: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
     /// Explicit selected-player keyboard admission for the ordinary traversal.
     pub player_controller: Option<player::PlayerControllerInput<'a>>,

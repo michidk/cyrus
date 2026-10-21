@@ -235,7 +235,9 @@ impl ScriptWorld {
                     .as_ref()
                     .expect("admitted ordinary control");
                 anyhow::ensure!(
-                    control.queued_motion == 0 && control.falling_state == 0,
+                    control.queued_motion == 0
+                        && (control.falling_state == 0
+                            || (!selected_player && self.actors[id.index].attributes[1] & 4 != 0)),
                     "ordinary queued motion stage unsupported"
                 );
                 let collision = if self.actors[id.index].attributes[1] != 0 {
@@ -439,6 +441,8 @@ impl ScriptWorld {
                             },
                             super::late::OrdinaryLateInputs {
                                 ticks,
+                                fine_ticks: inputs.fine_ticks,
+                                step_fps: inputs.step_fps,
                                 weapon: inputs
                                     .hud
                                     .zip(inputs.shell_execution)
@@ -1236,6 +1240,8 @@ pub fn run_ordinary(
                 combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
+                fine_ticks: Some(timing.fine_ticks),
+                step_fps: Some(clock.fps()),
                 player_query,
                 player_controller,
                 ambient_sound,
