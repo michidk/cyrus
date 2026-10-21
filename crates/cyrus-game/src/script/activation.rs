@@ -195,6 +195,8 @@ pub struct GameplayGlobals {
     pub(super) world_loop_frame: u32,
     /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
     pub(super) item_use_latch: bool,
+    /// Nominal ticks until the dragon may breathe fire again; process-wide, zero at startup.
+    pub(super) dragon_breath_cooldown: u32,
     /// Actors the selected player's body touched in its latest contact pass.
     pub(super) player_contacts: PlayerContacts,
     pub(super) sound_maintenance: super::SoundMaintenance,
@@ -1203,6 +1205,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     selected_ledge_result: Option<i32>,
     #[serde(default)]
     world_loop_frame: u32,
+    #[serde(default)]
+    dragon_breath_cooldown: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
     menu_state: u16,
     #[serde(default)]
@@ -1249,6 +1253,7 @@ impl GameplayGlobals {
             selected_action_inhibition: self.selected_action_inhibition,
             selected_ledge_result: self.selected_ledge_result,
             world_loop_frame: self.world_loop_frame,
+            dragon_breath_cooldown: self.dragon_breath_cooldown,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
             menu: self.menu.clone(),
@@ -1328,6 +1333,7 @@ impl GameplayGlobals {
             selected_action_inhibition: saved.selected_action_inhibition,
             selected_ledge_result: saved.selected_ledge_result,
             world_loop_frame: saved.world_loop_frame,
+            dragon_breath_cooldown: saved.dragon_breath_cooldown,
             item_use_latch: false,
             player_contacts: Default::default(),
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),

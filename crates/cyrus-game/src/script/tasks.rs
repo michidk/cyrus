@@ -149,6 +149,9 @@ pub(super) trait PointHost {
     /// One `PlayerOffsettask` step: place the selected player relative to the receiver and give it
     /// the receiver's orientation.
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()>;
+
+    /// One `DragonBreathTask` update: true while the receiver keeps breathing.
+    fn dragon_breath(&mut self) -> Result<bool>;
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -513,6 +516,8 @@ enum Task {
     /// `PlayerOffsettask(x, y, z)`: every invocation places the selected player at the receiver's
     /// position plus the offset and gives it the receiver's orientation; it never completes.
     PlayerOffset,
+    /// `DragonBreathTask()`: the `DragonBreath` update every invocation, completing when it returns zero.
+    DragonBreath,
     /// `MoveMarker(marker, tolerance)`: the direct point wrapper toward a marker.
     MoveMarker,
     /// `MoveLocation(location, tolerance)`: the direct point wrapper toward a receiver location.
@@ -1161,6 +1166,16 @@ impl Task {
                     .context("PlayerOffsettask requires the receiver's placement owner")?;
                 host.player_offset([x.integer()?, y.integer()?, z.integer()?])?;
                 false
+            }
+            Self::DragonBreath => {
+                anyhow::ensure!(
+                    arguments.is_empty(),
+                    "DragonBreathTask requires no arguments"
+                );
+                let host = services
+                    .point
+                    .context("DragonBreathTask requires the receiver's update owner")?;
+                !host.dragon_breath()?
             }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
@@ -2540,6 +2555,12 @@ impl NativeTasks {
                 "PlayerOffsettask requires multitask encoding"
             );
             Task::PlayerOffset
+        } else if function.eq_ignore_ascii_case("DragonBreathTask") {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "DragonBreathTask requires multitask encoding"
+            );
+            Task::DragonBreath
         } else if function.eq_ignore_ascii_case("MoveMarker") {
             Task::MoveMarker
         } else if function.eq_ignore_ascii_case("MoveLocation") {
@@ -2685,6 +2706,7 @@ impl NativeTasks {
             "FaceAngle",
             "FacePos",
             "PlayerOffsettask",
+            "DragonBreathTask",
             "MoveMarker",
             "MoveLocation",
             "MovePosition",
@@ -2704,6 +2726,7 @@ impl NativeTasks {
                 Task::FaceAngle
                     | Task::FacePos
                     | Task::PlayerOffset
+                    | Task::DragonBreath
                     | Task::MoveMarker
                     | Task::MoveLocation
                     | Task::MovePosition

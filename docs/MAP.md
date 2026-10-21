@@ -180,6 +180,7 @@ module where it is defined and regenerate.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/direct_point.rs` — The direct point wrapper behind `MovePosition`, `MoveMarker` and `MoveLocation`.
+- `src/script/registry/dragon.rs` — `DragonBreath` and `DragonBreathTask`: the dragon's smoke while it speaks, its fireball and the
 - `src/script/registry/effects.rs` — World-local environmental effects follow preservation's SOUP pool and lifetime rules.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/flat.rs` — Retained actor flat records follow the original's per-actor flat sprite controls.

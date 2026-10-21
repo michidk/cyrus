@@ -20,6 +20,7 @@ mod counter;
 mod defence;
 mod dialogue;
 mod direct_point;
+mod dragon;
 pub(super) mod falling;
 mod flat;
 mod follow;
@@ -4363,26 +4364,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::Complete(0));
             }
             let field = ["grip0", "scabbard1", "grip1", "scabbard0"][random.rnd(4)? as usize];
-            let data = self
-                .inputs
-                .animations
-                .context("GolemSteam animation data unavailable")?
-                .0;
             let id = self.registry.id(self.index)?;
-            let index = data.actor(self.registry.actors[self.index].name())?["raex"][field]
-                .as_i64()
-                .and_then(|value| i16::try_from(value).ok())
-                .with_context(|| format!("GolemSteam: RAEX {field} unavailable"))?;
-            let vertex = if self.registry.updates.dummy_model_manager {
-                [0; 3]
-            } else {
-                self.registry
-                    .actor_animation_source_vertex(id, data, i32::from(index))?
-            };
-            let local = self.registry.spatial(id)?.local;
-            let rotated = local.matrix.transform(vertex)?;
-            let point =
-                std::array::from_fn(|axis| rotated[axis].wrapping_add(local.position[axis]));
+            let rotated = self.attachment_offset("GolemSteam", field)?;
+            let position = self.registry.spatial(id)?.local.position;
+            let point = std::array::from_fn(|axis| rotated[axis].wrapping_add(position[axis]));
             let descriptor = if self.registry.globals.world_loop_frame & 1 != 0 {
                 0x32480
             } else {
@@ -4390,6 +4375,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             self.registry.spawn_environment_effect(descriptor, point)?;
             return Ok(CallResult::Complete(0));
+        }
+        // DragonBreath: the dragon's smoke, fireball and death item swap; `DragonBreathTask` runs the
+        // same update as a multitask. The return is one while the dragon keeps breathing.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("DragonBreath") {
+            anyhow::ensure!(arguments.is_empty(), "DragonBreath requires no arguments");
+            return Ok(CallResult::Complete(i32::from(self.breathe()?)));
         }
         // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect
         // at a Q8 point. Only the installed form is supported: zero spread and speed one.

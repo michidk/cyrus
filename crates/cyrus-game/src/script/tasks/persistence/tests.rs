@@ -2568,8 +2568,14 @@ struct RecordingPointHost {
     faces: Vec<FaceTarget>,
     offsets: Vec<[i32; 3]>,
     result: i32,
+    breaths: u32,
+    breathing: bool,
 }
 impl PointHost for RecordingPointHost {
+    fn dragon_breath(&mut self) -> Result<bool> {
+        self.breaths += 1;
+        Ok(self.breathing)
+    }
     fn move_to(
         &mut self,
         wrapper: PointWrapper,
@@ -2691,6 +2697,48 @@ fn point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zer
                 .is_err()
         );
     }
+}
+
+#[test]
+fn dragon_breath_task_runs_the_update_every_invocation_and_completes_when_it_returns_zero() {
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let mut host = RecordingPointHost {
+        breathing: true,
+        ..Default::default()
+    };
+    let mut task = Task::DragonBreath;
+    let mut step = |host: &mut RecordingPointHost, arguments: &[Argument]| {
+        task.complete(
+            arguments,
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices {
+                point: Some(host),
+                ..Default::default()
+            },
+        )
+    };
+    assert!(!step(&mut host, &[]).unwrap());
+    assert!(!step(&mut host, &[]).unwrap());
+    assert!(step(&mut host, &[Argument::Integer(1)]).is_err());
+    host.breathing = false;
+    assert!(step(&mut host, &[]).unwrap());
+    assert_eq!(host.breaths, 3);
+    assert!(
+        task.complete(
+            &[],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default()
+        )
+        .is_err()
+    );
 }
 
 #[test]

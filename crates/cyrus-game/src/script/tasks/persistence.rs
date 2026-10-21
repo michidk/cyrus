@@ -242,6 +242,7 @@ impl Task {
             Self::ScaledMove => ("sMove", 4, None),
             Self::ScaledRotate => ("sRotate", 4, None),
             Self::PlayerOffset => ("PlayerOffsettask", 3, Some(CallKind::Multitask)),
+            Self::DragonBreath => ("DragonBreathTask", 0, Some(CallKind::Multitask)),
             Self::MoveMarker => ("MoveMarker", 2, None),
             Self::MoveLocation => ("MoveLocation", 2, None),
             Self::MovePosition => ("MovePosition", 4, None),

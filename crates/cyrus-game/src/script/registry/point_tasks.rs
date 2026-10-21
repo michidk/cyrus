@@ -14,6 +14,10 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .offset_selected_player(self.index, offset, true)
     }
 
+    fn dragon_breath(&mut self) -> Result<bool> {
+        self.breathe()
+    }
+
     fn move_to(
         &mut self,
         wrapper: PointWrapper,
