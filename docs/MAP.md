@@ -164,6 +164,7 @@ module where it is defined and regenerate.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/player_status.rs` — `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
+- `src/script/quick_keys.rs` — The quick sword and quick health keys, sampled from the installed key bindings.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
@@ -202,6 +203,7 @@ module where it is defined and regenerate.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
+- `src/script/registry/quick_keys.rs` — The quick sword and quick health keys: the world loop's key handler for the selected player.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.
 - `src/script/registry/separate.rs` — Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 - `src/script/registry/sight.rs` — Line of sight between two actors follows preservation's combat decision "In sight" rules.

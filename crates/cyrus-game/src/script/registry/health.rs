@@ -40,7 +40,7 @@ impl SelectedDeathState {
 }
 
 impl SelectedHealthState {
-    pub(super) fn initialized(health: u8) -> Self {
+    pub(in crate::script) fn initialized(health: u8) -> Self {
         Self {
             falling_elapsed: Some(0),
             maximum: 100,

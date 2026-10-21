@@ -38,6 +38,7 @@ mod persistence;
 mod point;
 mod point_tasks;
 mod probe;
+mod quick_keys;
 mod torch;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
@@ -189,6 +190,8 @@ pub struct ScriptInputs<'a> {
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,
+    /// Quick sword and quick health keys for the ordinary update's key handler.
+    pub quick_keys: Option<super::QuickKeys>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
     pub combat_clock_sample: Option<u32>,
     pub nominal_ticks: Option<u32>,
@@ -527,6 +530,12 @@ impl ScriptWorld {
 
     /// The selected player: CYRUS, or GREMLIN while the swap state is set. Hosts bind their player
     /// entity, controller and camera to this actor rather than to a fixed role.
+    /// Test hook: write one attribute byte of a logical actor.
+    #[doc(hidden)]
+    pub fn set_attribute_for_test(&mut self, id: ScriptActorId, attribute: usize, value: u8) {
+        self.actors[id.index].attributes[attribute] = value;
+    }
+
     pub fn selected_player(&self) -> Option<ScriptActorId> {
         self.id(self.selected_player_index()?).ok()
     }
@@ -3332,11 +3341,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !eligible {
             return Ok(());
         }
-        anyhow::ensure!(
-            !selected,
-            "{function} selected-player HUD timer and camera selection unavailable"
-        );
         super::combat::begin_sheathing(control);
+        if selected {
+            // The selected player's sheath restarts the candle display and returns to the first
+            // camera record.
+            self.registry.globals.request_candle_show();
+            if let Some(camera) = self.registry.camera.as_mut() {
+                camera.select(0)?;
+            }
+        }
         Ok(())
     }
 

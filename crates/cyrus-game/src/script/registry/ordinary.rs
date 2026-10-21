@@ -137,7 +137,6 @@ impl ScriptWorld {
             "ordinary update requires frame_scale"
         );
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
-        self.globals.end_item_use_attempt();
         self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();
@@ -497,6 +496,10 @@ impl ScriptWorld {
             }
         }
         self.update_separate(view, inputs, random, sounds, budget)?;
+        // The item-use latch clears after the actors ran and before the key handler, so a key
+        // press arms it for the next iteration's scripts.
+        self.globals.end_item_use_attempt();
+        self.run_quick_keys(inputs, random, sounds)?;
         self.advance_environment_effects(ticks);
         Ok(())
     }
@@ -585,6 +588,7 @@ pub struct OrdinaryContext<'w, 's> {
     hud: Option<Res<'w, super::super::ScriptHud>>,
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
+    quick: Option<Res<'w, super::super::QuickKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
     fidelity: Option<Res<'w, crate::fidelity::Fidelity>>,
     explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
@@ -986,6 +990,7 @@ pub fn run_ordinary(
         hud,
         entry,
         input,
+        quick,
         toggles,
         fidelity,
         explicit,
@@ -1210,6 +1215,7 @@ pub fn run_ordinary(
             scripts: ScriptInputs {
                 hud: hud.as_deref(),
                 activation_use_held: input.as_deref().map(|held| held.action),
+                quick_keys: quick.as_deref().copied(),
                 shell_execution: Some(false),
                 combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),

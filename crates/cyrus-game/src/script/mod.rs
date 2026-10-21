@@ -156,6 +156,8 @@ mod navigation;
 pub use navigation::{ActorNavigation, PointCommandState, WalkNodeSlot, WalkRouteState};
 mod order;
 mod playback;
+mod quick_keys;
+pub use quick_keys::QuickKeys;
 mod presentation;
 mod registry;
 pub use registry::ordinary::{
@@ -245,6 +247,13 @@ impl Plugin for ScriptPlugin {
                     .before(registry::ordinary::sample_clock)
                     .before(OrdinaryUpdates)
                     .run_if(resource_exists::<cyrus_world::lifecycle::PreparedWorld>),
+            )
+            .init_resource::<QuickKeys>()
+            .add_systems(
+                Update,
+                quick_keys::sample
+                    .after(crate::player::input::InputSample)
+                    .before(OrdinaryUpdates),
             )
             .add_systems(
                 Update,

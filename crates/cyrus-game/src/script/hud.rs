@@ -341,6 +341,15 @@ impl ScriptHud {
             .min(255.0) as u8)
     }
 
+    /// Owned count of `id`, zero while the inventory is closed.
+    pub(super) fn item_count(&self, id: u16) -> Result<u32> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        match state.inventory.as_ref() {
+            Some(items) => items.count(id),
+            None => Ok(0),
+        }
+    }
+
     /// Drop one unit of `id` as the `DropItem` native does.
     pub(super) fn drop_one(&self, id: u16) -> Result<()> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

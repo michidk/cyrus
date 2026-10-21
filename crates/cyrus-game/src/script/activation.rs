@@ -530,6 +530,11 @@ impl GameplayGlobals {
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);
     }
+    /// Test hook: establish selected-player health as the selected-player initializer does.
+    #[doc(hidden)]
+    pub fn initialize_selected_health_for_test(&mut self, health: u8) {
+        self.selected_health = Some(super::SelectedHealthState::initialized(health));
+    }
     /// Record an actor the selected player's body touched in this iteration's contact pass.
     pub fn record_player_contact(&mut self, actor: usize) {
         self.player_contacts.record(actor);
