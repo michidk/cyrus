@@ -16869,6 +16869,7 @@ fn kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive() {
 
 #[test]
 fn kill_me_clears_receiver_tasks_before_marking_the_actor_dead() {
+    use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
     let mut scripts = wait_cache(vec![
         wait(
             4,
@@ -16894,9 +16895,27 @@ fn kill_me_clears_receiver_tasks_before_marking_the_actor_dead() {
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
-    world.step(id, Thread::Main, 20).unwrap();
+    let mut sounds = Vec::new();
+    let mut record = |actor, sound| {
+        sounds.push((actor, sound));
+        Ok(())
+    };
+    world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut record),
+            None,
+            20,
+        )
+        .unwrap();
     assert!(world.actors()[0].control_state().unwrap().killed);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert!(matches!(sounds.as_slice(), [(actor, ScriptSound::StopOwned)] if *actor == id));
 }
 
 #[test]
