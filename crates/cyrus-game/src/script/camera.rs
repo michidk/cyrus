@@ -438,15 +438,15 @@ impl CameraState {
                     gap += 0x800;
                 }
                 let step = (-f64::from(gap as f32) * f64::from(settings.angles[factor])) as f32;
-                next.current.angles[axis] = (f64::from(step).trunc() as i32 + previous) & 0x7ff;
+                next.render.angles[axis] = (f64::from(step).trunc() as i32 + previous) & 0x7ff;
             }
         } else {
             next.render.position = next.current.position.map(|axis| (axis / 256) as f32);
+            next.render.angles = next.current.angles;
             next.marks.snap = false;
             next.marks.hold = false;
         }
         next.marks.forced_glide = false;
-        next.render.angles = next.current.angles;
         *self = next;
         Ok(())
     }
@@ -1943,4 +1943,39 @@ pub fn sample_terrain(
         };
     }
     terrain_triangle(horizontal, &selection, heights)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn present_glides_render_angles_without_mutating_published_pose() {
+        let id = super::super::ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let mut state = CameraState::new(&CameraSettings::default(), id, id, 0).unwrap();
+        state.current.angles = [100, 200, 300];
+        state.render.angles = [0, 0, 0];
+        state.marks.snap = false;
+
+        state
+            .present(
+                &GlideSettings {
+                    position: [0.0; 3],
+                    angles: [0.5; 3],
+                },
+                &GlidePlayer {
+                    holding_weapon: false,
+                    rope_attached: false,
+                },
+                true,
+                &mut |_| Ok(()),
+            )
+            .unwrap();
+
+        assert_eq!(state.current.angles, [100, 200, 300]);
+        assert_eq!(state.render.angles, [50, 100, 150]);
+    }
 }
