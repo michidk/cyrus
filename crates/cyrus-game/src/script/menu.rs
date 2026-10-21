@@ -67,8 +67,10 @@ impl MenuState {
                 slot.text.clear();
             }
             self.count = 0;
-            self.current = 0;
         }
+        // `menuNew` starts the next menu at its first item even when the
+        // previous menu was already empty (for example after a failed lookup).
+        self.current = 0;
     }
 
     /// `menuAddItem` for an installed text. `remembered` is the text last highlighted: an item
@@ -201,6 +203,19 @@ mod tests {
         menu.add(300, "c", 5, 1, 77, "");
         menu.committed = 0;
         assert_eq!(menu.selection(), 77, "the slot is reused");
+    }
+
+    #[test]
+    fn clearing_an_empty_menu_resets_a_stale_highlight() {
+        let mut menu = menu_of(&["a", "b"]);
+        menu.current = 1;
+        menu.clear();
+        // A second menuNew is legal after an empty/failed population. Its first
+        // item must be highlighted rather than inheriting the prior index.
+        menu.clear();
+        menu.add(2, "new", 0, 0, 42, "");
+        assert_eq!(menu.highlighted(), 0);
+        assert_eq!(menu.selection(), 10, "the committed slot remains retained");
     }
 
     #[test]
