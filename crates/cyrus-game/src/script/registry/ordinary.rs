@@ -500,7 +500,18 @@ impl ScriptWorld {
                 self.run_held_torch(id, inputs, ticks, sounds);
             }
         }
-        self.update_separate(view, inputs, random, sounds, budget)?;
+        // Separate records gather no collision candidates of their own, but their natives (for
+        // example `PlayerInSight`) read the world's geometry and the latest gather.
+        let separate_inputs = ScriptInputs {
+            player_collision: scene.map(|scene| super::PlayerCollisionSource {
+                scene,
+                animations: data,
+                view,
+                actors: &selected,
+            }),
+            ..inputs
+        };
+        self.update_separate(view, separate_inputs, random, sounds, budget)?;
         // The item-use latch clears after the actors ran and before the key handler, so a key
         // press arms it for the next iteration's scripts.
         self.globals.end_item_use_attempt();
