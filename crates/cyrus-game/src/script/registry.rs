@@ -4250,6 +4250,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetGroupSync") {
+            anyhow::ensure!(arguments.is_empty(), "ResetGroupSync requires no arguments");
+            // The native clears this actor's posted value.  The channel update retains the
+            // released byte; the next world-loop update observes this member as unposted.
+            self.registry.globals.group_sync.reset(self.index);
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
             anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
             let inputs = match self.inputs.combat_entry {

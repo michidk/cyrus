@@ -16936,6 +16936,18 @@ fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channel
 }
 
 #[test]
+fn reset_group_sync_native_accepts_no_arguments_and_rejects_arguments() {
+    // The channel state itself is covered by GroupSync's algorithm tests; this exercises the
+    // registry's installed function entry, including its zero-argument contract.
+    run_native_world(&[("ResetGroupSync", &[])]).unwrap();
+    let error = match run_native_world(&[("ResetGroupSync", &[1])]) {
+        Ok(_) => panic!("ResetGroupSync accepted an argument"),
+        Err(error) => error,
+    };
+    assert!(format!("{error:#}").contains("ResetGroupSync requires no arguments"));
+}
+
+#[test]
 fn dialog_and_menu_natives_write_their_mode_words() {
     let state = |calls: &[(&str, &[i32])]| {
         let world = run_native_world(calls).unwrap();
