@@ -4852,9 +4852,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
-            self.registry
-                .cancel_actor_tasks(self.index)
-                .context("KillMe: cancel receiver tasks")?;
             let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
@@ -4867,7 +4864,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("script sound handler absent")?(
                 id, super::ScriptSound::StopOwned
             )?;
-            return Ok(CallResult::Complete(0));
+            // The VM cancels the receiver's runtime task slots after this function returns, while
+            // its runtime is still borrowed by the invocation.
+            return Ok(CallResult::CompleteAfterClearingTasks(0));
         }
         if function.eq_ignore_ascii_case("HideMe") || function.eq_ignore_ascii_case("ShowMe") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
