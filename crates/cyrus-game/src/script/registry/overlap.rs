@@ -183,7 +183,8 @@ impl ScriptWorld {
     /// Touch tells the caller to end that pass. Positions and contact state are
     /// authoritative logical state; retained model presentations are not refreshed.
     /// Grounded support states skip their current support actor after tiny contact.
-    /// Airborne collision and selected-player overrides require separate owners.
+    /// Falling actors use the same weighted response; selected-player overrides
+    /// remain owned by their separate controller stage.
     /// Admission follows preservation's [grounded overlap rules](https://github.com/michidk/redguard-preservation/commit/5c686bc).
     pub fn resolve_ordinary_actor_overlap(
         &mut self,
@@ -204,12 +205,6 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary overlap control unavailable")?;
-        ensure!(
-            control.falling_state == 0,
-            "world {} instance {}: airborne overlap response unsupported",
-            self.world,
-            id.index
-        );
         ensure!(
             self.actors[other.index].control.is_some(),
             "ordinary other overlap control unavailable"
@@ -334,16 +329,10 @@ impl ScriptWorld {
         if self.actors[id.index].attributes[26] != 0 {
             return Ok(OrdinaryOverlapMotion::NoContact);
         }
-        let control = self.actors[id.index]
+        self.actors[id.index]
             .control
             .as_ref()
             .context("ordinary static overlap control unavailable")?;
-        ensure!(
-            control.falling_state == 0,
-            "world {} instance {}: airborne static overlap response unsupported",
-            self.world,
-            id.index
-        );
         let sphere = scene
             .static_collision
             .static_actor_overlap_sphere(candidate)?;
