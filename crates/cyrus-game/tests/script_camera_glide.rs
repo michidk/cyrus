@@ -22,7 +22,7 @@ struct Case {
     index: usize,
     selected_flag_20: bool,
     out_position: [u32; 3],
-    out_angles: [i32; 3],
+    out_render_angles: [i32; 3],
     out_marks: [bool; 3],
 }
 
@@ -54,7 +54,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [3383817904, 3381366384, 3344358400],
-        out_angles: [840, 844, 1469],
+        out_render_angles: [840, 844, 1469],
         out_marks: [false, false, false],
     },
     Case {
@@ -84,7 +84,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: true,
         out_position: [1185261056, 3339984896, 1186717184],
-        out_angles: [106, 625, 1680],
+        out_render_angles: [106, 625, 1680],
         out_marks: [false, false, false],
     },
     Case {
@@ -114,7 +114,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1192391424, 1179516928, 1194929920],
-        out_angles: [1232, 860, 838],
+        out_render_angles: [1232, 860, 838],
         out_marks: [false, false, false],
     },
     Case {
@@ -144,7 +144,7 @@ const CASES: &[Case] = &[
         index: 1,
         selected_flag_20: false,
         out_position: [1195784448, 3314481152, 1197446656],
-        out_angles: [49, 499, 1627],
+        out_render_angles: [49, 499, 1627],
         out_marks: [false, false, false],
     },
     Case {
@@ -174,7 +174,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [3386930744, 3347467264, 1234615992],
-        out_angles: [1328, 1948, 1705],
+        out_render_angles: [1328, 1948, 1705],
         out_marks: [false, false, false],
     },
     Case {
@@ -204,7 +204,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1193294080, 1177513984, 1179926528],
-        out_angles: [333, 471, 115],
+        out_render_angles: [333, 471, 115],
         out_marks: [false, false, false],
     },
     Case {
@@ -234,7 +234,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1195800320, 3333067264, 1194942464],
-        out_angles: [677, 576, 1625],
+        out_render_angles: [677, 576, 1625],
         out_marks: [false, false, false],
     },
     Case {
@@ -264,7 +264,7 @@ const CASES: &[Case] = &[
         index: 3,
         selected_flag_20: false,
         out_position: [1197838592, 3339679744, 1199351552],
-        out_angles: [516, 1705, 542],
+        out_render_angles: [516, 1705, 542],
         out_marks: [false, false, false],
     },
     Case {
@@ -294,7 +294,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [3377993472, 1213198720, 3364324640],
-        out_angles: [1523, 654, 1587],
+        out_render_angles: [1523, 654, 1587],
         out_marks: [false, false, false],
     },
     Case {
@@ -324,7 +324,7 @@ const CASES: &[Case] = &[
         index: 3,
         selected_flag_20: false,
         out_position: [1175778304, 3328523264, 1183916544],
-        out_angles: [1153, 1142, 392],
+        out_render_angles: [1153, 1142, 392],
         out_marks: [false, false, false],
     },
     Case {
@@ -354,7 +354,7 @@ const CASES: &[Case] = &[
         index: 1,
         selected_flag_20: false,
         out_position: [1191292672, 1180743680, 1184531968],
-        out_angles: [423, 704, 924],
+        out_render_angles: [423, 704, 924],
         out_marks: [false, false, false],
     },
     Case {
@@ -384,7 +384,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: true,
         out_position: [1197049600, 1174495232, 1193055232],
-        out_angles: [331, 1725, 1087],
+        out_render_angles: [331, 1725, 1087],
         out_marks: [false, false, false],
     },
     Case {
@@ -414,7 +414,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [3363254336, 3377754208, 1232342368],
-        out_angles: [1156, 1227, 1580],
+        out_render_angles: [1156, 1227, 1580],
         out_marks: [false, false, false],
     },
     Case {
@@ -444,7 +444,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: true,
         out_position: [1197847040, 1188621312, 1191333888],
-        out_angles: [937, 56, 480],
+        out_render_angles: [937, 56, 480],
         out_marks: [false, false, false],
     },
     Case {
@@ -474,7 +474,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1192972800, 1191702528, 1196629504],
-        out_angles: [1420, 1427, 1237],
+        out_render_angles: [1420, 1427, 1237],
         out_marks: [false, false, false],
     },
     Case {
@@ -504,7 +504,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1171914752, 3340327168, 1187881472],
-        out_angles: [1130, 618, 487],
+        out_render_angles: [1130, 618, 487],
         out_marks: [false, false, false],
     },
     Case {
@@ -534,7 +534,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1238667912, 3349144576, 1224823200],
-        out_angles: [1014, 1685, 1904],
+        out_render_angles: [1014, 1685, 1904],
         out_marks: [false, false, false],
     },
     Case {
@@ -564,7 +564,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1187164160, 3329444864, 1196503552],
-        out_angles: [1013, 1349, 1485],
+        out_render_angles: [1013, 1349, 1485],
         out_marks: [false, false, false],
     },
     Case {
@@ -594,7 +594,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1192751872, 3315400704, 1197038592],
-        out_angles: [169, 1709, 243],
+        out_render_angles: [169, 1709, 243],
         out_marks: [false, false, false],
     },
     Case {
@@ -624,7 +624,7 @@ const CASES: &[Case] = &[
         index: 1,
         selected_flag_20: false,
         out_position: [1191569152, 1192260352, 1149190144],
-        out_angles: [935, 1291, 1959],
+        out_render_angles: [935, 1291, 1959],
         out_marks: [false, false, false],
     },
     Case {
@@ -654,7 +654,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: true,
         out_position: [3360659328, 3372188960, 3378616672],
-        out_angles: [463, 1483, 414],
+        out_render_angles: [463, 1483, 414],
         out_marks: [false, false, false],
     },
     Case {
@@ -684,7 +684,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: true,
         out_position: [1183818240, 3330894336, 1191700224],
-        out_angles: [1548, 1921, 1794],
+        out_render_angles: [1548, 1921, 1794],
         out_marks: [false, false, false],
     },
     Case {
@@ -714,7 +714,7 @@ const CASES: &[Case] = &[
         index: 4,
         selected_flag_20: false,
         out_position: [1171193856, 1184564224, 1184262144],
-        out_angles: [1971, 896, 1901],
+        out_render_angles: [1971, 896, 1901],
         out_marks: [false, false, false],
     },
     Case {
@@ -744,7 +744,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1198745600, 3332231168, 1183253504],
-        out_angles: [1466, 1512, 1494],
+        out_render_angles: [1466, 1512, 1494],
         out_marks: [false, false, false],
     },
     Case {
@@ -774,7 +774,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [3315091456, 1207645696, 1240648056],
-        out_angles: [1103, 1880, 1467],
+        out_render_angles: [1103, 1880, 1467],
         out_marks: [false, false, false],
     },
     Case {
@@ -804,7 +804,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1183653376, 3332300288, 1194878464],
-        out_angles: [1662, 536, 1615],
+        out_render_angles: [1662, 536, 1615],
         out_marks: [false, false, false],
     },
     Case {
@@ -834,7 +834,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1196630528, 1178438656, 1183794688],
-        out_angles: [1715, 1835, 739],
+        out_render_angles: [1715, 1835, 739],
         out_marks: [false, false, false],
     },
     Case {
@@ -864,7 +864,7 @@ const CASES: &[Case] = &[
         index: 1,
         selected_flag_20: true,
         out_position: [1186048000, 3334830592, 1192721152],
-        out_angles: [383, 1633, 458],
+        out_render_angles: [383, 1633, 458],
         out_marks: [false, false, false],
     },
     Case {
@@ -894,7 +894,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1180956672, 3381445704, 3348529024],
-        out_angles: [1982, 1398, 1534],
+        out_render_angles: [1982, 1398, 1534],
         out_marks: [false, false, false],
     },
     Case {
@@ -924,7 +924,7 @@ const CASES: &[Case] = &[
         index: 4,
         selected_flag_20: false,
         out_position: [1189345280, 3326324736, 1179032576],
-        out_angles: [841, 781, 1251],
+        out_render_angles: [841, 781, 1251],
         out_marks: [false, false, false],
     },
     Case {
@@ -954,7 +954,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: true,
         out_position: [1191630848, 1183439360, 1195088128],
-        out_angles: [936, 1350, 160],
+        out_render_angles: [936, 1350, 160],
         out_marks: [false, false, false],
     },
     Case {
@@ -984,7 +984,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1184455680, 3335105024, 1174844416],
-        out_angles: [17, 829, 613],
+        out_render_angles: [17, 829, 613],
         out_marks: [false, false, false],
     },
     Case {
@@ -1014,7 +1014,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1235670048, 3373830112, 1233354224],
-        out_angles: [1859, 399, 1022],
+        out_render_angles: [1859, 399, 1022],
         out_marks: [false, false, false],
     },
     Case {
@@ -1044,7 +1044,7 @@ const CASES: &[Case] = &[
         index: 3,
         selected_flag_20: true,
         out_position: [1186598400, 1178658816, 1184352256],
-        out_angles: [1043, 434, 1309],
+        out_render_angles: [1043, 434, 1309],
         out_marks: [false, false, false],
     },
     Case {
@@ -1074,7 +1074,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1190767616, 3340176640, 1194063872],
-        out_angles: [752, 1361, 1750],
+        out_render_angles: [752, 1361, 1750],
         out_marks: [false, false, false],
     },
     Case {
@@ -1104,7 +1104,7 @@ const CASES: &[Case] = &[
         index: 2,
         selected_flag_20: false,
         out_position: [1189287936, 1192431872, 1196037888],
-        out_angles: [1735, 836, 1349],
+        out_render_angles: [1735, 836, 1349],
         out_marks: [false, false, false],
     },
     Case {
@@ -1134,7 +1134,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [3383417152, 3381389024, 1211568128],
-        out_angles: [860, 1931, 1555],
+        out_render_angles: [860, 1931, 1555],
         out_marks: [false, false, false],
     },
     Case {
@@ -1164,7 +1164,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: true,
         out_position: [1169428480, 1165467648, 1193497856],
-        out_angles: [95, 913, 1912],
+        out_render_angles: [95, 913, 1912],
         out_marks: [false, false, false],
     },
     Case {
@@ -1194,7 +1194,7 @@ const CASES: &[Case] = &[
         index: 0,
         selected_flag_20: false,
         out_position: [1179582464, 1158365184, 1192532736],
-        out_angles: [1791, 641, 373],
+        out_render_angles: [1791, 641, 373],
         out_marks: [false, false, false],
     },
     Case {
@@ -1224,7 +1224,7 @@ const CASES: &[Case] = &[
         index: 5,
         selected_flag_20: false,
         out_position: [1186957824, 3334622720, 1183043584],
-        out_angles: [457, 603, 1341],
+        out_render_angles: [457, 603, 1341],
         out_marks: [false, false, false],
     },
 ];
@@ -1280,7 +1280,7 @@ fn render_step_reproduces_the_original_glide_and_cut() {
             "case {number}: render position"
         );
         assert_eq!(
-            state.current.angles, case.out_angles,
+            state.current.angles, case.published_angles,
             "case {number}: published angles"
         );
         assert_eq!(
@@ -1289,7 +1289,7 @@ fn render_step_reproduces_the_original_glide_and_cut() {
             "case {number}: marks"
         );
         assert_eq!(
-            state.render.angles, case.out_angles,
+            state.render.angles, case.out_render_angles,
             "case {number}: retained render angles"
         );
     }
