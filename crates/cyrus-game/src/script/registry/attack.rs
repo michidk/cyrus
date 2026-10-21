@@ -313,10 +313,21 @@ impl ScriptWorld {
                 sounds,
             )?;
         } else {
-            let health = i32::from(self.actors[receiver_index].attributes[3])
-                .wrapping_sub(damage)
-                .clamp(0, 255);
-            self.actors[receiver_index].attributes[3] = health as u8;
+            // d005 uses the generic mode-zero health admission. In particular, this
+            // preserves the nonzero attr-120 veto and attr-97 weapon/stance gate before
+            // changing the receiver, rather than writing the health byte directly.
+            let environment = super::transition::ObstacleEnvironment {
+                selected_player,
+                auto_grab: false,
+                item_system_ready: inputs
+                    .hud
+                    .map(|hud| hud.inventory_ready())
+                    .transpose()?
+                    .unwrap_or(false),
+                shell_execution: inputs.shell_execution.unwrap_or(false),
+                ticks,
+            };
+            self.apply_nonplayer_contact_health(receiver, damage.wrapping_neg(), environment)?;
         }
         if self.actors[receiver_index].attributes[3] < 1 {
             if !selected {

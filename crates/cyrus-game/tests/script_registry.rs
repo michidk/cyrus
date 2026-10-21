@@ -30221,6 +30221,43 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
 }
 
 #[test]
+fn direct_damage_uses_generic_nonplayer_health_admission_gates() {
+    use cyrus_game::script::ScriptInputs;
+
+    for gate in [120usize, 97] {
+        let (mut world, _, _) = coordination_message_fixture(|saved| {
+            saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 1.into();
+            saved["actors"][0]["attributes"][3] = 40.into();
+            saved["actors"][0]["attributes"][gate] = 1.into();
+            saved["actors"][0]["control"]["combat"]["flags"] = 0.into();
+            saved["actors"][1]["attributes"][96] = 12.into();
+        });
+        world.ordinary_actors([0, 0]).unwrap();
+        let receiver = world.id(0).unwrap();
+        let sender = world.id(1).unwrap();
+        world.send_combat_message(sender, receiver, 0xd005).unwrap();
+        world
+            .process_combat_message_with_services(
+                receiver,
+                None,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut cyrus_game::random::EngineRandom::default()),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[receiver.index].attributes()[3],
+            40,
+            "attr-{gate} gate"
+        );
+    }
+}
+
+#[test]
 fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
