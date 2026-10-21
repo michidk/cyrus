@@ -5,6 +5,27 @@ use cyrus_assets::{environment::Environment, install::GameInstall, native::Files
 use std::path::PathBuf;
 
 #[test]
+fn caverns_prepares_placed_models_whose_extensionless_name_matches_two_standalone_files()
+-> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::open(&root) else {
+        eprintln!("skipped: no install (caverns models)");
+        return Ok(());
+    };
+    let files = cyrus_assets::game::prepare(&Files::open(&install)?, "CAVERNS.player")?;
+    let scene: cyrus_assets::player::SceneData = serde_json::from_slice(&files["CAVERNS.player"])?;
+    let models = scene
+        .collision
+        .and_then(|collision| collision.actor_models)
+        .expect("live model geometry");
+    assert!(models.unsupported.is_empty(), "{:?}", models.unsupported);
+    assert!(models.models.contains_key("CRAK0000"));
+    Ok(())
+}
+
+#[test]
 fn installed_world_prepares_effect_frames_and_map_drawing_attributes() -> Result<()> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(PathBuf::from)

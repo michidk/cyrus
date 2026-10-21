@@ -141,18 +141,28 @@ fn load(
         })
         .collect();
     files.sort_by_key(|entry| registry.source_rank_key(&entry.path));
+    let archived = archive
+        .segments
+        .iter()
+        .any(|segment| segment.name().eq_ignore_ascii_case(name));
     if let Some(first) = files.first() {
         let bytes = first
             .data
             .as_deref()
             .with_context(|| format!("{}: model bytes absent", first.path.display()))?;
-        for entry in files.iter().skip(1) {
-            ensure!(
-                entry.data.as_deref() == Some(bytes),
-                "model {path}: ambiguous standalone payloads; source selection unsupported"
-            );
+        let agree = files
+            .iter()
+            .skip(1)
+            .all(|entry| entry.data.as_deref() == Some(bytes));
+        // An extensionless name that matches both a 3D and a 3DC file is ambiguous between
+        // standalone files, so the world archive's entry of that name decides.
+        ensure!(
+            agree || archived,
+            "model {path}: ambiguous standalone payloads; source selection unsupported"
+        );
+        if agree {
+            return super::decode_geometry(bytes).with_context(|| first.path.display().to_string());
         }
-        return super::decode_geometry(bytes).with_context(|| first.path.display().to_string());
     }
     let segment = archive
         .segments
