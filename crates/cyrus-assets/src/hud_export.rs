@@ -76,6 +76,15 @@ pub(crate) fn prepare(
     let logbook_bytes = read("system/SCROLL.GXA")?;
     let powerup_bytes = read(&powerup_name)?;
     let atlas_bytes = read(&atlas_name)?;
+    let selected_name = definitions
+        .settings
+        .bitmap_selected_file
+        .clone()
+        .with_context(|| format!("hud: {item_path} bitmap_selected_file missing"))?;
+    let selected_bytes = read(&selected_name)?;
+    // The inventory screen loads these names directly.
+    let border_bytes = read("system/INVBORDR.GXA")?;
+    let arrow_bytes = read("system/INVARROW.GXA")?;
     let font_bytes = read("fonts/REDSEL.FNT")?;
     let rtx_path = crate::preparation::path(
         source,
@@ -91,8 +100,9 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        12u32,
+        13u32,
         (&system, &items, &keys, &worlds),
+        (&selected_bytes, &border_bytes, &arrow_bytes),
         (
             &candle_bytes,
             &compass_bytes,
@@ -203,6 +213,14 @@ pub(crate) fn prepare(
             .with_context(|| format!("hud: {}: no {tag} text", rtx_path))
     };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
+    let selected_atlas =
+        parse_gxa_file(&selected_bytes).with_context(|| format!("hud: {selected_name}"))?;
+    let border = parse_gxa_file(&border_bytes).context("hud: system/INVBORDR.GXA")?;
+    let arrows = parse_gxa_file(&arrow_bytes).context("hud: system/INVARROW.GXA")?;
+    anyhow::ensure!(
+        !border.frames.is_empty() && arrows.frames.len() >= 2,
+        "hud: system/INVBORDR.GXA needs one frame and system/INVARROW.GXA two"
+    );
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
     for (id, item) in &definitions.items {
@@ -266,6 +284,11 @@ pub(crate) fn prepare(
             bitmap: u16::try_from(bitmap).context("hud: item bitmap exceeds u16")?,
             count,
             size: [frame.width, frame.height],
+            selected_size: selected_atlas
+                .frames
+                .get(bitmap as usize)
+                .map(|frame| [frame.width, frame.height]),
+            name: item.name.clone(),
         });
     }
     let selected = definitions
@@ -319,6 +342,11 @@ pub(crate) fn prepare(
         player_text_alpha,
         used_text_alpha,
         torch_time: definitions.settings.torch_time,
+        inventory_screen: [
+            size(&border.frames[0]),
+            size(&arrows.frames[0]),
+            size(&arrows.frames[1]),
+        ],
         labels,
     };
 
@@ -335,6 +363,9 @@ pub(crate) fn prepare(
         ("logbook", logbook),
         ("powerup", powerup),
         ("item", atlas),
+        ("selected", selected_atlas),
+        ("invbordr", border),
+        ("invarrow", arrows),
     ] {
         for (index, frame) in atlas.frames.into_iter().enumerate() {
             save(

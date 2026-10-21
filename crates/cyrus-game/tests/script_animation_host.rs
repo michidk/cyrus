@@ -2342,6 +2342,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     }
 }
 struct LogStore {

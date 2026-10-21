@@ -3,6 +3,7 @@ pub mod cheats;
 pub mod clock;
 pub mod console;
 pub mod fidelity;
+pub mod inventory_screen;
 pub mod logbook;
 pub mod player;
 pub mod preferences;
@@ -30,6 +31,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         logbook::register(app);
+        inventory_screen::register(app);
         app.init_resource::<preferences::Preferences>()
             .init_resource::<random::EngineRandom>()
             .init_resource::<cheats::Cheats>()

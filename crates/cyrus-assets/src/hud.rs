@@ -62,6 +62,9 @@ pub struct HudAsset {
     /// ITEM.INI `torch_time`: torch burn duration in seconds; absent when unset.
     #[serde(default)]
     pub torch_time: Option<i32>,
+    /// Frame sizes of `SYSTEM\INVBORDR.GXA` frame 0 and `SYSTEM\INVARROW.GXA` frames 0 and 1,
+    /// exported as `hud/invbordr-00.png` and `hud/invarrow-NN.png`.
+    pub inventory_screen: [[u16; 2]; 3],
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -71,6 +74,10 @@ pub struct HudItem {
     pub bitmap: u16,
     pub count: u32,
     pub size: [u16; 2],
+    /// Frame size of `bitmap[id]` in `bitmap_selected_file` (`hud/selected-NN.png`), when present.
+    pub selected_size: Option<[u16; 2]>,
+    /// ITEM.INI `name[id]`: the RTX label of the inventory screen's item name.
+    pub name: Option<String>,
 }
 
 /// Portable acquisition inputs decoded from ITEM.INI by preservation.

@@ -285,6 +285,9 @@ pub fn bound_asset(world: &World) -> Option<&HudAsset> {
 struct HudContent;
 
 #[derive(Component)]
+struct InventoryOverlay;
+
+#[derive(Component)]
 struct HudViewport;
 
 /// One bitmap element; spawned hidden and updated every frame, in draw order.
@@ -353,6 +356,26 @@ impl AssetLoader for HudLoader {
                     .load::<Image>(format!("cache://hud/item-{:02}.png", item.bitmap))
                     .untyped(),
             );
+            hud.images.push(
+                context
+                    .load_builder()
+                    .with_settings(|s: &mut ImageLoaderSettings| {
+                        s.sampler = ImageSampler::nearest();
+                    })
+                    .load::<Image>(format!("cache://hud/selected-{:02}.png", item.bitmap))
+                    .untyped(),
+            );
+        }
+        for (name, count) in [("invbordr", 1usize), ("invarrow", 2)] {
+            hud.images.extend((0..count).map(|frame| {
+                context
+                    .load_builder()
+                    .with_settings(|s: &mut ImageLoaderSettings| {
+                        s.sampler = ImageSampler::nearest();
+                    })
+                    .load::<Image>(format!("cache://hud/{name}-{frame:02}.png"))
+                    .untyped()
+            }));
         }
         Ok(hud)
     }
@@ -368,6 +391,7 @@ impl Plugin for HudPlugin {
             .init_asset::<HudAsset>()
             .init_asset_loader::<HudLoader>()
             .add_systems(OnEnter(AppState::InGame), spawn)
+            .add_systems(OnEnter(AppState::InGame), spawn_inventory)
             .add_systems(
                 Update,
                 configure_scripts
@@ -379,6 +403,12 @@ impl Plugin for HudPlugin {
                 update
                     .after(cyrus_game::script::OrdinaryUpdates)
                     .after(cyrus_game::player::input::InputSample)
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Update,
+                inventory_draw
+                    .after(update)
                     .run_if(in_state(AppState::InGame)),
             )
             .add_systems(OnExit(AppState::InGame), despawn);
@@ -410,6 +440,164 @@ fn spawn(mut commands: Commands, assets: Res<AssetServer>) {
                 },
             ));
         });
+}
+
+fn spawn_inventory(mut commands: Commands, viewports: Query<Entity, With<HudViewport>>) {
+    let Ok(viewport) = viewports.single() else {
+        return;
+    };
+    commands.entity(viewport).with_child((
+        InventoryOverlay,
+        Visibility::Hidden,
+        BackgroundColor(Color::srgba(
+            10.0 / 255.0,
+            10.0 / 255.0,
+            10.0 / 255.0,
+            180.0 / 255.0,
+        )),
+        Node {
+            position_type: PositionType::Absolute,
+            left: percent(0.0),
+            top: percent(0.0),
+            width: percent(100.0),
+            height: percent(100.0),
+            ..default()
+        },
+    ));
+}
+
+fn inventory_draw(
+    screen: Option<Res<cyrus_game::inventory_screen::InventoryScreen>>,
+    hud_handle: Option<Res<HudHandle>>,
+    huds: Res<Assets<HudAsset>>,
+    assets: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    mut overlays: Query<(Entity, &mut Visibility, Option<&Children>), With<InventoryOverlay>>,
+    mut commands: Commands,
+) {
+    let (Some(screen), Some(handle), Ok((overlay, mut visibility, children))) =
+        (screen, hud_handle, overlays.single_mut())
+    else {
+        return;
+    };
+    if !screen.open {
+        visibility.set_if_neq(Visibility::Hidden);
+        return;
+    }
+    visibility.set_if_neq(Visibility::Inherited);
+    let Some(hud) = huds.get(&handle.0) else {
+        return;
+    };
+    if let Some(children) = children {
+        for child in children.iter() {
+            commands.entity(child).despawn();
+        }
+    }
+    commands.entity(overlay).with_children(|parent| {
+        let mut image = |path: String, at: [i32; 2], size: [u16; 2]| {
+            parent.spawn((
+                ImageNode::new(assets.load(path)),
+                place(at, size),
+                ZIndex(1),
+            ));
+        };
+        image(
+            "cache://hud/invbordr-00.png".into(),
+            [90, 49],
+            hud.inventory_screen[0],
+        );
+        if screen.layout.up_arrow {
+            image(
+                "cache://hud/invarrow-00.png".into(),
+                [313, 54],
+                hud.inventory_screen[1],
+            );
+        }
+        if screen.layout.down_arrow {
+            image(
+                "cache://hud/invarrow-01.png".into(),
+                [313, 419],
+                hud.inventory_screen[2],
+            );
+        }
+        for cell in &screen.layout.cells {
+            let Some(item) = hud.items.iter().find(|item| item.id == cell.id) else {
+                continue;
+            };
+            let (path, at, size) = if cell.cursor {
+                (
+                    format!("cache://hud/selected-{:02}.png", item.bitmap),
+                    [cell.at[0] - 2, cell.at[1] - 2],
+                    item.selected_size.unwrap_or(item.size),
+                )
+            } else {
+                (
+                    format!("cache://hud/item-{:02}.png", item.bitmap),
+                    cell.at,
+                    item.size,
+                )
+            };
+            image(path, at, size);
+        }
+        if let Some(cell) = screen.layout.cells.iter().find(|cell| cell.cursor)
+            && let Some(item) = hud.items.iter().find(|item| item.id == cell.id)
+        {
+            let mut rgba = vec![0; 640 * 480 * 4];
+            let name = item
+                .name
+                .as_deref()
+                .filter(|name| !name.is_empty() && !name.starts_with('\u{9e}'))
+                .map(cyrus_game::inventory_screen::name_lines)
+                .map(|lines| lines.into_iter().map(str::to_owned).collect::<Vec<_>>())
+                .unwrap_or_else(|| vec![format!("INDEX {}", item.id)]);
+            let bottom = hud
+                .font
+                .glyph(b'a')
+                .map_or(0, |g| i32::from(g.offset[1]) + i32::from(g.height));
+            for (line, text) in name.iter().enumerate() {
+                let y = cell.at[1] + 92 - bottom
+                    + (i32::from(hud.font.line_height) * 9 / 10) * line as i32;
+                hud.font.draw_shadowed(
+                    &mut rgba,
+                    640,
+                    text,
+                    [
+                        cell.at[0] + i32::from(item.selected_size.unwrap_or(item.size)[0]) / 2
+                            - hud.font.width(text) / 2,
+                        y,
+                    ],
+                    hud.text_alpha,
+                );
+            }
+            if cell.count > 1 {
+                let text = cell.count.to_string();
+                hud.font.draw_shadowed(
+                    &mut rgba,
+                    640,
+                    &text,
+                    [cell.at[0] + i32::from(item.size[0]) - 32, cell.at[1] + 10],
+                    hud.text_alpha,
+                );
+            }
+            let mut text_image = Image::new(
+                Extent3d {
+                    width: 640,
+                    height: 480,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                rgba,
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            );
+            text_image.sampler = ImageSampler::nearest();
+            parent.spawn((
+                ImageNode::new(images.add(text_image)),
+                place([0, 0], [640, 480]),
+                ZIndex(2),
+            ));
+        }
+    });
 }
 
 /// Absolute node covering a 640×480 screen rectangle within the viewport.
@@ -1213,6 +1401,8 @@ mod tests {
             bitmap: 26,
             count: 53,
             size: [40, 30],
+            selected_size: None,
+            name: None,
         };
         // "100" is 30 wide; the candle's centre minus 5 is 12 + 25 - 5 = 32.
         assert_eq!(
@@ -1252,6 +1442,7 @@ mod tests {
             player_text_alpha: [255, 97],
             used_text_alpha: [128, 100],
             torch_time: None,
+            inventory_screen: Default::default(),
         }
     }
 
@@ -1585,6 +1776,8 @@ mod tests {
                     bitmap: 1,
                     count: 1,
                     size: [1, 1],
+                    selected_size: None,
+                    name: None,
                 }],
                 selected: Some(0),
                 ..asset(0)
@@ -2084,6 +2277,8 @@ mod tests {
             bitmap: id,
             count: 1,
             size: [1, 1],
+            selected_size: None,
+            name: None,
         };
         let hud = app
             .world_mut()

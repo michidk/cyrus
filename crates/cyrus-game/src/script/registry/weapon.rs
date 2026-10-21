@@ -704,6 +704,7 @@ mod tests {
             player_text_alpha: [0; 2],
             used_text_alpha: [0; 2],
             torch_time: None,
+            inventory_screen: Default::default(),
         };
         let hud = crate::script::ScriptHud::default();
         hud.configure(&data, &crate::preferences::Preferences::default());

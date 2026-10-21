@@ -174,6 +174,14 @@ impl ScriptHud {
         state.health_feedback_ticks = state.health_feedback_ticks.max(25);
     }
 
+    /// The inventory screen pins the timer at 50 while open and clears it on close.
+    pub fn set_inventory_candle(&self, open: bool) {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .health_feedback_ticks = if open { 50 } else { 0 };
+    }
+
     /// Weapon transitions explicitly replace the timer, including its pin.
     pub fn reset_health_feedback(&self) {
         self.0
@@ -279,6 +287,16 @@ impl ScriptHud {
             .inventory
             .as_mut()
             .map(|items| items.view(cycle))
+    }
+
+    /// The inventory screen's unhidden owned items with counts, in ID order, and the selection.
+    pub fn inventory_list(&self) -> Option<(Vec<(u16, u32)>, Option<u16>)> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .inventory
+            .as_ref()
+            .map(|items| items.listed())
     }
 
     /// Apply installed recursive prerequisites and ordered acquisition effects.

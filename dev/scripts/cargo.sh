@@ -12,6 +12,15 @@ cargo() {
         # Scripts need the final exit status and output, not an early detached ticket.
         (
             set -o pipefail
+            # Opt-in Headstart: the daemon forwards this environment, so the patched
+            # rustc and unstable flag reach a daemon started with
+            # CARGO_HAULER_CARGO_BIN=<headstart cargo>. Native check/build only: its
+            # rustc has no wasm std and clippy-driver is tied to the stock compiler.
+            headstart="${VIBEPOD_HEADSTART_ROOT:-$HOME/workspaces/headstart}/rustc/build/host/stage1/bin"
+            if [ "${CYRUS_HEADSTART:-}" = 1 ] && [ -x "$headstart/rustc" ] \
+                && { [ "${1:-}" = check ] || [ "${1:-}" = build ]; } && [[ "$*" != *wasm32* ]]; then
+                export RUSTC="$headstart/rustc" PATH="$headstart:$PATH" CARGO_UNSTABLE_HEADSTART=true
+            fi
             CARGO_HAULER_MAX_CONCURRENT=3 CARGO_HAULER_SHIM_BACKGROUND=0 \
                 hauler exec --host shim -- cargo "$@" | cat
         )

@@ -3939,6 +3939,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12953,6 +12954,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13060,6 +13062,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13166,6 +13169,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13272,6 +13276,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -28921,6 +28926,7 @@ fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
         torch_time: None,
+        inventory_screen: Default::default(),
     }
 }
 

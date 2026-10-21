@@ -365,6 +365,16 @@ impl Inventory {
         self.selected = Some(id);
         Ok(())
     }
+    /// Unhidden owned items and their counts in ID order, without repairing the selection.
+    pub(super) fn listed(&self) -> (Vec<(u16, u32)>, Option<u16>) {
+        let items = self
+            .items
+            .iter()
+            .filter(|(_, item)| item.count > 0 && !item.hidden)
+            .map(|(&id, item)| (id, item.count))
+            .collect();
+        (items, self.selected)
+    }
     pub(super) fn view(&mut self, cycle: Option<bool>) -> InventoryView {
         let valid: Vec<_> = self
             .items
