@@ -4099,7 +4099,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     assert_eq!(world.globals().player_idle_counter(), Some(0));
     let alternate = world.actors()[3].control_state().unwrap();
     assert!(alternate.hidden);
-    assert!(!alternate.object_update_excluded);
+    assert!(alternate.object_update_excluded);
     let cues: Vec<_> = app
         .world_mut()
         .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
