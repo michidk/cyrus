@@ -151,10 +151,18 @@ impl ScriptWorld {
             .camera
             .as_ref()
             .with_context(|| format!("world {}: camera session unavailable", self.world))?;
-        let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
-        let (bound_position, _) = self
-            .camera_binding_pose(bound)
-            .with_context(|| format!("world {} camera bound pose", self.world))?;
+        // Camera setup can publish its logical actor before the selected player has
+        // spatial state (some host stages initialize the actor records in separate
+        // passes).  Seed the native history when that live pose is available, but
+        // keep setup admission independent of this optional retained-state detail.
+        let bound_position = self
+            .resolve(camera.records[camera.selected.index()].actor)
+            .ok()
+            .and_then(|bound| {
+                self.camera_binding_pose(bound)
+                    .ok()
+                    .map(|(position, _)| position)
+            });
         let index = self.resolve(camera.camera_actor)?;
         let angles = wrapped_angles(pose.angles)?;
         self.spatial
@@ -172,7 +180,9 @@ impl ScriptWorld {
         // position.  The first pose update may rewrite it after correction, but a
         // session snapshot taken between those stages must still carry the native
         // initial history rather than the zeroed construction placeholder.
-        camera.records[camera.selected.index()].bound_position_history = bound_position;
+        if let Some(bound_position) = bound_position {
+            camera.records[camera.selected.index()].bound_position_history = bound_position;
+        }
         camera.current = pose;
         camera.previous = pose;
         camera.reset_render();
