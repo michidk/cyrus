@@ -35,6 +35,7 @@ pub(super) struct ItemUse {
 
 /// Opaque replacement inventory for whole-session candidate assembly.
 /// Construction from a snapshot never runs startup, acquisition or weapon callbacks.
+#[derive(Clone)]
 pub struct Inventory {
     definitions: BTreeMap<u16, InventoryItem>,
     items: BTreeMap<u16, InventoryItem>,

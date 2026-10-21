@@ -463,6 +463,11 @@ pub(super) fn drive(
                                 world
                                     .resource_mut::<cyrus_game::script::ScriptActors>()
                                     .begin_new_game();
+                                if let Some(hud) =
+                                    world.get_resource::<cyrus_game::script::ScriptHud>()
+                                {
+                                    hud.begin_new_game();
+                                }
                             });
                         }
                         if entry.action == 10 {

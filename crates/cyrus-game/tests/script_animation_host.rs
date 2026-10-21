@@ -3185,6 +3185,24 @@ fn inventory_startup_uses_ordered_shared_acquisition_and_retains_initial_selecti
 }
 
 #[test]
+fn new_game_restores_the_installed_start_inventory() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(0, 0), (1, 0), (2, 0)]);
+    asset.start_items = vec![1];
+    asset.selected = Some(1);
+    let hud = ScriptHud::default();
+    hud.begin_new_game(); // before configuration: nothing to restore
+    hud.configure(&asset, &Preferences::default());
+    hud_call(Some(&hud), "AddItem", &[2, 3]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().counts[&2], 3);
+    hud.begin_new_game();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(0, 0), (1, 1), (2, 0)].into()
+    );
+}
+
+#[test]
 fn inventory_startup_reports_recursive_definition_errors_without_partial_inventory() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = inventory_fixture(&[(1, 0), (2, 0)]);

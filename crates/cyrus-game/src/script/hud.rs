@@ -46,6 +46,8 @@ pub struct ScriptHud(Mutex<State>);
 struct State {
     data: Option<usize>,
     inventory: Option<super::inventory::Inventory>,
+    /// The installed ITEMS start list applied to a fresh inventory, replayed by New Game.
+    start_inventory: Option<super::inventory::Inventory>,
     inventory_error: Option<String>,
     powerups: [Option<(u8, u8)>; 2],
     next_slot: usize,
@@ -141,6 +143,8 @@ impl ScriptHud {
             .context("script HUD journal replacement")?;
         Ok(Self(Mutex::new(State {
             data: Some(snapshot.frames),
+            // shortcut: a restored session that cannot rebuild the start list keeps its inventory on New Game, until saves are wired in.
+            start_inventory: super::Inventory::new(hud).ok(),
             inventory: Some(inventory),
             inventory_error: None,
             powerups: snapshot.powerups,
@@ -215,12 +219,24 @@ impl ScriptHud {
             return;
         }
         match super::inventory::Inventory::new(hud) {
-            Ok(inventory) => state.inventory = Some(inventory),
+            Ok(inventory) => {
+                state.start_inventory = Some(inventory.clone());
+                state.inventory = Some(inventory);
+            }
             Err(error) => state.inventory_error = Some(format!("{error:#}")),
         }
         state.data = Some(hud.powerup_sizes.len());
         state.torch_time = hud.torch_time;
         state.journal = Some(super::Journal::load(hud, preferences));
+    }
+
+    /// New Game reopens the item system, so the inventory returns to the installed start list and
+    /// selection. Other HUD state (compass, power-ups, journal) is not reset here.
+    pub fn begin_new_game(&self) {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(start) = state.start_inventory.clone() {
+            state.inventory = Some(start);
+        }
     }
 
     /// Installed script HUD inputs have been supplied by the host.
