@@ -58,6 +58,7 @@ fn role(source: &ScriptActorSource) -> &'static str {
         ScriptActorSource::AlternatePlayer => "alternate_player",
         ScriptActorSource::Camera => "camera",
         ScriptActorSource::Shell(_) => "shell",
+        ScriptActorSource::Created(_) => "created",
     }
 }
 

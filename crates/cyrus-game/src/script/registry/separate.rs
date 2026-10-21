@@ -1,6 +1,6 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 
 impl ScriptWorld {
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.
@@ -21,6 +21,123 @@ impl ScriptWorld {
             spatial.push_absent();
         }
         self.id(index)
+    }
+
+    /// Create an object from an installed script after load (`shoot`, `shootPlayer`,
+    /// `DragonBreath`). Its position is `position`, its orientation `angles`, and the creator is
+    /// recorded as its parent. It runs its script from the next update, newest first, and keeps
+    /// its own attributes and control state until `KillMe`. Fails when the world has no such
+    /// script.
+    pub fn create_object(
+        &mut self,
+        creator: ScriptActorId,
+        name: &str,
+        position: [i32; 3],
+        angles: [u16; 3],
+    ) -> Result<ScriptActorId> {
+        let creator_index = self.resolve(creator)?;
+        let index = self.actors.len();
+        let installed = self
+            .shell_templates
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name));
+        let Some((key, template)) = installed else {
+            anyhow::bail!("world {}: script {name} not installed", self.world)
+        };
+        let actor = super::ScriptActor::created(self.world, index, key, template);
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("created objects need spatial state")?;
+        self.actors.push(actor);
+        spatial.push_created(&self.actors[index], position, angles, creator_index)?;
+        self.id(index)
+    }
+
+    /// Add a created object's actor record ahead of a restore that overwrites its state: the
+    /// saved spatial and actor snapshots replace everything but the installed script identity.
+    pub(super) fn restore_created_placeholder(&mut self, name: &str) -> Result<()> {
+        let index = self.actors.len();
+        let installed = self
+            .shell_templates
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name));
+        let Some((key, template)) = installed else {
+            anyhow::bail!("world {}: script {name} not installed", self.world)
+        };
+        self.actors.push(super::ScriptActor::created(
+            self.world, index, key, template,
+        ));
+        if let Some(spatial) = &mut self.spatial {
+            spatial.push_absent();
+        }
+        Ok(())
+    }
+
+    /// Run the created objects, newest first, after the shells and before the ordinary actors.
+    /// An object keeps its attributes and control state between updates; its script runs in
+    /// ordinary context, and `KillMe` ends it for good.
+    pub fn update_created(
+        &mut self,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+        budget: usize,
+    ) -> Result<()> {
+        ensure!(
+            inputs.nominal_ticks.is_some() && inputs.frame_scale.is_some(),
+            "created-object update requires nominal_ticks and frame_scale"
+        );
+        let created: Vec<_> = (0..self.actors.len())
+            .rev()
+            .filter(|&index| {
+                matches!(
+                    self.actors[index].source,
+                    super::ScriptActorSource::Created(_)
+                )
+            })
+            .collect();
+        for index in created {
+            let id = self.id(index)?;
+            let actor = &self.actors[index];
+            if actor.runtime.is_none() || actor.failure().is_some() {
+                continue;
+            }
+            self.snapshot_spatial(id)?;
+            let result = (|| -> Result<()> {
+                self.advance(
+                    id,
+                    ScriptStage::OrdinaryHook,
+                    inputs,
+                    Some(sounds),
+                    Some(random),
+                    budget,
+                )?;
+                if self.updates.task_system {
+                    self.advance(
+                        id,
+                        ScriptStage::OrdinaryMain,
+                        inputs,
+                        Some(sounds),
+                        Some(random),
+                        budget,
+                    )?;
+                }
+                Ok(())
+            })();
+            let actor = &mut self.actors[index];
+            if actor.control.as_ref().is_some_and(|control| control.killed) {
+                actor.runtime = None;
+            }
+            if let Err(error) = result {
+                actor.update_failure = Some(format!(
+                    "world {} created object {} update: {error:#}",
+                    self.world,
+                    actor.name()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Running shells of one script: the count an item's instance limit is checked against.

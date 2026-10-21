@@ -225,6 +225,54 @@ impl SpatialWorld {
         self.actors.push(None);
     }
 
+    /// Start spatial state for an object created after preparation: a local pose at `position`
+    /// with the given wrapped angles, parented to its creator for the family refresh.
+    pub(super) fn push_created(
+        &mut self,
+        actor: &ScriptActor,
+        position: [i32; 3],
+        angles: [u16; 3],
+        creator: usize,
+    ) -> Result<()> {
+        ensure!(
+            angles.iter().all(|angle| *angle < 2048),
+            "created object angles outside wrapped range"
+        );
+        ensure!(
+            self.actors.get(creator).is_some_and(Option::is_some),
+            "created object creator has no spatial state"
+        );
+        let pose = Pose {
+            position,
+            angles,
+            matrix: Matrix::orientation(angles),
+        };
+        let index = self.actors.len();
+        self.actors.push(Some(ActorSpatial {
+            local: pose,
+            locations: std::iter::once(position)
+                .chain(actor.location_offsets.iter().map(|offset| {
+                    std::array::from_fn(|axis| position[axis].wrapping_add(offset[axis]))
+                }))
+                .collect(),
+            effective: Some(pose),
+            previous_effective_position: None,
+            previous_local_position: position,
+            water_rollback_position: None,
+            angle_history: angles,
+            initial_angles: angles,
+            parent: None,
+            linked_position: None,
+            link: None,
+            link_cache: [0; 3],
+            link_previous: [0; 3],
+            no_slave_rotation: actor.attributes()[33] != 0,
+            rotation_mode: actor.attributes()[28],
+        }));
+        self.order.push(index);
+        Ok(())
+    }
+
     pub fn initialize_player(
         &mut self,
         index: usize,
@@ -815,6 +863,7 @@ impl SpatialWorld {
                         super::ScriptActorSource::Player
                             | super::ScriptActorSource::AlternatePlayer
                             | super::ScriptActorSource::Camera
+                            | super::ScriptActorSource::Created(_)
                     ),
                     "actor {index}: unexpected standalone spatial owner"
                 );

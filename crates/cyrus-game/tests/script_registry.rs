@@ -29198,3 +29198,162 @@ fn golem_steam_acts_on_one_draw_in_four_and_needs_animation_data_then() {
         "{error:#}"
     );
 }
+
+#[test]
+fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_snapshot() {
+    use cyrus_game::script::{
+        ScriptActorSource, ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    let mut projectile = scripts.actors["LOGIC"].clone();
+    projectile.code_origin += 1000;
+    projectile.header_index += 100;
+    projectile
+        .attributes
+        .insert("attr_forward_speed".into(), 50);
+    scripts.actors.insert("BALL".into(), projectile);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, _) = static_model_fixture(scripts.clone());
+    let census = world.actors().len();
+    let creator = world.id(0).unwrap();
+    let created = world
+        .create_object(creator, "ball", [0, 0, 256], [0, 512, 0])
+        .unwrap();
+    assert_eq!(world.actors().len(), census + 1);
+    assert!(matches!(
+        &world.actors()[created.index].source,
+        ScriptActorSource::Created(name) if name == "BALL"
+    ));
+    assert_eq!(world.actors()[created.index].attributes()[0], 0);
+    assert!(
+        world
+            .create_object(creator, "absent", [0; 3], [0; 3])
+            .is_err()
+    );
+    let at = world.spatial(created).unwrap().local.position;
+    let origin = world.spatial(creator).unwrap().local.position;
+    assert_ne!(at, origin, "the offset moved it off its creator");
+    world
+        .update_created(
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert!(world.actors()[created.index].failure().is_none());
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let restored = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 9,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(restored.actors().len(), census + 1);
+    let id = restored.id(created.index).unwrap();
+    assert_eq!(restored.spatial(id).unwrap().local.position, at);
+}
+
+#[test]
+fn shoot_creates_the_named_object_at_the_rotated_offset_with_its_own_height_rule() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
+    let shoot = |name_known: bool| {
+        let mut scripts = cache();
+        let mut projectile = scripts.actors["LOGIC"].clone();
+        projectile.code_origin += 1000;
+        projectile.header_index += 100;
+        scripts.actors.insert("BALL".into(), projectile);
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "shoot".into(),
+            param_count: 7,
+            kind: CallKind::Function,
+        });
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.program.strings = vec![if name_known { "ball" } else { "nothing" }.into()];
+        let mut arguments = vec![Value::String { index: 0 }];
+        arguments.extend([0, 0, 256, 0, 512, 0].map(|value| Value::Integer { value }));
+        logic.program.steps = [
+            Operation::Call {
+                call: Call {
+                    function_id: id,
+                    function: "shoot".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments,
+                },
+            },
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+        for placement in &mut scripts.instances {
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let creator = world.id(0).unwrap();
+        world
+            .advance(
+                creator,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .map(|()| world)
+    };
+    let world = shoot(true).unwrap();
+    let created = world
+        .actors()
+        .iter()
+        .position(
+            |actor| matches!(&actor.source, ScriptActorSource::Created(name) if name == "BALL"),
+        )
+        .expect("the object exists");
+    let id = world.id(created).unwrap();
+    let pose = world.spatial(id).unwrap().local;
+    assert_eq!(pose.angles, [0, 512, 0]);
+    let creator = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    assert_eq!(
+        pose.position[1], creator[1],
+        "height is the creator's plus the offset's Y (zero)"
+    );
+    assert!(shoot(false).is_err(), "an unknown script name is an error");
+}

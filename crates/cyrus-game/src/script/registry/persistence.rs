@@ -306,16 +306,21 @@ struct ActorSnapshot {
     update_failure: Option<String>,
 }
 impl ScriptWorld {
-    /// Recreate the shells that were started after preparation, in saved order, so the saved actor
-    /// census matches. Anything else beyond the installed census stays a mismatch.
+    /// Recreate the shells and created objects that were started after preparation, in saved
+    /// order, so the saved actor census matches. A created object is placed at the origin with
+    /// its own saved spatial state restored afterwards; anything else beyond the installed census
+    /// stays a mismatch.
     fn restore_started_shells(&mut self, saved: &[ActorSnapshot]) -> Result<()> {
         for extra in saved.iter().skip(self.actors.len()) {
-            ensure!(
-                extra.source == "shell",
-                "world {}: saved actor census differs",
-                self.world
-            );
-            self.spawn_shell(&extra.name)?;
+            match extra.source.as_str() {
+                "shell" => {
+                    self.spawn_shell(&extra.name)?;
+                }
+                "created" => {
+                    self.restore_created_placeholder(&extra.name)?;
+                }
+                _ => anyhow::bail!("world {}: saved actor census differs", self.world),
+            }
         }
         Ok(())
     }

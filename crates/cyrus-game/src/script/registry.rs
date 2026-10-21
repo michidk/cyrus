@@ -98,6 +98,10 @@ pub enum ScriptActorSource {
     /// A shell script (`DEBUG`, `COMMON` or the world's own): a script context without a map
     /// object, run each update on zeroed temporary attributes until `KillMe`.
     Shell(String),
+    /// An object created by a native (`shoot`, `shootPlayer`, `DragonBreath`) from an installed
+    /// script, with no map placement. It keeps its attributes and control state, runs a script
+    /// update every iteration and ends at `KillMe`.
+    Created(String),
 }
 impl ScriptActorSource {
     fn name(&self) -> &str {
@@ -106,7 +110,7 @@ impl ScriptActorSource {
             Self::Player => "CYRUS",
             Self::AlternatePlayer => "GREMLIN",
             Self::Camera => "CAMERA",
-            Self::Shell(name) => name,
+            Self::Shell(name) | Self::Created(name) => name,
         }
     }
     fn label(&self) -> &'static str {
@@ -116,6 +120,7 @@ impl ScriptActorSource {
             Self::AlternatePlayer => "alternate_player",
             Self::Camera => "camera",
             Self::Shell(_) => "shell",
+            Self::Created(_) => "created",
         }
     }
 }
@@ -361,9 +366,22 @@ struct ShellTemplate {
     native_hook: Option<Call>,
     combat_taunts: Vec<CombatTaunt>,
     location_offsets: Vec<[i32; 3]>,
+    /// Installed attribute defaults by index, as an ordinary actor of this script starts with.
+    attributes: Vec<u8>,
 }
 
 impl ScriptActor {
+    /// An object created after preparation: attributes from the installed defaults, control state
+    /// and surface allocated as for an ordinary actor, the creator recorded by the caller.
+    fn created(world: u32, index: usize, name: &str, template: &ShellTemplate) -> Self {
+        let mut actor = Self::shell(world, index, name, Some(template));
+        actor.source = ScriptActorSource::Created(name.to_owned());
+        actor.attributes = template.attributes.clone();
+        actor.control = Some(ActorControlState::default());
+        actor.surface = Some(0);
+        actor
+    }
+
     /// A shell actor: no map object, zeroed temporary attributes and no persistent control.
     fn shell(world: u32, index: usize, name: &str, template: Option<&ShellTemplate>) -> Self {
         let context = format!("world {world} instance {index} actor {name} script");
@@ -862,6 +880,18 @@ impl ScriptWorld {
                         native_hook: actor.native_hook.clone(),
                         combat_taunts: actor.combat_taunts.clone(),
                         location_offsets: actor.location_offsets.clone(),
+                        attributes: (0..256)
+                            .map(|index| {
+                                let key = scripts
+                                    .definition
+                                    .attributes
+                                    .get(index)
+                                    .filter(|name| !name.is_empty())
+                                    .cloned()
+                                    .unwrap_or_else(|| format!("attr_{index}"));
+                                actor.attributes.get(&key).copied().unwrap_or(0)
+                            })
+                            .collect(),
                     },
                 ))
             })
@@ -4244,6 +4274,58 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 self.registry.unlight_torch(id, inputs, ticks, sounds)?;
             }
+            return Ok(CallResult::Complete(0));
+        }
+        // shoot(name, x, y, z, pitch, yaw, roll) creates an object of the named script at the
+        // receiver's position plus the offset rotated by the receiver's orientation, with the
+        // given orientation. shootPlayer(name, x, y, z) aims the object at the selected player.
+        // The receiver becomes the object's parent record.
+        if kind == CallKind::Function
+            && (function.eq_ignore_ascii_case("shoot")
+                || function.eq_ignore_ascii_case("shootPlayer"))
+        {
+            let player_form = function.eq_ignore_ascii_case("shootPlayer");
+            anyhow::ensure!(
+                !player_form,
+                "shootPlayer aiming unsupported: bearing helper equivalence unverified"
+            );
+            anyhow::ensure!(arguments.len() == 7, "{function}: wrong argument count");
+            let Argument::String(name) = &arguments[0] else {
+                anyhow::bail!("{function} requires a script name")
+            };
+            let id = self.registry.id(self.index)?;
+            let local = self.registry.spatial(id)?.local;
+            let offset = [
+                arguments[1].integer()?,
+                arguments[2].integer()?,
+                arguments[3].integer()?,
+            ];
+            // The original builds this rotation by turning yaw by minus the heading and pitch and
+            // roll by the plain angles; actor orientation negates all three, so this is the
+            // actor-orientation builder with pitch and roll negated.
+            let rotated = cyrus_world::transform::Matrix::orientation([
+                local.angles[0].wrapping_neg() & 2047,
+                local.angles[1],
+                local.angles[2].wrapping_neg() & 2047,
+            ])
+            .transform(offset)?;
+            let position =
+                std::array::from_fn(|axis| rotated[axis].wrapping_add(local.position[axis]));
+            let angles = [
+                (arguments[4].integer()? & 2047) as u16,
+                (arguments[5].integer()? & 2047) as u16,
+                (arguments[6].integer()? & 2047) as u16,
+            ];
+            let created = self.registry.create_object(id, name, position, angles)?;
+            // The created object keeps the unrotated-sum height, as the original overwrites it.
+            let height = local.position[1].wrapping_add(offset[1]);
+            self.registry
+                .spatial
+                .as_mut()
+                .context("spatial state not prepared")?
+                .actor_mut(created.index)?
+                .local
+                .position[1] = height;
             return Ok(CallResult::Complete(0));
         }
         // GolemSteam: once every few updates, a puff of steam at one of the receiver's four weapon
