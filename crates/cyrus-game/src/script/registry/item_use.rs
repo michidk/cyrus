@@ -14,8 +14,9 @@ impl GameHost<'_, '_, '_, '_> {
     /// weapon, a torch being lit or doused, a closed inventory) leaves the world unchanged. The
     /// compass toggles; a torch item lights the torch and is held, and any use while a torch burns
     /// puts it out; a general item starts its use script unless the item's instance limit is
-    /// reached, then consumes its drop list and flags. Weapon items and the flagged item are
-    /// explicitly unsupported.
+    /// reached, then consumes its drop list and flags. A weapon item becomes the weapon attribute
+    /// and is drawn, and is consumed only when the draw began. The flagged item is explicitly
+    /// unsupported.
     pub(super) fn use_item(&mut self, item: u16) -> Result<()> {
         let hud = self
             .inputs
@@ -71,10 +72,18 @@ impl GameHost<'_, '_, '_, '_> {
             hud.toggle_compass();
             return Ok(());
         }
-        anyhow::ensure!(
-            used.item_type != WEAPON_ITEM,
-            "UseItem({item}): weapon items unsupported"
-        );
+        if used.item_type == WEAPON_ITEM {
+            self.registry.actors[selected].attributes[23] = item as u8;
+            self.draw_sword(player_id)?;
+            // Only a draw that began is consumed.
+            let control = self.registry.actors[selected]
+                .control
+                .as_ref()
+                .context("UseItem: selected player control unavailable")?;
+            if control.living_state != 20 {
+                return Ok(());
+            }
+        }
         if used.item_type == TORCH_ITEM {
             let torch = self.torch_inputs(selected, "UseItem")?;
             let ticks = self

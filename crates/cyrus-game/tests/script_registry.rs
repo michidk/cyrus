@@ -28799,3 +28799,84 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
         "relighting restores the saved counter"
     );
 }
+
+#[test]
+fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for item_use in [false, true] {
+        let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+            let name = if item_use { "UseItem" } else { "DrawSword" };
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: name.into(),
+                param_count: u8::from(item_use),
+                kind: CallKind::Function,
+            });
+            let call = Operation::ObjectCall {
+                call: Call {
+                    function_id: id,
+                    function: name.into(),
+                    target: Object::Player,
+                    kind: CallKind::Function,
+                    arguments: if item_use {
+                        vec![Value::Integer { value: 1 }]
+                    } else {
+                        vec![]
+                    },
+                },
+            };
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps =
+                [call, Operation::End { target: 0 }]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, operation)| {
+                        (
+                            index as u32,
+                            Step {
+                                next: index as u32 + 1,
+                                operation,
+                            },
+                        )
+                    })
+                    .collect();
+        });
+        let hud = cyrus_game::script::ScriptHud::default();
+        let mut asset = inventory_asset(&[(1, 1)]);
+        asset.inventory.get_mut(&1).unwrap().item_type = 1;
+        asset.inventory.get_mut(&1).unwrap().weapon = true;
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        let map = world.id(0).unwrap();
+        let player = world
+            .id(world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Player)
+                })
+                .unwrap())
+            .unwrap();
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[player.index];
+        let control = actor.control_state().unwrap();
+        assert_eq!(control.living_state, 20, "item use: {item_use}");
+        assert_eq!(control.combat.as_ref().unwrap().flags & 4, 4);
+        if item_use {
+            assert_eq!(actor.attributes()[23], 1, "the item becomes the weapon");
+        }
+    }
+}

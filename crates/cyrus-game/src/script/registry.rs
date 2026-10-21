@@ -3288,6 +3288,35 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(())
     }
 
+    /// `DrawSword`'s action for the receiver `id`.
+    fn draw_sword(&mut self, id: ScriptActorId) -> Result<()> {
+        let selected_player = self
+            .selected_player()
+            .context("DrawSword selected player unavailable")?;
+        let weapon = WeaponInputs {
+            selected_player,
+            item_system_ready: self
+                .inputs
+                .hud
+                .context("DrawSword inventory owner unavailable")?
+                .inventory_ready()?,
+            shell_execution: self
+                .inputs
+                .shell_execution
+                .context("DrawSword shell context unavailable")?,
+        };
+        let ticks = self
+            .inputs
+            .nominal_ticks
+            .context("DrawSword nominal ticks unavailable")?;
+        let sounds = self
+            .sounds
+            .as_deref_mut()
+            .context("DrawSword sound handler unavailable")?;
+        self.registry
+            .admit_actor_weapon_draw(id, weapon, ticks, sounds)
+    }
+
     /// `SheathSword`'s action: when the receiver can sheathe it enters the sheathing state. The
     /// selected player's HUD timer and camera selection are not wired.
     fn sheath_sword(&mut self, function: &str, id: ScriptActorId) -> Result<()> {
@@ -5184,6 +5213,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(
                 inside(position[0], x1, x2) && inside(position[2], z1, z2),
             )));
+        }
+        // DrawSword is the weapon draw admission: it enters state 20 when every gate allows it
+        // and otherwise leaves the actor unchanged. Its final repositioning step is disabled in
+        // the shipped game.
+        if function.eq_ignore_ascii_case("DrawSword") {
+            anyhow::ensure!(arguments.is_empty(), "DrawSword requires no arguments");
+            self.draw_sword(id)?;
+            return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("SheathSword") {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
