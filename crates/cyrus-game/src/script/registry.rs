@@ -3861,6 +3861,20 @@ enum PoseProperty {
     Angle(usize),
 }
 
+/// Script properties that name the actor bytes +0x1b0 through +0x1b4, in order: the companion
+/// motion, sliding, falling, queued-motion and living-state bytes. Inferred from the property
+/// table's byte offsets; the names (`jump_flag` for the falling byte) do not describe the bytes.
+fn motion_property<'a>(control: &'a mut ActorControlState, name: &str) -> Option<&'a mut u8> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "slide_flag" => &mut control.motion_companion,
+        "fall_flag" => &mut control.sliding_state,
+        "jump_flag" => &mut control.falling_state,
+        "extra_flag" => &mut control.queued_motion,
+        "extra_time" => &mut control.living_state,
+        _ => return None,
+    })
+}
+
 fn pose_property(name: &str) -> Option<PoseProperty> {
     let find = |names: [&str; 3]| names.iter().position(|n| name.eq_ignore_ascii_case(n));
     find(["pos.vx", "pos.vy", "pos.vz"])
@@ -3922,6 +3936,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("torch_timer control owner unavailable")?;
             return Ok(i32::from(control.torch_burning));
         }
+        if motion_property(&mut ActorControlState::default(), name).is_some() {
+            let name = name.to_owned();
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            return Ok(i32::from(
+                *motion_property(control, &name).expect("named motion byte"),
+            ));
+        }
         let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} unsupported"))?;
         let index = self.property_receiver(target)?;
@@ -3946,6 +3971,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("torch_timer control owner unavailable")?;
             control.torch_burning = value as u8;
+            return Ok(());
+        }
+        if motion_property(&mut ActorControlState::default(), name).is_some() {
+            let name = name.to_owned();
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            *motion_property(control, &name).expect("named motion byte") = value as u8;
             return Ok(());
         }
         let name = name.to_owned();

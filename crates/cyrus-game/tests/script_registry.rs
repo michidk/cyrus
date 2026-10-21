@@ -15210,6 +15210,77 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
 }
 
 #[test]
+fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (name, field) in [
+        ("slide_flag", "motion_companion"),
+        ("fall_flag", "sliding_state"),
+        ("jump_flag", "falling_state"),
+        ("extra_flag", "queued_motion"),
+        ("extra_time", "living_state"),
+    ] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+        let read = program.steps[&0].operation.clone();
+        program.steps.insert(
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference: 294,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value: 7 },
+                        rest: vec![],
+                    },
+                },
+            },
+        );
+        program.steps.insert(
+            1,
+            Step {
+                next: 2,
+                operation: read,
+            },
+        );
+        program.steps.insert(
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        );
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().variables(),
+            [7],
+            "{name}"
+        );
+        let control = serde_json::to_value(world.actors()[0].control_state().unwrap()).unwrap();
+        assert_eq!(control[field], 7, "{name}");
+    }
+}
+
+#[test]
 fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
     for (name, write, separate, expected) in [
         ("anim.current", false, false, "animation owner unavailable"),
