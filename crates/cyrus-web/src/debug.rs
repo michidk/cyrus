@@ -14,12 +14,22 @@ fn update_web_world(
     state: Res<State<cyrus_game::AppState>>,
     mut picker: ResMut<WorldPicker>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
+    authored: Option<(
+        Res<cyrus_world::lifecycle::ReloadScene>,
+        Res<cyrus_world::lifecycle::SceneRequest>,
+    )>,
 ) {
     if picker.current != current.name {
         picker.current.clone_from(&current.name);
         picker.selected.clone_from(&current.name);
     }
-    let Some(requested) = picker.pending.take() else {
+    // Script `LoadWorld` and console `load` raise `ReloadScene` with the request; the browser has
+    // no native preparation thread, so both swap the world caches like a picker selection.
+    let authored = authored.map(|(_, request)| request.0.clone());
+    if authored.is_some() {
+        commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
+    }
+    let Some(requested) = picker.pending.take().or(authored) else {
         return;
     };
     let in_game = *state.get() == cyrus_game::AppState::InGame;
@@ -144,6 +154,49 @@ mod tests {
         assert_eq!(
             *app.world().resource::<State<cyrus_game::AppState>>().get(),
             cyrus_game::AppState::InGame
+        );
+    }
+
+    #[test]
+    fn authored_world_load_swaps_the_world_caches_once() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::state::app::StatesPlugin,
+            AssetPlugin::default(),
+        ))
+        .insert_state(cyrus_game::AppState::InGame)
+        .init_asset::<cyrus_assets::animation::Animations>()
+        .init_asset::<cyrus_assets::script::Scripts>()
+        .insert_resource(cyrus_world::lifecycle::CurrentScene {
+            name: "13".into(),
+            world: Some(13),
+        })
+        .insert_resource(cyrus_world::lifecycle::SceneRequest("13".into()))
+        .insert_resource(cyrus_world::lifecycle::ReloadScene)
+        .insert_resource(cyrus_render::camera::InitialView(Transform::IDENTITY))
+        .init_resource::<WorldPicker>()
+        .add_systems(Update, update_web_world);
+        app.update();
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_world::lifecycle::ReloadScene>()
+        );
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_render::camera::InitialView>()
+        );
+        let prepared = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>();
+        assert_eq!(prepared.requested_name, "13");
+        assert_eq!(prepared.scene_path.to_string(), "cache://13.glb");
+        app.world_mut()
+            .remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
+        app.update();
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_world::lifecycle::PreparedWorld>()
         );
     }
 
