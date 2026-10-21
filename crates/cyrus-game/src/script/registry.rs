@@ -531,6 +531,23 @@ impl ScriptWorld {
         self.id(self.selected_player_index()?).ok()
     }
 
+    /// Return the selected player's state for the engine-owned torch sound.
+    /// The sound host supplies the positional mixer and remembers its channel;
+    /// this method only exposes the authoritative logical actor state.
+    pub fn selected_player_torch_sound(&self) -> Result<Option<(ScriptActorId, bool, [i32; 3])>> {
+        let Some(id) = self.selected_player() else {
+            return Ok(None);
+        };
+        let index = self.resolve(id)?;
+        let burning = self.actors[index]
+            .control
+            .as_ref()
+            .context("selected player torch state unavailable")?
+            .torch_burning
+            != 0;
+        Ok(Some((id, burning, self.query_position(id)?)))
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()

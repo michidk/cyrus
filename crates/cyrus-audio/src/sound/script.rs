@@ -504,6 +504,69 @@ pub struct ScriptSounds<'w, 's> {
 }
 
 impl ScriptSounds<'_, '_> {
+    /// Maintain the engine-owned player torch effect (effect 25). The original
+    /// uses one shared channel, refreshes its positional mix every frame, and
+    /// stops it as soon as the logical torch counter reaches zero.
+    pub fn update_torch(
+        &mut self,
+        world: &cyrus_game::script::ScriptWorld,
+        channel: &mut Option<u8>,
+    ) -> anyhow::Result<()> {
+        let Some((actor, burning, position)) = world.selected_player_torch_sound()? else {
+            if let Some(slot) = channel.take() {
+                self.frame
+                    .channels
+                    .stop_slot(&mut self.frame.commands, slot);
+            }
+            return Ok(());
+        };
+        let request = cyrus_world::sound::AmbientSoundRequest {
+            generation: actor.generation,
+            actor_index: actor.index,
+            channel: *channel,
+            effect: 25,
+            // The engine's player torch start uses the positional volume offset -40.
+            volume: -40,
+            rate_offset_hz: 0,
+            position,
+            object_update_excluded: !burning,
+        };
+        let settings = self
+            .frame
+            .settings
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("torch sound: SYSTEM.INI settings unavailable"))?;
+        let listener = self
+            .frame
+            .listener
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("torch sound: listener unavailable"))?;
+        let (volume, pan) = positional_q8(request.position, settings, listener, request.volume)
+            .map_err(|error| anyhow::anyhow!("torch sound: {error}"))?;
+        let mut mixer = Mixer {
+            master: settings.master_volume,
+            sources: self.frame.sources.as_deref(),
+            panned: self.frame.panned.as_deref_mut(),
+        };
+        let update = self
+            .frame
+            .channels
+            .ambient(
+                &mut self.frame.commands,
+                &mut mixer,
+                &self.frame.effects,
+                request,
+                volume,
+                pan,
+            )
+            .map_err(anyhow::Error::msg)?;
+        *channel = update.channel;
+        if !update.active {
+            *channel = None;
+        }
+        Ok(())
+    }
+
     /// Advance the explicit game-owned maintenance timer before object updates.
     /// The caller owns player-controller inhibition and world-entry resets.
     /// A successful reset releases RTX payloads, clears dialogue, stops the shared
@@ -1230,6 +1293,7 @@ pub struct RuntimeDialogue {
     cache: cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
     preparation: super::dialogue::DialoguePreparation,
     taunts: Vec<super::dialogue::DialogueClip>,
+    torch_channel: Option<u8>,
 }
 
 #[derive(SystemParam)]
@@ -1268,6 +1332,7 @@ fn scoped_ordinary(
             cache,
             preparation,
             taunts,
+            torch_channel,
         } = &mut *dialogue.runtime;
         if context.has_pending_revisit() {
             let restored = (|| -> anyhow::Result<bool> {
@@ -1294,6 +1359,7 @@ fn scoped_ordinary(
         if *prepared_generation != generation {
             preparation.clear();
             taunts.clear();
+            *torch_channel = None;
             *prepared_generation = generation;
         }
         let hud_handle = hud.get_or_insert_with(|| server.load("cache://hud/overlay.hud"));
@@ -1352,6 +1418,14 @@ fn scoped_ordinary(
                 }
             };
             *sound_reset = Some(reset);
+        }
+        if phase == cyrus_game::script::OrdinaryPhase::Simulation {
+            let result =
+                context.with_world_services(|world, _| sounds.update_torch(world, torch_channel));
+            if let Some(Err(error)) = result {
+                context.report_error(format!("ordinary torch sound: {error:#}"));
+                return;
+            }
         }
         *ordinary_completed = phase == cyrus_game::script::OrdinaryPhase::Simulation;
         sounds.run_ordinary_with_dialogue(
@@ -2301,6 +2375,7 @@ impl RuntimeDialogue {
                 assets.loaded,
             )?,
             taunts,
+            torch_channel: None,
         })
     }
 }
