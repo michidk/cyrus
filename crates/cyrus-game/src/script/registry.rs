@@ -3906,6 +3906,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
+            // Object encoding 0x0A names an actor through a local variable.  The
+            // variable stores the actor's signed 16-bit runtime identifier; the
+            // registry already owns the authoritative identifier-to-slot map.
+            Target::Variable(value) => i16::try_from(*value)
+                .ok()
+                .and_then(|identifier| self.registry.names.get(&identifier).copied()),
             _ => anyhow::bail!("object target {target:?} unsupported"),
         };
         index.with_context(|| format!("object target {target:?}: receiver absent"))
