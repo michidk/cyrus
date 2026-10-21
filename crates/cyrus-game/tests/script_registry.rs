@@ -30158,6 +30158,17 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
     assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
     assert_ne!(world.spatial(receiver).unwrap().local.position, before);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 38);
+    assert_eq!(
+        world.actors()[receiver.index]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .attacker_selection_state,
+        0,
+        "direct damage does not hand coordination to the selected player"
+    );
 }
 
 #[test]

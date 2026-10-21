@@ -40,7 +40,7 @@ impl ScriptWorld {
             return Ok(());
         };
         if message.code == 0xd005 {
-            return self.process_direct_damage_message(id, selected_player, inputs, random, sounds);
+            return self.process_direct_damage_message(id, inputs, random, sounds);
         }
         if message.code != 0xd001 {
             return self.process_combat_message(id, selected_player);
@@ -69,7 +69,6 @@ impl ScriptWorld {
     fn process_direct_damage_message(
         &mut self,
         id: ScriptActorId,
-        selected_player: Option<ScriptActorId>,
         inputs: super::ScriptInputs<'_>,
         random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
@@ -97,7 +96,11 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|control| control.combat.as_ref())
             .context("direct-damage receiver combat unavailable")?;
-        if combat.attacker_selection_state == 0 && selected_player != Some(id) {
+        // Selection is a retained world identity, not an optional scheduler hint. The
+        // production caller supplies that hint, but inspection/tests may omit it; using the
+        // world's selected role keeps the d005 handoff from promoting the selected player.
+        let receiver_is_selected = self.selected_player_index() == Some(index);
+        if combat.attacker_selection_state == 0 && !receiver_is_selected {
             if let Some(coordinator) = self.ordinary_waiting_coordinator(message.sender)? {
                 self.send_combat_message(id, coordinator, 0xd003)?;
             } else {
