@@ -74,12 +74,15 @@ impl ScriptWorld {
         }
         Ok(())
     }
-    /// The direct-damage response (`0xd005`) for a nonplayer receiver: displace it 3000 units away
-    /// from the sender, start its hit-reaction group (117) when it has animation, subtract the
-    /// sender's attribute 96 from its health (clamped to a byte) and, when that leaves it below
-    /// one, request receiver taunt category six and run contact death with selector zero. The
-    /// selected player's branch (death-animation override, weapon and stance reaction groups,
-    /// damage suppression, shared additive health) is unsupported and an explicit error.
+    /// The direct-damage response (`0xd005`): displace the receiver 3000 units away from the
+    /// sender, then (for the selected player) return at once while a death-animation override is
+    /// set. A nonplayer starts hit-reaction group 117; the selected player starts 117 or 118 by
+    /// world-loop parity while holding a weapon or in combat stance (the drawn-weapon bit of its
+    /// combat record), else 132 or 133. The selected player's health response is skipped while the
+    /// damage-suppression cheat is on. Otherwise the sender's attribute 96 is subtracted from the
+    /// receiver's health (the selected player through its shared additive health), and below one
+    /// a nonplayer requests taunt category six and either identity runs contact death with
+    /// selector zero.
     pub(super) fn process_direct_damage_response(
         &mut self,
         receiver: ScriptActorId,
@@ -90,10 +93,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let receiver_index = self.resolve(receiver)?;
         let sender_index = self.resolve(sender)?;
-        anyhow::ensure!(
-            self.selected_player_index() != Some(receiver_index),
-            "direct-damage response for the selected player unsupported"
-        );
+        let selected = self.selected_player_index() == Some(receiver_index);
         let from = self.spatial(sender)?.local.position;
         let origin = self.spatial(receiver)?.local.position;
         let heading = super::super::spatial::query_bearing(
@@ -107,19 +107,67 @@ impl ScriptWorld {
             .actor_mut(receiver_index)?
             .local
             .position = moved;
-        if self.actors[receiver_index].animation.is_some() {
-            let ticks = inputs
-                .nominal_ticks
-                .context("direct damage nominal ticks unavailable")?;
-            self.request_ordinary_group(receiver, 117, false, ticks, sounds)?;
+        if selected
+            && self
+                .globals
+                .player_death_override_group()
+                .context("direct damage death-animation override unavailable")?
+                != 0
+        {
+            return Ok(());
+        }
+        let ticks = inputs
+            .nominal_ticks
+            .context("direct damage nominal ticks unavailable")?;
+        let group = if selected {
+            let (_, holding) = self.spacing_weapon(receiver, inputs)?;
+            let stance = holding
+                || self.actors[receiver_index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_some_and(|combat| combat.flags & 4 != 0);
+            let odd = self.globals.world_loop_frame & 1 != 0;
+            Some(match (stance, odd) {
+                (true, false) => 117,
+                (true, true) => 118,
+                (false, false) => 132,
+                (false, true) => 133,
+            })
+        } else {
+            Some(117)
+        };
+        if let Some(group) = group
+            && self.actors[receiver_index].animation.is_some()
+        {
+            self.request_ordinary_group(receiver, group, false, ticks, sounds)?;
+        }
+        if selected
+            && inputs
+                .death_suppressed
+                .context("direct damage damage-suppression state unavailable")?
+        {
+            return Ok(());
         }
         let damage = i32::from(self.actors[sender_index].attributes[96]);
-        let health = i32::from(self.actors[receiver_index].attributes[3])
-            .wrapping_sub(damage)
-            .clamp(0, 255);
-        self.actors[receiver_index].attributes[3] = health as u8;
-        if health < 1 {
-            self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
+        if selected {
+            self.apply_selected_additive_health(
+                receiver,
+                damage.wrapping_neg(),
+                inputs,
+                Some(random),
+                sounds,
+            )?;
+        } else {
+            let health = i32::from(self.actors[receiver_index].attributes[3])
+                .wrapping_sub(damage)
+                .clamp(0, 255);
+            self.actors[receiver_index].attributes[3] = health as u8;
+        }
+        if self.actors[receiver_index].attributes[3] < 1 {
+            if !selected {
+                self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
+            }
             self.dispatch_contact_death(receiver, 0, inputs.nominal_ticks, sounds)?;
         }
         Ok(())
