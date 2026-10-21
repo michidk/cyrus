@@ -785,7 +785,8 @@ mod live {
         // 1000, 4560 and 3000 become 3.90625, 17.8125 and 11.71875 map units; each axis moves its factor
         // of the way from (3, 11, 11) and the whole-unit result is kept.
         assert_eq!(state.render.position, [3.0, 12.0, 11.0]);
-        assert_eq!(state.render.angles, state.current.angles);
+        assert_eq!(state.current.angles, [1536, 1024, 0]);
+        assert_eq!(state.render.angles, [1792, 512, 0]);
         let before = world.camera().unwrap().render;
         let error = world
             .present_camera(player, true, &mut |_| {
