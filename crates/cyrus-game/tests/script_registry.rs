@@ -13656,6 +13656,61 @@ fn restored_alternate_entity_survives_ordinary_binding_updates() {
 }
 
 #[test]
+fn a_type_four_object_starts_with_its_placement_intensity_and_radius_and_no_colour() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts(
+        "LightFlicker",
+        vec![Value::Integer { value: 7 }, Value::Integer { value: 9 }],
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = 2;
+    scripts.instances.truncate(1);
+    let placement = &mut scripts.instances[0];
+    placement.object_type = 4;
+    placement.light_intensity = 211;
+    placement.light_radius = 900;
+    placement.light_rgb = [-12, 34, 56];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let light = world.actors()[0].light_state().unwrap();
+    assert_eq!(
+        (
+            &light["enabled"],
+            &light["locked"],
+            &light["intensity"],
+            &light["radius"],
+            &light["rgb"]
+        ),
+        (
+            &true.into(),
+            &true.into(),
+            &211.into(),
+            &900.into(),
+            &serde_json::json!([0, 0, 0])
+        )
+    );
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[0].light_state().unwrap()["flicker"],
+        serde_json::json!([7, 0, 9])
+    );
+    assert!(
+        world.object_lights().is_empty(),
+        "type-four lights are not projected as map lights"
+    );
+}
+
+#[test]
 fn authored_light_off_survives_world_replacement_without_reenabling() {
     use cyrus_game::script::{
         GameplayGlobals, ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,

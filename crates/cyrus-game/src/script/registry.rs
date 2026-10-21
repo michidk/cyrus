@@ -951,6 +951,14 @@ impl ScriptWorld {
                 ScriptActorSource::Map(placement) if placement.object_type == 6 => {
                     Some(light::LightState::authored(placement))
                 }
+                // A type-four object gets the same record with the placement's intensity and
+                // radius; its colour is never initialised, so it stays zero.
+                ScriptActorSource::Map(placement) if placement.object_type == 4 => {
+                    Some(light::LightState {
+                        rgb: [0; 3],
+                        ..light::LightState::authored(placement)
+                    })
+                }
                 _ => None,
             };
             ScriptActor {
@@ -4031,11 +4039,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
         {
             let actor = &mut self.registry.actors[self.index];
             let placement = actor.placement();
-            anyhow::ensure!(
-                actor.light.is_some()
-                    || placement.is_none_or(|placement| placement.object_type != 4),
-                "{function}: type-four light initialization unavailable"
-            );
             let position = placement
                 .map(|placement| placement.map_position.map(|value| value as i32))
                 .unwrap_or_default();
@@ -4163,12 +4166,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
             anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
             let actor = &mut self.registry.actors[self.index];
-            anyhow::ensure!(
-                actor
-                    .placement()
-                    .is_none_or(|placement| placement.object_type != 4),
-                "LightOff type-four light initialization unavailable"
-            );
             if let Some(light) = &mut actor.light {
                 light.locked = false;
                 light.enabled = false;
