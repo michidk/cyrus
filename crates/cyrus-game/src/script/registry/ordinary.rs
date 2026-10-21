@@ -246,7 +246,10 @@ impl ScriptWorld {
                     .expect("admitted ordinary control");
                 anyhow::ensure!(
                     (control.queued_motion == 0 && control.falling_state == 0)
-                        || (!selected_player && self.actors[id.index].attributes[1] & 4 != 0),
+                        || (!selected_player && self.actors[id.index].attributes[1] & 4 != 0)
+                        // The selected-player edge service runs while falling and
+                        // deliberately hands the actor back to the controller.
+                        || (selected_player && control.falling_state != 0),
                     "ordinary queued motion stage unsupported"
                 );
                 let collision = if self.actors[id.index].attributes[1] != 0 {

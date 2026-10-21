@@ -286,18 +286,31 @@ impl ScriptWorld {
             self.world,
             id.index
         );
-        ensure!(
-            query.animations.actor(self.actors[id.index].name())?["model_load_path"].as_str()
-                == Some("animation_table"),
-            "world {} instance {}: static-model fall entry gate unsupported",
-            self.world,
-            id.index
-        );
-        if self.complete_ordinary_animated_fall_entry(id, query.animations, environment, sounds)? {
-            if self.selected_edge_service(id, query, environment)? {
-                return self.end_ordinary_fall(id);
+        let path = query.animations.actor(self.actors[id.index].name())?["model_load_path"]
+            .as_str()
+            .context("fall entry model path unavailable")?;
+        if path == "animation_table" {
+            if self.complete_ordinary_animated_fall_entry(
+                id,
+                query.animations,
+                environment,
+                sounds,
+            )? {
+                if self.selected_edge_service(id, query, environment)? {
+                    return self.end_ordinary_fall(id);
+                }
+                self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
             }
-            self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
+        } else {
+            ensure!(
+                matches!(path, "static" | "none"),
+                "world {} instance {}: fall entry model path {path} unsupported",
+                self.world,
+                id.index
+            );
+            if self.begin_static_ordinary_fall(id, query.animations)? {
+                self.run_ordinary_falling_writer(id, false, fine_ticks, 0, post)?;
+            }
         }
         Ok(())
     }
