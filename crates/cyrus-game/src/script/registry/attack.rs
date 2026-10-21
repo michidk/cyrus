@@ -248,6 +248,10 @@ impl ScriptWorld {
         let receiver_index = self.resolve(receiver)?;
         let sender_index = self.resolve(sender)?;
         let selected = self.selected_player_index() == Some(receiver_index);
+        let selected_player = self
+            .selected_player_index()
+            .map(|index| self.id(index))
+            .transpose()?;
         let from = self.spatial(sender)?.local.position;
         let origin = self.spatial(receiver)?.local.position;
         let heading = super::super::spatial::query_bearing(
