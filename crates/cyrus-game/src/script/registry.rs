@@ -4852,6 +4852,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
+            self.registry
+                .cancel_actor_tasks(self.index)
+                .context("KillMe: cancel receiver tasks")?;
             let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
