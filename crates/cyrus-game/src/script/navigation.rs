@@ -5,13 +5,15 @@ use anyhow::{Result, ensure};
 mod route;
 pub use route::WalkRouteState;
 
-pub(super) fn wander_without_maps(
+/// The Wander candidate: X and Z drawn around the home position, Y the home's, redrawn while the
+/// horizontal distance from the actor's effective position is at most half the radius. The radius
+/// is a Q8 length; positions are map units.
+pub(super) fn wander_candidate(
     home: [i32; 3],
     radius: i32,
-    frame_scale: u32,
-    spatial: &mut ActorSpatial,
+    spatial: &ActorSpatial,
     random: &mut EngineRandom,
-) -> Result<i32> {
+) -> Result<[i32; 3]> {
     let radius = radius >> 8;
     ensure!(
         radius > 0,
@@ -28,9 +30,19 @@ pub(super) fn wander_without_maps(
         if rounded_distance([x.wrapping_sub(current[0]), 0, z.wrapping_sub(current[2])])?
             > radius / 2
         {
-            break;
+            return Ok([x, home[1], z]);
         }
     }
+}
+
+pub(super) fn wander_without_maps(
+    home: [i32; 3],
+    radius: i32,
+    frame_scale: u32,
+    spatial: &mut ActorSpatial,
+    random: &mut EngineRandom,
+) -> Result<i32> {
+    wander_candidate(home, radius, spatial, random)?;
     limit_point_displacement(spatial, frame_scale)
 }
 

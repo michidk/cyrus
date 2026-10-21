@@ -5577,19 +5577,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("Wander requires two arguments")
             };
             let radius = radius.integer()?;
-            let _tolerance = tolerance.integer()?;
-            anyhow::ensure!(
-                self.walk_map_count
-                    .context("Wander navigation not prepared")?
-                    == 0,
-                "Wander movement through walk-node maps unsupported"
-            );
+            let tolerance = tolerance.integer()?;
             let home = self.registry.actors[self.index]
                 .placement()
                 .context("Wander home unavailable for standalone actor")?
                 .map_position;
             let [x, y, z] = home.map(i32::try_from);
             let home = [x?, y?, z?];
+            if self
+                .walk_map_count
+                .context("Wander navigation not prepared")?
+                != 0
+            {
+                let id = ScriptActorId {
+                    generation: self.generation,
+                    index: self.index,
+                };
+                let random = self
+                    .random
+                    .as_deref_mut()
+                    .context("Wander shared engine random stream unavailable")?;
+                let sounds = self.sounds.as_mut().map(|sink| {
+                    &mut **sink as &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>
+                });
+                let result = self
+                    .registry
+                    .wander_through_maps(id, home, radius, tolerance, self.inputs, random, sounds)
+                    .with_context(|| format!("Wander through walk-node maps (radius {radius})"))?;
+                return Ok(CallResult::Complete(result));
+            }
             let frame_scale = self
                 .inputs
                 .frame_scale

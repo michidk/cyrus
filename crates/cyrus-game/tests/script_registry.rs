@@ -3616,23 +3616,54 @@ fn empty_map_wander_consumes_original_draws_and_restores_excess_displacement() {
 }
 
 #[test]
-fn wander_rejects_nonempty_maps_and_zero_radius_without_consuming_random() {
+fn wander_rejects_a_zero_radius_without_consuming_random() {
     use cyrus_game::{
         random::EngineRandom,
         script::{ScriptInputs, ScriptStage},
     };
-    for (maps, radius, expected) in [
+    let mut world = wander_world(255, 0, serde_json::json!([]));
+    let id = world.id(0).unwrap();
+    let mut random = EngineRandom::default();
+    let error = world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            Some(&mut random),
+            20,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("positive map-unit radius"),
+        "{error:#}"
+    );
+    assert_eq!(random.state(), 1);
+    assert!(world.actors()[0].failure().is_some());
+}
+
+#[test]
+fn wander_with_maps_picks_the_nearest_node_as_its_destination_and_ends_on_arrival() {
+    use cyrus_game::{
+        random::EngineRandom,
+        script::{ScriptInputs, ScriptStage},
+    };
+    // The home is [1000, 2, 2000] map units; the first map has a node on it, the second none.
+    for (maps, found) in [
         (
-            serde_json::json!([{"node_count":0,"walk_nodes":[]}]),
-            1024,
-            "walk-node maps unsupported",
+            serde_json::json!([{"node_count":1,"walk_nodes":[walk_node([1000, 2, 2000])]}]),
+            true,
         ),
-        (serde_json::json!([]), 255, "positive map-unit radius"),
+        (serde_json::json!([{"node_count":0,"walk_nodes":[]}]), false),
     ] {
-        let mut world = wander_world(radius, 0, maps);
+        let mut world = wander_world(1204 * 256, 0, maps);
         let id = world.id(0).unwrap();
         let mut random = EngineRandom::default();
-        let error = world
+        world
             .advance(
                 id,
                 ScriptStage::Body(Thread::Main),
@@ -3645,10 +3676,13 @@ fn wander_rejects_nonempty_maps_and_zero_radius_without_consuming_random() {
                 Some(&mut random),
                 20,
             )
-            .unwrap_err();
-        assert!(format!("{error:#}").contains(expected), "{error:#}");
-        assert_eq!(random.state(), 1);
-        assert!(world.actors()[0].failure().is_some());
+            .unwrap();
+        assert_eq!(world.actors()[0].attributes()[94], 1);
+        assert_eq!(random.state(), 2524885223, "the empty-map draw sequence");
+        let navigation = world.actors()[0].control_state().unwrap().navigation;
+        // The actor stands on the node, so a found destination is reached and cleared at once.
+        assert_eq!(navigation.destination, -1);
+        assert_eq!(navigation.map, found.then_some(0));
     }
 }
 

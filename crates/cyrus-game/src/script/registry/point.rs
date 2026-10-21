@@ -156,20 +156,7 @@ impl ScriptWorld {
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = self.resolve(id)?;
-        self.validate_walk_navigation(id)?;
-        let result = if self.globals.native_command.pause_ticks != 0 {
-            let ticks = inputs
-                .nominal_ticks
-                .context("point pause requires nominal_ticks")?;
-            self.globals.native_command.pause_ticks = self
-                .globals
-                .native_command
-                .pause_ticks
-                .saturating_sub(ticks);
-            1
-        } else {
-            self.move_point_entry(id, destination, tolerance, inputs, random, sounds)?
-        };
+        let result = self.move_point_core(id, destination, tolerance, inputs, random, sounds)?;
         let frame_scale = inputs
             .frame_scale
             .context("point wrapper requires frame_scale")?;
@@ -180,6 +167,133 @@ impl ScriptWorld {
             .actor_mut(index)?;
         super::super::navigation::limit_point_displacement(spatial, frame_scale)?;
         Ok(result)
+    }
+
+    /// The navigation core: map validation, the shared pause, then the entry. The wrapper adds the
+    /// displacement bound after it.
+    fn move_point_core(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        self.validate_walk_navigation(id)?;
+        if self.globals.native_command.pause_ticks != 0 {
+            let ticks = inputs
+                .nominal_ticks
+                .context("point pause requires nominal_ticks")?;
+            self.globals.native_command.pause_ticks = self
+                .globals
+                .native_command
+                .pause_ticks
+                .saturating_sub(ticks);
+            return Ok(1);
+        }
+        self.move_point_entry(id, destination, tolerance, inputs, random, sounds)
+    }
+
+    /// `Wander` with walk-node maps loaded. An unset final destination clears the actor's point
+    /// state, draws a candidate and takes the nearest node of any map (its map becoming the
+    /// actor's) as the final destination. A set destination ends when the actor is within
+    /// arrival range of its node or when the point core finishes; otherwise the core walks the
+    /// actor toward the node on the actor's retained point state. The displacement bound and its
+    /// measured result follow, as for the empty-map form.
+    #[allow(clippy::too_many_arguments)] // Explicit call arguments, inputs and the shared random and sound sinks.
+    pub(super) fn wander_through_maps(
+        &mut self,
+        id: ScriptActorId,
+        home: [i32; 3],
+        radius: i32,
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        self.validate_walk_navigation(id)?;
+        self.actors[index].attributes[94] = 1;
+        fn control(world: &mut ScriptWorld, index: usize) -> &mut super::ActorControlState {
+            world.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted point control")
+        }
+        if control(self, index).navigation.destination == -1 {
+            control(self, index).point_command = super::super::PointCommandState {
+                value: 0,
+                word: 0,
+                phase: 0,
+                counter: 0,
+            };
+            let candidate = super::super::navigation::wander_candidate(
+                home,
+                radius,
+                self.spatial
+                    .as_ref()
+                    .context("Wander spatial state not prepared")?
+                    .actor(index)?,
+                random,
+            )?;
+            let found = self
+                .walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .nearest(candidate);
+            let navigation = &mut control(self, index).navigation;
+            navigation.map = found.map(|(map, _)| map);
+            navigation.destination = found.map_or(-1, |(_, node)| node as i32);
+        }
+        let navigation = control(self, index).navigation;
+        if navigation.destination != -1 {
+            let destination = match navigation.map {
+                Some(map) => Some(
+                    self.walk_nodes
+                        .as_ref()
+                        .context("walk-node navigation not prepared")?
+                        .position(map, navigation.destination)?,
+                ),
+                None => None,
+            };
+            let finished = match destination {
+                None => true,
+                Some(node) => {
+                    if self.point_destination_arrived(index, node, tolerance, inputs)? {
+                        true
+                    } else {
+                        control(self, index)
+                            .point_command
+                            .load(&mut self.globals.native_command);
+                        let result = self.move_point_core(
+                            id,
+                            node,
+                            tolerance,
+                            inputs,
+                            Some(random),
+                            sounds,
+                        )?;
+                        if result != 0 {
+                            let shared = self.globals.native_command;
+                            control(self, index).point_command.save(&shared);
+                        }
+                        result == 0
+                    }
+                }
+            };
+            if finished {
+                control(self, index).navigation.destination = -1;
+            }
+        }
+        let frame_scale = inputs.frame_scale.context("Wander requires frame_scale")?;
+        super::super::navigation::limit_point_displacement(
+            self.spatial
+                .as_mut()
+                .context("Wander spatial state not prepared")?
+                .actor_mut(index)?,
+            frame_scale,
+        )
     }
 
     fn move_point_entry(
