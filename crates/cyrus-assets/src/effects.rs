@@ -91,8 +91,9 @@ pub(crate) fn prepare(
         images: BTreeMap::new(),
     };
     if !effects.disabled && effects.capacity > 0 {
-        // Fixed engine identities from preservation's selected-death effect contract.
-        for identity in [0xb081u16, 0x2480, 0x2580, 0x2500] {
+        // Fixed engine identities from preservation's selected-death effect contract, then the
+        // identities installed scripts pass to `AddFlatEffect` (0x2380, the Catacombs braziers).
+        for identity in [0xb081u16, 0x2480, 0x2580, 0x2500, 0x2380] {
             let archive = identity >> 7;
             let image_id = identity & 127;
             let path = format!("fxart/TEXBSI.{archive:03}");

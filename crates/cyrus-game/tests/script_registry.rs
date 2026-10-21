@@ -29054,3 +29054,92 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
         "no drawn weapon, no swing"
     );
 }
+
+#[test]
+fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
+    use cyrus_assets::effects::{EffectImage, Effects};
+    let effects = Effects {
+        ambient_brightness: Some(128),
+        capacity: 2,
+        disabled: false,
+        images: BTreeMap::from([(
+            0x2380,
+            EffectImage {
+                name: "brazier".into(),
+                size: [1, 4],
+                texture_scale: 256,
+                delay_ms: 71,
+                flags: 1,
+                alpha: 151,
+                frames: vec![vec![255; 16]; 4],
+            },
+        )]),
+    };
+    let spawn = |spread: i32, speed: i32, descriptor: i32| {
+        let mut world = {
+            let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+            scripts.definition.functions.push(Function {
+                name: "AddFlatEffect".into(),
+                param_count: 6,
+                kind: CallKind::Function,
+            });
+            let id = u16::try_from(scripts.definition.functions.len() - 1).unwrap();
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+                assign_call(
+                    1,
+                    id,
+                    "AddFlatEffect",
+                    &[2560, 5120, 7680, spread, descriptor, speed],
+                )
+                .operation,
+                Operation::End { target: 0 },
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+            scripts.content_id = scripts.content_identity().unwrap();
+            ScriptWorld::prepare(&scripts, 1).unwrap()
+        };
+        world.prepare_environment_effects(&effects).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                cyrus_game::script::ScriptStage::OrdinaryMain,
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .map(|()| world.actors()[0].failure().map(str::to_owned))
+            .map(|failure| {
+                let count = world
+                    .environmental_effects()
+                    .map_or(0, |effects| effects.active().count());
+                (failure, count)
+            })
+    };
+    let (failure, count) = spawn(0, 1, 0x2380).unwrap();
+    assert!(failure.is_none(), "{failure:?}");
+    assert_eq!(count, 1);
+    for (spread, speed, what) in [(5, 1, "spread"), (0, 2, "speed")] {
+        let error = spawn(spread, speed, 0x2380).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("unsupported"),
+            "{what}: {error:#}"
+        );
+    }
+}

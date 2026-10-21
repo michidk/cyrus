@@ -4235,6 +4235,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect
+        // at a Q8 point. Only the installed form is supported: zero spread and speed one.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("AddFlatEffect") {
+            let [x, y, z, spread, descriptor, speed] = arguments else {
+                anyhow::bail!("AddFlatEffect requires six arguments")
+            };
+            anyhow::ensure!(
+                spread.integer()? == 0 && speed.integer()? == 1,
+                "AddFlatEffect: nonzero spread or a speed other than one unsupported"
+            );
+            self.registry.spawn_environment_effect(
+                descriptor.integer()? as u32,
+                [x.integer()?, y.integer()?, z.integer()?],
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         // OpenShell(name) starts the named shell script; it runs from the next update.
         if kind == CallKind::Function && function.eq_ignore_ascii_case("OpenShell") {
             let [Argument::String(name)] = arguments else {
