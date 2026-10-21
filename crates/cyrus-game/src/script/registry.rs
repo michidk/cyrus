@@ -547,6 +547,8 @@ pub struct ScriptWorld {
     camera_settings: cyrus_assets::script::CameraSettings,
     /// Installed `[system]` `standing_height`, learned when collision shapes are prepared.
     standing_height: Option<i32>,
+    /// The image the running `ViewGXA` task has the host draw over the world frame.
+    gxa_overlay: Option<super::tasks::GxaOverlay>,
     /// The selected player's placement raised by `MovePlayerAboveMe`, applied at the end of the
     /// frame loop.
     pending_player_placement: Option<([i32; 3], u16)>,
@@ -585,6 +587,11 @@ impl ScriptWorld {
             .torch_burning
             != 0;
         Ok(Some((id, burning, self.query_position(id)?)))
+    }
+
+    /// The image a running `ViewGXA` task has the host draw over the world frame, if any.
+    pub fn gxa_overlay(&self) -> Option<&super::tasks::GxaOverlay> {
+        self.gxa_overlay.as_ref()
     }
 
     /// Retained camera session, when the world has both a player and a CAMERA instance.
@@ -1106,6 +1113,7 @@ impl ScriptWorld {
             camera_limits: scripts.camera.limits,
             camera_settings: scripts.camera.clone(),
             standing_height: None,
+            gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
             model_admission: None,
@@ -3002,6 +3010,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }),
             lineup: None,
             point: None,
+            gxa_overlay: Some(&mut self.registry.gxa_overlay),
         };
         let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -6101,6 +6110,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 }),
                 lineup: None,
                 point: None,
+                gxa_overlay: Some(&mut self.registry.gxa_overlay),
             },
         );
         self.finish_camera_update(result.is_ok())?;
@@ -6334,6 +6344,7 @@ mod fighting_tests {
             camera_limits: Default::default(),
             camera_settings: Default::default(),
             standing_height: None,
+            gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
         };

@@ -262,6 +262,7 @@ impl Task {
             Self::AxisMovement { .. } => ("MoveAlongAxis", 3, None),
             Self::WanderLocation { .. } => ("WanderToLocation", 2, None),
             Self::Duration => ("Wait", 1, None),
+            Self::ViewGxa => ("ViewGXA", 3, None),
             Self::Tasks => ("WaitOnTasks", 0, None),
             Self::Blocking => ("WaitNonMulti", 0, None),
             Self::Animation { .. } => ("PushAnimation", 2, None),

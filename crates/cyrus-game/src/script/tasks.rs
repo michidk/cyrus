@@ -104,6 +104,16 @@ pub(super) struct NativeServices<'a> {
     pub lineup: Option<&'a mut (dyn super::lineup::LineupHost + 'a)>,
     /// The receiver's facing and point-walking owner, for the `Face*` and `MoveNode*` tasks.
     pub point: Option<&'a mut (dyn PointHost + 'a)>,
+    /// The image `ViewGXA` has the host draw over the world.
+    pub gxa_overlay: Option<&'a mut Option<GxaOverlay>>,
+}
+
+/// An installed GXA image frame drawn centered over the world frame while a `ViewGXA` task runs.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct GxaOverlay {
+    /// The script's file name, relative to the install's game directory.
+    pub name: String,
+    pub frame: i32,
 }
 
 /// What `FaceAngle` and `FacePos` turn the receiver toward.
@@ -543,6 +553,8 @@ enum Task {
     WalkForward,
     Location,
     Duration,
+    /// `ViewGXA(name, frame, count)`: an installed image over the world for `count` counter ticks.
+    ViewGxa,
     Tasks,
     Blocking,
     Animation {
@@ -2229,6 +2241,24 @@ impl Task {
                     .context("Wait requires explicit elapsed input")?
                     >= duration.integer()?.wrapping_sub(1)
             }
+            Self::ViewGxa => {
+                let [Argument::String(name), frame, count] = arguments else {
+                    anyhow::bail!("ViewGXA requires a file name, a frame and a count")
+                };
+                let overlay = services
+                    .gxa_overlay
+                    .context("ViewGXA overlay owner unavailable")?;
+                let frame = frame.integer()?;
+                let done = invocation
+                    .elapsed
+                    .context("ViewGXA requires explicit elapsed input")?
+                    >= count.integer()?.wrapping_sub(1);
+                *overlay = (!done).then(|| GxaOverlay {
+                    name: name.clone(),
+                    frame,
+                });
+                done
+            }
             Self::Tasks | Self::Blocking => {
                 anyhow::ensure!(
                     arguments.is_empty(),
@@ -2618,6 +2648,8 @@ impl NativeTasks {
             Task::Location
         } else if function.eq_ignore_ascii_case("Wait") {
             Task::Duration
+        } else if function.eq_ignore_ascii_case("ViewGXA") {
+            Task::ViewGxa
         } else if function.eq_ignore_ascii_case("WaitOnTasks") {
             Task::Tasks
         } else if function.eq_ignore_ascii_case("WaitNonMulti") {
@@ -2846,6 +2878,65 @@ mod frame_wait_tests {
                     "{function}: current={current}, pending={pending}, progress={progress}, group={group}, threshold={threshold}"
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod view_gxa_tests {
+    use super::*;
+
+    #[test]
+    fn view_gxa_shows_its_frame_until_the_count_elapses_then_clears_it() {
+        let mut tasks = NativeTasks::default();
+        let mut overlay = None;
+        let args = [
+            Argument::String("system\\stmap01.gxa".into()),
+            Argument::Integer(2),
+            Argument::Integer(3),
+        ];
+        let step = |elapsed| Invocation {
+            elapsed: Some(elapsed),
+            unpaused_tasks: 0,
+            unpaused_blocking_tasks: 0,
+        };
+        let Some(CallResult::Pending(token)) = tasks
+            .call(
+                ("ViewGXA", CallKind::Task),
+                &args,
+                step(0),
+                &mut None,
+                &mut None,
+                NativeServices {
+                    gxa_overlay: Some(&mut overlay),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        else {
+            panic!("ViewGXA must allocate a continuation")
+        };
+        let shown = Some(GxaOverlay {
+            name: "system\\stmap01.gxa".into(),
+            frame: 2,
+        });
+        assert_eq!(overlay, shown);
+        for (elapsed, done) in [(1, false), (2, true)] {
+            let completed = tasks
+                .poll(
+                    token,
+                    &args,
+                    step(elapsed),
+                    &mut None,
+                    &mut None,
+                    NativeServices {
+                        gxa_overlay: Some(&mut overlay),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(completed, done);
+            assert_eq!(overlay, if done { None } else { shown.clone() });
         }
     }
 }

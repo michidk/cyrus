@@ -192,7 +192,9 @@ pub use registry::{
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
-pub use tasks::{NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot};
+pub use tasks::{
+    GxaOverlay, NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot,
+};
 pub(crate) use world_request::request_world;
 pub use world_request::{
     DeathBookEntry, DeathDispatch, LastGameEntry, LastSaveSelection, WorldLoopExit,
