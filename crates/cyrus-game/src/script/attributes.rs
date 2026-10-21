@@ -34,12 +34,8 @@ pub(super) fn call(
     if index == 44 {
         let control =
             control.with_context(|| format!("{name}: attribute 44 actor lifecycle unavailable"))?;
-        if set {
-            anyhow::ensure!(
-                control.death_selector != 8,
-                "{name}: dead actor walk-node reservation release unsupported"
-            );
-        } else if control.object_update_excluded
+        if !set
+            && control.object_update_excluded
             && let Some(default) = &mut control.combat_death_default
         {
             *default = i32::from(value);

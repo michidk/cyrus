@@ -2312,6 +2312,7 @@ fn standalone_default_writes_use_initialized_player_control() {
         ]);
         add_standalone_receivers(&mut scripts);
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.globals_mut().initialize_selected_health_for_test(40);
         world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
         let player = world
             .actors()
@@ -30122,4 +30123,67 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     // The jump entry's queued state ran one arbitration and survived to the next update.
     assert_ne!(queued_before, 0);
     assert_eq!(world.spatial(id).unwrap().local.position[0], stable[0]);
+}
+
+#[test]
+fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record() {
+    for dead in [false, true] {
+        let mut ops = Vec::new();
+        if dead {
+            ops.push(Operation::Call {
+                call: Call {
+                    function_id: 5,
+                    function: "KillMe".into(),
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    arguments: vec![],
+                },
+            });
+        }
+        ops.push(Operation::Call {
+            call: attribute_call(1, "SetAttribute", 44, Some(0x123)),
+        });
+        ops.push(Operation::End { target: 0 });
+        let mut scripts = attribute_cache(ops);
+        scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+        scripts.definition.functions.push(Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_14".into(), 1);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let mut sink = |_, _| Ok(());
+        let _ = world.advance(
+            id,
+            cyrus_game::script::ScriptStage::OrdinaryMain,
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut sink),
+            None,
+            100,
+        );
+        let actor = &world.actors()[0];
+        if dead {
+            // A dead actor releases its nodes and stores the default in its combat record, which
+            // this fixture never initialized.
+            assert!(
+                format!("{:?}", actor.failure()).contains("without a combat record"),
+                "{:?}",
+                actor.failure()
+            );
+        } else {
+            assert_eq!(actor.attributes()[44], 0x23);
+            assert_eq!(actor.control_state().unwrap().combat_death_default, None);
+        }
+    }
 }

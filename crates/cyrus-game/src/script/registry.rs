@@ -5967,6 +5967,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "{function}: attachment/rotation attribute lifecycle unsupported after spatial preparation"
             );
         }
+        if function.eq_ignore_ascii_case("SetAttribute")
+            && let [index, value] = arguments
+            && index.integer()? == 44
+        {
+            let id = self.registry.id(self.index)?;
+            if self.registry.query_is_dead(id, self.selected_player())? {
+                self.registry.release_held_walk_nodes(id)?;
+                let actor = &mut self.registry.actors[self.index];
+                let default = actor
+                    .control
+                    .as_mut()
+                    .and_then(|control| control.combat_death_default.as_mut())
+                    .context("SetAttribute 44: dead actor without a combat record unsupported")?;
+                *default = value.integer()?;
+            }
+        }
         let actor = &mut self.registry.actors[self.index];
         if let Some(value) = super::attributes::call(
             function,
