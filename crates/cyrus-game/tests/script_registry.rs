@@ -15388,6 +15388,14 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
             !wall,
             "wall {wall}"
         );
+        // A receiver that gathered nothing reads the list the latest gather left behind.
+        assert_eq!(
+            world
+                .player_in_sight_retained(ids[0], ids[1], &scene, &data)
+                .unwrap(),
+            !wall,
+            "retained list, wall {wall}"
+        );
     }
 }
 

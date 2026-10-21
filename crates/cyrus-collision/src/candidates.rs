@@ -142,7 +142,7 @@ pub struct ActorCandidate {
 }
 
 /// Separate original buffers, each holding at most 64 entries.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CollisionCandidates {
     pub faces: Vec<FaceCandidate>,
     pub actors: Vec<ActorCandidate>,

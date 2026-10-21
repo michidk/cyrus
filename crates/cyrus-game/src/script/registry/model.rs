@@ -194,6 +194,9 @@ impl ScriptWorld {
             &self.live_collision_inputs(actors)?,
             &[],
         )?;
+        if !stable_recovery {
+            self.retained_candidates = candidates.clone();
+        }
         Ok(OrdinaryCollisionQuery {
             actor: id,
             world: self.world,
@@ -227,8 +230,15 @@ impl ScriptWorld {
         &self,
         query: &OrdinaryCollisionQuery,
     ) -> Result<std::collections::BTreeMap<usize, cyrus_collision::collision_mesh::ModelPose>> {
+        self.candidate_poses(&query.candidates)
+    }
+
+    pub(super) fn candidate_poses(
+        &self,
+        candidates: &cyrus_collision::candidates::CollisionCandidates,
+    ) -> Result<std::collections::BTreeMap<usize, cyrus_collision::collision_mesh::ModelPose>> {
         let mut poses = std::collections::BTreeMap::new();
-        for candidate in &query.candidates.faces {
+        for candidate in &candidates.faces {
             if let cyrus_collision::candidates::CandidateOwner::Actor(index) = candidate.owner {
                 if poses.contains_key(&index) {
                     continue;

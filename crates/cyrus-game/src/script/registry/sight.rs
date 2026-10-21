@@ -1,7 +1,7 @@
 //! Line of sight between two actors follows preservation's combat decision "In sight" rules.
 use super::super::combat::{Engagement, combat_target_valid, engagement};
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use cyrus_collision::{distance::rounded_distance, ground::SupportSource};
 
 /// Live samples established before the nonplayer decision stage's cleanup and selections.
@@ -361,6 +361,36 @@ impl ScriptWorld {
         self.segment_in_sight(id, player_index, from, to, 0x40000, query)
     }
 
+    /// `PlayerInSight` for a receiver that gathered no candidates of its own: the test runs
+    /// against the list the latest gather left, as the original's single global list does.
+    pub fn player_in_sight_retained(
+        &self,
+        id: ScriptActorId,
+        player: ScriptActorId,
+        scene: &crate::player::data::PlayerScene,
+        data: &cyrus_assets::animation::Animations,
+    ) -> Result<bool> {
+        self.resolve(id)?;
+        ensure!(
+            scene.world == self.world,
+            "world {} in-sight scene identity mismatch",
+            self.world
+        );
+        self.require_model_identity(data)?;
+        let player_index = self.resolve(player)?;
+        let from = self.spatial(id)?.local.position;
+        let to = self.spatial(player)?.local.position;
+        self.segment_clear(
+            player_index,
+            from,
+            to,
+            0x40000,
+            scene,
+            &self.retained_candidates,
+            self.candidate_poses(&self.retained_candidates)?,
+        )
+    }
+
     fn segment_in_sight(
         &self,
         id: ScriptActorId,
@@ -371,17 +401,37 @@ impl ScriptWorld {
         query: OrdinaryObstacleQuery<'_>,
     ) -> Result<bool> {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+        self.segment_clear(
+            target_index,
+            from,
+            to,
+            limit,
+            query.scene,
+            &query.prepared.candidates,
+            self.ordinary_collision_poses(query.prepared)?,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // Explicit endpoints, limit and retained geometry.
+    fn segment_clear(
+        &self,
+        target_index: usize,
+        from: [i32; 3],
+        to: [i32; 3],
+        limit: i32,
+        scene: &crate::player::data::PlayerScene,
+        candidates: &cyrus_collision::candidates::CollisionCandidates,
+        poses: std::collections::BTreeMap<usize, cyrus_collision::collision_mesh::ModelPose>,
+    ) -> Result<bool> {
         let distance = rounded_distance(std::array::from_fn(|axis| {
             to[axis].wrapping_sub(from[axis])
         }))?;
         if distance > limit {
             return Ok(false);
         }
-        let poses = self.ordinary_collision_poses(query.prepared)?;
-        let contacts = query.scene.static_collision.runtime_segment_contacts(
-            &query.prepared.candidates,
-            query
-                .scene
+        let contacts = scene.static_collision.runtime_segment_contacts(
+            candidates,
+            scene
                 .actor_collision
                 .as_ref()
                 .context("in-sight live geometry unavailable; re-export world")?,

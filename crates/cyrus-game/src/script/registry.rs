@@ -532,6 +532,9 @@ pub struct ScriptWorld {
     walk_nodes: Option<super::navigation::WalkNodeReservations>,
     next_combat_index: i32,
     ordinary_prepared: bool,
+    /// The model candidate list of the latest ordinary candidate gather. The original keeps one
+    /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
+    retained_candidates: cyrus_collision::candidates::CollisionCandidates,
     model_admission: Option<model::AdmissionState>,
     map_updates: Vec<usize>,
     /// Shared surface-query veto; absent until an assigning query establishes it.
@@ -1107,6 +1110,7 @@ impl ScriptWorld {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            retained_candidates: Default::default(),
             surface_veto: None,
             camera,
             camera_glide: scripts.camera.glide.into(),
@@ -5811,10 +5815,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if function.eq_ignore_ascii_case("PlayerInSight") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let geometry = self
-                .inputs
-                .locomotion_geometry
-                .context("PlayerInSight requires the receiver's collision candidates")?;
             let player = self
                 .selected_player()
                 .context("PlayerInSight requires a selected player")?;
@@ -5822,17 +5822,32 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 generation: self.generation,
                 index: self.index,
             };
-            let visible = self.registry.player_in_sight(
-                id,
-                player,
-                obstacle::OrdinaryObstacleQuery {
-                    scene: geometry.ground.scene,
-                    animations: geometry.ground.animations,
-                    prepared: geometry.ground.prepared,
-                    vertical_offset: 0,
-                    respond: false,
-                },
-            )?;
+            let visible = if let Some(geometry) = self.inputs.locomotion_geometry {
+                self.registry.player_in_sight(
+                    id,
+                    player,
+                    obstacle::OrdinaryObstacleQuery {
+                        scene: geometry.ground.scene,
+                        animations: geometry.ground.animations,
+                        prepared: geometry.ground.prepared,
+                        vertical_offset: 0,
+                        respond: false,
+                    },
+                )?
+            } else {
+                // A receiver without collision gathers no candidates, so the test reads the list
+                // the latest gather left.
+                let source = self
+                    .inputs
+                    .player_collision
+                    .context("PlayerInSight requires the world's collision geometry")?;
+                self.registry.player_in_sight_retained(
+                    id,
+                    player,
+                    source.scene,
+                    source.animations,
+                )?
+            };
             return Ok(CallResult::Complete(i32::from(visible)));
         }
         if function.eq_ignore_ascii_case("DistanceToLocation") {
@@ -6348,6 +6363,7 @@ mod fighting_tests {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            retained_candidates: Default::default(),
             model_admission: None,
             map_updates: Vec::new(),
             surface_veto: None,
