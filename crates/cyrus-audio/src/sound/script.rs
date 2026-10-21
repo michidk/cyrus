@@ -1964,7 +1964,7 @@ mod dialogue_tests {
             "compass": [0,0], "compass_size": [0,0], "world_compass": {},
             "powerup_slots": [[0,0],[0,0]], "powerup_sizes": [],
             "logbook": [0,0], "logbook_size": [0,0], "walk_mode": false,
-            "auto_defend": false, "notices": [["",""],["",""]], "inventory": {}, "start_items": [], "items": [],
+            "auto_defend": false, "notices": [["",""],["",""]], "inventory": {}, "inventory_screen": [[0,0],[0,0],[0,0]], "start_items": [], "items": [],
             "selected": null, "bindings": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
             "font": {"start": 0, "line_height": 0, "glyphs": [], "palette": []},
             "text_alpha": [255,255], "player_text_alpha": [255,97], "used_text_alpha": [128,100]

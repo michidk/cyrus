@@ -193,7 +193,7 @@ pub(crate) fn register(app: &mut bevy::prelude::App) {
     );
 }
 
-#[allow(clippy::too_many_arguments)] // Owns one shared input and clock transition.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)] // Owns one shared input and clock transition; the tuple only groups optional resources past the system parameter limit.
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
@@ -229,7 +229,7 @@ fn drive(
             }
         };
     if *state.get() != crate::AppState::InGame {
-        resume(&mut *screen, &mut virtual_time, &mut None);
+        resume(&mut screen, &mut virtual_time, &mut None);
         screen.open = false;
         screen.opening = false;
         screen.waiting_for_release = false;
@@ -258,7 +258,7 @@ fn drive(
             if let Some(hud) = hud.as_ref() {
                 hud.set_inventory_candle(false);
             }
-            resume(&mut *screen, &mut virtual_time, &mut clock);
+            resume(&mut screen, &mut virtual_time, &mut clock);
         }
         return;
     }

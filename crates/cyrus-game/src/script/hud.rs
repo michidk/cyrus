@@ -7,6 +7,9 @@ use cyrus_script::Argument;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+/// Owned item IDs with counts in ID order, and the selected item ID.
+pub type InventoryList = (Vec<(u16, u32)>, Option<u16>);
+
 /// Complete configured HUD state for a replacement session candidate.
 /// This Cyrus snapshot is not an original save record. Unconfigured state and
 /// retained initialization/load errors cannot be captured or silently repaired.
@@ -290,7 +293,7 @@ impl ScriptHud {
     }
 
     /// The inventory screen's unhidden owned items with counts, in ID order, and the selection.
-    pub fn inventory_list(&self) -> Option<(Vec<(u16, u32)>, Option<u16>)> {
+    pub fn inventory_list(&self) -> Option<InventoryList> {
         self.0
             .lock()
             .expect("script HUD lock poisoned")
