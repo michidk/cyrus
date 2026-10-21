@@ -191,6 +191,7 @@ module where it is defined and regenerate.
 - `src/script/registry/health.rs` — Selected-player health services retain distinct publication and death ordering.
 - `src/script/registry/item_use.rs` — `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
+- `src/script/registry/ledge.rs` — Selected-player ledge entry: the edge service and the ledge scan. Ledge records found by the
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update
@@ -204,6 +205,7 @@ module where it is defined and regenerate.
 - `src/script/registry/point_tasks.rs` — The receiver's side of the point tasks: one ordinary turn step per `FaceAngle`/`FacePos`
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
+- `src/script/registry/projectile.rs` — `projectileAI`: one flight step of a created projectile, following preservation's
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
 - `src/script/registry/quick_keys.rs` — The quick sword and quick health keys: the world loop's key handler for the selected player.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.

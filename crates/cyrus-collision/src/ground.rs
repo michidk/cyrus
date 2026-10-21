@@ -432,6 +432,23 @@ impl TerrainGround {
     /// Samples dry interior terrain. Returns `None` for unsupported water or grid edges.
     /// Input coordinates retain the original eight fractional bits.
     pub fn sample(&self, position: [i64; 3]) -> Option<GroundSupport> {
+        let (height, plane) = self.plane(position, true)?;
+        let normal = plane.normalize();
+        Some(GroundSupport {
+            height,
+            normal: normal
+                .to_array()
+                .map(|value| (value * 256.0).round_ties_even() as i32),
+        })
+    }
+
+    /// Terrain surface height in map units at a runtime position, water cells included;
+    /// `None` only off the height grid. Same cell and triangle selection as [`Self::sample`].
+    pub fn height(&self, position: [i64; 3]) -> Option<f64> {
+        self.plane(position, false).map(|(height, _)| height)
+    }
+
+    fn plane(&self, position: [i64; 3], dry_only: bool) -> Option<(f64, DVec3)> {
         let x = (position[0] >> 8) as f64;
         let z = (position[2] >> 8) as f64;
         let i = (x / 256.0 - 0.5).round_ties_even() as i32;
@@ -441,7 +458,7 @@ impl TerrainGround {
         }
         let corner = |column: i32, row: i32| {
             let index = (256 - row) as usize * 256 + column as usize;
-            (!self.water[index]).then(|| {
+            (!dry_only || !self.water[index]).then(|| {
                 DVec3::new(
                     f64::from(column * 256),
                     f64::from(self.heights[index]),
@@ -457,13 +474,9 @@ impl TerrainGround {
             (diagonal, corner(i, j - 1)?)
         };
         let plane = (c - a).cross(b - a);
-        let normal = plane.normalize();
-        let height = a.y - (plane.x * (x - a.x) + plane.z * (z - a.z)) / plane.y;
-        Some(GroundSupport {
-            height,
-            normal: normal
-                .to_array()
-                .map(|value| (value * 256.0).round_ties_even() as i32),
-        })
+        Some((
+            a.y - (plane.x * (x - a.x) + plane.z * (z - a.z)) / plane.y,
+            plane,
+        ))
     }
 }

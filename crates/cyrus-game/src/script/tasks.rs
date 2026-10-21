@@ -162,6 +162,9 @@ pub(super) trait PointHost {
 
     /// One `DragonBreathTask` update: true while the receiver keeps breathing.
     fn dragon_breath(&mut self) -> Result<bool>;
+
+    /// One `projectileAI` update: true while the receiver keeps flying.
+    fn projectile(&mut self) -> Result<bool>;
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -528,6 +531,8 @@ enum Task {
     PlayerOffset,
     /// `DragonBreathTask()`: the `DragonBreath` update every invocation, completing when it returns zero.
     DragonBreath,
+    /// `projectileAI()`: one projectile flight step every invocation, completing when it ends.
+    Projectile,
     /// `MoveMarker(marker, tolerance)`: the direct point wrapper toward a marker.
     MoveMarker,
     /// `MoveLocation(location, tolerance)`: the direct point wrapper toward a receiver location.
@@ -1188,6 +1193,13 @@ impl Task {
                     .point
                     .context("DragonBreathTask requires the receiver's update owner")?;
                 !host.dragon_breath()?
+            }
+            Self::Projectile => {
+                anyhow::ensure!(arguments.is_empty(), "projectileAI requires no arguments");
+                let host = services
+                    .point
+                    .context("projectileAI requires the receiver's update owner")?;
+                !host.projectile()?
             }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
@@ -2595,6 +2607,8 @@ impl NativeTasks {
                 "DragonBreathTask requires multitask encoding"
             );
             Task::DragonBreath
+        } else if function.eq_ignore_ascii_case("projectileAI") {
+            Task::Projectile
         } else if function.eq_ignore_ascii_case("MoveMarker") {
             Task::MoveMarker
         } else if function.eq_ignore_ascii_case("MoveLocation") {
@@ -2743,6 +2757,7 @@ impl NativeTasks {
             "FacePos",
             "PlayerOffsettask",
             "DragonBreathTask",
+            "projectileAI",
             "MoveMarker",
             "MoveLocation",
             "MovePosition",
@@ -2763,6 +2778,7 @@ impl NativeTasks {
                     | Task::FacePos
                     | Task::PlayerOffset
                     | Task::DragonBreath
+                    | Task::Projectile
                     | Task::MoveMarker
                     | Task::MoveLocation
                     | Task::MovePosition

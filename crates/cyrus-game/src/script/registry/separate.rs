@@ -44,7 +44,12 @@ impl ScriptWorld {
         let Some((key, template)) = installed else {
             anyhow::bail!("world {}: script {name} not installed", self.world)
         };
-        let actor = super::ScriptActor::created(self.world, index, key, template);
+        let mut actor = super::ScriptActor::created(self.world, index, key, template);
+        actor
+            .control
+            .as_mut()
+            .expect("created objects allocate control")
+            .creator = Some(creator_index);
         let spatial = self
             .spatial
             .as_mut()

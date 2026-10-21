@@ -30322,3 +30322,236 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
         }
     }
 }
+
+#[test]
+fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_the_script() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+    scripts.definition.functions.extend([
+        Function {
+            name: "projectileAI".into(),
+            param_count: 0,
+            kind: CallKind::Task,
+        },
+        Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        },
+    ]);
+    let mut projectile = scripts.actors["LOGIC"].clone();
+    projectile.code_origin += 1000;
+    projectile.header_index += 100;
+    projectile.instances = 1;
+    projectile.namespace = None;
+    projectile.instance_variables = vec![vec![]];
+    projectile.program.variables = vec![];
+    projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+    projectile.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: wait(2, "KillMe", CallKind::Function, vec![]),
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.actors.insert("BALL".into(), projectile);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.active = 1;
+        placement.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, models) = static_model_fixture_at(scripts, None, [600, 20, 600]);
+    let creator = world.id(0).unwrap();
+    let origin = world.spatial(creator).unwrap().local.position;
+    // Yaw 0 flies toward +Z in the shoot rotation; attribute 8 = 200 map units per nominal tick.
+    let ball = world
+        .create_object(creator, "ball", origin, [0, 0, 0])
+        .unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    let mut positions = Vec::new();
+    for _ in 0..24 {
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[ball.index];
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        positions.push(world.spatial(ball).unwrap().local.position);
+        if actor.control_state().unwrap().killed {
+            break;
+        }
+    }
+    let step = positions[1][2] - positions[0][2];
+    assert_eq!(step.abs(), 200 << 8, "{positions:?}");
+    assert!(
+        positions
+            .iter()
+            .all(|p| p[0] == origin[0] && p[1] == origin[1])
+    );
+    // The range ends at 0xbb800 Q8 = 3000 map units from the parent: the step that reaches it
+    // ends the task (keeping the moved position) and the script proceeds to KillMe.
+    let last = *positions.last().unwrap();
+    assert!(
+        world.actors()[ball.index].control_state().unwrap().killed,
+        "{positions:?}"
+    );
+    // 3000 map units at 200 per step: the fifteenth step reaches the range.
+    assert_eq!(positions.len(), 15, "{positions:?}");
+    assert_eq!((last[2] - origin[2]).abs(), 0xbb800);
+}
+
+#[test]
+fn projectile_ai_stops_at_a_wall_contact() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    for yaw in [512u16, 1536] {
+        let mut scripts = cache();
+        scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+        scripts.definition.functions.extend([
+            Function {
+                name: "projectileAI".into(),
+                param_count: 0,
+                kind: CallKind::Task,
+            },
+            Function {
+                name: "KillMe".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            },
+        ]);
+        let mut projectile = scripts.actors["LOGIC"].clone();
+        projectile.code_origin += 1000;
+        projectile.header_index += 100;
+        projectile.instances = 1;
+        projectile.namespace = None;
+        projectile.instance_variables = vec![vec![]];
+        projectile.program.variables = vec![];
+        projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+        projectile.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: wait(2, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("BALL".into(), projectile);
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.active = 1;
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (mut world, data, models) = static_model_fixture_at(scripts, None, [2000, 20, 600]);
+        let creator = world.id(0).unwrap();
+        let origin = world.spatial(creator).unwrap().local.position;
+        let ball = world
+            .create_object(creator, "ball", origin, [0, yaw, 0])
+            .unwrap();
+        let mut scene = ordinary_collision_scene(world.world, models);
+        // Walls 1050 map units to either side along X (off the 200-unit step grid, since a step
+        // ending exactly on a plane is not a crossing); only the one in the flight path is hit.
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            placements: [3050, 950]
+                .into_iter()
+                .enumerate()
+                .map(|(id, x)| StaticPlacement {
+                    id: id as u32 + 1,
+                    model: "WALL".into(),
+                    position: [x, 20, 600],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                })
+                .collect(),
+            models: BTreeMap::from([("WALL".into(), ordinary_forward_wall_model())]),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let mut path = Vec::new();
+        for _ in 0..12 {
+            world
+                .update_ordinary(
+                    &data,
+                    [2000, 600],
+                    OrdinaryInputs {
+                        scripts: ScriptInputs {
+                            nominal_ticks: Some(1),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        scene: Some(&scene),
+                    },
+                    &mut random,
+                    &mut |_, _| Ok(()),
+                    100,
+                )
+                .unwrap();
+            let actor = &world.actors()[ball.index];
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            path.push(world.spatial(ball).unwrap().local.position);
+            if actor.control_state().unwrap().killed {
+                break;
+            }
+        }
+        let last = *path.last().unwrap();
+        assert!(
+            world.actors()[ball.index].control_state().unwrap().killed,
+            "yaw {yaw}: {path:?}"
+        );
+        // The flight ends at the contact on the wall plane, 1050 map units from the start.
+        assert_eq!(
+            (last[0] - origin[0]).abs(),
+            1050 << 8,
+            "yaw {yaw}: {path:?}"
+        );
+        assert!(path.len() < 15, "yaw {yaw}: {path:?}");
+    }
+}

@@ -302,8 +302,9 @@ every update until `KillMe` and survive saves. `shootPlayer` aims the created ob
 A direct-damage combat message (`0xd005`) is answered for every receiver, including the selected
 player. `DragonBreath` and `DragonBreathTask` run the dragon's smoke while it speaks, its fireball at a
 target beyond the minimum range, and the item swap when it dies; the smoke and fireball placement
-from animated vertices is not yet compared with the original in a running world. `projectileAI`'s
-movement and hit response remain unavailable. Animated nonplayer actors with ground response fall when support is
+from animated vertices is not yet compared with the original in a running world. `projectileAI` flies a created
+projectile along its heading at attribute 8 per tick, ends its flight at its creator's range, under terrain or at a
+wall contact, and sends `0xd005` from the creator to a hit actor; actors with RAVC spheres refuse the hit test. Animated nonplayer actors with ground response fall when support is
 missing and land with the installed `[game]` thresholds (script caches need re-export for them). The selected
 player falls too: its edge service runs the ledge scan, and a scan without a ledge record leaves the ordinary fall.
 Found ledge records, the ledge states, body contacts while falling, static-model falls and the jump-selector and

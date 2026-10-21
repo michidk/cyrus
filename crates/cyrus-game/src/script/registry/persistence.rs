@@ -43,6 +43,8 @@ struct ControlSnapshot {
     hidden: bool,
     #[serde(default)]
     killed: bool,
+    #[serde(default)]
+    creator: Option<usize>,
     combat_death_default: Option<i32>,
     combat: Option<CombatSnapshot>,
 }
@@ -117,6 +119,7 @@ impl ControlSnapshot {
             object_update_excluded: control.object_update_excluded,
             hidden: control.hidden,
             killed: control.killed,
+            creator: control.creator,
             combat_death_default: control.combat_death_default,
             combat: control.combat.as_ref().map(CombatSnapshot::capture),
         }
@@ -163,6 +166,7 @@ impl ControlSnapshot {
             object_update_excluded: self.object_update_excluded,
             hidden: self.hidden,
             killed: self.killed,
+            creator: self.creator,
             combat_death_default: self.combat_death_default,
             combat: self.combat.map(|saved| saved.restore(rebind)).transpose()?,
         })

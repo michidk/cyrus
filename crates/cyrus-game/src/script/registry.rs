@@ -40,6 +40,7 @@ mod persistence;
 mod point;
 mod point_tasks;
 mod probe;
+mod projectile;
 mod quick_keys;
 mod torch;
 pub use persistence::{
@@ -331,6 +332,9 @@ pub struct ActorControlState {
     pub hidden: bool,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
+    /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
+    /// the parent `projectileAI` measures range from and sends hits for.
+    pub creator: Option<usize>,
     pub combat_death_default: Option<i32>,
     pub combat: Option<super::CombatControlState>,
 }

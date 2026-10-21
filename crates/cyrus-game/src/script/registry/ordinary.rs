@@ -143,8 +143,18 @@ impl ScriptWorld {
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
         self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
-        self.update_created(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();
+        // Created objects (projectiles) read the world's geometry for their flight.
+        let created_inputs = ScriptInputs {
+            player_collision: scene.map(|scene| super::PlayerCollisionSource {
+                scene,
+                animations: data,
+                view,
+                actors: &selected,
+            }),
+            ..inputs
+        };
+        self.update_created(created_inputs, random, sounds, budget)?;
         for &id in &selected {
             if matches!(
                 self.actors[id.index].source,

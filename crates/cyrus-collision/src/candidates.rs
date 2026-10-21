@@ -69,6 +69,16 @@ impl CandidateQuery {
         }
     }
 
+    /// A query around a point with an explicit radius in map units that skips `own_model`
+    /// (a projectile searching its flight radius). Position has eight fractional bits.
+    pub fn at(position: [i32; 3], radius: f32, own_model: Option<ModelInstance>) -> Self {
+        Self {
+            origin: Vec3::from_array(position.map(|coordinate| (coordinate >> 8) as f32)),
+            radius,
+            own_model,
+        }
+    }
+
     pub(crate) fn static_query(position: [i64; 3], radius: f32) -> Self {
         Self {
             origin: Vec3::from_array(position.map(|coordinate| (coordinate >> 8) as f32)),

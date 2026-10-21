@@ -18,6 +18,10 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
         self.breathe()
     }
 
+    fn projectile(&mut self) -> Result<bool> {
+        self.fly_projectile()
+    }
+
     fn move_to(
         &mut self,
         wrapper: PointWrapper,
