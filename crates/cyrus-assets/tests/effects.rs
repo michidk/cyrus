@@ -20,7 +20,9 @@ fn installed_world_prepares_effect_frames_and_map_drawing_attributes() -> Result
     assert!(!effects.disabled);
     assert_eq!(effects.capacity, 32);
     assert_eq!(effects.ambient_brightness, Some(78));
-    assert_eq!(effects.images.len(), 4);
+    // The four death effect images and 0x2380, the image `AddFlatEffect` calls name.
+    assert_eq!(effects.images.len(), 5);
+    assert!(!effects.images[&0x2380].frames.is_empty());
     // Verified installed BSI frame ranges and map FLAT alpha inputs.
     for (identity, size, count, delay, alpha) in [
         (0xb081, [74, 70], 16, 71, 151),
