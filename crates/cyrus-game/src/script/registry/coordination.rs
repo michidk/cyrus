@@ -22,11 +22,12 @@ impl ScriptWorld {
     /// Consume at most one combat message. Coordination transfers clear living
     /// active attackers in ordinary list order before assigning state and budget.
     /// Block response displaces the sender before coordination handoff.
-    /// Unknown codes are inert; hit and damage responses remain unsupported.
+    /// Hit and direct-damage responses run through the synchronous combat and
+    /// health services before coordination handoff; unknown codes remain inert.
     /// Consumption and earlier state writes survive a later service error.
     /// Production dispatch sees scheduler services before consuming hit/damage messages.
-    /// The d001 response still stops after its verified intent writes; d005 remains inert
-    /// until its distinct response service is integrated.
+    /// d001 and d005 consume their messages before response work and retain
+    /// partial writes when a later service fails.
     pub fn process_combat_message_with_services(
         &mut self,
         id: ScriptActorId,

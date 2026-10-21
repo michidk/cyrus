@@ -4,10 +4,9 @@ use crate::script::decision::attack_step_with_animation;
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
-    /// Apply the verified d001 response core after message intent clears. This slice
-    /// owns displacement, positional impact sound, taunt, wrapping strength/armor
-    /// damage arithmetic and contact-death selector routing. Animation admission
-    /// remains in the playback follow-up.
+    /// Apply the d001 response after message intent clears. The order follows the
+    /// published combat-message contract: admission, displacement, impact sound,
+    /// hurt taunt, weapon cleanup, hit reaction, damage and coordination handoff.
     pub(super) fn process_hit_response_core(
         &mut self,
         receiver: ScriptActorId,
@@ -18,6 +17,29 @@ impl ScriptWorld {
     ) -> Result<()> {
         let receiver_index = self.resolve(receiver)?;
         let sender_index = self.resolve(sender)?;
+        let selected_player = self
+            .selected_player_index()
+            .map(|index| self.id(index))
+            .transpose()?;
+        let selected = selected_player == Some(receiver);
+
+        if !selected {
+            let required = self.actors[receiver_index].attributes[102];
+            if required != 0 && required != self.actors[sender_index].attributes[23] {
+                return Ok(());
+            }
+        }
+        if self.actors[receiver_index].attributes[97] != 0 {
+            let holding = self.spacing_weapon(receiver, inputs)?.1;
+            let stance = self.actors[receiver_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.flags & 4 != 0);
+            if !holding && !stance {
+                return Ok(());
+            }
+        }
         let from = self.spatial(sender)?.local.position;
         let origin = self.spatial(receiver)?.local.position;
         let heading = super::super::spatial::query_bearing(
@@ -43,6 +65,103 @@ impl ScriptWorld {
             },
         )?;
         self.request_hurt_combat_taunt(receiver, inputs, random, sounds)?;
+        if selected
+            && self
+                .globals
+                .player_death_override_group()
+                .context("hit response death-animation override unavailable")?
+                != 0
+        {
+            return Ok(());
+        }
+        let sender_action = self.actors[sender_index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .map(|combat| combat.action)
+            .unwrap_or(-1);
+        if sender_action == 8 {
+            let selected = selected_player.context("hit response selected player unavailable")?;
+            self.cleanup_actor_weapon(
+                receiver,
+                selected,
+                inputs
+                    .nominal_ticks
+                    .context("hit response nominal ticks unavailable")?,
+                sounds,
+            )?;
+            self.cleanup_actor_weapon(
+                sender,
+                selected,
+                inputs
+                    .nominal_ticks
+                    .context("hit response nominal ticks unavailable")?,
+                sounds,
+            )?;
+        }
+
+        let ticks = inputs
+            .nominal_ticks
+            .context("hit response nominal ticks unavailable")?;
+        let reaction_group = if !selected {
+            117
+        } else {
+            let holding = self.spacing_weapon(receiver, inputs)?.1;
+            let stance = self.actors[receiver_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.flags & 4 != 0);
+            let odd = self.globals.world_loop_frame & 1 != 0;
+            if holding || stance {
+                if odd { 118 } else { 117 }
+            } else if self.actors[receiver_index]
+                .animation
+                .as_ref()
+                .is_some_and(|animation| animation.playback.has_group(119))
+            {
+                let own = self.spatial(receiver)?.local;
+                let target = self.spatial(sender)?.local;
+                if super::super::decision::ordinary_defence_forward_arc(
+                    own.position,
+                    target.position,
+                    i32::from(own.angles[1]),
+                ) {
+                    119
+                } else {
+                    120
+                }
+            } else if odd {
+                133
+            } else {
+                132
+            }
+        };
+        if self.actors[receiver_index].animation.is_some() {
+            self.request_ordinary_group(receiver, reaction_group, false, ticks, sounds)?;
+        }
+
+        let receiver_action = self.actors[receiver_index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .map(|combat| combat.action)
+            .unwrap_or(-1);
+        if !matches!(receiver_action, -1 | 9) {
+            self.actors[sender_index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .context("hit sender combat unavailable")?
+                .action = -1;
+        }
+
+        let damage_admitted = self.actors[receiver_index].attributes[102] == 0
+            || self.actors[sender_index].attributes[23]
+                == self.actors[receiver_index].attributes[102];
+        if !damage_admitted {
+            return Ok(());
+        }
         let (strength, damage) = {
             let combat = self.actors[sender_index]
                 .control
@@ -65,12 +184,47 @@ impl ScriptWorld {
         let scaled = product.wrapping_div(100);
         let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
         let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
-        let health = i32::from(self.actors[receiver_index].attributes[3])
-            .wrapping_add(change)
-            .clamp(0, 255);
-        self.actors[receiver_index].attributes[3] = health as u8;
-        if health < 1 {
-            self.dispatch_contact_death(receiver, 0, inputs.nominal_ticks, sounds)?;
+        if selected {
+            self.apply_selected_additive_health(receiver, change, inputs, Some(random), sounds)?;
+        } else {
+            let environment = super::transition::ObstacleEnvironment {
+                selected_player,
+                auto_grab: false,
+                item_system_ready: inputs
+                    .hud
+                    .map(|hud| hud.inventory_ready())
+                    .transpose()?
+                    .unwrap_or(false),
+                shell_execution: inputs.shell_execution.unwrap_or(false),
+                ticks,
+            };
+            self.apply_nonplayer_contact_health(receiver, change, environment)?;
+        }
+        if self.actors[receiver_index].attributes[3] < 1 {
+            self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
+            self.request_timed_combat_taunt(sender, 7, 0, inputs, random, sounds)?;
+            let motion_kind = self.current_combat_motion(sender)?.kind;
+            self.dispatch_contact_death(
+                receiver,
+                if motion_kind == 0 { 0 } else { 1 },
+                Some(ticks),
+                sounds,
+            )?;
+        }
+        let combat = self.actors[receiver_index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("hit response receiver combat unavailable")?;
+        if combat.attacker_selection_state == 0
+            && !selected
+            && !self.query_is_dead(receiver, selected_player)?
+        {
+            if let Some(coordinator) = self.ordinary_waiting_coordinator(sender)? {
+                self.send_combat_message(receiver, coordinator, 0xd003)?;
+            } else {
+                self.set_combat_coordination(receiver, 1)?;
+            }
         }
         Ok(())
     }
