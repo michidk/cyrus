@@ -405,9 +405,6 @@ impl ScriptActor {
     fn created(world: u32, index: usize, name: &str, template: &ShellTemplate) -> Self {
         let mut actor = Self::shell(world, index, name, Some(template));
         actor.source = ScriptActorSource::Created(name.to_owned());
-        // Post-load objects use standalone records. The original leaves their runtime
-        // identifier at zero instead of allocating an actor-pool slot.
-        actor.runtime_identifier = Some(0);
         actor.attributes = template.attributes.clone();
         actor.control = Some(ActorControlState::default());
         actor.surface = Some(0);
