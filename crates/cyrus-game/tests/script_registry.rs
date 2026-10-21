@@ -29451,6 +29451,42 @@ fn shoot_player_aims_the_created_object_at_the_selected_player() {
 }
 
 #[test]
+fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (_, mut world, _, _) = player_health_fixture();
+    let receiver = world.selected_player().unwrap();
+    let sender = (0..world.actors().len())
+        .map(|index| world.id(index).unwrap())
+        .find(|id| {
+            *id != receiver && !matches!(world.actors()[id.index].source, ScriptActorSource::Player)
+        })
+        .unwrap();
+    world.ordinary_actors([0, 0]).unwrap();
+    world.set_attribute_for_test(sender, 96, 12);
+    let before = world.spatial(receiver).unwrap().local.position;
+    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    let hud = ScriptHud::default();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                hud: Some(&hud),
+                death_suppressed: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::from_state(42)),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+    assert_ne!(world.spatial(receiver).unwrap().local.position, before);
+    assert_eq!(world.globals().selected_health().unwrap().displayed(), 38);
+}
+
+#[test]
 fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_clearing_intent() {
     use cyrus_game::script::ScriptInputs;
     let (mut world, _, _) = coordination_message_fixture(|saved| {
