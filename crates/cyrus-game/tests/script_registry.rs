@@ -29275,7 +29275,7 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
 }
 
 #[test]
-fn shoot_creates_the_named_object_at_the_rotated_offset_with_its_own_height_rule() {
+fn shoot_creates_the_named_object_at_the_creator_with_the_given_orientation() {
     use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
     let shoot = |name_known: bool| {
         let mut scripts = cache();
@@ -29292,7 +29292,7 @@ fn shoot_creates_the_named_object_at_the_rotated_offset_with_its_own_height_rule
         let logic = scripts.actors.get_mut("LOGIC").unwrap();
         logic.program.strings = vec![if name_known { "ball" } else { "nothing" }.into()];
         let mut arguments = vec![Value::String { index: 0 }];
-        arguments.extend([0, 0, 256, 0, 512, 0].map(|value| Value::Integer { value }));
+        arguments.extend([0, 0, 0, 0, 512, 0].map(|value| Value::Integer { value }));
         logic.program.steps = [
             Operation::Call {
                 call: Call {
@@ -29352,8 +29352,100 @@ fn shoot_creates_the_named_object_at_the_rotated_offset_with_its_own_height_rule
     assert_eq!(pose.angles, [0, 512, 0]);
     let creator = world.spatial(world.id(0).unwrap()).unwrap().local.position;
     assert_eq!(
-        pose.position[1], creator[1],
-        "height is the creator's plus the offset's Y (zero)"
+        pose.position, creator,
+        "a zero offset puts the object on its creator"
     );
     assert!(shoot(false).is_err(), "an unknown script name is an error");
+}
+
+#[test]
+fn shoot_player_aims_the_created_object_at_the_selected_player() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let mut projectile = scripts.actors["LOGIC"].clone();
+        projectile.code_origin += 1000;
+        projectile.header_index += 100;
+        scripts.actors.insert("BALL".into(), projectile);
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "shootPlayer".into(),
+            param_count: 4,
+            kind: CallKind::Function,
+        });
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.program.strings = vec!["ball".into()];
+        logic.program.steps = [
+            Operation::Call {
+                call: Call {
+                    function_id: id,
+                    function: "shootPlayer".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments: vec![
+                        Value::String { index: 0 },
+                        Value::Integer { value: 0 },
+                        Value::Integer { value: 0 },
+                        Value::Integer { value: 256 },
+                    ],
+                },
+            },
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    let map = world.id(0).unwrap();
+    world
+        .advance(
+            map,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    let created = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Created(_)))
+        .expect("the object exists");
+    let pose = world.spatial(world.id(created).unwrap()).unwrap().local;
+    let player = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let target = world
+        .spatial(world.id(player).unwrap())
+        .unwrap()
+        .local
+        .position;
+    let (dx, dz) = (
+        f64::from(target[0].wrapping_sub(pose.position[0])),
+        f64::from(target[2].wrapping_sub(pose.position[2])),
+    );
+    assert!(
+        dx != 0.0 || dz != 0.0,
+        "the fixture separates the player from the shot"
+    );
+    let expected = (-dx.atan2(dz) * 2048.0 / std::f64::consts::TAU).rem_euclid(2048.0);
+    let yaw = f64::from(pose.angles[1]);
+    let distance = (yaw - expected).abs().min(2048.0 - (yaw - expected).abs());
+    assert!(distance <= 2.0, "yaw {yaw} against {expected}");
+    assert_eq!(pose.angles[2], 0, "roll is zero");
 }

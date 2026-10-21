@@ -4278,18 +4278,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // shoot(name, x, y, z, pitch, yaw, roll) creates an object of the named script at the
         // receiver's position plus the offset rotated by the receiver's orientation, with the
-        // given orientation. shootPlayer(name, x, y, z) aims the object at the selected player.
-        // The receiver becomes the object's parent record.
+        // given orientation. shootPlayer(name, x, y, z) aims the object at the selected player:
+        // yaw is the bearing of the raw difference, pitch the elevation of the difference
+        // normalized to length 65536, roll zero. The receiver becomes the object's parent record.
         if kind == CallKind::Function
             && (function.eq_ignore_ascii_case("shoot")
                 || function.eq_ignore_ascii_case("shootPlayer"))
         {
             let player_form = function.eq_ignore_ascii_case("shootPlayer");
             anyhow::ensure!(
-                !player_form,
-                "shootPlayer aiming unsupported: bearing helper equivalence unverified"
+                arguments.len() == if player_form { 4 } else { 7 },
+                "{function}: wrong argument count"
             );
-            anyhow::ensure!(arguments.len() == 7, "{function}: wrong argument count");
             let Argument::String(name) = &arguments[0] else {
                 anyhow::bail!("{function} requires a script name")
             };
@@ -4311,21 +4311,37 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .transform(offset)?;
             let position =
                 std::array::from_fn(|axis| rotated[axis].wrapping_add(local.position[axis]));
-            let angles = [
-                (arguments[4].integer()? & 2047) as u16,
-                (arguments[5].integer()? & 2047) as u16,
-                (arguments[6].integer()? & 2047) as u16,
-            ];
-            let created = self.registry.create_object(id, name, position, angles)?;
-            // The created object keeps the unrotated-sum height, as the original overwrites it.
-            let height = local.position[1].wrapping_add(offset[1]);
-            self.registry
-                .spatial
-                .as_mut()
-                .context("spatial state not prepared")?
-                .actor_mut(created.index)?
-                .local
-                .position[1] = height;
+            let angles = if player_form {
+                let player = self
+                    .selected_player()
+                    .with_context(|| format!("{function}: selected player unavailable"))?;
+                let target = self
+                    .registry
+                    .spatial(self.registry.id(self.registry.resolve(player)?)?)?
+                    .local
+                    .position;
+                let difference =
+                    std::array::from_fn(|axis| target[axis].wrapping_sub(position[axis]));
+                let unit = super::spatial::normalized_direction(difference);
+                let horizontal =
+                    cyrus_collision::distance::rounded_distance([unit[0], 0, unit[2]])?;
+                // The original's table bearing is the negation of the shared query bearing.
+                let elevation = i32::from(
+                    super::spatial::query_bearing(horizontal, unit[1]).wrapping_neg() & 2047,
+                );
+                [
+                    (elevation.wrapping_sub(0x200) & 0x7ff) as u16,
+                    super::spatial::query_bearing(difference[0], difference[2]),
+                    0,
+                ]
+            } else {
+                [
+                    (arguments[4].integer()? & 2047) as u16,
+                    (arguments[5].integer()? & 2047) as u16,
+                    (arguments[6].integer()? & 2047) as u16,
+                ]
+            };
+            self.registry.create_object(id, name, position, angles)?;
             return Ok(CallResult::Complete(0));
         }
         // GolemSteam: once every few updates, a puff of steam at one of the receiver's four weapon
