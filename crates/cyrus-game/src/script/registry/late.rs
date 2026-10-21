@@ -225,6 +225,17 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Clear the falling byte after the edge service took over the update's fall handling.
+    fn end_ordinary_fall(&mut self, id: ScriptActorId) -> Result<()> {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .context("edge service fall control unavailable")?
+            .falling_state = 0;
+        self.actors[id.index].sync_falling_motion();
+        Ok(())
+    }
+
     /// Support missed: start or continue an animated fall. The selector
     /// and static-model entry services are not ported and refuse explicitly.
     fn miss_ordinary_support(
@@ -241,6 +252,10 @@ impl ScriptWorld {
             .as_ref()
             .context("support miss control unavailable")?;
         if control.falling_state != 0 {
+            if self.selected_edge_service(id, query, environment)? {
+                self.end_ordinary_fall(id)?;
+                return Ok(());
+            }
             self.continue_ordinary_falling(
                 id,
                 query.animations,
@@ -252,12 +267,6 @@ impl ScriptWorld {
             )?;
             return Ok(());
         }
-        ensure!(
-            environment.selected_player != Some(id),
-            "world {} instance {}: selected-player fall entry unsupported",
-            self.world,
-            id.index
-        );
         ensure!(
             control.jump_selector == 0 || control.jump_selector.abs_diff(24) >= 4,
             "world {} instance {}: fall entry selector service unsupported",
@@ -285,6 +294,9 @@ impl ScriptWorld {
             id.index
         );
         if self.complete_ordinary_animated_fall_entry(id, query.animations, environment, sounds)? {
+            if self.selected_edge_service(id, query, environment)? {
+                return self.end_ordinary_fall(id);
+            }
             self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
         }
         Ok(())
@@ -340,7 +352,7 @@ impl ScriptWorld {
         }
         // An animated actor that is falling probes a shorter column once the measured FPS
         // reaches ten; static models always use the full distance.
-        let support_query = if falling && environment.selected_player != Some(id) {
+        let support_query = if falling {
             let fps = step_fps.context("falling support probe needs the step's measured FPS")?;
             super::ground::OrdinaryGroundQuery {
                 distance: if fps >= 10 {
@@ -408,14 +420,6 @@ impl ScriptWorld {
                     control.queued_motion == 0,
                     "queued ground response timing unavailable"
                 );
-                if falling {
-                    ensure!(
-                        environment.selected_player != Some(id),
-                        "world {} instance {}: falling selected-player edge service unsupported",
-                        self.world,
-                        id.index
-                    );
-                }
                 if let Some(support) = support.as_ref() {
                     ensure!(
                         control.sliding_state == 0,

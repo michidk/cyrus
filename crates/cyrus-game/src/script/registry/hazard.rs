@@ -14,7 +14,7 @@ pub enum OrdinaryStepDirection {
 
 /// Surface class of a contact normal's Y component (scale 256, negative up): 4 for floors,
 /// 2 for steep slopes, 8 for ceilings and 1 otherwise.
-fn surface_class(normal_y: i32) -> u8 {
+pub(super) fn surface_class(normal_y: i32) -> u8 {
     if normal_y <= -161 {
         4
     } else if normal_y >= 161 {

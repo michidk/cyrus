@@ -712,8 +712,8 @@ impl ScriptWorld {
     }
 
     /// Continue an already admitted ordinary fall after a support miss. This
-    /// does not initialize a fall or run landing response. Animated selected
-    /// player edge services must be supplied by their owner and remain unsupported.
+    /// does not initialize a fall or run landing response. The caller runs the selected
+    /// player's edge service first.
     // The continuation consumes two independent tick samples and the probe height.
     #[allow(clippy::too_many_arguments)]
     pub fn continue_ordinary_falling(
@@ -746,11 +746,6 @@ impl ScriptWorld {
         );
         let animated = path == "animation_table";
         if animated {
-            anyhow::ensure!(
-                environment.selected_player != Some(id),
-                "world {} instance {index}: falling selected-player edge service unsupported",
-                self.world
-            );
             let animation = actor
                 .animation
                 .as_ref()

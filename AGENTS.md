@@ -304,10 +304,11 @@ player. `DragonBreath` and `DragonBreathTask` run the dragon's smoke while it sp
 target beyond the minimum range, and the item swap when it dies; the smoke and fireball placement
 from animated vertices is not yet compared with the original in a running world. `projectileAI`'s
 movement and hit response remain unavailable. Animated nonplayer actors with ground response fall when support is
-missing and land with the installed `[game]` thresholds (script caches need re-export for them); the selected
-player's fall, static-model falls and the jump-selector and jump-group entries remain unavailable. The
-walk-off recovery entry and queued jump motion run, but nothing in the walking code sets the directional-state
-bytes that select the recovery yet. `LightTorch`,
+missing and land with the installed `[game]` thresholds (script caches need re-export for them). The selected
+player falls too: its edge service runs the ledge scan, and a scan without a ledge record leaves the ordinary fall.
+Found ledge records, the ledge states, body contacts while falling, static-model falls and the jump-selector and
+jump-group entries remain unavailable. The walk-off recovery entry and queued jump motion run, but nothing in the
+walking code sets the directional-state bytes that select the recovery yet. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and

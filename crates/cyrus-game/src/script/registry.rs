@@ -28,6 +28,7 @@ pub(super) mod ground;
 pub(super) mod hazard;
 mod item_use;
 mod late;
+mod ledge;
 mod light;
 mod lineup;
 mod linked;
