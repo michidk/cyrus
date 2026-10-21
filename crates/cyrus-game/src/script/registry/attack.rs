@@ -250,23 +250,17 @@ impl ScriptWorld {
         if !hud.inventory_ready()? {
             return Ok(());
         }
-        let selected = self
-            .selected_player_index()
-            .map(|index| self.id(index))
-            .transpose()?;
-        let generation = self.generation;
+        let sender_index = self.resolve(sender)?;
         let actors = &mut self.actors;
         hud.add_item(1, 1, &mut |weapon| {
-            let player =
-                selected.context("combat weapon restoration selected player unavailable")?;
-            anyhow::ensure!(
-                player.generation == generation && player.index < actors.len(),
-                "combat weapon restoration selected player identity is stale"
-            );
-            actors[player.index].attributes[23] = weapon;
+            // Inventory acquisition may repair an empty selection. The original
+            // restoration service belongs to the hit sender, so that repair must
+            // update the sender's weapon attribute even when the sender is not the
+            // selected player owning the HUD view.
+            actors[sender_index].attributes[23] = weapon;
             Ok(())
         })?;
-        self.actors[sender.index].attributes[23] = 1;
+        actors[sender_index].attributes[23] = 1;
         hud.remove_item(75)?;
         hud.select_item(1)
     }

@@ -30317,6 +30317,8 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
     );
     let receiver = world.id(1).unwrap();
     let sender = world.id(2).unwrap();
+    let selected_player = world.selected_player().unwrap();
+    let selected_weapon_before = world.actors()[selected_player.index].attributes()[23];
     let hud = ScriptHud::default();
     hud.configure(
         &inventory_asset(&[(1, 0), (75, 1)]),
@@ -30338,6 +30340,11 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
         )
         .unwrap();
     assert_eq!(world.actors()[sender.index].attributes()[23], 1);
+    assert_eq!(
+        world.actors()[selected_player.index].attributes()[23],
+        selected_weapon_before,
+        "restoring a nonselected sender must not rewrite the selected actor's weapon"
+    );
     let inventory = hud.inventory(None).unwrap();
     assert_eq!((inventory.counts[&1], inventory.counts[&75]), (1, 0));
     assert_eq!(inventory.selected, Some(1));
