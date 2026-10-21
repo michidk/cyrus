@@ -3912,7 +3912,6 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             Target::Variable(value) => i16::try_from(*value)
                 .ok()
                 .and_then(|identifier| self.registry.names.get(&identifier).copied()),
-            _ => anyhow::bail!("object target {target:?} unsupported"),
         };
         index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
@@ -4837,24 +4836,41 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("Resurrect") {
             anyhow::ensure!(arguments.is_empty(), "Resurrect requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
-            let actor = &mut self.registry.actors[self.index];
-            let control = actor
-                .control
-                .as_mut()
-                .context("Resurrect: receiver lifecycle unavailable")?;
-            if control.killed || control.death_selector == 8 {
-                control.killed = false;
-                if let Some(profile) = control.combat.as_ref().map(|record| record.contact_profile)
-                {
-                    control.combat = super::CombatControlState::initialize(
-                        &actor.attributes,
-                        control.combat.as_ref(),
-                        &mut self.registry.next_combat_index,
-                        &self.registry.combat_attacks,
-                        profile,
-                    )
-                    .context("Resurrect: combat reinitialization")?;
+            let resurrected = {
+                let actor = &mut self.registry.actors[self.index];
+                let control = actor
+                    .control
+                    .as_mut()
+                    .context("Resurrect: receiver lifecycle unavailable")?;
+                if control.killed || control.death_selector == 8 {
+                    control.killed = false;
+                    if let Some(profile) =
+                        control.combat.as_ref().map(|record| record.contact_profile)
+                    {
+                        control.combat = super::CombatControlState::initialize(
+                            &actor.attributes,
+                            control.combat.as_ref(),
+                            &mut self.registry.next_combat_index,
+                            &self.registry.combat_attacks,
+                            profile,
+                        )
+                        .context("Resurrect: combat reinitialization")?;
+                    }
+                    true
+                } else {
+                    false
                 }
+            };
+            // The original consumes one waiting class message as part of the combat
+            // resurrection path.  Keep transport separate from combat response: a
+            // message for another receiver is skipped by the queue's addressed cursor.
+            if resurrected
+                && self.registry.actors[self.index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.combat.is_some())
+            {
+                let _ = self.registry.consume_combat_message(id)?;
             }
             return Ok(CallResult::Complete(0));
         }

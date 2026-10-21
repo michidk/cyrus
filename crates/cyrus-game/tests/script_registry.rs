@@ -22755,12 +22755,21 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_navigation(&data).unwrap();
     let mut saved = movement_snapshot(&world, &scripts, &data);
+    // Resurrect's combat branch consumes one queued class message. Give the
+    // receiver a minimal combat record and enable combat construction in the
+    // same saved state used by the navigation lifecycle test.
+    saved["actors"][0]["attributes"][14] = 1.into();
+    saved["actors"][0]["control"]["combat"] =
+        serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
     let owner = world.actors()[0].runtime_identifier.unwrap() as u8;
     saved["actors"][0]["control"]["navigation"] =
         serde_json::json!({"map":0,"current":0,"next":1,"previous_next":0,"destination":1});
     saved["walk_nodes"]["maps"][0] = serde_json::json!([owner, owner]);
     let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
     let id = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    world.send_combat_message(sender, id, 0xd001).unwrap();
+    assert!(world.peek_combat_message(id).unwrap().is_some());
     world
         .advance(
             id,
@@ -22778,6 +22787,7 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
     // KillMe set the flag and selector 8; Resurrect cleared only the flag.
     assert!(!control.killed);
     assert_eq!(control.death_selector, 8);
+    assert!(world.peek_combat_message(id).unwrap().is_none());
     let saved = movement_snapshot(&world, &scripts, &data);
     assert_eq!(saved["walk_nodes"]["maps"][0], serde_json::json!([0, 0]));
 }
