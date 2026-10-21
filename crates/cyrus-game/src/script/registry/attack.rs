@@ -251,7 +251,7 @@ impl ScriptWorld {
     /// Unowned static models query retained tip/base endpoints with enabled sidedness
     /// and request ordered clank cues. Actor-owned faces use independent actor
     /// contact, then impact, additive health and caller-owned death dispatch.
-    /// Selected-player health and noncombat actor-list responses remain unsupported.
+    /// Candidates without combat state take the impact response and end the stage.
     pub(super) fn process_combat_attack_candidates(
         &mut self,
         id: ScriptActorId,
@@ -295,14 +295,34 @@ impl ScriptWorld {
             )? {
                 continue;
             }
-            anyhow::ensure!(
-                self.actors[index]
+            if self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_none()
+            {
+                // A candidate without combat state takes the impact response directly.
+                if self.query_is_dead(defender, geometry.environment.selected_player)?
+                    || self.contact_impact_gated(id, geometry.environment)?
+                {
+                    return Ok(());
+                }
+                self.apply_contact_impact(
+                    id,
+                    defender,
+                    geometry.environment,
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+                self.actors[id.index]
                     .control
-                    .as_ref()
-                    .and_then(|control| control.combat.as_ref())
-                    .is_some(),
-                "noncombat attack contact response unsupported"
-            );
+                    .as_mut()
+                    .and_then(|control| control.combat.as_mut())
+                    .context("attacker combat unavailable")?
+                    .flags &= !3;
+                return Ok(());
+            }
             self.actors[id.index]
                 .control
                 .as_mut()
@@ -372,77 +392,17 @@ impl ScriptWorld {
                 {
                     continue;
                 }
-                let attacker = &self.actors[id.index];
-                let control = attacker
-                    .control
-                    .as_ref()
-                    .context("face attacker control unavailable")?;
-                let holding = super::super::activation::weapon_predicates(
-                    control.living_state,
-                    attacker
-                        .animation
-                        .as_ref()
-                        .map(|a| super::super::ActivationAnimation {
-                            group: a.playback.current_group(),
-                        }),
-                    control.combat.is_some(),
-                    control.weapon_drawn,
-                    attacker.attributes[110],
-                    geometry.environment.item_system_ready,
-                    geometry.environment.shell_execution,
-                )
-                .0;
-                if attacker.attributes[97] != 0
-                    && !holding
-                    && control
-                        .combat
-                        .as_ref()
-                        .is_none_or(|combat| combat.flags & 4 == 0)
-                {
+                if self.contact_impact_gated(id, geometry.environment)? {
                     continue;
                 }
-                let effect = i32::from(attacker.attributes[86]);
-                let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
-                sounds(
+                self.apply_contact_impact(
                     id,
-                    crate::script::ScriptSound::Positional {
-                        effect,
-                        volume: 0,
-                        rate_offset_hz,
-                        position: self.sight_position(id.index)?,
-                    },
+                    defender,
+                    geometry.environment,
+                    inputs,
+                    random,
+                    sounds,
                 )?;
-                if self.actors[index].attributes[3] != 0 {
-                    let damage = if control
-                        .combat
-                        .as_ref()
-                        .is_some_and(|combat| combat.retained_action_indices[1] < 0)
-                    {
-                        0
-                    } else {
-                        self.current_combat_motion(id)?
-                            .damage
-                            .context("contact motion damage unavailable")?
-                    };
-                    if geometry.environment.selected_player == Some(defender) {
-                        self.apply_selected_contact_health(
-                            defender,
-                            damage.wrapping_neg(),
-                            inputs,
-                            random,
-                            sounds,
-                        )?;
-                    } else {
-                        self.apply_nonplayer_contact_health(
-                            defender,
-                            damage.wrapping_neg(),
-                            geometry.environment,
-                        )?;
-                    }
-                    if self.actors[index].attributes[3] == 0 {
-                        self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
-                    }
-                }
                 continue;
             }
             if contacts.is_empty() {
@@ -462,6 +422,93 @@ impl ScriptWorld {
                     },
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    /// Attribute 97 confines an attacker's impact response to holding a weapon or combat flag four.
+    fn contact_impact_gated(
+        &self,
+        id: ScriptActorId,
+        environment: super::transition::ObstacleEnvironment,
+    ) -> Result<bool> {
+        let attacker = &self.actors[id.index];
+        let control = attacker
+            .control
+            .as_ref()
+            .context("face attacker control unavailable")?;
+        let holding = super::super::activation::weapon_predicates(
+            control.living_state,
+            attacker
+                .animation
+                .as_ref()
+                .map(|a| super::super::ActivationAnimation {
+                    group: a.playback.current_group(),
+                }),
+            control.combat.is_some(),
+            control.weapon_drawn,
+            attacker.attributes[110],
+            environment.item_system_ready,
+            environment.shell_execution,
+        )
+        .0;
+        Ok(attacker.attributes[97] != 0
+            && !holding
+            && control
+                .combat
+                .as_ref()
+                .is_none_or(|combat| combat.flags & 4 == 0))
+    }
+
+    /// The attacker's impact effect, then damage and death dispatch for a target with health.
+    fn apply_contact_impact(
+        &mut self,
+        id: ScriptActorId,
+        defender: ScriptActorId,
+        environment: super::transition::ObstacleEnvironment,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let effect = i32::from(self.actors[id.index].attributes[86]);
+        let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+        sounds(
+            id,
+            crate::script::ScriptSound::Positional {
+                effect,
+                volume: 0,
+                rate_offset_hz,
+                position: self.sight_position(id.index)?,
+            },
+        )?;
+        if self.actors[defender.index].attributes[3] == 0 {
+            return Ok(());
+        }
+        let damage = if self.actors[id.index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .is_some_and(|combat| combat.retained_action_indices[1] < 0)
+        {
+            0
+        } else {
+            self.current_combat_motion(id)?
+                .damage
+                .context("contact motion damage unavailable")?
+        };
+        if environment.selected_player == Some(defender) {
+            self.apply_selected_contact_health(
+                defender,
+                damage.wrapping_neg(),
+                inputs,
+                random,
+                sounds,
+            )?;
+        } else {
+            self.apply_nonplayer_contact_health(defender, damage.wrapping_neg(), environment)?;
+        }
+        if self.actors[defender.index].attributes[3] == 0 {
+            self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
         }
         Ok(())
     }
