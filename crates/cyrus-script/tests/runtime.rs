@@ -28,6 +28,7 @@ impl Host for Service {
             "Wait" => Ok(CallResult::Pending(9)),
             "Query" => Ok(CallResult::Complete(17)),
             "NoValue" => Ok(CallResult::CompleteWithoutValue),
+            "Instant" => Ok(CallResult::CompleteTask),
             "Fail" => anyhow::bail!("cue failed"),
             _ => Ok(CallResult::Complete(0)),
         }
@@ -1567,4 +1568,15 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
     let mut next_actor = runtime(vec![Operation::End { target: 0 }]);
     next_actor.invoke_tasks(&mut host, &mut []).unwrap();
     assert_eq!(host.slots, [202; 6]);
+}
+
+#[test]
+fn a_task_that_completes_on_its_first_invocation_retains_no_slot() {
+    for kind in [CallKind::Task, CallKind::Multitask] {
+        let mut vm = runtime(vec![call("Instant", kind), Operation::End { target: 0 }]);
+        let mut host = Service::default();
+        vm.invoke(Thread::Main, &mut host, &mut [], 10).unwrap();
+        assert_eq!(vm.active_tasks(), 0);
+        assert_eq!(host.calls, ["Instant"]);
+    }
 }

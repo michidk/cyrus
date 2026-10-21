@@ -196,6 +196,14 @@ impl Runtime {
                 self.cancel_tasks(host)?;
                 Ok((Some(value), false))
             }
+            CallResult::CompleteTask => {
+                anyhow::ensure!(
+                    call.kind != CallKind::Function,
+                    "function {} cannot complete as a task",
+                    call.function
+                );
+                Ok((Some(0), false))
+            }
             CallResult::Pending(token) => {
                 anyhow::ensure!(
                     call.kind != CallKind::Function,

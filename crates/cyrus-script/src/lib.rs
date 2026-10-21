@@ -91,6 +91,9 @@ pub enum CallResult {
     /// Function-only: complete with the value after cancelling and clearing every task slot of the
     /// calling actor at once, without invoking any task handler (`KillMyTasks`).
     CompleteAfterClearingTasks(i32),
+    /// Task or multitask call whose handler returned zero on its first invocation: the call
+    /// completes at once and no task slot is retained.
+    CompleteTask,
 }
 
 /// Native task input follows preservation's counter and unpaused-slot rules.
