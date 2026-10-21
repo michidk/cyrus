@@ -29143,3 +29143,58 @@ fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
         );
     }
 }
+
+#[test]
+fn golem_steam_acts_on_one_draw_in_four_and_needs_animation_data_then() {
+    use cyrus_game::random::EngineRandom;
+    let run = |state: u32| {
+        let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+        scripts.definition.functions.push(Function {
+            name: "GolemSteam".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let id = u16::try_from(scripts.definition.functions.len() - 1).unwrap();
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, "GolemSteam", &[]).operation,
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let mut random = EngineRandom::from_state(state);
+        let actor = world.id(0).unwrap();
+        world.advance(
+            actor,
+            cyrus_game::script::ScriptStage::OrdinaryMain,
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            Some(&mut random),
+            100,
+        )
+    };
+    let first_draw_acts = |state: u32| EngineRandom::from_state(state).rnd(4).unwrap() == 0;
+    let acting = (0..64).find(|state| first_draw_acts(*state)).unwrap();
+    let idle = (0..64).find(|state| !first_draw_acts(*state)).unwrap();
+    run(idle).unwrap();
+    let error = run(acting).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("animation data unavailable"),
+        "{error:#}"
+    );
+}

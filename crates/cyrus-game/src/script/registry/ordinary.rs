@@ -122,6 +122,10 @@ impl ScriptWorld {
             scripts: inputs,
             scene,
         } = inputs;
+        let inputs = ScriptInputs {
+            animations: Some(super::AnimationData(data)),
+            ..inputs
+        };
         data.require_version()?;
         anyhow::ensure!(
             data.world == self.world

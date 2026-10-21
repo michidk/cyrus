@@ -179,6 +179,15 @@ fn menu_input(
     })
 }
 
+/// Borrowed installed animation data; opaque in debug output because the asset is large.
+#[derive(Clone, Copy)]
+pub struct AnimationData<'a>(pub &'a Animations);
+impl std::fmt::Debug for AnimationData<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AnimationData")
+    }
+}
+
 /// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ScriptInputs<'a> {
@@ -192,6 +201,8 @@ pub struct ScriptInputs<'a> {
     pub activation_use_held: Option<bool>,
     /// Quick sword and quick health keys for the ordinary update's key handler.
     pub quick_keys: Option<super::QuickKeys>,
+    /// Installed animation data for natives that read model vertices; the ordinary update supplies it.
+    pub animations: Option<AnimationData<'a>>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
     pub combat_clock_sample: Option<u32>,
     pub nominal_ticks: Option<u32>,
@@ -4233,6 +4244,53 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 self.registry.unlight_torch(id, inputs, ticks, sounds)?;
             }
+            return Ok(CallResult::Complete(0));
+        }
+        // GolemSteam: once every few updates, a puff of steam at one of the receiver's four weapon
+        // attachment vertices (a grip or a scabbard point), in the alternating effect variants.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("GolemSteam") {
+            anyhow::ensure!(arguments.is_empty(), "GolemSteam requires no arguments");
+            let excluded = self.registry.actors[self.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.object_update_excluded);
+            if excluded {
+                return Ok(CallResult::Complete(0));
+            }
+            let random = self
+                .random
+                .as_deref_mut()
+                .context("GolemSteam shared engine random stream unavailable")?;
+            if random.rnd(4)? != 0 {
+                return Ok(CallResult::Complete(0));
+            }
+            let field = ["grip0", "scabbard1", "grip1", "scabbard0"][random.rnd(4)? as usize];
+            let data = self
+                .inputs
+                .animations
+                .context("GolemSteam animation data unavailable")?
+                .0;
+            let id = self.registry.id(self.index)?;
+            let index = data.actor(self.registry.actors[self.index].name())?["raex"][field]
+                .as_i64()
+                .and_then(|value| i16::try_from(value).ok())
+                .with_context(|| format!("GolemSteam: RAEX {field} unavailable"))?;
+            let vertex = if self.registry.updates.dummy_model_manager {
+                [0; 3]
+            } else {
+                self.registry
+                    .actor_animation_source_vertex(id, data, i32::from(index))?
+            };
+            let local = self.registry.spatial(id)?.local;
+            let rotated = local.matrix.transform(vertex)?;
+            let point =
+                std::array::from_fn(|axis| rotated[axis].wrapping_add(local.position[axis]));
+            let descriptor = if self.registry.globals.world_loop_frame & 1 != 0 {
+                0x32480
+            } else {
+                0x22480
+            };
+            self.registry.spawn_environment_effect(descriptor, point)?;
             return Ok(CallResult::Complete(0));
         }
         // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect

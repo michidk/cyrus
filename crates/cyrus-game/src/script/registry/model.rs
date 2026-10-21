@@ -975,7 +975,7 @@ impl ScriptWorld {
         Ok(source)
     }
 
-    fn actor_animation_source_vertex(
+    pub(super) fn actor_animation_source_vertex(
         &self,
         id: ScriptActorId,
         data: &Animations,

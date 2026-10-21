@@ -295,7 +295,8 @@ read the contact lists of the selected player's body pass. The installed quick
 sword and quick health keys run in the world loop: the sword key draws, sheathes or uses the
 first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and
 attribute 126's weapon-tip contact test read the retained combat weapon endpoints. `AddFlatEffect` builds an environmental effect
-from the installed zero-spread, speed-one form. `LightTorch`,
+from the installed zero-spread, speed-one form. `GolemSteam` puffs steam at a
+random weapon attachment vertex of the Golem. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and
