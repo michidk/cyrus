@@ -160,6 +160,9 @@ impl ScriptWorld {
                 }
                 continue;
             }
+            if self.selected_player_index() == Some(id.index) {
+                self.globals.clear_player_contacts();
+            }
             let selected_player = self.selected_player_index() == Some(id.index)
                 && inputs.player_controller.is_some();
             let actor = &mut self.actors[id.index];

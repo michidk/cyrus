@@ -28880,3 +28880,67 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
         }
     }
 }
+
+#[test]
+fn player_collide_natives_read_the_selected_players_contact_lists() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let run = |function: &str, touched: Option<usize>| {
+        let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: function.into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+                assign_call(1, id, function, &[]).operation,
+                set_flag(7),
+                Operation::End { target: 0 },
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+        });
+        if let Some(actor) = touched {
+            world.globals_mut().record_player_contact(actor);
+        }
+        let map = world.id(0).unwrap();
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    for function in ["PlayerCollide", "PlayerCollideStatic"] {
+        assert_eq!(run(function, None), 0, "{function} without contact");
+        assert_eq!(
+            run(function, Some(0)),
+            1,
+            "{function} touching the receiver"
+        );
+        assert_eq!(
+            run(function, Some(1)),
+            0,
+            "{function} touching another actor"
+        );
+    }
+}

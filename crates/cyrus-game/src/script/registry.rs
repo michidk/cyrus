@@ -5477,6 +5477,32 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 point_tasks::within_location(position, target, total_height, distance.integer()?)?,
             )));
         }
+        // PlayerCollide holds while the selected player stands on the receiver or its body touched
+        // the receiver; PlayerCollideStatic only reads the contact list.
+        if function.eq_ignore_ascii_case("PlayerCollide")
+            || function.eq_ignore_ascii_case("PlayerCollideStatic")
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let player = self
+                .selected_player()
+                .with_context(|| format!("{function} selected player unavailable"))?;
+            let receiver = ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            };
+            let contacts = &self.registry.globals.player_contacts;
+            let touching = if function.eq_ignore_ascii_case("PlayerCollide") {
+                self.registry.actors[self.registry.resolve(player)?]
+                    .model
+                    .support
+                    .actor
+                    == Some(receiver)
+                    || contacts.touches_actor(self.index)
+            } else {
+                contacts.touches_static(self.index)
+            };
+            return Ok(CallResult::Complete(i32::from(touching)));
+        }
         if function.eq_ignore_ascii_case("PlayerStand") {
             anyhow::ensure!(arguments.is_empty(), "PlayerStand requires no arguments");
             let player = self

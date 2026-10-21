@@ -195,6 +195,8 @@ pub struct GameplayGlobals {
     pub(super) world_loop_frame: u32,
     /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
     pub(super) item_use_latch: bool,
+    /// Actors the selected player's body touched in its latest contact pass.
+    pub(super) player_contacts: PlayerContacts,
     pub(super) sound_maintenance: super::SoundMaintenance,
     pub(super) menu_state: u16,
     /// Items and highlight of the scripted menu, retained across world replacement.
@@ -528,6 +530,14 @@ impl GameplayGlobals {
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);
     }
+    /// Record an actor the selected player's body touched in this iteration's contact pass.
+    pub fn record_player_contact(&mut self, actor: usize) {
+        self.player_contacts.record(actor);
+    }
+    /// Forget the previous iteration's contacts, as the selected player's update does first.
+    pub fn clear_player_contacts(&mut self) {
+        self.player_contacts.clear();
+    }
     /// Allow the next item-use attempt: the ordinary update calls this once per world-loop
     /// iteration, so an iteration admits one attempt.
     pub fn end_item_use_attempt(&mut self) {
@@ -538,6 +548,35 @@ impl GameplayGlobals {
         self.lockout = Some(value);
         self.highlighted_choice = Some(String::new());
         value
+    }
+}
+
+/// Actors in contact with the selected player's body, in contact order and without repeats.
+/// The actor list admits an append while it holds at most sixteen entries and the static list
+/// while it holds at most thirty-two, so each ends one entry past its nominal capacity. Both lists
+/// take every contact; they differ in capacity and in how the natives read them.
+#[derive(Default, Debug, Serialize)]
+pub(super) struct PlayerContacts {
+    actors: Vec<usize>,
+    statics: Vec<usize>,
+}
+impl PlayerContacts {
+    pub(super) fn clear(&mut self) {
+        self.actors.clear();
+        self.statics.clear();
+    }
+    pub(super) fn record(&mut self, actor: usize) {
+        for (list, limit) in [(&mut self.actors, 16), (&mut self.statics, 32)] {
+            if list.len() <= limit && !list.contains(&actor) {
+                list.push(actor);
+            }
+        }
+    }
+    pub(super) fn touches_actor(&self, actor: usize) -> bool {
+        self.actors.contains(&actor)
+    }
+    pub(super) fn touches_static(&self, actor: usize) -> bool {
+        self.statics.contains(&actor)
     }
 }
 
@@ -1285,6 +1324,7 @@ impl GameplayGlobals {
             selected_ledge_result: saved.selected_ledge_result,
             world_loop_frame: saved.world_loop_frame,
             item_use_latch: false,
+            player_contacts: Default::default(),
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,
             menu: saved.menu,
@@ -1332,5 +1372,25 @@ impl ActivationState {
             holdoff: saved.holdoff,
             prompt_override: saved.prompt_override,
         })
+    }
+}
+
+#[cfg(test)]
+mod contact_tests {
+    use super::PlayerContacts;
+
+    #[test]
+    fn contact_lists_drop_repeats_and_stop_one_entry_past_their_capacity() {
+        let mut contacts = PlayerContacts::default();
+        for actor in 0..40 {
+            contacts.record(actor);
+            contacts.record(actor);
+        }
+        assert!(contacts.touches_actor(16) && !contacts.touches_actor(17));
+        assert!(contacts.touches_static(32) && !contacts.touches_static(33));
+        assert_eq!(contacts.actors.len(), 17);
+        assert_eq!(contacts.statics.len(), 33);
+        contacts.clear();
+        assert!(!contacts.touches_actor(0) && !contacts.touches_static(0));
     }
 }

@@ -243,6 +243,15 @@ impl ScriptWorld {
                     terrain: None,
                 },
             )?;
+            if self.selected_player_index() == Some(id.index) {
+                for contact in &contacts {
+                    if let cyrus_collision::ground::SupportSource::Actor { actor, .. } =
+                        contact.source
+                    {
+                        self.globals.record_player_contact(actor);
+                    }
+                }
+            }
             self.resolve_ordinary_primary_contacts(id, &contacts, &query.scene.settings)?;
             let contacts = self.query_ordinary_residual_body(
                 id,
