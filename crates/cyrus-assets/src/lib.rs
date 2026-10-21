@@ -503,3 +503,4 @@ pub const SPLASH_FRAMES: usize = 150;
 pub const DOS_SPLASH_FRAMES: usize = 74;
 
 pub mod logbook;
+pub mod overlay;

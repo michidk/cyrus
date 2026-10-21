@@ -7,6 +7,8 @@ mod last_game;
 mod loading;
 mod logbook;
 pub use logbook::LogbookPlugin;
+mod overlay;
+pub use overlay::OverlayPlugin;
 mod menu;
 mod menu_raster;
 mod movie;
@@ -127,7 +129,7 @@ impl Plugin for StartupPlugin {
         menu::register(app);
         movie::register(app);
         loading::register(app);
-        app.add_plugins(LogbookPlugin);
+        app.add_plugins((LogbookPlugin, OverlayPlugin));
     }
 }
 

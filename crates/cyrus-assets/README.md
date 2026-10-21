@@ -282,6 +282,11 @@ inventory metadata.
 scroll geometry. The shared reader group prepares it on demand in browser workers;
 native HUD preparation exports the same validated record.
 
+`overlay/<name>-<frame>.png` holds one frame of an installed `system` GXA image, decoded with
+the palette the file carries. The `overlay` group prepares it on demand for the images a
+`ViewGXA` script task names, in native and browser workers; `overlay::cache_path` maps the
+script's file name and frame to the path.
+
 Script caches retain contiguous combat attack definitions, ordered combo motions,
 resolved animation groups and runtime numeric fields. Motion preparation applies
 preservation's omitted-value conversion; raw INI parsing retains omissions.

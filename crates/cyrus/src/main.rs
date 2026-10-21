@@ -195,7 +195,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             presentation.splash = cyrus_startup::Splash::from_option(args.launch.splash.as_deref());
             app.insert_resource(presentation);
         } else {
-            app.add_plugins(cyrus_startup::LogbookPlugin);
+            app.add_plugins((cyrus_startup::LogbookPlugin, cyrus_startup::OverlayPlugin));
         }
     }
     if let Some(install) = install {
