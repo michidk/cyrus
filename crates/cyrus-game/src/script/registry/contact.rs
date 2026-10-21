@@ -216,7 +216,7 @@ impl ScriptWorld {
                 return Ok(cyrus_collision::distance::point_in_sphere(
                     tip,
                     point.map(|value| value >> 8),
-                    i32::from(profile.radius) >> 8,
+                    profile.radius >> 8,
                 ));
             }
             if !self.combat_contact_orientation(id, point)? {
