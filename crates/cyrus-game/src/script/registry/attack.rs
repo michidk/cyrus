@@ -211,6 +211,12 @@ impl ScriptWorld {
                 sounds,
             )?;
         }
+        // The original restores a charged (item 75) sender through the ordinary
+        // chargeWeapon(0) swap after the damage response. Keep this after health
+        // and death dispatch so a failed earlier service retains its writes.
+        if self.actors[sender_index].attributes[23] == 75 {
+            self.restore_charged_sender_weapon(sender, inputs)?;
+        }
         let combat = self.actors[receiver_index]
             .control
             .as_ref()
@@ -227,6 +233,42 @@ impl ScriptWorld {
             }
         }
         Ok(())
+    }
+
+    /// Apply the installed `chargeWeapon(0)` inventory swap for a hit sender.
+    /// This is the production equivalent of the original post-damage restoration
+    /// branch: item 1 is added, the sender's weapon attribute becomes 1, item 75
+    /// is emptied, and item 1 is selected.
+    fn restore_charged_sender_weapon(
+        &mut self,
+        sender: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<()> {
+        let hud = inputs
+            .hud
+            .context("combat weapon restoration inventory unavailable")?;
+        if !hud.inventory_ready()? {
+            return Ok(());
+        }
+        let selected = self
+            .selected_player_index()
+            .map(|index| self.id(index))
+            .transpose()?;
+        let generation = self.generation;
+        let actors = &mut self.actors;
+        hud.add_item(1, 1, &mut |weapon| {
+            let player =
+                selected.context("combat weapon restoration selected player unavailable")?;
+            anyhow::ensure!(
+                player.generation == generation && player.index < actors.len(),
+                "combat weapon restoration selected player identity is stale"
+            );
+            actors[player.index].attributes[23] = weapon;
+            Ok(())
+        })?;
+        self.actors[sender.index].attributes[23] = 1;
+        hud.remove_item(75)?;
+        hud.select_item(1)
     }
     /// The direct-damage response (`0xd005`): displace the receiver 3000 units away from the
     /// sender, then (for the selected player) return at once while a death-animation override is
