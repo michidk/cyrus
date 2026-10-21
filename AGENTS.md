@@ -308,8 +308,8 @@ wall contact, and sends `0xd005` from the creator to a hit actor; actors with RA
 missing and land with the installed `[game]` thresholds (script caches need re-export for them). The selected
 player falls too: its edge service runs the ledge scan, and a scan without a ledge record leaves the ordinary fall.
 Found ledge records, the ledge states, body contacts while falling, static-model falls and the jump-selector and
-jump-group entries remain unavailable. The walk-off recovery entry and queued jump motion run, but nothing in the
-walking code sets the directional-state bytes that select the recovery yet. `LightTorch`,
+jump-group entries remain unavailable. Queued jump motion runs; the walk-off recovery entry runs
+when its directional-state bits are set, which only the selected player's jump-key handling does. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
 logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and
