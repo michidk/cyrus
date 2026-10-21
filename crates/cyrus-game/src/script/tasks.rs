@@ -2400,7 +2400,10 @@ impl NativeTasks {
             anyhow::ensure!(kind == CallKind::Task, "menuProc requires task encoding");
             Task::Menu
         } else if function.eq_ignore_ascii_case("RTXp") {
-            anyhow::ensure!(kind == CallKind::Task, "RTXp requires task encoding");
+            anyhow::ensure!(
+                matches!(kind, CallKind::Task | CallKind::Multitask),
+                "RTXp requires task or multitask encoding"
+            );
             Task::PlayerDialogue { started: false }
         } else if function.eq_ignore_ascii_case("SyncWithGroup") {
             anyhow::ensure!(
@@ -2409,7 +2412,10 @@ impl NativeTasks {
             );
             Task::GroupSync
         } else if function.eq_ignore_ascii_case("RTX") {
-            anyhow::ensure!(kind == CallKind::Task, "RTX requires task encoding");
+            anyhow::ensure!(
+                matches!(kind, CallKind::Task | CallKind::Multitask),
+                "RTX requires task or multitask encoding"
+            );
             Task::SpeakerDialogue(Speech::default())
         } else if function.eq_ignore_ascii_case("rtxAnim")
             || function.eq_ignore_ascii_case("RTXpAnim")
@@ -2448,14 +2454,20 @@ impl NativeTasks {
                 pan: None,
             }
         } else if let Some(command) = super::camera::ObjectPanCommand::named(function) {
-            anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
+            anyhow::ensure!(
+                matches!(kind, CallKind::Task | CallKind::Multitask),
+                "{function} requires task or multitask encoding"
+            );
             Task::ObjectPan {
                 command,
                 counter: 0,
                 pan: None,
             }
         } else if let Some(command) = super::camera::LocationCommand::named(function) {
-            anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
+            anyhow::ensure!(
+                matches!(kind, CallKind::Task | CallKind::Multitask),
+                "{function} requires task or multitask encoding"
+            );
             Task::ShowLocation {
                 command,
                 counter: 0,

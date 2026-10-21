@@ -4434,3 +4434,38 @@ fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_
         .unwrap();
     assert_eq!(owner.log, ["path [970, 77, 2040]", "face 970 2040"]);
 }
+
+/// Installed item scripts issue `RTXp`, `RTX` and the object pan and location camera natives as
+/// multitasks: the same handler without blocking the script. Encodings the installed scripts
+/// never use stay rejected.
+#[test]
+fn speech_and_camera_natives_accept_multitask_encoding() {
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let args = [Argument::Integer(i32::from_le_bytes(*b"TEST"))];
+    let accepted = |function: &str, kind: CallKind| {
+        let result = NativeTasks::default().call(
+            (function, kind),
+            &args,
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default(),
+        );
+        !result
+            .err()
+            .is_some_and(|error| format!("{error:#}").contains("encoding"))
+    };
+    for function in ["RTXp", "RTX", "showCyrusPanLoc"] {
+        assert!(accepted(function, CallKind::Task), "{function} task");
+        assert!(
+            accepted(function, CallKind::Multitask),
+            "{function} multitask"
+        );
+    }
+    assert!(!accepted("RTXp", CallKind::Function));
+    assert!(!accepted("showPlayerPan", CallKind::Multitask));
+}
