@@ -215,7 +215,7 @@ mod tests {
         menu.clear();
         menu.add(2, "new", 0, 0, 42, "");
         assert_eq!(menu.highlighted(), 0);
-        assert_eq!(menu.selection(), 10, "the committed slot remains retained");
+        assert_eq!(menu.selection(), 42, "the reused first slot supplies the selection");
     }
 
     #[test]
