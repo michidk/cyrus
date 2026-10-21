@@ -25885,6 +25885,21 @@ fn actor_model_point_uses_static_source_order_and_local_pose() {
 }
 
 #[test]
+fn actor_model_point_reads_the_static_model_of_a_none_load_path() {
+    let (world, mut data, statics) = static_model_fixture(cache());
+    for actor in data.metadata["actors"].as_array_mut().unwrap() {
+        actor["model_load_path"] = "none".into();
+    }
+    let id = world.id(0).unwrap();
+    assert_eq!(
+        world
+            .actor_model_point(id, &data, Some(&statics), 0)
+            .unwrap(),
+        [-2560, 5120, 2560]
+    );
+}
+
+#[test]
 fn actor_model_point_uses_selected_player_frame_and_original_vertex_rounding() {
     let (_, world, mut data, _) = player_walking_fixture();
     let player = world.id(2).unwrap();

@@ -971,7 +971,7 @@ impl ScriptWorld {
             Some("animation_table") => self
                 .actor_animation_source_vertex(id, data, vertex)?
                 .map(|value| value as f32),
-            Some("static") => {
+            Some("static" | "none") => {
                 let vertex_index = usize::try_from(vertex).with_context(context)?;
                 statics
                     .context("static model geometry unavailable")
