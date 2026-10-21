@@ -6348,6 +6348,139 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
 }
 
 #[test]
+fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
+    use cyrus_collision::{collision_world::RuntimeBodyContact, ground::SupportSource};
+    use cyrus_game::{
+        player::data::MovementSettings,
+        script::{ScriptInputs, ScriptStage},
+    };
+    for (slide_range, expected) in [(-60000, [0, 0, 2019]), (0, [0; 3])] {
+        let mut scripts = cache();
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.angles = [0, 344, 0];
+        }
+        scripts.definition.functions.push(Function {
+            name: "MoveByAxis".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        let mut steps = BTreeMap::new();
+        let falling = scripts.definition.references.len() as u16;
+        scripts.definition.references.push("jump_flag".into());
+        for (offset, axis, delta) in [(0, 0, -3341), (1, 2, 1893)] {
+            steps.insert(
+                offset,
+                Step {
+                    next: offset + 1,
+                    operation: wait(
+                        1,
+                        "MoveByAxis",
+                        CallKind::Multitask,
+                        vec![
+                            Value::Integer { value: axis },
+                            Value::Integer { value: delta },
+                            Value::Integer { value: 1 },
+                        ],
+                    ),
+                },
+            );
+        }
+        steps.insert(
+            2,
+            Step {
+                next: 3,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference: falling,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value: 0x81 },
+                        rest: vec![],
+                    },
+                },
+            },
+        );
+        steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::End { target: 0 },
+            },
+        );
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                control.sliding_state,
+                control.falling_state,
+                control.queued_motion,
+                control.body_response_flags,
+                control.collision_transition_flags
+            ),
+            (0, 0, 0, 0, 0)
+        );
+        world.prepare_spatial().unwrap();
+        world.snapshot_spatial(id).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().falling_state,
+            0x81
+        );
+        let contacts = [RuntimeBodyContact {
+            source: SupportSource::Model { model: 0, face: 0 },
+            point: [0; 3],
+            normal: [256, 0, 0],
+            classification: 1,
+        }];
+        let settings = MovementSettings {
+            standing_height: -2,
+            post_collide_height: 50,
+            slide_range,
+            slide_speed: None,
+            swim_depth: None,
+            turn_speed: 12,
+            turn_max_speed: 48,
+            poly_push_units: 16,
+        };
+        let mut transitions = 0;
+        world
+            .resolve_ordinary_primary_contacts(id, &contacts, &settings, &mut |_| {
+                transitions += 1;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(transitions, 1);
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], 344);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .body_response_flags,
+            2
+        );
+    }
+}
+
+#[test]
 fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
     use cyrus_collision::{collision_world::RuntimeBodyContact, ground::SupportSource};
     use cyrus_game::{
@@ -6460,7 +6593,9 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             poly_push_units: 16,
         };
         world
-            .resolve_ordinary_primary_contacts(id, &contacts, &settings)
+            .resolve_ordinary_primary_contacts(id, &contacts, &settings, &mut |_| {
+                unreachable!("grounded contacts run no motion transition")
+            })
             .unwrap();
         assert_eq!(world.spatial(id).unwrap().local.position, expected);
         if let Some(heading) = heading {

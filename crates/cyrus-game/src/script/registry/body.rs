@@ -150,16 +150,18 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Resolve the primary wall loop for ordinary grounded states zero and
-    /// fifteen, after support response. Retains the initial movement heading
-    /// and displacement across contacts. Residual separation and support
-    /// following are later stages, not performed here. Nonzero runtime motion
-    /// bytes require their state-specific response instead.
+    /// Resolve the primary wall loop for living states zero, fifteen and 27 through 32, after
+    /// support response. Retains the initial movement heading and displacement across contacts.
+    /// Each admitted facing contact of a falling, queued or interrupted actor first runs the
+    /// motion `transition`; only an actor left grounded with no motion adjusts its heading.
+    /// Residual separation and support following are later stages, not performed here. The
+    /// sliding state's contact exclusion remains unsupported.
     pub fn resolve_ordinary_primary_contacts(
         &mut self,
         id: ScriptActorId,
         contacts: &[RuntimeBodyContact],
         settings: &crate::player::data::MovementSettings,
+        transition: &mut dyn FnMut(&mut ScriptWorld) -> Result<()>,
     ) -> Result<()> {
         use crate::player::{contact, motion};
         let index = self.resolve(id)?;
@@ -178,15 +180,14 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary body response control unavailable")?;
+        if !matches!(control.living_state, 0 | 15 | 27..=32) {
+            return Ok(());
+        }
         ensure!(
-            matches!(control.living_state, 0 | 15)
-                && control.sliding_state == 0
-                && control.falling_state == 0
-                && control.queued_motion == 0,
-            "world {} instance {index}: state-specific ordinary body response unavailable",
+            control.sliding_state == 0,
+            "world {} instance {index}: sliding body-contact exclusion unavailable",
             self.world
         );
-        let living_state = control.living_state;
         let spatial = self.spatial(id)?;
         let previous = spatial.previous_local_position.map(i64::from);
         let attempted = spatial.local.position.map(i64::from);
@@ -204,6 +205,28 @@ impl ScriptWorld {
             {
                 continue;
             }
+            let control = self.actors[index]
+                .control
+                .as_ref()
+                .expect("validated ordinary control");
+            let grounded = control.living_state == 0
+                && control.falling_state == 0
+                && control.queued_motion == 0;
+            if !grounded && control.living_state != 15 {
+                transition(self)?;
+                flags |= self.actors[index]
+                    .control
+                    .as_ref()
+                    .expect("validated ordinary control")
+                    .body_response_flags;
+            }
+            let control = self.actors[index]
+                .control
+                .as_ref()
+                .expect("validated ordinary control");
+            let grounded = control.living_state == 0
+                && control.falling_state == 0
+                && control.queued_motion == 0;
             match contact::resolve_wall(
                 previous,
                 attempted,
@@ -217,7 +240,7 @@ impl ScriptWorld {
                 }
                 contact::WallResponse::Projected(position) => {
                     current = position;
-                    if living_state == 0 && current != previous {
+                    if grounded && current != previous {
                         heading = contact::wall_heading(heading, movement, body.normal)
                             .rem_euclid(2048) as u16;
                         flags |= 1;

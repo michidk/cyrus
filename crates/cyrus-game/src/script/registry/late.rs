@@ -491,7 +491,19 @@ impl ScriptWorld {
                     }
                 }
             }
-            self.resolve_ordinary_primary_contacts(id, &contacts, &query.scene.settings)?;
+            self.resolve_ordinary_primary_contacts(
+                id,
+                &contacts,
+                &query.scene.settings,
+                &mut |world| {
+                    world.apply_ordinary_obstacle_transition(
+                        id,
+                        query.animations,
+                        environment,
+                        sounds,
+                    )
+                },
+            )?;
             let contacts = self.query_ordinary_residual_body(
                 id,
                 super::body::OrdinaryResidualQuery {
