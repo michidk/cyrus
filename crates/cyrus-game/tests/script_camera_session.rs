@@ -726,6 +726,21 @@ mod live {
     }
 
     #[test]
+    fn camera_setup_seeds_bound_position_history_from_the_selected_player() {
+        let mut world = world();
+        assert_eq!(
+            world.camera().unwrap().records[0].bound_position_history,
+            [0; 3],
+            "construction has no live actor pose yet"
+        );
+        world.initialize_camera_pose(start()).unwrap();
+        assert_eq!(
+            world.camera().unwrap().records[0].bound_position_history,
+            [1000, 2000, 3000]
+        );
+    }
+
+    #[test]
     fn update_publishes_one_pose_to_the_state_and_the_camera_actor_together() {
         let mut world = world();
         world.initialize_camera_pose(start()).unwrap();
