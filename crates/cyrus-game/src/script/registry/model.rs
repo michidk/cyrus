@@ -1157,8 +1157,13 @@ impl ScriptWorld {
         for &id in order {
             let index = self.resolve(id)?;
             let actor = &self.actors[index];
-            // The inactive player role fails the original ordinary exclusion query.
-            if matches!(actor.source, super::ScriptActorSource::AlternatePlayer) {
+            // The inactive player role fails the original ordinary exclusion query. The retained
+            // swap state determines which of CYRUS and GREMLIN is inactive.
+            if matches!(
+                actor.source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) && self.selected_player_index() != Some(index)
+            {
                 continue;
             }
             // Candidate admission rejects an absent current record before reading

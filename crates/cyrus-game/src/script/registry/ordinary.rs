@@ -141,6 +141,7 @@ impl ScriptWorld {
             "ordinary update requires frame_scale"
         );
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
+        super::reassert_player_update_exclusion(&mut self.actors, &self.globals);
         self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();

@@ -91,6 +91,26 @@ pub(super) fn selected_player_index(
     })
 }
 
+/// Re-assert the original ordinary-update exclusion for the two standalone player roles.
+/// The selected role follows the retained swap bit; the other role remains allocated but does not
+/// enter ordinary actor updates. This is repeated at every world-loop admission because scripts
+/// may change control flags while a swap is retained.
+pub(super) fn reassert_player_update_exclusion(
+    actors: &mut [ScriptActor],
+    globals: &super::GameplayGlobals,
+) {
+    for actor in actors {
+        let excluded = match &actor.source {
+            ScriptActorSource::Player => globals.player_swapped(),
+            ScriptActorSource::AlternatePlayer => !globals.player_swapped(),
+            _ => continue,
+        };
+        if let Some(control) = actor.control.as_mut() {
+            control.object_update_excluded = excluded;
+        }
+    }
+}
+
 /// Player and camera instances are independent of authored map placements.
 #[derive(Debug, Clone)]
 pub enum ScriptActorSource {
@@ -6622,5 +6642,36 @@ mod selector_tests {
         globals.player_swapped = false;
         assert_eq!(selected_player_index(&actors[..2], &globals), Some(1));
         assert_eq!(selected_player_index(&actors[2..], &globals), None);
+    }
+
+    #[test]
+    fn ordinary_player_exclusion_follows_the_retained_swap_state() {
+        let mut actors = vec![
+            actor(ScriptActorSource::Player),
+            actor(ScriptActorSource::AlternatePlayer),
+            actor(ScriptActorSource::Map(Instance {
+                object_id: 1,
+                actor: "ACTOR".into(),
+                object_type: 0,
+                active: 0,
+                model_name: String::new(),
+                model_mode: 0,
+                light_intensity: 0,
+                light_radius: 0,
+                light_rgb: [0; 3],
+                map_position: [0; 3],
+                angles: [0; 3],
+            })),
+        ];
+        let mut globals = super::super::GameplayGlobals::new_session();
+        reassert_player_update_exclusion(&mut actors, &globals);
+        assert!(!actors[0].control_state().unwrap().object_update_excluded);
+        assert!(actors[1].control_state().unwrap().object_update_excluded);
+        assert!(!actors[2].control_state().unwrap().object_update_excluded);
+
+        globals.player_swapped = true;
+        reassert_player_update_exclusion(&mut actors, &globals);
+        assert!(actors[0].control_state().unwrap().object_update_excluded);
+        assert!(!actors[1].control_state().unwrap().object_update_excluded);
     }
 }
