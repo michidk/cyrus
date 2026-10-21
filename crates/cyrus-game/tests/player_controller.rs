@@ -198,31 +198,32 @@ fn the_walk_key_with_only_left_or_right_selects_a_sidestep() {
 }
 
 #[test]
-fn unsupported_actions_are_not_silently_treated_as_idle_or_forward() {
-    for (input, reason) in [
-        (
-            PlayerInput {
-                forward: true,
-                jump: true,
-                ..Default::default()
-            },
-            "jumping",
-        ),
-        (
-            PlayerInput {
+fn jumping_is_rejected_but_activation_reaches_the_script_hook() {
+    let error = select_sheathed_action(
+        &PlayerInput {
+            forward: true,
+            jump: true,
+            ..Default::default()
+        },
+        state(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("sheathed player controller"), "{error}");
+    assert!(error.contains("jumping"), "{error}");
+
+    assert_eq!(
+        select_sheathed_action(
+            &PlayerInput {
                 forward: true,
                 action: true,
                 ..Default::default()
             },
-            "activation",
-        ),
-    ] {
-        let error = select_sheathed_action(&input, state())
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("sheathed player controller"), "{error}");
-        assert!(error.contains(reason), "{error}");
-    }
+            state(),
+        )
+        .unwrap(),
+        SheathedAction::RunForward
+    );
 }
 
 #[test]

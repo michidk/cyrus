@@ -55,7 +55,8 @@ pub enum SheathedAction {
 /// the caller's [ground turn](super::turn); the held walk key with only left or
 /// right selects a sidestep. Backward-only movement picks the walk or run helper by the same
 /// walk-mode rule as forward movement (verified against the original controller in an
-/// emulator). Jumping and activation require separate implementations.
+/// emulator). Jumping requires a separate implementation; activation is admitted here and
+/// handled by the ordinary script hook, which owns receiver prompts and held-key state.
 /// A return or idle selection does not suppress later animation continuation.
 pub fn select_sheathed_action(
     input: &PlayerInput,
@@ -78,10 +79,6 @@ pub fn select_sheathed_action(
     anyhow::ensure!(
         !input.jump,
         "sheathed player controller: jumping unsupported"
-    );
-    anyhow::ensure!(
-        !input.action,
-        "sheathed player controller: activation unsupported"
     );
     if (input.left || input.right) && input.walk && !input.forward && !input.backward {
         use crate::script::locomotion::Strafe;
