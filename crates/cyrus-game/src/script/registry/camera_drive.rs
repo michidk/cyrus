@@ -33,6 +33,19 @@ pub struct CameraFrameState {
     pub terrain: Option<std::sync::Arc<cyrus_assets::environment::TerrainHeights>>,
 }
 
+impl CameraFrameState {
+    /// Drop publication and collision history when the driven world is no longer present.
+    ///
+    /// The presentation resource outlives a world replacement. Keeping the previous world's
+    /// publication here would make `script_view` and the renderer continue to consume that pose
+    /// while the replacement world is loading (or after a failed camera setup).
+    fn clear_world(&mut self) {
+        self.world = None;
+        self.hits = None;
+        self.published = None;
+    }
+}
+
 /// The world's exact map terrain heights, as the camera's terrain stage reads them. **Inferred**:
 /// the retained, wave-animated window is not consulted, so over water the base height is used.
 pub(super) struct MapTerrain<'a>(&'a cyrus_assets::environment::TerrainHeights);
@@ -147,7 +160,15 @@ pub(super) fn begin<'a>(
     frame_scale: i32,
 ) -> Result<Option<SceneCameraUpdate<'a, MapTerrain<'a>>>> {
     if world.camera.is_none() {
+        state.clear_world();
         return Ok(None);
+    }
+    // Hit selections and the published pose belong to the camera session that produced them.
+    // A new ScriptWorld must start from the camera's zeroed shared state rather than carrying
+    // collision outputs or a render pose from the previous world into its first frame.
+    if state.world != Some(world.generation()) {
+        state.hits = None;
+        state.published = None;
     }
     let actors = world.ordinary_actors(view)?.to_vec();
     let mut hits = state.hits.take().unwrap_or_else(empty_hits);
@@ -231,4 +252,39 @@ pub(super) fn end(
     state.hits = Some(hits);
     state.published = Some(result?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_frame_state_drops_publication_when_world_disappears() {
+        let mut state = CameraFrameState {
+            world: Some(7),
+            hits: Some(CameraHitSelection {
+                minimum_position: [1, 2, 3],
+                maximum_position: [4, 5, 6],
+                minimum_normal: [7, 8, 9],
+                maximum_normal: [10, 11, 12],
+            }),
+            published: Some(PublishedCamera {
+                pose: CameraPose {
+                    position: [13, 14, 15],
+                    angles: [16, 17, 18],
+                },
+                render: RenderPose {
+                    position: [19.0, 20.0, 21.0],
+                    angles: [22, 23, 24],
+                },
+            }),
+            terrain: None,
+        };
+
+        state.clear_world();
+
+        assert!(state.world.is_none());
+        assert!(state.hits.is_none());
+        assert!(state.published.is_none());
+    }
 }
