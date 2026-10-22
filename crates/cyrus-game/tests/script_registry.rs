@@ -14422,6 +14422,42 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
 }
 
 #[test]
+fn type_four_object_light_survives_world_replacement() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = random_scripts("LightFour", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(1);
+    let placement = &mut scripts.instances[0];
+    placement.object_type = 4;
+    placement.light_intensity = 56;
+    placement.light_radius = 200;
+    placement.map_position = [100, -200, 300];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let snapshot = world.snapshot(&sources).unwrap();
+    let snapshot = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    ScriptWorld::from_snapshot(
+        snapshot,
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
 fn light_off_without_a_record_returns_zero_without_creating_a_light() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = random_scripts("LightOff", vec![], Object::Me);

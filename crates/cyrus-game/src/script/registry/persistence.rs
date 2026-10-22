@@ -442,7 +442,7 @@ impl ActorSnapshot {
         if let Some(light) = &self.light {
             let placement = actor
                 .placement()
-                .filter(|placement| placement.object_type == 6)
+                .filter(|placement| matches!(placement.object_type, 4 | 6))
                 .with_context(|| {
                     format!(
                         "saved actor {}: light allocation on unsupported role",
