@@ -2988,6 +2988,9 @@ pub(super) fn prepare(
             actors.retained_flags = None;
             actors.retained_health = None;
             world.globals = std::mem::take(&mut actors.globals);
+            // A retained swap state excludes the other role before the first update, including
+            // the model presentation that runs ahead of the first world-loop admission.
+            reassert_player_update_exclusion(&mut world.actors, &world.globals);
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
             world.globals.group_sync = Default::default();
