@@ -140,6 +140,7 @@ module where it is defined and regenerate.
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
+- `src/rope.rs` — Retained ropes from the installed `MPRP` records: construction, swing, chain placement and the
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
