@@ -63,10 +63,7 @@ mod tests {
         for index in [25usize, 26, 27, 28, 33] {
             let result = call(
                 "SetAttribute",
-                &[
-                    Argument::Integer(index as i32),
-                    Argument::Integer(0x123),
-                ],
+                &[Argument::Integer(index as i32), Argument::Integer(0x123)],
                 &mut attributes,
                 None,
             )
