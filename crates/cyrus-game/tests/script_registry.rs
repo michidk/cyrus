@@ -14540,7 +14540,7 @@ fn player_stand_validates_explicit_selected_identity() {
     for (selected_index, stale, expected_error) in [
         (2, false, None),
         (2, true, Some("stale script actor generation")),
-        (3, false, Some("selected-player switching unsupported")),
+        (3, false, Some("activation player is not the selected player")),
     ] {
         let mut scripts = random_scripts("PlayerStand", vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;

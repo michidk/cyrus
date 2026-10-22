@@ -86,8 +86,7 @@ impl ScriptWorld {
     ) -> Result<bool> {
         let index = self.resolve(id)?;
         ensure!(
-            !matches!(self.actors[index].source, super::ScriptActorSource::Player)
-                && environment.selected_player != Some(id),
+            self.selected_player_index() != Some(index) && environment.selected_player != Some(id),
             "world {} instance {index}: selected-player destination collision unavailable",
             self.world,
         );

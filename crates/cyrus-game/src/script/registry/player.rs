@@ -634,7 +634,7 @@ impl ScriptWorld {
     ) -> Result<bool> {
         let index = self.resolve(id)?;
         ensure!(
-            matches!(self.actors[index].source, super::ScriptActorSource::Player),
+            self.selected_player_index() == Some(index),
             "player native hook requires selected player"
         );
         if let Some(error) = self.actors[index].failure() {
@@ -691,7 +691,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         ensure!(
-            matches!(self.actors[index].source, super::ScriptActorSource::Player),
+            self.selected_player_index() == Some(index),
             "player movement update requires selected player"
         );
         ensure!(
@@ -801,7 +801,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let actor = &self.actors[id.index];
         ensure!(
-            matches!(actor.source, super::ScriptActorSource::Player),
+            self.selected_player_index() == Some(id.index),
             "world {} instance {}: forward query requires selected player",
             self.world,
             id.index
@@ -1087,7 +1087,7 @@ impl ScriptWorld {
     ) -> Result<GroundedPresentation> {
         let index = self.resolve(tick.actor)?;
         ensure!(
-            matches!(self.actors[index].source, super::ScriptActorSource::Player),
+            self.selected_player_index() == Some(index),
             "world {} instance {index}: grounded update requires the logical player",
             self.world
         );

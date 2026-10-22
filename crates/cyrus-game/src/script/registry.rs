@@ -487,10 +487,12 @@ impl ScriptActor {
         }
     }
     fn ordinary_collision_role(&self) -> bool {
-        matches!(self.source, ScriptActorSource::Player)
-            || self
-                .placement()
-                .is_some_and(|placement| placement.object_type == 1)
+        matches!(
+            self.source,
+            ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+        ) || self
+            .placement()
+            .is_some_and(|placement| placement.object_type == 1)
     }
 
     pub fn placement(&self) -> Option<&Instance> {
@@ -775,8 +777,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
-            self.actors[index].placement().is_some()
-                || matches!(self.actors[index].source, ScriptActorSource::Player),
+            self.actors[index].placement().is_some() || self.selected_player_index() == Some(index),
             "ordinary combat requires a map actor or selected player"
         );
         let shell_execution = inputs
@@ -794,7 +795,7 @@ impl ScriptWorld {
         if control.combat.is_none() {
             return Ok(());
         }
-        let selected = matches!(actor.source, ScriptActorSource::Player);
+        let selected = self.selected_player_index() == Some(index);
         if selected
             && self
                 .globals
@@ -2276,7 +2277,7 @@ impl ScriptWorld {
     ) -> Result<&mut ScriptAnimation> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
-            matches!(self.actors[index].source, ScriptActorSource::Player),
+            self.selected_player_index() == Some(index),
             "world {} instance {index}: grounded update requires the logical player",
             self.world
         );
@@ -2591,8 +2592,8 @@ impl ScriptWorld {
     fn validate_activation(&self, inputs: &super::ActivationInputs) -> Result<()> {
         let player = self.resolve(inputs.player)?;
         anyhow::ensure!(
-            matches!(self.actors[player].source, ScriptActorSource::Player),
-            "activation selected-player switching unsupported"
+            self.selected_player_index() == Some(player),
+            "activation player is not the selected player"
         );
         for &index in inputs.actors.keys() {
             self.id(index)?;

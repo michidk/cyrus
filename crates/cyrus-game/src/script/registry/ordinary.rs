@@ -311,11 +311,7 @@ impl ScriptWorld {
                                 },
                                 environment: super::transition::ObstacleEnvironment {
                                     selected_player: self
-                                        .actors
-                                        .iter()
-                                        .position(|actor| {
-                                            matches!(actor.source, super::ScriptActorSource::Player)
-                                        })
+                                        .selected_player_index()
                                         .map(|index| self.id(index))
                                         .transpose()?,
                                     auto_grab: false,
@@ -510,9 +506,7 @@ impl ScriptWorld {
                                 weapon: inputs
                                     .hud
                                     .zip(inputs.shell_execution)
-                                    .zip(self.actors.iter().position(|actor| {
-                                        matches!(actor.source, super::ScriptActorSource::Player)
-                                    }))
+                                    .zip(self.selected_player_index())
                                     .map(|((hud, shell_execution), index)| {
                                         Ok::<_, anyhow::Error>(super::weapon::WeaponInputs {
                                             selected_player: self.id(index)?,

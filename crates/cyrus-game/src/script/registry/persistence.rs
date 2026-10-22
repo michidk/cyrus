@@ -426,7 +426,11 @@ impl ActorSnapshot {
             self.name
         );
         ensure!(
-            self.player_movement.is_none() || matches!(actor.source, ScriptActorSource::Player),
+            self.player_movement.is_none()
+                || matches!(
+                    actor.source,
+                    ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+                ),
             "saved actor {}: player movement on another role",
             self.name
         );
