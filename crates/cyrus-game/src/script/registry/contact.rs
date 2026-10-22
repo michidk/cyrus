@@ -62,7 +62,8 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
                 .context("defender combat unavailable")?
-                .retained_action_indices[1];
+                // The word the attack executor resolves through the defence slots.
+                .retained_action_indices[0];
             let required = self
                 .current_combat_motion(attacker)?
                 .defense

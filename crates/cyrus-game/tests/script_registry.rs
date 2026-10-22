@@ -26680,7 +26680,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
                 saved["actors"][1]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
                         flags,
-                        retained_action_indices: [-1, selector],
+                        retained_action_indices: [selector, -1],
                         ..Default::default()
                     })
                     .unwrap();
