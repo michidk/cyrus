@@ -7,9 +7,11 @@ impl ScriptWorld {
     /// Carry an ordinary nonplayer rider using its retained supporting actor.
     /// Positions are local Q8; rotation uses the support's update-entry angles,
     /// independently of stable ground and retained model presentation. Follows
-    /// preservation's animation.md supporting actor motion rules. Selected-player,
-    /// special living-state and attached/linked support paths require their owners.
-    /// Unsupported paths fail before changing the rider's pose.
+    /// preservation's animation.md supporting actor motion rules. Living states 10 through 19
+    /// follow the separate ledge support and carry the retained ledge point and heading along;
+    /// they skip the selected player's collision admission. Selected-player ordinary follow and
+    /// attached/linked support paths require their owners. Unsupported paths fail before
+    /// changing the rider's pose.
     pub fn follow_ordinary_support(
         &mut self,
         id: ScriptActorId,
@@ -21,12 +23,12 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("support-follow control unavailable")?;
-        ensure!(
-            !(10..=19).contains(&control.living_state),
-            "world {} instance {index}: special support-follow owner unavailable",
-            self.world
-        );
-        let Some(owner) = actor.model.support.actor else {
+        let special = (10..=19).contains(&control.living_state);
+        let Some(owner) = (if special {
+            actor.model.ledge_support
+        } else {
+            actor.model.support.actor
+        }) else {
             return Ok(false);
         };
         let owner_index = self.resolve(owner)?;
@@ -34,7 +36,7 @@ impl ScriptWorld {
             return Ok(false);
         }
         ensure!(
-            selected_player != Some(id),
+            special || selected_player != Some(id),
             "world {} instance {index}: selected-player support-follow collision admission unsupported",
             self.world
         );
@@ -48,18 +50,27 @@ impl ScriptWorld {
         let previous_position = support.previous_local_position;
         let previous_angles = support.angle_history;
         let rider = self.spatial(id)?.local;
-        let translated: [i32; 3] = std::array::from_fn(|axis| {
-            rider.position[axis]
-                .wrapping_add(current.position[axis].wrapping_sub(previous_position[axis]))
-        });
-        let offset =
-            std::array::from_fn(|axis| translated[axis].wrapping_sub(current.position[axis]));
-        let offset = Matrix::orientation(previous_angles).inverse_transform(offset)?;
-        let offset = Matrix::orientation(current.angles).transform(offset)?;
-        let position =
-            std::array::from_fn(|axis| current.position[axis].wrapping_add(offset[axis]));
-        let heading =
-            rider.angles[1].wrapping_add(current.angles[1].wrapping_sub(previous_angles[1])) & 2047;
+        // The support's translation, then its rotation about its own origin, carry a point.
+        let carry = |point: [i32; 3]| -> Result<[i32; 3]> {
+            let translated: [i32; 3] = std::array::from_fn(|axis| {
+                point[axis]
+                    .wrapping_add(current.position[axis].wrapping_sub(previous_position[axis]))
+            });
+            let offset =
+                std::array::from_fn(|axis| translated[axis].wrapping_sub(current.position[axis]));
+            let offset = Matrix::orientation(previous_angles).inverse_transform(offset)?;
+            let offset = Matrix::orientation(current.angles).transform(offset)?;
+            Ok(std::array::from_fn(|axis| {
+                current.position[axis].wrapping_add(offset[axis])
+            }))
+        };
+        let turn = current.angles[1].wrapping_sub(previous_angles[1]);
+        let position = carry(rider.position)?;
+        let heading = rider.angles[1].wrapping_add(turn) & 2047;
+        if special && let Some((point, ledge_heading)) = self.globals.selected_ledge_anchor {
+            self.globals.selected_ledge_anchor =
+                Some((carry(point)?, ledge_heading.wrapping_add(turn) & 2047));
+        }
         let spatial = self
             .spatial
             .as_mut()
