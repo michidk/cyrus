@@ -23,7 +23,7 @@ impl ScriptWorld {
     /// follow the separate ledge support and carry the retained ledge point and heading along;
     /// they skip the selected player's collision admission. The selected player in any other
     /// state keeps the translation and heading turn when its body or its path to the rotated
-    /// destination collides there. Attached/linked support paths require their owners.
+    /// destination collides there. Attached support paths require their owners.
     /// Unsupported paths fail before changing the rider's pose.
     pub fn follow_ordinary_support(
         &mut self,
@@ -61,33 +61,38 @@ impl ScriptWorld {
         };
         let support = self.spatial(owner)?;
         ensure!(
-            support.parent.is_none() && support.linked_position.is_none(),
-            "world {} instance {index} support {owner_index}: attached or linked support-follow snapshots unavailable",
+            support.parent.is_none() && self.actors[owner_index].attributes[26] == 0,
+            "world {} instance {index} support {owner_index}: attached support-follow snapshots unavailable",
             self.world
         );
+        // A linked-position record that names an owner supplies the support's positions.
+        let (current_position, previous_position) = if support.linked_position().is_some() {
+            (support.link_cache, support.link_previous)
+        } else {
+            (support.local.position, support.previous_local_position)
+        };
         let current = support.local;
-        let previous_position = support.previous_local_position;
         let previous_angles = support.angle_history;
         let rider = self.spatial(id)?.local;
         // The support's translation, then its rotation about its own origin, carry a point.
         let carry = |point: [i32; 3]| -> Result<[i32; 3]> {
             let translated: [i32; 3] = std::array::from_fn(|axis| {
                 point[axis]
-                    .wrapping_add(current.position[axis].wrapping_sub(previous_position[axis]))
+                    .wrapping_add(current_position[axis].wrapping_sub(previous_position[axis]))
             });
             let offset =
-                std::array::from_fn(|axis| translated[axis].wrapping_sub(current.position[axis]));
+                std::array::from_fn(|axis| translated[axis].wrapping_sub(current_position[axis]));
             let offset = Matrix::orientation(previous_angles).inverse_transform(offset)?;
             let offset = Matrix::orientation(current.angles).transform(offset)?;
             Ok(std::array::from_fn(|axis| {
-                current.position[axis].wrapping_add(offset[axis])
+                current_position[axis].wrapping_add(offset[axis])
             }))
         };
         let turn = current.angles[1].wrapping_sub(previous_angles[1]);
         let heading = rider.angles[1].wrapping_add(turn) & 2047;
         let translated: [i32; 3] = std::array::from_fn(|axis| {
             rider.position[axis]
-                .wrapping_add(current.position[axis].wrapping_sub(previous_position[axis]))
+                .wrapping_add(current_position[axis].wrapping_sub(previous_position[axis]))
         });
         let mut position = carry(rider.position)?;
         if let Some(admission) = admitted {
