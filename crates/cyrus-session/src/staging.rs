@@ -63,15 +63,15 @@ impl SessionEntityStage {
                     binding.actor().index,
                     binding.name(),
                 )),
-                "player" => {
-                    players += 1;
-                    ensure!(
-                        binding.saved_entity() == snapshot.player.entity,
-                        "session staging selected player identity differs"
-                    );
+                // The host player entity is bound to the selected role: CYRUS, or GREMLIN while
+                // the swap state is set. The other role has a standalone entity.
+                "player" | "alternate_player" => {
+                    if binding.saved_entity() == snapshot.player.entity {
+                        players += 1;
+                    }
                     None
                 }
-                "alternate_player" | "camera" => None,
+                "camera" => None,
                 role => anyhow::bail!(
                     "session staging actor {}: unsupported role {role}",
                     binding.name()
