@@ -97,8 +97,15 @@ impl ScriptWorld {
         };
         let actor = super::ScriptActor::created(self.world, index, key, template);
         let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
+        let has_namespace = actor.namespace.is_some();
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
+        // Created records retain runtime identifier zero and the first namespace
+        // registration, just like post-load creation. Restore must rebuild this
+        // identity before ActorSnapshot validation and name-target resolution.
+        if has_namespace {
+            self.names.entry(0).or_insert(index);
+        }
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
         }
