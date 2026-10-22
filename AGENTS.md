@@ -309,9 +309,9 @@ missing and land with the installed `[game]` thresholds (script caches need re-e
 player falls too: its edge service runs the ledge scan with its record classification, and a scan whose records
 are all rejected leaves the ordinary fall. Its controller runs while it falls (turning and movement helpers stay
 skipped), and it lands with the nonplayer thresholds: a hurt landing applies selected-player health, a fatal one
-starts the death override. A fall that reaches a class 3 ledge catches it: the hang, shimmy, climb and
+starts the death override, and a steep support raises the controller's pending death action. A fall that reaches a class 3 ledge catches it: the hang, shimmy, climb and
 release transition states run on logical actor state. Entry through ground-level classes 1 and 2 (turning to a ledge),
-the jump-key release, the queued-motion edge call, steep-surface fatal landings, static-model falls and the jump-selector and
+the jump-key release, the queued-motion edge call, static-model falls and the jump-selector and
 jump-group entries remain unavailable. Queued jump motion runs; the walk-off recovery entry runs
 when its directional-state bits are set, which only the selected player's jump-key handling does. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on

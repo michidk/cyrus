@@ -367,11 +367,11 @@ impl ScriptWorld {
                 let landing = selected
                     .as_ref()
                     .context("selected-player landing inputs unavailable")?;
-                anyhow::ensure!(
-                    !landing.steep,
-                    "world {} instance {index}: steep-surface fatal landing unsupported",
-                    self.world
-                );
+                if landing.steep {
+                    // A steep support raises the controller's pending action and nothing else.
+                    self.globals.raise_player_pending_action()?;
+                    return Ok(decision);
+                }
                 // The death presentation comes from the override group, not an animation request.
                 self.globals.set_player_death_override_group(74)?;
                 Some((None, -256))

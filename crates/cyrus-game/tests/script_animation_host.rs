@@ -3700,7 +3700,7 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
         assert!(
             world
                 .globals_mut()
-                .prepare_player_controller(1, 0, 0, 0)
+                .begin_player_controller(1, 0, 0)
                 .is_err()
         );
         let mut sounds = Vec::new();
@@ -3715,7 +3715,7 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
             assert_eq!(world.globals().lockout(), None);
             let error = world
                 .globals_mut()
-                .prepare_player_controller(u32::MAX, 0, 0, 0)
+                .begin_player_controller(u32::MAX, 0, 0)
                 .unwrap_err();
             assert!(error.to_string().contains("lockout unavailable"));
             assert_eq!(world.animation_frame(id).unwrap(), Some(3));

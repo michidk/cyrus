@@ -360,17 +360,16 @@ impl GameplayGlobals {
         }
     }
 
-    /// Advance preliminary timers before idle reset or lockout admission.
-    /// Units and ordering follow preservation's player controller contract.
-    /// Returns whether hit inhibition admits death execution instead of idle/movement.
-    /// Unsupported pending-action execution retains earlier timer changes.
-    pub fn prepare_player_controller(
+    /// First half of the controller's preliminary timers: the conditional countdown and the
+    /// sound-maintenance sample. The pending action runs between this and
+    /// [`Self::finish_player_controller`]; units and ordering follow preservation's player
+    /// controller contract.
+    pub fn begin_player_controller(
         &mut self,
         nominal_ticks: u32,
         queued_motion: u8,
         falling: u8,
-        sliding: u8,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         let state = self
             .controller_prelude
             .as_mut()
@@ -394,10 +393,32 @@ impl GameplayGlobals {
         };
         self.sound_maintenance
             .ordinary_actor(self.menu_state, waiting, lockout);
-        anyhow::ensure!(
-            !state.pending_action || sliding != 0,
-            "player controller: pending action 74 execution unavailable"
-        );
+        Ok(())
+    }
+
+    /// Whether the controller's pending action flag is raised.
+    pub(super) fn player_pending_action(&self) -> bool {
+        self.controller_prelude
+            .as_ref()
+            .is_some_and(|state| state.pending_action)
+    }
+
+    /// Raise the pending action flag; only the explicit initializer clears it.
+    pub(super) fn raise_player_pending_action(&mut self) -> Result<()> {
+        self.controller_prelude
+            .as_mut()
+            .context("player controller: explicit initialization unavailable")?
+            .pending_action = true;
+        Ok(())
+    }
+
+    /// Second half of the preliminary timers: the two unconditional countdowns, then whether
+    /// hit inhibition admits death execution instead of idle/movement.
+    pub fn finish_player_controller(&mut self, nominal_ticks: u32) -> Result<bool> {
+        let state = self
+            .controller_prelude
+            .as_mut()
+            .context("player controller: explicit initialization unavailable")?;
         state.action_ticks = state.action_ticks.saturating_sub(nominal_ticks);
         state.secondary_ticks = state.secondary_ticks.saturating_sub(nominal_ticks);
         self.player_hit_inhibited()
@@ -745,6 +766,24 @@ mod idle_tests {
     use super::{NativeSource, ScriptActorId};
     use crate::random::EngineRandom;
 
+    impl GameplayGlobals {
+        /// Both preliminary halves, refusing the pending action the world owns.
+        fn prepare_player_controller(
+            &mut self,
+            nominal_ticks: u32,
+            queued_motion: u8,
+            falling: u8,
+            sliding: u8,
+        ) -> anyhow::Result<bool> {
+            self.begin_player_controller(nominal_ticks, queued_motion, falling)?;
+            anyhow::ensure!(
+                !self.player_pending_action() || sliding != 0,
+                "player controller: pending action 74 execution unavailable"
+            );
+            self.finish_player_controller(nominal_ticks)
+        }
+    }
+
     fn controller_settings() -> cyrus_assets::script::DialogueSettings {
         cyrus_assets::script::DialogueSettings {
             menu_start: [0, 0],
@@ -1018,6 +1057,20 @@ mod idle_tests {
             ),
             (0, 0, 0)
         );
+    }
+
+    #[test]
+    fn the_pending_action_flag_needs_the_initializer_and_outlives_the_preliminary_halves() {
+        let mut globals = controller_globals();
+        assert!(globals.raise_player_pending_action().is_err());
+        globals.initialize_player_controller();
+        assert!(!globals.player_pending_action());
+        globals.raise_player_pending_action().unwrap();
+        globals.begin_player_controller(1, 0, 0).unwrap();
+        globals.finish_player_controller(1).unwrap();
+        assert!(globals.player_pending_action());
+        globals.initialize_player_controller();
+        assert!(!globals.player_pending_action());
     }
 
     #[test]

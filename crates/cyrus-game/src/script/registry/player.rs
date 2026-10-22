@@ -54,12 +54,19 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .context("player controller control unavailable")?;
-            if world.globals.prepare_player_controller(
+            let sliding = control.sliding_state;
+            world.globals.begin_player_controller(
                 timing.nominal_ticks,
                 control.queued_motion,
                 control.falling_state,
-                control.sliding_state,
-            )? {
+            )?;
+            if sliding == 0 && world.globals.player_pending_action() {
+                world.run_pending_player_action(id, inputs, random, sounds)?;
+            }
+            if world
+                .globals
+                .finish_player_controller(timing.nominal_ticks)?
+            {
                 return world.advance_selected_death_controller(
                     id,
                     inputs,
@@ -218,6 +225,23 @@ impl ScriptWorld {
                 }
             }
         })
+    }
+
+    /// The pending action (raised by a steep fatal landing): death animation override 74 and
+    /// death-owning health -255 sourced from the player itself. The flag stays raised.
+    fn run_pending_player_action(
+        &mut self,
+        id: super::ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        self.globals.set_player_death_override_group(74)?;
+        let source = super::super::activation::NativeSource::Actor {
+            generation: id.generation,
+            index: id.index,
+        };
+        self.apply_selected_death_health(id, -255, Some(source), inputs, Some(random), sounds)
     }
 
     /// The sheathed player's controller while its queued or falling byte is nonzero. Turning
