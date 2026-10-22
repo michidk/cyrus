@@ -261,7 +261,13 @@ impl ScriptWorld {
                         || (selected_player && control.falling_state != 0),
                     "ordinary queued motion stage unsupported"
                 );
-                let collision = if self.actors[id.index].attributes[1] != 0 {
+                // A selected player without a controller sample still owns the
+                // ordinary script stages, but has no movement or collision query
+                // this update. Require scene data whenever collision work is
+                // actually admitted (all nonplayers and controller-driven input).
+                let collision = if self.actors[id.index].attributes[1] != 0
+                    && (!selected_player || inputs.player_controller.is_some())
+                {
                     let scene = scene
                         .ok_or_else(|| anyhow::anyhow!("ordinary collision scene unavailable"))?;
                     Some(self.prepare_ordinary_collision_query(id, scene, data, view, &selected)?)
