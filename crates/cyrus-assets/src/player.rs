@@ -16,6 +16,14 @@ pub struct MovementSettings {
     /// Installed [cyrus] tap_time, the double-tap window in frames; absent in old caches.
     #[serde(default)]
     pub tap_time: Option<i32>,
+    /// Installed [cyrus] sheath_sword_delay (zero initializes to 6), the armed look-and-action hold
+    /// in frames before the sword sheathes; absent in old caches.
+    #[serde(default)]
+    pub sheath_sword_delay: Option<i32>,
+    /// Installed COMBAT.INI [misc] cyrus_defend_interval, the frames between the player's defence
+    /// stances; absent in old caches.
+    #[serde(default)]
+    pub defend_interval: Option<i32>,
     /// Effective [game] swim_depth in map units; zero initializes to 40.
     /// Missing older cache/config values remain unknown.
     #[serde(default)]

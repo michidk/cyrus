@@ -21,8 +21,34 @@ impl ScriptWorld {
         let Some(keys) = inputs.quick_keys.filter(|keys| keys.sword || keys.health) else {
             return Ok(());
         };
+        self.with_selected_host(inputs, random, sounds, |host| host.quick_keys(keys))
+            .map(|_| ())
+    }
+
+    /// `SheathSword` for the selected player, as the armed look-and-action hold requests it.
+    pub(super) fn sheath_selected_player(
+        &mut self,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        self.with_selected_host(inputs, random, sounds, |host| {
+            let id = host.registry.id(host.index)?;
+            host.sheath_sword("SheathSword", id)
+        })
+        .map(|_| ())
+    }
+
+    /// Run `run` on a host bound to the selected player; nothing runs without one.
+    fn with_selected_host<R>(
+        &mut self,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+        run: impl FnOnce(&mut GameHost<'_, '_, '_, '_>) -> Result<R>,
+    ) -> Result<Option<R>> {
         let Some(index) = self.selected_player_index() else {
-            return Ok(());
+            return Ok(None);
         };
         let native_source_program = match self.globals.native_source {
             crate::script::activation::NativeSource::Actor { generation, index }
@@ -49,7 +75,7 @@ impl ScriptWorld {
             random: Some(random),
             inputs,
         };
-        host.quick_keys(keys)
+        run(&mut host).map(Some)
     }
 }
 

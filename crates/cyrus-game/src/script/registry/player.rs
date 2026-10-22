@@ -32,6 +32,8 @@ pub(crate) struct GroundedPresentation {
 pub struct PlayerControllerInput<'a> {
     pub held: &'a crate::player::input::PlayerInput,
     pub walk_mode: bool,
+    /// The retained automatic-defence toggle.
+    pub auto_defend: bool,
 }
 
 impl ScriptWorld {
@@ -82,7 +84,13 @@ impl ScriptWorld {
             if let (Some(tap_time), Some(scale)) =
                 (query.scene.settings.tap_time, inputs.frame_scale)
             {
-                world.update_attack_latches(id, input.held, tap_time, scale as i32);
+                world.update_attack_latches(
+                    id,
+                    input.held,
+                    tap_time,
+                    scale as i32,
+                    timing.nominal_ticks as i32,
+                );
             }
             let actor = &world.actors[id.index];
             let control = actor.control.as_ref().expect("validated control");
@@ -211,6 +219,16 @@ impl ScriptWorld {
                 },
             )?;
             if matches!(action, SheathedAction::Returned(_)) {
+                // The view key leaves the movement dispatch only; the armed look-key handling runs.
+                if holding
+                    && matches!(
+                        action,
+                        SheathedAction::Returned(crate::player::controller::ControllerReturn::View)
+                    )
+                {
+                    world
+                        .run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
+                }
                 return Ok(());
             }
             if (10..=19).contains(
@@ -259,14 +277,46 @@ impl ScriptWorld {
             moved?;
             world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)?;
             if holding {
-                ensure!(
-                    query.scene.settings.tap_time.is_some(),
-                    "player attack tap_time absent; re-export world"
-                );
-                world.control_player_attack(id, input.held, inputs, random, sounds)?;
+                world.run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
             }
             Ok(())
         })
+    }
+
+    /// The armed look-key handling and attack keys, which run while the jump key is up.
+    #[allow(clippy::too_many_arguments)] // The controller's per-iteration services.
+    fn run_armed_combat_keys(
+        &mut self,
+        id: super::ScriptActorId,
+        input: PlayerControllerInput<'_>,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        inputs: super::ScriptInputs<'_>,
+        timing: crate::clock::ClockStep,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if input.held.jump {
+            return Ok(());
+        }
+        let settings = &query.scene.settings;
+        ensure!(
+            settings.tap_time.is_some(),
+            "player attack tap_time absent; re-export world"
+        );
+        let stance = super::attack_input::StanceSettings {
+            sheath_delay: settings
+                .sheath_sword_delay
+                .context("player sheath_sword_delay absent; re-export world")?,
+            defend_interval: settings
+                .defend_interval
+                .context("player cyrus_defend_interval absent; re-export world")?,
+            auto_defend: input.auto_defend,
+            nominal_ticks: timing.nominal_ticks as i32,
+        };
+        if !self.control_player_stance(id, input.held, stance, inputs, random, sounds)? {
+            self.control_player_attack(id, input.held, inputs, random, sounds)?;
+        }
+        Ok(())
     }
 
     /// The grounded jump key, after movement dispatch. Running or walking jump groups with the

@@ -33,6 +33,20 @@ pub(crate) fn prepare(
             .slide_hurt_height
             .zip(system.game.slide_hurt_zap),
         tap_time: system.cyrus.tap_time,
+        sheath_sword_delay: system
+            .cyrus
+            .sheath_sword_delay
+            .map(|delay| if delay == 0 { 6 } else { delay }),
+        defend_interval: Some(
+            rgpre::import::combat_ini::CombatIni::parse(&crate::preparation::text(
+                source,
+                "COMBAT.INI",
+            )?)
+            .with_context(|| format!("world {world}: parse COMBAT.INI"))?
+            .misc
+            .cyrus_defend_interval
+            .with_context(|| format!("world {world}: COMBAT.INI [misc] cyrus_defend_interval"))?,
+        ),
         swim_depth: system
             .game
             .swim_depth

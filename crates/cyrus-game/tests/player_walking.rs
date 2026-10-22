@@ -223,6 +223,8 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
             slide_speed: None,
             slide_hurt: None,
             tap_time: None,
+            sheath_sword_delay: None,
+            defend_interval: None,
             swim_depth: None,
             turn_speed: 12,
             turn_max_speed: 48,

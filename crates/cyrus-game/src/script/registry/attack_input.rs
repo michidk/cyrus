@@ -45,12 +45,27 @@ impl TapLatch {
     }
 }
 
+/// The armed player's look-key settings: SYSTEM.INI `sheath_sword_delay`, COMBAT.INI
+/// `cyrus_defend_interval` and the automatic-defence toggle.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct StanceSettings {
+    pub(super) sheath_delay: i32,
+    pub(super) defend_interval: i32,
+    pub(super) auto_defend: bool,
+    /// Nominal ticks of this controller iteration.
+    pub(super) nominal_ticks: i32,
+}
+
 /// The two latches the armed attack selection reads, plus the pending jump attack flag.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct AttackLatches {
     action: TapLatch,
     forward: TapLatch,
     jump_attack_pending: bool,
+    /// Nominal ticks the look and action keys have been held together while armed.
+    sheath_timer: i32,
+    /// Nominal ticks since the last defence stance began; accumulates every iteration.
+    defend_counter: i32,
 }
 
 impl AttackLatches {
@@ -59,7 +74,14 @@ impl AttackLatches {
         (tap_time.wrapping_shl(8) / frame_scale.max(1)).max(6)
     }
 
-    pub(super) fn update(&mut self, held: &PlayerInput, tap_time: i32, frame_scale: i32) {
+    pub(super) fn update(
+        &mut self,
+        held: &PlayerInput,
+        tap_time: i32,
+        frame_scale: i32,
+        nominal_ticks: i32,
+    ) {
+        self.defend_counter = self.defend_counter.wrapping_add(nominal_ticks);
         let window = Self::window(tap_time, frame_scale);
         self.action.update(held.action, window);
         self.forward.update(held.forward, window);
@@ -74,10 +96,292 @@ impl ScriptWorld {
         held: &PlayerInput,
         tap_time: i32,
         frame_scale: i32,
+        nominal_ticks: i32,
     ) {
         if let Some(movement) = self.actors[id.index].player_movement.as_mut() {
-            movement.latches.update(held, tap_time, frame_scale);
+            movement
+                .latches
+                .update(held, tap_time, frame_scale, nominal_ticks);
         }
+    }
+
+    /// Drawing and sheathing predicates of the selected player.
+    fn player_drawing_sheathing(
+        &self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<(bool, bool)> {
+        let actor = &self.actors[id.index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("player stance control unavailable")?;
+        let (_, drawing, sheathing) = super::super::activation::weapon_predicates(
+            control.living_state,
+            actor
+                .animation
+                .as_ref()
+                .map(|animation| super::super::ActivationAnimation {
+                    group: animation.playback.current_group(),
+                }),
+            control.combat_death_default.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            inputs
+                .hud
+                .map(|hud| hud.inventory_ready())
+                .transpose()?
+                .unwrap_or(false),
+            inputs.shell_execution.unwrap_or(false),
+        );
+        Ok((drawing, sheathing))
+    }
+
+    /// The armed player's look-key handling, before the attack keys. Holding the look and action
+    /// keys together counts nominal ticks and sheathes the sword once they exceed the sheathing
+    /// delay; a drawing or sheathing sword ends the iteration; with the action key released the
+    /// look key starts the defence stance once `defend_interval` ticks passed since the last one
+    /// (the automatic defence only when an attacker's strike window fits a defence), and a jump
+    /// attack still pending while falling starts. Returns whether the iteration ends here; with the
+    /// action key held and no sheathing it does not, and the attack keys follow.
+    pub(super) fn control_player_stance(
+        &mut self,
+        id: ScriptActorId,
+        held: &PlayerInput,
+        settings: StanceSettings,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let nominal_ticks = settings.nominal_ticks;
+        let movement = self.actors[id.index]
+            .player_movement
+            .as_mut()
+            .context("player stance latches unavailable")?;
+        if held.action && held.look {
+            movement.latches.sheath_timer =
+                movement.latches.sheath_timer.wrapping_add(nominal_ticks);
+            if movement.latches.sheath_timer > settings.sheath_delay {
+                self.sheath_selected_player(inputs, random, sounds)?;
+            }
+            return Ok(true);
+        }
+        movement.latches.sheath_timer = 0;
+        let (drawing, sheathing) = self.player_drawing_sheathing(id, inputs)?;
+        if drawing || sheathing {
+            return Ok(true);
+        }
+        if held.action {
+            return Ok(false);
+        }
+        let counter = self.actors[id.index]
+            .player_movement
+            .as_ref()
+            .expect("validated latches")
+            .latches
+            .defend_counter;
+        if held.look && counter > settings.defend_interval {
+            let started = if settings.auto_defend {
+                self.auto_defend_player(id, inputs, sounds)?
+            } else {
+                self.start_player_stance(id, inputs, sounds)?;
+                true
+            };
+            if started {
+                let actor = &mut self.actors[id.index];
+                let combat = actor
+                    .control
+                    .as_mut()
+                    .and_then(|control| control.combat.as_mut())
+                    .context("player stance combat unavailable")?;
+                combat.flags = (combat.flags & !3) | 2;
+                actor
+                    .player_movement
+                    .as_mut()
+                    .expect("validated latches")
+                    .latches
+                    .defend_counter = 0;
+            }
+        }
+        let latches = self.actors[id.index]
+            .player_movement
+            .as_ref()
+            .expect("validated latches")
+            .latches;
+        let falling = self.actors[id.index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.falling_state == 1);
+        if falling && latches.jump_attack_pending {
+            let started = self.begin_player_move(id, 6, inputs, random, sounds)?;
+            let latches = &mut self.actors[id.index]
+                .player_movement
+                .as_mut()
+                .expect("validated latches")
+                .latches;
+            if started {
+                latches.jump_attack_pending = false;
+            }
+            latches.action.matches(1, true);
+        }
+        Ok(true)
+    }
+
+    /// Actors, in ordinary list order, whose combat target is `id`, whose attacker-selection
+    /// state is one and that are not dead.
+    fn player_attackers(&self, id: ScriptActorId) -> Result<Vec<ScriptActorId>> {
+        let traversal = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .context("player attackers: ordinary traversal unavailable")?
+            .to_vec();
+        let mut attackers = Vec::new();
+        for candidate in traversal {
+            if candidate == id {
+                continue;
+            }
+            let combat = self.actors[self.resolve(candidate)?]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref());
+            if combat.is_some_and(|combat| {
+                combat.target == Some(id) && combat.attacker_selection_state == 1
+            }) && !self.query_is_dead(candidate, Some(id))?
+            {
+                attackers.push(candidate);
+            }
+        }
+        Ok(attackers)
+    }
+
+    /// The defence stance: with no move selected and the sword neither drawing nor sheathing, the
+    /// pending defence index becomes zero, or the counter-attack reference of the first attacker
+    /// that is in the player's forward arc and mid-strike, the selected move becomes nine and the
+    /// defence executor runs.
+    fn start_player_stance(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let (drawing, sheathing) = self.player_drawing_sheathing(id, inputs)?;
+        let combat = self.actors[id.index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("player stance combat unavailable")?;
+        if drawing || sheathing || combat.action != -1 {
+            return Ok(());
+        }
+        let mut index = 0;
+        if let Some(&attacker) = self.player_attackers(id)?.first() {
+            let own = self.spatial(id)?.local;
+            let other = self.spatial(attacker)?.local;
+            let striking = self.actors[attacker.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.decision.attack_state == 1);
+            if striking
+                && crate::script::decision::ordinary_defence_forward_arc(
+                    own.position,
+                    other.position,
+                    i32::from(own.angles[1]),
+                )
+            {
+                index = self
+                    .current_combat_motion(attacker)?
+                    .defense
+                    .context("attacker counter-attack reference unavailable")?
+                    .wrapping_sub(1);
+            }
+        }
+        let combat = self.actors[id.index]
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .expect("admitted combat");
+        combat.retained_action_indices[0] = index;
+        combat.action = 9;
+        self.execute_combat_attack(id, 0, inputs, sounds)?;
+        Ok(())
+    }
+
+    /// The automatic defence: the first attacker in the player's forward arc that holds intent
+    /// bit one, is mid-strike and whose strike window (from its first collision frame and first
+    /// defence frame) lies inside the active window of the player's matching defence starts the
+    /// stance. Whether one did.
+    fn auto_defend_player(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        for attacker in self.player_attackers(id)? {
+            let own = self.spatial(id)?.local;
+            let other = self.spatial(attacker)?.local;
+            let combat = self.actors[attacker.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("attacker combat unavailable")?;
+            if !crate::script::decision::ordinary_defence_forward_arc(
+                own.position,
+                other.position,
+                i32::from(own.angles[1]),
+            ) || combat.flags & 1 == 0
+                || combat.decision.attack_state != 1
+            {
+                continue;
+            }
+            let motion = self.current_combat_motion(attacker)?;
+            let cursor = self.actors[attacker.index]
+                .animation
+                .as_ref()
+                .context("attacker animation unavailable")?
+                .playback
+                .current_command_cursor()?
+                .context("attacker command cursor unavailable")?;
+            let gap_near = motion.first_collide_frame.wrapping_sub(cursor);
+            let gap_far = motion
+                .first_defend_frame
+                .context("attacker first_defend_frame unavailable")?
+                .wrapping_sub(cursor);
+            let counter = self.current_combat_counter_attack(attacker)?;
+            let slot = usize::try_from(counter).context("negative counter defense slot")?;
+            let record = self.actors[id.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("player stance combat unavailable")?
+                .defense_indices
+                .get(slot)
+                .copied()
+                .flatten()
+                .with_context(|| format!("player defense slot {slot}: unpopulated"))?;
+            let defense = self
+                .combat_defenses
+                .get(usize::from(record))
+                .with_context(|| format!("player defense record {record}: unavailable"))?;
+            let start = defense
+                .first_collide_frame
+                .context("player defense first_collide_frame unavailable")?;
+            let end = start.wrapping_add(
+                defense
+                    .collide_duration
+                    .context("player defense collide_duration unavailable")?,
+            );
+            if (start < gap_far || gap_far <= 0)
+                && end > gap_far
+                && start < gap_near
+                && end > gap_near
+            {
+                self.start_player_stance(id, inputs, sounds)?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// The reach test before a combo move starts. A start proceeds when an actor with a combat
@@ -238,8 +542,21 @@ impl ScriptWorld {
         let Some(kind) = chosen else {
             return Ok(());
         };
+        self.begin_player_move(id, kind, inputs, random, sounds)?;
+        Ok(())
+    }
+
+    /// The reach test, then the move start through the defence start. Whether the move started.
+    fn begin_player_move(
+        &mut self,
+        id: ScriptActorId,
+        kind: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
         if !self.attack_reach_admits(id, kind, inputs, random, sounds)? {
-            return Ok(());
+            return Ok(false);
         }
         let weapon = super::WeaponInputs {
             selected_player: id,
@@ -267,8 +584,7 @@ impl ScriptWorld {
                 })
             },
             sounds,
-        )?;
-        Ok(())
+        )
     }
 }
 
@@ -280,6 +596,15 @@ mod tests {
         for &held in frames {
             latch.update(held, window);
         }
+    }
+
+    #[test]
+    fn the_defence_counter_accumulates_nominal_ticks_every_iteration() {
+        let mut latches = AttackLatches::default();
+        let held = PlayerInput::default();
+        latches.update(&held, 12, 256, 2);
+        latches.update(&held, 12, 256, 3);
+        assert_eq!(latches.defend_counter, 5);
     }
 
     #[test]

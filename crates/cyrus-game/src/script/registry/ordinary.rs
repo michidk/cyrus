@@ -1247,6 +1247,7 @@ pub fn run_ordinary(
             .map(|(held, toggles)| super::player::PlayerControllerInput {
                 held,
                 walk_mode: toggles.walk_mode,
+                auto_defend: toggles.auto_defend,
             })
     } else {
         None

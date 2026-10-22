@@ -5430,6 +5430,8 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
             slide_speed: None,
             slide_hurt: None,
             tap_time: None,
+            sheath_sword_delay: None,
+            defend_interval: None,
             swim_depth: None,
             turn_speed: 1,
             turn_max_speed: 1,
@@ -5972,6 +5974,8 @@ fn ordinary_collision_scene(
             slide_speed: None,
             slide_hurt: None,
             tap_time: None,
+            sheath_sword_delay: None,
+            defend_interval: None,
             swim_depth: None,
             turn_speed: 1,
             turn_max_speed: 1,
@@ -6550,6 +6554,8 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             slide_speed: None,
             slide_hurt: None,
             tap_time: None,
+            sheath_sword_delay: None,
+            defend_interval: None,
             swim_depth: None,
             turn_speed: 12,
             turn_max_speed: 48,
@@ -6684,6 +6690,8 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             slide_speed: None,
             slide_hurt: None,
             tap_time: None,
+            sheath_sword_delay: None,
+            defend_interval: None,
             swim_depth: None,
             turn_speed: 12,
             turn_max_speed: 48,
@@ -6776,6 +6784,8 @@ fn ordinary_collision_loader_distinguishes_authored_static_and_model_less_shapes
                 slide_speed: None,
                 slide_hurt: None,
                 tap_time: None,
+                sheath_sword_delay: None,
+                defend_interval: None,
                 swim_depth: None,
                 turn_speed: 1,
                 turn_max_speed: 1,
@@ -13129,6 +13139,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
                 player_controller: Some(PlayerControllerInput {
                     held: &held,
                     walk_mode: true,
+                    auto_defend: false,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -13236,6 +13247,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
                 player_controller: Some(PlayerControllerInput {
                     held: &held,
                     walk_mode: false,
+                    auto_defend: false,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -13343,6 +13355,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
                 player_controller: Some(PlayerControllerInput {
                     held: &held,
                     walk_mode: false,
+                    auto_defend: false,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -13451,6 +13464,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
                 player_controller: Some(PlayerControllerInput {
                     held: &held,
                     walk_mode: false,
+                    auto_defend: false,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -13696,6 +13710,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                             ..Default::default()
                         },
                         walk_mode: true,
+                        auto_defend: false,
                     }),
                     ..Default::default()
                 },
@@ -13814,6 +13829,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                     player_controller: Some(cyrus_game::script::PlayerControllerInput {
                         held: &held,
                         walk_mode: true,
+                        auto_defend: false,
                     }),
                     ..Default::default()
                 },
@@ -13856,6 +13872,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         player_controller: Some(cyrus_game::script::PlayerControllerInput {
                             held: &released,
                             walk_mode: true,
+                            auto_defend: false,
                         }),
                         ..Default::default()
                     },
@@ -16412,6 +16429,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                                 ..Default::default()
                             },
                             walk_mode: true,
+                            auto_defend: false,
                         }),
                         hud: (ticks == 0).then_some(&hud),
                         ..Default::default()
