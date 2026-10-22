@@ -138,14 +138,12 @@ impl ScriptWorld {
         if self.query_stable_recovery(id, &prepared, input.scene, input.animations)? {
             return Ok(false);
         }
-        // A rejected probe takes the selected player through a follow-up ground response that is
-        // not modelled, and objects through a separate path.
+        // A rejected probe takes objects through a separate path.
         ensure!(
-            self.selected_player_index() != Some(index)
-                && self.actors[index]
-                    .placement()
-                    .is_some_and(|placement| placement.object_type == 1),
-            "world {} instance {index}: stable recovery of the selected player or an object is unavailable",
+            self.actors[index]
+                .placement()
+                .is_some_and(|placement| placement.object_type == 1),
+            "world {} instance {index}: stable recovery of an object is unavailable",
             self.world
         );
         let turn = i32::from(self.actors[index].attributes[15]);
@@ -186,6 +184,83 @@ impl ScriptWorld {
             )?;
         }
         Ok(true)
+    }
+
+    /// The first half of the selected player's stable recovery: when its stable record is valid
+    /// and the probe rejects, restore the stable position, clear attribute 6, falling and sliding,
+    /// restore the movement flags and animation snapshot and mark collision transition bit 1.
+    /// Returns the attempted position and the falling byte before recovery for the caller's
+    /// follow-up ground response; `None` when no recovery happened.
+    pub(super) fn begin_selected_stable_recovery(
+        &mut self,
+        id: ScriptActorId,
+        input: &OrdinaryStableRecoveryInputs<'_>,
+        snapshot: &OrdinaryRollbackSnapshot,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<Option<([i32; 3], u8)>> {
+        let index = self.resolve(id)?;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .context("selected stable recovery control unavailable")?;
+        if !control.stable_position_valid {
+            return Ok(None);
+        }
+        let stable = control.stable_local_position;
+        let falling = control.falling_state;
+        let prepared = self.prepare_stable_recovery_query(
+            id,
+            input.scene,
+            input.animations,
+            input.view,
+            input.actors,
+        )?;
+        if self.query_stable_recovery(id, &prepared, input.scene, input.animations)? {
+            return Ok(None);
+        }
+        let attempted = self.spatial(id)?.local.position;
+        self.restore_ordinary_rollback(id, snapshot, sounds)?;
+        let actor = &mut self.actors[index];
+        actor.attributes[6] = 0;
+        let control = actor
+            .control
+            .as_mut()
+            .expect("validated stable recovery control");
+        control.falling_state = 0;
+        control.sliding_state = 0;
+        control.collision_transition_flags |= 1;
+        self.spatial
+            .as_mut()
+            .context("selected stable recovery spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = stable;
+        Ok(Some((attempted, falling)))
+    }
+
+    /// The second half of the selected player's stable recovery, when the follow-up ground
+    /// response found no support: the attempted position returns, the stable record becomes
+    /// invalid and the falling byte comes back.
+    pub(super) fn undo_selected_stable_recovery(
+        &mut self,
+        id: ScriptActorId,
+        attempted: [i32; 3],
+        falling: u8,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.spatial
+            .as_mut()
+            .context("selected stable recovery spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = attempted;
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("selected stable recovery control unavailable")?;
+        control.stable_position_valid = false;
+        control.falling_state = falling;
+        Ok(())
     }
 
     pub(super) fn restore_ordinary_rollback(

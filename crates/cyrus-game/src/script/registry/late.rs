@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 
+#[derive(Clone, Copy)]
 pub(super) struct OrdinaryLateInputs<'a> {
     pub script: super::ScriptInputs<'a>,
     pub ticks: u32,
@@ -436,6 +437,177 @@ impl ScriptWorld {
         Ok((holding, combat_active))
     }
 
+    /// The ground response: the support query, queued motion and the support, landing, slope and
+    /// miss handling that follow it. Returns whether the support query found support.
+    #[allow(clippy::too_many_arguments)] // one stage of the late wrapper with its caller's services
+    fn ground_response_stage(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        inputs: OrdinaryLateInputs<'_>,
+        (mask, special, falling): (u8, bool, bool),
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let OrdinaryLateInputs {
+            script,
+            ticks,
+            fine_ticks,
+            step_fps,
+            weapon,
+        } = inputs;
+        // An animated actor that is falling probes a shorter column once the measured FPS
+        // reaches ten; static models always use the full distance.
+        let support_query = if falling {
+            let fps = step_fps.context("falling support probe needs the step's measured FPS")?;
+            super::ground::OrdinaryGroundQuery {
+                distance: if fps >= 10 {
+                    (query.distance >> 2) * 3
+                } else {
+                    query.distance
+                },
+                ..query
+            }
+        } else {
+            query
+        };
+        let (prevalidation, support) =
+            self.query_ordinary_point_support(id, support_query, environment, sounds)?;
+        let support_found = support.is_some();
+        let mut queued_handled = false;
+        if mask & 4 != 0 && !special {
+            let control = self.actors[id.index]
+                .control
+                .as_ref()
+                .expect("admitted ground control");
+            if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
+                queued_handled = self.resolve_ordinary_queued_motion(
+                    id,
+                    query,
+                    environment,
+                    fine_ticks.context("queued motion needs the step's fine-tick increment")?,
+                    0,
+                    sounds,
+                )?;
+            }
+        }
+        if mask & 4 != 0 {
+            let living_state = self.actors[id.index]
+                .control
+                .as_ref()
+                .expect("admitted ground control")
+                .living_state;
+            if matches!(living_state, 20 | 21) {
+                self.admit_actor_weapon_draw(
+                    id,
+                    weapon.context("combat ground weapon admission unavailable")?,
+                    ticks,
+                    sounds,
+                )?;
+            } else if special {
+                // The selected player's ledge states run their transition in place of the
+                // ordinary motion and ground response; other actors change nothing.
+                self.ledge_transition(
+                    id,
+                    query,
+                    environment,
+                    super::ledge_states::LedgeTiming {
+                        fine_ticks: fine_ticks
+                            .context("ledge transition needs the step's fine-tick increment")?,
+                        frame_scale: inputs.script.frame_scale,
+                    },
+                    sounds,
+                )?;
+            } else if !queued_handled {
+                let actor = &self.actors[id.index];
+                let control = actor.control.as_ref().expect("admitted late control");
+                ensure!(
+                    !matches!(control.living_state, 27..=32),
+                    "state-specific ground response owner unavailable"
+                );
+                if let Some(support) = support.as_ref() {
+                    if falling {
+                        let selected = (environment.selected_player == Some(id)).then(|| {
+                            super::falling::SelectedLanding {
+                                inputs: script,
+                                random: &mut *random,
+                                steep: crate::player::support::classification(support, mask) == 2,
+                            }
+                        });
+                        self.land_ordinary_fall(
+                            id,
+                            query.animations,
+                            environment,
+                            weapon,
+                            selected,
+                            sounds,
+                        )?;
+                    }
+                    let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
+                    let height = i32::try_from(
+                        support.actor_height(extent, query.scene.settings.standing_height),
+                    )
+                    .context("ordinary support origin outside Q8 range")?;
+                    self.spatial
+                        .as_mut()
+                        .context("ground response spatial state unavailable")?
+                        .actor_mut(id.index)?
+                        .local
+                        .position[1] = height;
+                    // A steep-surface result with a zero native return state ends the ground
+                    // response in the slope response; a nonzero state ignores the result.
+                    if prevalidation.sliding && self.globals.native_command_return == 0 {
+                        let control = self.actors[id.index]
+                            .control
+                            .as_mut()
+                            .expect("admitted ground control");
+                        control.falling_state = 0;
+                        let (holding, combat_active) =
+                            self.slope_stance(id, environment, weapon)?;
+                        self.actors[id.index].sync_falling_motion();
+                        self.resolve_ordinary_slope(
+                            id,
+                            Some(support),
+                            query,
+                            super::slope::OrdinarySlopeInputs {
+                                selected_player: environment.selected_player,
+                                holding_weapon: holding,
+                                combat_active,
+                                frame_scale: script
+                                    .frame_scale
+                                    .context("slope response needs the step's frame scale")?,
+                                ticks,
+                            },
+                            sounds,
+                        )?;
+                    } else {
+                        let selected = (environment.selected_player == Some(id))
+                            .then_some((script, &mut *random));
+                        self.end_ordinary_slide(id, query, environment, selected, sounds)?;
+                    }
+                } else if self.actors[id.index].attributes[107] != 0 {
+                    self.actors[id.index]
+                        .control
+                        .as_mut()
+                        .expect("admitted ground control")
+                        .falling_state = 0;
+                } else {
+                    self.miss_ordinary_support(
+                        id,
+                        query,
+                        environment,
+                        fine_ticks.context("falling needs the step's fine-tick increment")?,
+                        inputs.script.frame_scale,
+                        sounds,
+                    )?;
+                }
+            }
+            self.retain_ordinary_stable_position(id)?;
+        }
+        Ok(support_found)
+    }
+
     pub(super) fn resolve_ordinary_late_collision(
         &mut self,
         id: ScriptActorId,
@@ -493,153 +665,21 @@ impl ScriptWorld {
         if mask & 8 != 0 {
             self.resolve_ordinary_overlap_stage(id, obstacle_query(), environment, sounds)?;
         }
-        // An animated actor that is falling probes a shorter column once the measured FPS
-        // reaches ten; static models always use the full distance.
-        let support_query = if falling {
-            let fps = step_fps.context("falling support probe needs the step's measured FPS")?;
-            super::ground::OrdinaryGroundQuery {
-                distance: if fps >= 10 {
-                    (query.distance >> 2) * 3
-                } else {
-                    query.distance
-                },
-                ..query
-            }
-        } else {
-            query
-        };
-        let (prevalidation, support) =
-            self.query_ordinary_point_support(id, support_query, environment, sounds)?;
-        let mut queued_handled = false;
-        if mask & 4 != 0 && !special {
-            let control = self.actors[id.index]
-                .control
-                .as_ref()
-                .expect("admitted ground control");
-            if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
-                queued_handled = self.resolve_ordinary_queued_motion(
-                    id,
-                    query,
-                    environment,
-                    fine_ticks.context("queued motion needs the step's fine-tick increment")?,
-                    0,
-                    sounds,
-                )?;
-            }
-        }
-        if mask & 4 != 0 {
-            let living_state = self.actors[id.index]
-                .control
-                .as_ref()
-                .expect("admitted ground control")
-                .living_state;
-            if matches!(living_state, 20 | 21) {
-                self.admit_actor_weapon_draw(
-                    id,
-                    weapon.context("combat ground weapon admission unavailable")?,
-                    ticks,
-                    sounds,
-                )?;
-            } else if special {
-                // The selected player's ledge states run their transition in place of the
-                // ordinary motion and ground response; other actors change nothing.
-                self.ledge_transition(
-                    id,
-                    query,
-                    environment,
-                    super::ledge_states::LedgeTiming {
-                        fine_ticks: fine_ticks
-                            .context("ledge transition needs the step's fine-tick increment")?,
-                        frame_scale: inputs.script.frame_scale,
-                    },
-                    sounds,
-                )?;
-            } else if !queued_handled {
-                let actor = &self.actors[id.index];
-                let control = actor.control.as_ref().expect("admitted late control");
-                ensure!(
-                    !matches!(control.living_state, 27..=32),
-                    "state-specific ground response owner unavailable"
-                );
-                if let Some(support) = support.as_ref() {
-                    if falling {
-                        let selected = (environment.selected_player == Some(id)).then(|| {
-                            super::falling::SelectedLanding {
-                                inputs: script,
-                                random: &mut *recovery.random,
-                                steep: crate::player::support::classification(support, mask) == 2,
-                            }
-                        });
-                        self.land_ordinary_fall(
-                            id,
-                            query.animations,
-                            environment,
-                            weapon,
-                            selected,
-                            sounds,
-                        )?;
-                    }
-                    let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
-                    let height = i32::try_from(
-                        support.actor_height(extent, query.scene.settings.standing_height),
-                    )
-                    .context("ordinary support origin outside Q8 range")?;
-                    self.spatial
-                        .as_mut()
-                        .context("ground response spatial state unavailable")?
-                        .actor_mut(id.index)?
-                        .local
-                        .position[1] = height;
-                    // A steep-surface result with a zero native return state ends the ground
-                    // response in the slope response; a nonzero state ignores the result.
-                    if prevalidation.sliding && self.globals.native_command_return == 0 {
-                        let control = self.actors[id.index]
-                            .control
-                            .as_mut()
-                            .expect("admitted ground control");
-                        control.falling_state = 0;
-                        let (holding, combat_active) =
-                            self.slope_stance(id, environment, weapon)?;
-                        self.actors[id.index].sync_falling_motion();
-                        self.resolve_ordinary_slope(
-                            id,
-                            Some(support),
-                            query,
-                            super::slope::OrdinarySlopeInputs {
-                                selected_player: environment.selected_player,
-                                holding_weapon: holding,
-                                combat_active,
-                                frame_scale: script
-                                    .frame_scale
-                                    .context("slope response needs the step's frame scale")?,
-                                ticks,
-                            },
-                            sounds,
-                        )?;
-                    } else {
-                        let selected = (environment.selected_player == Some(id))
-                            .then_some((script, &mut *recovery.random));
-                        self.end_ordinary_slide(id, query, environment, selected, sounds)?;
-                    }
-                } else if self.actors[id.index].attributes[107] != 0 {
-                    self.actors[id.index]
-                        .control
-                        .as_mut()
-                        .expect("admitted ground control")
-                        .falling_state = 0;
-                } else {
-                    self.miss_ordinary_support(
-                        id,
-                        query,
-                        environment,
-                        fine_ticks.context("falling needs the step's fine-tick increment")?,
-                        inputs.script.frame_scale,
-                        sounds,
-                    )?;
-                }
-            }
-            self.retain_ordinary_stable_position(id)?;
-        }
+        self.ground_response_stage(
+            id,
+            query,
+            environment,
+            OrdinaryLateInputs {
+                script,
+                ticks,
+                fine_ticks,
+                step_fps,
+                weapon,
+            },
+            (mask, special, falling),
+            &mut *recovery.random,
+            sounds,
+        )?;
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -709,7 +749,30 @@ impl ScriptWorld {
         } else {
             false
         };
-        if recover {
+        if recover && environment.selected_player == Some(id) {
+            if let Some((attempted, falling_before)) =
+                self.begin_selected_stable_recovery(id, &recovery, rollback, sounds)?
+            {
+                let found = self.ground_response_stage(
+                    id,
+                    query,
+                    environment,
+                    OrdinaryLateInputs {
+                        script,
+                        ticks,
+                        fine_ticks,
+                        step_fps,
+                        weapon,
+                    },
+                    (mask, special, false),
+                    &mut *recovery.random,
+                    sounds,
+                )?;
+                if !found {
+                    self.undo_selected_stable_recovery(id, attempted, falling_before)?;
+                }
+            }
+        } else if recover {
             self.recover_ordinary_stable(id, recovery, rollback, sounds)?;
         }
         self.rollback_ordinary_water(id, None, rollback, sounds)?;
