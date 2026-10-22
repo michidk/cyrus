@@ -23,6 +23,21 @@ pub const DEFAULT_FILE_FILTER: &str = "info,cyrus=debug";
 /// Daily files kept; older ones are deleted when a file opens or rotates.
 pub const KEPT_FILES: usize = 7;
 
+/// Reuse the launching terminal on Windows without creating a console on desktop launch.
+/// Call before parsing arguments so help and argument errors reach the terminal too.
+pub fn attach_parent_console() {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn AttachConsole(process_id: u32) -> i32;
+        }
+        // SAFETY: AttachConsole takes a process identifier and retains no Rust references.
+        // Failure is expected when Explorer launched the application without a console.
+        unsafe { AttachConsole(u32::MAX) };
+    }
+}
+
 /// Log options shared by the native applications' command lines.
 #[derive(clap::Args, Debug, Clone)]
 pub struct LogArgs {

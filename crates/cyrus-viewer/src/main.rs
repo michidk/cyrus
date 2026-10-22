@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 //! Independent native and browser entry points for the shared asset viewer.
 #[cfg(target_arch = "wasm32")]
 mod browser;
@@ -29,6 +31,7 @@ struct Args {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> anyhow::Result<()> {
     use clap::Parser;
+    cyrus_app::logging::attach_parent_console();
     let args = Args::parse();
     let mut app = App::new();
     let logging = args.log.plugin(&mut app, "cyrus-viewer");

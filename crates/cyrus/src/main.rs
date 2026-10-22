@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 //! Native install, persistence and control adapters with game/presentation assembly.
 mod audit;
 mod control;
@@ -50,6 +52,7 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    cyrus_app::logging::attach_parent_console();
     let args = Args::parse();
     let mut app = App::new();
     // First, so the export and audit modes log too, and a failure reaches the log file.
