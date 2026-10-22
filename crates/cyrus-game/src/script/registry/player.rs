@@ -268,7 +268,11 @@ impl ScriptWorld {
         let fine_ticks = inputs
             .fine_ticks
             .context("ledge controller needs the step's fine-tick increment")?;
-        self.ledge_hang_release(id, query, environment, fine_ticks, sounds)?;
+        let timing = super::ledge_states::LedgeTiming {
+            fine_ticks,
+            frame_scale: Some(timing.frame_scale),
+        };
+        self.ledge_hang_release(id, query, environment, timing, sounds)?;
         Ok(())
     }
 

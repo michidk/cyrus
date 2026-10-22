@@ -315,6 +315,8 @@ pub struct ActorControlState {
     pub directional_state: [u8; 2],
     /// Allocator-zero action-transition counter; state-17 reset assigns six.
     pub action_transition_counter: u8,
+    /// Ticks since the directional-state pending byte began, promoting it after 36.
+    pub jump_window: u8,
     /// Packed left/right/forward/backward counters, two bits each; directional motion saturates its field.
     pub movement_flags: u8,
     /// Retained integer motion components; obstacle interruption only clears them here.

@@ -1,7 +1,7 @@
 //! Selected-player ledge entry: the edge service, the ledge scan with its record classification,
 //! and the entry transition. The ledge living states live in `ledge_states`; entry through
 //! the ground-level classes 1 and 2 stays unsupported.
-use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
+use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge_states::LedgeTiming};
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::{
@@ -30,7 +30,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         query: OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
-        fine_ticks: u32,
+        timing: LedgeTiming,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
         let index = self.resolve(id)?;
@@ -54,8 +54,8 @@ impl ScriptWorld {
         })?;
         if matches!(surface, 2 | 4) {
             if control.living_state == 15 {
-                self.ledge_hang_release(id, query, environment, fine_ticks, sounds)?;
-                self.ledge_transition(id, query, environment, fine_ticks, sounds)?;
+                self.ledge_hang_release(id, query, environment, timing, sounds)?;
+                self.ledge_transition(id, query, environment, timing, sounds)?;
             }
             return Ok(false);
         }
@@ -64,23 +64,12 @@ impl ScriptWorld {
             0 => {}
             _ => return Ok(false),
         }
-        // Entry enters state 19 with the ledge-support reference cleared; the transition leaves a
-        // nonzero state only when it caught or started a ledge.
-        self.actors[index]
-            .control
-            .as_mut()
-            .expect("validated edge service control")
-            .living_state = 19;
-        self.actors[index].model.ledge_support = None;
-        let result = self.ledge_transition(id, query, environment, fine_ticks, sounds)?;
+        let result = self.ledge_enter_from_zero(id, query, environment, timing, sounds)?;
         let control = self.actors[index]
             .control
             .as_mut()
             .expect("validated edge service control");
         if control.living_state != 0 {
-            control.sliding_state = 0;
-            control.falling_state = 0;
-            control.queued_motion = 0;
             self.globals.selected_action_inhibition = Some(16);
         } else if control.action_transition_counter != 0 {
             control.queued_motion &= !0x80;
@@ -88,6 +77,71 @@ impl ScriptWorld {
         }
         self.actors[index].sync_falling_motion();
         Ok(result != 0)
+    }
+
+    /// The edge entry of the jump and motion services: like the edge service without the water
+    /// surface exit, the inhibition countdown and the fall-bit clear. Returns whether a ledge
+    /// holds the player (already in a ledge state, or the entry caught one).
+    pub(super) fn selected_edge_entry(
+        &mut self,
+        id: ScriptActorId,
+        query: OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: LedgeTiming,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("edge entry control unavailable")?;
+        if environment.selected_player != Some(id)
+            || actor.attributes[105] == 1
+            || control.torch_burning != 0
+            || self.ledge_blocked(index, environment)
+        {
+            return Ok(false);
+        }
+        match control.living_state {
+            10..=19 => Ok(true),
+            0 => Ok(self.ledge_enter_from_zero(id, query, environment, timing, sounds)? != 0),
+            _ => Ok(false),
+        }
+    }
+
+    /// Enter state 19 with the ledge-support reference cleared and run the transition once. A
+    /// nonzero resulting state clears the sliding, falling and queued-motion bytes.
+    fn ledge_enter_from_zero(
+        &mut self,
+        id: ScriptActorId,
+        query: OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: LedgeTiming,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<u8> {
+        let index = self.resolve(id)?;
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("ledge entry control unavailable")?
+            .living_state = 19;
+        self.actors[index].model.ledge_support = None;
+        let result = self.ledge_transition(id, query, environment, timing, sounds)?;
+        if self.actors[index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.living_state != 0)
+        {
+            let control = self.actors[index]
+                .control
+                .as_mut()
+                .expect("validated ledge control");
+            control.sliding_state = 0;
+            control.falling_state = 0;
+            control.queued_motion = 0;
+        }
+        Ok(result)
     }
 
     /// The state-33/34 and group-149/150 block, which applies only while animation is enabled
@@ -409,6 +463,11 @@ pub(super) struct LedgeScan {
 }
 
 impl LedgeScan {
+    /// The first record of a class, for the entering selections of classes 1 and 2.
+    pub fn first(&self, class: u8) -> Option<&LedgeRecord> {
+        self.records.iter().find(|record| record.class == class)
+    }
+
     /// The class 3 record nearest the hand, earliest on ties; none without a hand frame.
     pub fn hand_nearest(&self, local_y: i32) -> Option<&LedgeRecord> {
         let hand = local_y.wrapping_add(self.grip?[1]);

@@ -247,15 +247,20 @@ impl ScriptWorld {
         query: super::ground::OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
         fine_ticks: u32,
+        frame_scale: Option<u32>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        let timing = super::ledge_states::LedgeTiming {
+            fine_ticks,
+            frame_scale,
+        };
         let post = query.scene.settings.post_collide_height;
         let control = self.actors[id.index]
             .control
             .as_ref()
             .context("support miss control unavailable")?;
         if control.falling_state != 0 {
-            if self.selected_edge_service(id, query, environment, fine_ticks, sounds)? {
+            if self.selected_edge_service(id, query, environment, timing, sounds)? {
                 self.end_ordinary_fall(id)?;
                 return Ok(());
             }
@@ -299,7 +304,7 @@ impl ScriptWorld {
                 environment,
                 sounds,
             )? {
-                if self.selected_edge_service(id, query, environment, fine_ticks, sounds)? {
+                if self.selected_edge_service(id, query, environment, timing, sounds)? {
                     return self.end_ordinary_fall(id);
                 }
                 self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
@@ -341,6 +346,14 @@ impl ScriptWorld {
             shell_execution: weapon.is_some_and(|input| input.shell_execution),
             ticks,
         };
+        self.run_jump_window(
+            id,
+            query,
+            environment,
+            fine_ticks,
+            script.frame_scale,
+            sounds,
+        )?;
         let obstacle_query = || super::obstacle::OrdinaryObstacleQuery {
             scene: query.scene,
             animations: query.animations,
@@ -391,12 +404,6 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("admitted ground control");
             if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
-                ensure!(
-                    environment.selected_player != Some(id),
-                    "world {} instance {}: queued selected-player edge service unsupported",
-                    self.world,
-                    id.index
-                );
                 queued_handled = self.resolve_ordinary_queued_motion(
                     id,
                     query,
@@ -433,7 +440,11 @@ impl ScriptWorld {
                     id,
                     query,
                     environment,
-                    fine_ticks.context("ledge transition needs the step's fine-tick increment")?,
+                    super::ledge_states::LedgeTiming {
+                        fine_ticks: fine_ticks
+                            .context("ledge transition needs the step's fine-tick increment")?,
+                        frame_scale: inputs.script.frame_scale,
+                    },
                     sounds,
                 )?;
             } else if !queued_handled {
@@ -496,6 +507,7 @@ impl ScriptWorld {
                         query,
                         environment,
                         fine_ticks.context("falling needs the step's fine-tick increment")?,
+                        inputs.script.frame_scale,
                         sounds,
                     )?;
                 }

@@ -5,6 +5,14 @@
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
 use anyhow::{Context, Result, bail};
 
+/// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
+/// of the scan and the frame scale that sets the turn rate of a ledge turn.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LedgeTiming {
+    pub fine_ticks: u32,
+    pub frame_scale: Option<u32>,
+}
+
 /// Climb tables in map units, indexed by the animation's `real_frame` without a bound check in
 /// the original; frames beyond a table are an explicit failure here.
 const LOW_HEIGHT: [i32; 22] = [
@@ -30,7 +38,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         query: OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
-        fine_ticks: u32,
+        timing: LedgeTiming,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<u8> {
         let index = self.resolve(id)?;
@@ -47,7 +55,7 @@ impl ScriptWorld {
         }
         // The hang-model reference the original clears and sets has no reader, so it is not kept.
         if control.torch_burning != 0 || self.ledge_blocked(index, environment) {
-            self.ledge_hang_release(id, query, environment, fine_ticks, sounds)?;
+            self.ledge_hang_release(id, query, environment, timing, sounds)?;
             return Ok(0);
         }
         let mut ctx = Transition {
@@ -55,7 +63,7 @@ impl ScriptWorld {
             index,
             query,
             environment,
-            fine_ticks,
+            timing,
             table: None,
         };
         if self.living(index) == 15 {
@@ -64,11 +72,16 @@ impl ScriptWorld {
         if self.living(index) == 19 && !self.ledge_enter(&mut ctx)? {
             return Ok(0);
         }
-        if matches!(self.living(index), 12 | 10) {
+        if self.living(index) == 12
+            && let Some(result) = self.ledge_turn_low(&ctx, sounds)?
+        {
+            return Ok(result);
+        }
+        if self.living(index) == 10 {
+            // The high-ledge start needs a group started partway through its frames.
             bail!(
-                "world {} instance {index}: ledge turn state {} unsupported",
-                self.world,
-                self.living(index)
+                "world {} instance {index}: ledge turn state 10 unsupported",
+                self.world
             );
         }
         if self.living(index) == 14 {
@@ -111,7 +124,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         query: OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
-        fine_ticks: u32,
+        timing: LedgeTiming,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<u8> {
         let index = self.resolve(id)?;
@@ -127,7 +140,7 @@ impl ScriptWorld {
         }
         self.set_living(index, 17);
         self.actors[index].model.ledge_support = None;
-        let result = self.ledge_transition(id, query, environment, fine_ticks, sounds)?;
+        let result = self.ledge_transition(id, query, environment, timing, sounds)?;
         if self.living(index) != 0 {
             self.clear_ledge_motion(index);
         }
@@ -145,7 +158,7 @@ impl ScriptWorld {
             index,
             query,
             environment,
-            fine_ticks,
+            timing,
             ..
         } = *ctx;
         if environment.selected_player != Some(id)
@@ -154,7 +167,7 @@ impl ScriptWorld {
         {
             return Ok(0);
         }
-        let scan = self.ledge_scan(id, query, environment, fine_ticks, 15)?;
+        let scan = self.ledge_scan(id, query, environment, timing.fine_ticks, 15)?;
         let local_y = self.spatial(id)?.local.position[1];
         let Some(record) = scan
             .hand_nearest(local_y)
@@ -165,7 +178,7 @@ impl ScriptWorld {
         let support = record.support;
         self.actors[index].model.ledge_support = self.ledge_support_id(support)?;
         self.set_living(index, 16);
-        let result = self.ledge_transition(id, query, environment, fine_ticks, sounds)?;
+        let result = self.ledge_transition(id, query, environment, timing, sounds)?;
         if self.living(index) != 0 {
             self.clear_ledge_motion(index);
         }
@@ -180,27 +193,78 @@ impl ScriptWorld {
             index,
             query,
             environment,
-            fine_ticks,
+            timing,
             ..
         } = *ctx;
-        let scan = self.ledge_scan(id, query, environment, fine_ticks, 19)?;
-        if matches!(scan.result, 1 | 2) {
-            bail!(
-                "world {} instance {index}: ledge entry from a ground-level class {} unsupported",
-                self.world,
-                scan.result
-            );
-        }
+        let scan = self.ledge_scan(id, query, environment, timing.fine_ticks, 19)?;
         let local_y = self.spatial(id)?.local.position[1];
-        let Some(record) = scan.hand_nearest(local_y).cloned() else {
+        let (record, state) = match scan.result {
+            1 | 2 => (
+                scan.first(scan.result),
+                if scan.result == 1 { 12 } else { 10 },
+            ),
+            _ => (scan.hand_nearest(local_y), 14),
+        };
+        let Some(record) = record.cloned() else {
             self.set_living(index, 0);
             return Ok(false);
         };
-        self.set_living(index, 14);
+        self.set_living(index, state);
         self.globals.selected_ledge_anchor = Some((record.point, record.heading));
         self.actors[index].model.ledge_support = self.ledge_support_id(record.support)?;
         ctx.table = Some(scan);
         Ok(true)
+    }
+
+    /// State 12: turn to the low ledge, then rescan and start the climb in state 13. Returns the
+    /// transition's result while turning or when the ledge is gone; `None` continues into the
+    /// climb state.
+    fn ledge_turn_low(
+        &mut self,
+        ctx: &Transition<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<Option<u8>> {
+        let (id, index) = (ctx.id, ctx.index);
+        let (point, heading) = self.ledge_anchor()?;
+        let frame_scale = ctx
+            .timing
+            .frame_scale
+            .context("ledge turn needs the step's frame scale")?;
+        let turn = self.turn_ordinary_toward(
+            id,
+            heading,
+            super::slope::OrdinarySlopeInputs {
+                selected_player: ctx.environment.selected_player,
+                holding_weapon: false,
+                combat_active: false,
+                frame_scale,
+                ticks: ctx.environment.ticks,
+            },
+            sounds,
+        )?;
+        if turn != 0 {
+            if turn.abs() <= 256 {
+                return Ok(Some(1));
+            }
+            self.set_living(index, 0);
+            return Ok(Some(0));
+        }
+        let scan = self.ledge_scan(id, ctx.query, ctx.environment, ctx.timing.fine_ticks, 12)?;
+        if scan.result != 1 {
+            self.set_living(index, 0);
+            return Ok(Some(0));
+        }
+        let [dx, dz] =
+            super::ledge::heading_offset(LOW_FORWARD[0] * 256, heading.wrapping_add(1024));
+        self.write_ledge_pose(
+            index,
+            Some(point[0].wrapping_add(dx)),
+            None,
+            Some(point[2].wrapping_add(dz)),
+        )?;
+        self.force_ledge_group(ctx, 90, sounds)?;
+        self.set_living(index, 13);
+        Ok(None)
     }
 
     /// State 14: the hang is caught when the actor still faces the ledge.
@@ -259,13 +323,13 @@ impl ScriptWorld {
             index,
             query,
             environment,
-            fine_ticks,
+            timing,
             ..
         } = *ctx;
-        let scan = self.ledge_scan(id, query, environment, fine_ticks, 15)?;
+        let scan = self.ledge_scan(id, query, environment, timing.fine_ticks, 15)?;
         let local_y = self.spatial(id)?.local.position[1];
         let Some(record) = scan.hand_nearest(local_y).cloned() else {
-            self.ledge_hang_release(id, query, environment, fine_ticks, sounds)?;
+            self.ledge_hang_release(id, query, environment, timing, sounds)?;
             return Ok(0);
         };
         let mut point = record.point;
@@ -482,6 +546,6 @@ struct Transition<'a> {
     index: usize,
     query: OrdinaryGroundQuery<'a>,
     environment: super::transition::ObstacleEnvironment,
-    fine_ticks: u32,
+    timing: LedgeTiming,
     table: Option<LedgeScan>,
 }

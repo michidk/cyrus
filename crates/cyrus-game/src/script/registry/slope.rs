@@ -201,7 +201,7 @@ impl ScriptWorld {
             })
     }
 
-    fn turn_ordinary_toward(
+    pub(super) fn turn_ordinary_toward(
         &mut self,
         id: ScriptActorId,
         desired: u16,

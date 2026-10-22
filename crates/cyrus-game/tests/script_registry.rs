@@ -30601,6 +30601,8 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
     attributes.insert("attr_1".into(), 4);
     attributes.insert("attr_32".into(), 32);
+    // The default group is the run jump group, which keeps the pending jump bits alive.
+    attributes.insert("attr_44".into(), 18);
     for placement in &mut scripts.instances {
         placement.active = 1;
         placement.object_type = 1;
@@ -30621,9 +30623,20 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
             "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
         })
     ));
+    // The jump window only holds its pending bits while a run or walk jump group loops.
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .insert(
+            0,
+            serde_json::json!({
+                "group_index":18,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]
+            }),
+        );
     let stable = [7 * 256, 5000, 9 * 256];
-    let mut world = replace_health_test_animation(world, &scripts, &mut data, 0, 0, |saved| {
-        saved["actors"][0]["control"]["directional_state"] = serde_json::json!([1, 2]);
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, 0, 18, |saved| {
+        saved["actors"][0]["control"]["directional_state"] = serde_json::json!([1, 0]);
         saved["actors"][0]["control"]["stable_local_position"] = serde_json::json!(stable);
     });
     let id = world.id(0).unwrap();

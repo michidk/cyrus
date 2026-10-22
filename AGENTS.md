@@ -310,8 +310,8 @@ player falls too: its edge service runs the ledge scan with its record classific
 are all rejected leaves the ordinary fall. Its controller runs while it falls (turning and movement helpers stay
 skipped), and it lands with the nonplayer thresholds: a hurt landing applies selected-player health, a fatal one
 starts the death override, and a steep support raises the controller's pending death action. A fall that reaches a class 3 ledge catches it: the hang, shimmy, climb and
-release transition states run on logical actor state; the jump key drops a hanging player, while sidestep keys along a ledge are ignored. Entry through ground-level classes 1 and 2 (turning to a ledge),
-the jump-key release, the queued-motion edge call, static-model falls and the jump-selector and
+release transition states run on logical actor state; the jump key drops a hanging player, while sidestep keys along a ledge are ignored. Entry through the low ground-level class 1 turns to the ledge and climbs on logical state, but the jump key that starts it is unavailable, and so is
+the high class 2 entry (it starts its group partway through), static-model falls and the jump-selector and
 jump-group entries remain unavailable. Queued jump motion runs; the walk-off recovery entry runs
 when its directional-state bits are set, which only the selected player's jump-key handling does. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on

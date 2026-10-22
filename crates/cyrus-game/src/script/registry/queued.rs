@@ -141,6 +141,148 @@ impl super::ScriptWorld {
             "world {} instance {index} jump state-15 exit service unsupported",
             self.world
         );
+        self.initialize_ordinary_jump(id, requested_motion, environment, sounds)
+    }
+
+    /// The selected player's jump entry: the gates of the ordinary entry for the selected player
+    /// (jump cooldown, rope, motion bytes, state 0 or 15, water), the state-15 hang release and
+    /// the ledge edge entry, before the ordinary initialization. Returns whether it started a
+    /// jump; a ledge catch or a release handles the key instead.
+    #[allow(clippy::too_many_arguments)] // The ledge services take the full ground query.
+    pub(super) fn begin_player_jump(
+        &mut self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: super::ledge_states::LedgeTiming,
+        requested_motion: u8,
+        sounds: &mut dyn FnMut(
+            super::ScriptActorId,
+            super::super::ScriptSound,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<bool> {
+        use anyhow::Context;
+        self.require_model_identity(query.animations)?;
+        let index = self.resolve(id)?;
+        let surface = self.actor_surface(id)?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("player jump control unavailable")?;
+        if self.globals.conditional_ticks()? != 0
+            || control.rope_attached
+            || control.queued_motion != 0
+            || control.falling_state != 0
+            || control.sliding_state != 0
+            || !matches!(control.living_state, 0 | 15)
+            || (actor.attributes[105] == 1 && (1..=4).contains(&surface))
+        {
+            return Ok(false);
+        }
+        let state = control.living_state;
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated jump control")
+            .stable_position_valid = false;
+        if state == 15 {
+            self.ledge_hang_release(id, query, environment, timing, sounds)?;
+            return Ok(false);
+        }
+        if self.selected_edge_entry(id, query, environment, timing, sounds)? {
+            return Ok(false);
+        }
+        self.initialize_ordinary_jump(id, requested_motion, environment, sounds)
+    }
+
+    /// The per-update jump window of the directional-state bytes, before ordinary movement. A
+    /// pending byte is promoted after 36 ticks; outside the run and walk jump groups, or while
+    /// queued motion runs, the low bits clear. A set low bit starts the jump with motion 8, and
+    /// a set second bit with motion 9.
+    pub(super) fn run_jump_window(
+        &mut self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        fine_ticks: Option<u32>,
+        frame_scale: Option<u32>,
+        sounds: &mut dyn FnMut(
+            super::ScriptActorId,
+            super::super::ScriptSound,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let actor = &mut self.actors[index];
+        let group = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let task_active = actor.tasks.is_active();
+        let Some(control) = actor.control.as_mut() else {
+            return Ok(());
+        };
+        control.jump_window = control.jump_window.wrapping_add(environment.ticks as u8);
+        if control.jump_window > 0x24 {
+            control.directional_state[1] |= control.directional_state[0];
+            control.directional_state[0] = 0;
+            control.jump_window = 0;
+        }
+        if control.queued_motion != 0 || !matches!(group, Some(18 | 30)) {
+            control
+                .directional_state
+                .iter_mut()
+                .for_each(|byte| *byte &= !3);
+        }
+        for (bit, motion) in [(1, 8), (2, 9)] {
+            if control.directional_state[1] & bit == 0 {
+                continue;
+            }
+            control
+                .directional_state
+                .iter_mut()
+                .for_each(|byte| *byte &= !3);
+            if environment.selected_player == Some(id) {
+                let timing = super::ledge_states::LedgeTiming {
+                    fine_ticks: fine_ticks
+                        .context("jump window needs the step's fine-tick increment")?,
+                    frame_scale,
+                };
+                self.begin_player_jump(id, query, environment, timing, motion, sounds)?;
+            } else {
+                self.begin_ordinary_jump(
+                    id,
+                    query.animations,
+                    motion,
+                    task_active,
+                    environment,
+                    sounds,
+                )?;
+            }
+            break;
+        }
+        Ok(())
+    }
+
+    /// Initialize an admitted jump: fall origin, queued state and its animation request.
+    fn initialize_ordinary_jump(
+        &mut self,
+        id: super::ScriptActorId,
+        requested_motion: u8,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(
+            super::ScriptActorId,
+            super::super::ScriptSound,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<bool> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("ordinary jump control unavailable")?;
         let group = actor
             .animation
             .as_ref()
@@ -294,12 +436,21 @@ impl super::ScriptWorld {
         if !action.advance_vertical {
             return Ok(action.handled);
         }
-        anyhow::ensure!(
-            environment.selected_player != Some(id),
-            "world {} instance {} queued selected-player edge service unsupported",
-            self.world,
-            id.index
-        );
+        // A successful selected-player edge service handles the update and clears queued motion.
+        if environment.selected_player == Some(id) {
+            let timing = super::ledge_states::LedgeTiming {
+                fine_ticks,
+                frame_scale: None,
+            };
+            if self.selected_edge_service(id, query, environment, timing, sounds)? {
+                let control = self.actors[id.index]
+                    .control
+                    .as_mut()
+                    .expect("validated queued control");
+                control.queued_motion = 0;
+                return Ok(true);
+            }
+        }
         if let Some(group) = action
             .request_group
             .filter(|_| self.updates.animation_system)
