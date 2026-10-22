@@ -163,10 +163,14 @@ impl ScriptWorld {
     }
 
     pub fn ordinary_collision_shape(&self, id: ScriptActorId) -> Result<&OrdinaryCollisionShape> {
-        self.actors[self.resolve(id)?]
-            .collision
-            .as_ref()
-            .context("ordinary collision shape not prepared")
+        let index = self.resolve(id)?;
+        self.actors[index].collision.as_ref().with_context(|| {
+            format!(
+                "world {} instance {index} actor {}: ordinary collision shape not prepared",
+                self.world,
+                self.actors[index].name()
+            )
+        })
     }
 
     pub(super) fn initialize_collision_shapes(
@@ -176,14 +180,15 @@ impl ScriptWorld {
     ) -> Result<()> {
         self.standing_height = Some(scene.settings.standing_height);
         for index in 0..self.actors.len() {
-            if self.actors[index]
-                .placement()
-                .is_none_or(|placement| placement.object_type != 1)
-            {
+            // The selected player is prepared with the rest: other actors' collision responses
+            // read its shape before its own update has run.
+            if !self.actors[index].ordinary_collision_role() {
                 continue;
             }
             let id = self.id(index)?;
-            if let Err(error) = self.prepare_ordinary_collision_shape(id, data, scene) {
+            if self.actors[index].collision.is_none()
+                && let Err(error) = self.prepare_ordinary_collision_shape(id, data, scene)
+            {
                 self.actors[index].update_failure = Some(format!(
                     "world {} instance {index} actor {} collision shape preparation: {error:#}",
                     self.world,

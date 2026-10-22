@@ -1172,3 +1172,46 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
     );
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn installed_world_collision_shapes_prepare_for_every_ordinary_actor() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_assets::script::Scripts;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP ordinary collision shapes)");
+        return;
+    }
+    let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("script-collision-shapes-{}", std::process::id()));
+    let path = directory.join("SILVER2.glb");
+    cyrus_assets::scene::export_scene(&install, "SILVER2", &path).unwrap();
+    let scripts: Scripts =
+        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
+    let data: Animations =
+        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    let scene = cyrus_game::player::data::PlayerScene::decode(
+        &std::fs::read(path.with_extension("player")).unwrap(),
+    )
+    .unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let mut failures = Vec::new();
+    for index in 0..world.actors().len() {
+        let actor = &world.actors()[index];
+        if actor
+            .placement()
+            .is_none_or(|placement| placement.object_type != 1)
+        {
+            continue;
+        }
+        let name = actor.name().to_string();
+        let id = world.id(index).unwrap();
+        if let Err(error) = world.prepare_ordinary_collision_shape(id, &data, &scene) {
+            failures.push(format!("{index} {name}: {error:#}"));
+        }
+    }
+    std::fs::remove_dir_all(&directory).ok();
+    assert!(failures.is_empty(), "{failures:#?}");
+}
