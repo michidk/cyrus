@@ -653,6 +653,9 @@ pub struct WorldSnapshot {
     camera: Option<super::super::camera::CameraSnapshot>,
     #[serde(default)]
     effects: Option<super::effects::EffectsSnapshot>,
+    /// Dynamic state of each rope in construction order; older saves restore ropes at rest.
+    #[serde(default)]
+    ropes: Vec<crate::rope::RopeState>,
 }
 impl WorldSnapshot {
     fn capture(world: &ScriptWorld, sources: &WorldSnapshotSources<'_>) -> Result<Self> {
@@ -676,6 +679,7 @@ impl WorldSnapshot {
                 })
                 .transpose()
                 .with_context(|| format!("world {} environmental effect capture", world.world))?,
+            ropes: world.ropes.iter().map(crate::rope::Rope::state).collect(),
             version: 1,
             world: world.world,
             content_id: world.content_id.clone(),
@@ -870,6 +874,15 @@ impl WorldSnapshot {
                 "world {}: invalid pending map update {index}",
                 self.world
             );
+        }
+        candidate.prepare_ropes(sources.animations)?;
+        ensure!(
+            self.ropes.is_empty() || self.ropes.len() == candidate.ropes.len(),
+            "world {}: saved ropes differ from the installed records",
+            self.world
+        );
+        for (rope, saved) in candidate.ropes.iter_mut().zip(&self.ropes) {
+            rope.restore_state(saved);
         }
         candidate.map_updates = self.map_updates;
         candidate.next_combat_index = self.next_combat_index;

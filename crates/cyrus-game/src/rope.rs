@@ -92,6 +92,19 @@ impl RopeRecord {
     }
 }
 
+/// The saved dynamic state of one rope; its construction data comes from the installed records.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RopeState {
+    pub amplitude: i32,
+    pub phase: i32,
+    pub step: i32,
+    pub push: i32,
+    pub direction: u8,
+    pub previous_sum: i32,
+    /// Actor index, node and measured speed of each attachment, in list order.
+    pub attachments: Vec<(usize, i32, i32)>,
+}
+
 /// One actor hanging on a rope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attachment {
@@ -154,6 +167,42 @@ pub struct Rope {
 }
 
 impl Rope {
+    /// The dynamic state a session save keeps.
+    pub fn state(&self) -> RopeState {
+        RopeState {
+            amplitude: self.amplitude,
+            phase: self.phase,
+            step: self.step,
+            push: self.push,
+            direction: self.direction,
+            previous_sum: self.previous_sum,
+            attachments: self
+                .attachments
+                .iter()
+                .map(|a| (a.actor, a.node, a.motion))
+                .collect(),
+        }
+    }
+
+    /// Restore a saved dynamic state onto a rope rebuilt from the installed record.
+    pub fn restore_state(&mut self, state: &RopeState) {
+        self.amplitude = state.amplitude;
+        self.phase = state.phase;
+        self.step = state.step;
+        self.push = state.push;
+        self.direction = state.direction;
+        self.previous_sum = state.previous_sum;
+        self.attachments = state
+            .attachments
+            .iter()
+            .map(|&(actor, node, motion)| Attachment {
+                actor,
+                node,
+                motion,
+            })
+            .collect();
+    }
+
     /// Whether the record names an end model.
     pub fn has_end_model(&self) -> bool {
         self.has_end_model
@@ -485,6 +534,23 @@ mod tests {
         assert!(
             r[0][0].abs() < 1e-6 && (r[0][2] - 1.0).abs() < 1e-6 && (r[2][0] + 1.0).abs() < 1e-6
         );
+    }
+
+    #[test]
+    fn a_saved_state_restores_the_swing_and_its_attachments() {
+        let mut saved = rope(10, 20);
+        saved.amplitude = 7;
+        saved.phase = 12345;
+        saved.push = -3;
+        saved.attachments.push(Attachment {
+            actor: 4,
+            node: 6,
+            motion: -9,
+        });
+        let mut restored = rope(10, 20);
+        restored.restore_state(&saved.state());
+        assert_eq!(restored.state(), saved.state());
+        assert_eq!(restored.attachments, saved.attachments);
     }
 
     #[test]

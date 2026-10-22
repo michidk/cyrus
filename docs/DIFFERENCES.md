@@ -46,4 +46,4 @@ pace is not verified.
 hand (the hand height needs the animation key point), the player sits on the link without the hand
 offset, a downward climb is not limited by the floor probe, the climb helpers do not read the
 animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
-first attached actor; not heard in a running world). Ropes are not saved: a restored player on a rope lets go.
+first attached actor; not heard in a running world).
