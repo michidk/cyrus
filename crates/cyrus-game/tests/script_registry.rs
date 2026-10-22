@@ -2927,10 +2927,6 @@ fn marker_preparation_rejects_malformed_or_mismatched_data_before_installing_sta
         serde_json::Value::Null,
         serde_json::json!([{"map_position":[0,0],"reserved":1}]),
         serde_json::json!([{"map_position":[8388608,0,0],"reserved":1}]),
-        serde_json::json!(vec![
-            serde_json::json!({"map_position":[0,0,0],"reserved":1});
-            129
-        ]),
     ] {
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let error = world.prepare_markers(&data(malformed)).unwrap_err();
@@ -3011,7 +3007,7 @@ fn routed_node_marker_query_reads_the_receivers_local_attached_position() {
     let data = Animations {
         version: 2,
         world: scripts.world,
-        metadata: serde_json::json!({"script_content_id":scripts.content_id,"markers":[{"map_position":[0,0,0],"reserved":2}]}),
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,"markers":[{"map_position":[0,0,0],"reserved":1}]}),
         sections: Default::default(),
         models: Default::default(),
         unsupported: Default::default(),

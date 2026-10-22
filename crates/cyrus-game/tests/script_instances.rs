@@ -764,7 +764,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
     assert!(error.contains("actor MARINE"), "{error}");
     assert!(error.contains("AtNodeMarker"), "{error}");
     assert!(
-        error.contains("marker 262144: outside ordinary world table"),
+        error.contains("marker 262144: outside the world's marker table"),
         "{error}"
     );
     assert_eq!(
