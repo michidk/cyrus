@@ -197,7 +197,7 @@ pub use tasks::{
 };
 pub(crate) use world_request::request_world;
 pub use world_request::{
-    DeathBookEntry, DeathDispatch, LastGameEntry, LastSaveSelection, WorldLoopExit,
+    DeathBookEntry, DeathDispatch, EndingEntry, LastGameEntry, LastSaveSelection, WorldLoopExit,
 };
 
 /// Retain scene submissions before player/object updates mutate their source state.

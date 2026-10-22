@@ -157,13 +157,15 @@ fn request(assets: &AssetServer, music: &mut Music, track: u32) {
 fn start_menu_track(
     death: Option<Res<cyrus_game::script::DeathBookEntry>>,
     confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
+    ending: Option<Res<cyrus_game::script::EndingEntry>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     settings: Option<Res<SoundSettings>>,
     audio: Option<Res<Assets<AudioSource>>>,
     mut music: ResMut<Music>,
 ) {
-    if death.is_some() || confirmation.is_some() {
+    // The ending pauses the CD instead of starting the book's track.
+    if death.is_some() || confirmation.is_some() || ending.is_some() {
         return;
     }
     if music_enabled(&settings, &audio) {

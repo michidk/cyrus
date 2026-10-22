@@ -41,6 +41,11 @@ pub struct DeathBookEntry {
     pub override_group: i32,
 }
 
+/// `WonGame` ended the world loop: the menu host plays the ending (movie 4, then the credits)
+/// instead of a book page. Retained until the host has taken it.
+#[derive(Resource)]
+pub struct EndingEntry;
+
 /// Destination of a `LoadWorld(world, marker, heading)` call. The heading is masked to 0 through
 /// 2047 as preservation documents; the world index is validated against WORLD.INI by the scene
 /// preparation that consumes the [`SceneRequest`], which reports failure as `SceneLoadError`.
@@ -159,7 +164,19 @@ pub(super) fn consume(
                     next.set(crate::AppState::Menu);
                     Ok(())
                 })(),
-                _ => Err(anyhow::anyhow!("win dispatcher unavailable")),
+                WorldLoopOutcome::WonGame => (|| -> anyhow::Result<()> {
+                    let next = next
+                        .as_mut()
+                        .ok_or_else(|| anyhow::anyhow!("ending: application state unavailable"))?;
+                    // The request is consumed here, so the ending runs once per `WonGame` call.
+                    world.globals_mut().request_mut().won_game = false;
+                    commands.insert_resource(EndingEntry);
+                    next.set(crate::AppState::Menu);
+                    Ok(())
+                })(),
+                _ => Err(anyhow::anyhow!(
+                    "unsupported world-loop outcome {outcome:?}"
+                )),
             };
             actors.world_loop_outcome = Some(outcome);
             if let Err(error) = result {

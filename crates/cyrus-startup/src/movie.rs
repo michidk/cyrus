@@ -95,7 +95,35 @@ pub(super) fn register(app: &mut App) {
                 .after(super::menu::drive)
                 .run_if(in_state(AppState::Menu)),
         )
+        .add_systems(
+            Update,
+            ending.before(drive).run_if(in_state(AppState::Menu)),
+        )
         .add_systems(OnExit(AppState::Menu), cleanup);
+}
+
+/// `WonGame` index of `WIN.SMK` among the installed MENU.INI movies.
+const ENDING_MOVIE: usize = 4;
+
+/// Runs the ending's movie once the book menu exists: effects stop, the CD pauses with the movie
+/// (the music owner pauses while a cinematic plays) and `WIN.SMK` plays; the book follows it.
+/// The credits scroll that follows the movie in the original is not implemented.
+fn ending(
+    mut commands: Commands,
+    entry: Option<Res<cyrus_game::script::EndingEntry>>,
+    menu: Option<Res<MenuState>>,
+    mut movies: MessageWriter<MovieRequest>,
+    mut sounds: Option<MessageWriter<cyrus_audio::sound::SoundRequest>>,
+) {
+    if entry.is_none() || menu.is_none() {
+        return;
+    }
+    commands.remove_resource::<cyrus_game::script::EndingEntry>();
+    if let Some(sounds) = sounds.as_mut() {
+        sounds.write(cyrus_audio::sound::SoundRequest::StopAll);
+    }
+    warn!("ending: the credits scroll after WIN.SMK is not implemented");
+    movies.write(MovieRequest::Menu(ENDING_MOVIE));
 }
 
 /// Decodes on a thread from one-based `frame` on; Smacker frames are deltas, so
@@ -549,6 +577,42 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use cyrus_assets::movie::MovieSubtitle;
+
+    #[test]
+    fn ending_plays_movie_four_once_after_the_book_exists_and_stops_effects() {
+        use bevy::ecs::system::RunSystemOnce;
+        use cyrus_audio::sound::SoundRequest;
+        let mut world = World::new();
+        world.init_resource::<Messages<MovieRequest>>();
+        world.init_resource::<Messages<SoundRequest>>();
+        world.insert_resource(cyrus_game::script::EndingEntry);
+        world.run_system_once(ending).unwrap();
+        assert!(
+            world.contains_resource::<cyrus_game::script::EndingEntry>(),
+            "the ending waits for the book menu"
+        );
+        assert!(
+            world
+                .resource_mut::<Messages<MovieRequest>>()
+                .drain()
+                .next()
+                .is_none()
+        );
+        world.init_resource::<MenuState>();
+        world.run_system_once(ending).unwrap();
+        world.run_system_once(ending).unwrap();
+        assert!(!world.contains_resource::<cyrus_game::script::EndingEntry>());
+        let movies: Vec<_> = world
+            .resource_mut::<Messages<MovieRequest>>()
+            .drain()
+            .collect();
+        assert!(matches!(movies.as_slice(), [MovieRequest::Menu(4)]));
+        let sounds: Vec<_> = world
+            .resource_mut::<Messages<SoundRequest>>()
+            .drain()
+            .collect();
+        assert_eq!(sounds, [SoundRequest::StopAll]);
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
