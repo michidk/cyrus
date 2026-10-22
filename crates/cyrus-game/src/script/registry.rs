@@ -1267,13 +1267,33 @@ impl ScriptWorld {
         &self.ropes
     }
 
-    /// One rope-system step at its place in the world loop: each rope's amplitude service, then its
-    /// swing step and attachment climbs.
-    pub(super) fn update_ropes(&mut self, frame_scale: i32, ticks: i32) {
-        for rope in &mut self.ropes {
+    /// One rope-system step at its place in the world loop: each rope's amplitude service (which
+    /// plays the swing sound at the rope's base, owned by its first attached actor), then its swing
+    /// step and attachment climbs.
+    pub(super) fn update_ropes(
+        &mut self,
+        frame_scale: i32,
+        ticks: i32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        for rope_index in 0..self.ropes.len() {
+            let rope = &mut self.ropes[rope_index];
             rope.clamp_nodes();
             let sum = rope.step_sum();
-            rope.amplitude_service(sum);
+            let owner = rope.attachments.first().map(|attachment| attachment.actor);
+            let base = rope.position;
+            if let (Some(sound), Some(owner)) = (rope.amplitude_service(sum), owner) {
+                let engine = crate::rope::engine_position(base);
+                sounds(
+                    self.id(owner)?,
+                    super::ScriptSound::Positional {
+                        effect: sound.effect,
+                        volume: 0,
+                        rate_offset_hz: 0,
+                        position: engine.map(|value| (value * 256.0).round() as i32),
+                    },
+                )?;
+            }
         }
         let actors = &self.actors;
         for rope in &mut self.ropes {
@@ -1290,6 +1310,7 @@ impl ScriptWorld {
                 |_, _, node| node,
             );
         }
+        Ok(())
     }
 
     /// Load cleared reservations and associate ordinary placements from authored

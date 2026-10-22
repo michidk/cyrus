@@ -146,7 +146,8 @@ impl ScriptWorld {
         self.update_ropes(
             i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
             i32::try_from(ticks).unwrap_or(i32::MAX),
-        );
+            sounds,
+        )?;
         self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();

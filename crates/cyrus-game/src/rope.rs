@@ -27,6 +27,18 @@ fn sine(index: i32) -> i32 {
     }
 }
 
+/// Engine Z of world Z zero in map units (the importer's position decode offset).
+const ENGINE_Z_OFFSET: f64 = 16_777_215.0 / 256.0;
+
+/// Exported world position to engine map units (X and Y negated, Z offset).
+pub fn engine_position(world: [f32; 3]) -> [f64; 3] {
+    [
+        -f64::from(world[0]) * f64::from(crate::ENGINE_UNIT_SCALE),
+        -f64::from(world[1]) * f64::from(crate::ENGINE_UNIT_SCALE),
+        f64::from(world[2]) * f64::from(crate::ENGINE_UNIT_SCALE) + ENGINE_Z_OFFSET,
+    ]
+}
+
 /// An `MPRP` record as exported in the world metadata.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RopeRecord {

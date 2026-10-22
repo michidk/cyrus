@@ -45,5 +45,5 @@ pace is not verified.
 **Inferred or simplified:** the grabbed link is the lowest touching link instead of the link nearest the
 hand (the hand height needs the animation key point), the player sits on the link without the hand
 offset, a downward climb is not limited by the floor probe, the climb helpers do not read the
-animation record's progress bytes, and the swing sounds are computed but not played. Ropes are not
-saved: a restored player on a rope lets go.
+animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
+first attached actor; not heard in a running world). Ropes are not saved: a restored player on a rope lets go.

@@ -20,9 +20,6 @@ const GROUP_GRAB: u16 = 84;
 const GROUP_JUMP: u16 = 85;
 /// The ordinary jump entry's queued motion after a rope release.
 const QUEUED_ROPE_JUMP: u8 = 24;
-/// Engine Z of world Z zero in map units (the importer's position decode offset).
-const ENGINE_Z_OFFSET: f64 = 16_777_215.0 / 256.0;
-
 /// Retained state of the selected player's rope handling. Not saved: ropes are rebuilt with the world.
 #[derive(Clone, Debug, Default)]
 pub(super) struct PlayerRope {
@@ -59,14 +56,7 @@ fn rope_heading_difference(rope_heading: i32, actor_heading: i32) -> i32 {
     }
 }
 
-/// Exported world position to engine map units.
-fn to_engine(world: [f32; 3]) -> [f64; 3] {
-    [
-        -f64::from(world[0]) * f64::from(crate::ENGINE_UNIT_SCALE),
-        -f64::from(world[1]) * f64::from(crate::ENGINE_UNIT_SCALE),
-        f64::from(world[2]) * f64::from(crate::ENGINE_UNIT_SCALE) + ENGINE_Z_OFFSET,
-    ]
-}
+use crate::rope::engine_position as to_engine;
 
 fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
