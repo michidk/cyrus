@@ -34,13 +34,30 @@ pub fn log_filter() -> String {
     )
 }
 
+/// Parse a `WIDTHxHEIGHT` window size; both must be positive.
+fn parse_window_size(text: &str) -> Option<(u32, u32)> {
+    let (width, height) = text.split_once('x')?;
+    let (width, height) = (width.parse().ok()?, height.parse().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+/// The shared primary window. `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default size, so a
+/// software-rendered run (for example in the dev container) can keep a playable frame rate.
 pub fn window(title: &str) -> WindowPlugin {
+    let mut window = Window {
+        title: title.into(),
+        fit_canvas_to_parent: true,
+        ..default()
+    };
+    if let Some(size) = std::env::var("CYRUS_WINDOW_SIZE")
+        .ok()
+        .as_deref()
+        .and_then(parse_window_size)
+    {
+        window.resolution = size.into();
+    }
     WindowPlugin {
-        primary_window: Some(Window {
-            title: title.into(),
-            fit_canvas_to_parent: true,
-            ..default()
-        }),
+        primary_window: Some(window),
         ..default()
     }
 }
@@ -77,4 +94,17 @@ pub fn browser_source(name: &str) -> anyhow::Result<String> {
         .and_then(|element| element.get_attribute("content"))
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow::anyhow!("select your game files before starting the application"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_window_size;
+
+    #[test]
+    fn window_size_needs_two_positive_integers() {
+        assert_eq!(parse_window_size("640x480"), Some((640, 480)));
+        for bad in ["", "640", "0x480", "640x0", "axb", "640x480x1", "-1x4"] {
+            assert_eq!(parse_window_size(bad), None, "{bad}");
+        }
+    }
 }

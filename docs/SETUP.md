@@ -67,6 +67,12 @@ available. Use a windowed run for flycam and screenshot checks.
 
 Settings, caches and screenshots live in `cyrus-config/`.
 
+`CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered
+dev container the renderer, not the game logic, limits the frame rate: an optimized build
+(`CARGO_PROFILE_DEV_OPT_LEVEL=2`) at 640x480 runs above 16 frames per second, where the
+default size runs at about 5 to 11. Measure the frame rate (control `state`, field `frame`)
+before comparing timing-dependent behaviour such as combat pacing with the original.
+
 Unoptimized native loader threads need a larger stack. Launch such binaries
 with `RUST_MIN_STACK=8388608`; container launches also need
 `-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
