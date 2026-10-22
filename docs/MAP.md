@@ -170,6 +170,7 @@ module where it is defined and regenerate.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
+- `src/script/registry/attack_input.rs` — The selected player's armed attack input: per-key tap latches and the combo move start.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/camera.rs` — Live session camera services: first pose establishment and one atomic update.

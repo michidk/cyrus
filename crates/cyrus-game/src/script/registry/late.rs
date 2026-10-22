@@ -339,13 +339,18 @@ impl ScriptWorld {
 
     /// A slide that ends on support: past the installed slide hurt distance the actor is pushed
     /// on, plays the hurt animation (group 73) and loses the installed zap of health. Sliding
-    /// state clears either way. The selected player's hurt is its pending death action's owner
-    /// and stays unsupported.
+    /// state clears either way. The selected player hurts whenever its pending action flag is
+    /// raised too, stores death override 74 instead of requesting the animation, and takes the
+    /// zap through its death-owning health (`selected` supplies that service's inputs).
     fn end_ordinary_slide(
         &mut self,
         id: ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
+        selected: Option<(
+            crate::script::ScriptInputs<'_>,
+            &mut crate::random::EngineRandom,
+        )>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let control = self.actors[id.index]
@@ -361,13 +366,10 @@ impl ScriptWorld {
             .settings
             .slide_hurt
             .context("slide termination settings unavailable; re-export world")?;
-        if i64::from(distance) > i64::from(height) << 8 {
-            ensure!(
-                environment.selected_player != Some(id),
-                "world {} instance {}: selected-player slide hurt unsupported",
-                self.world,
-                id.index
-            );
+        let is_selected = environment.selected_player == Some(id);
+        if (is_selected && self.globals.player_pending_action())
+            || i64::from(distance) > i64::from(height) << 8
+        {
             let group = self.actors[id.index]
                 .animation
                 .as_ref()
@@ -377,16 +379,19 @@ impl ScriptWorld {
                 if matches!(group, Some(75 | 77)) { 2 } else { 3 },
                 0x800,
             )?;
-            if self.updates.animation_system {
+            if is_selected {
+                self.globals.set_player_death_override_group(74)?;
+            } else if self.updates.animation_system {
                 self.request_ordinary_group(id, 73, false, environment.ticks, sounds)?;
             }
             let (_, combat_active) = self.slope_stance(id, environment, None)?;
-            self.change_ordinary_health(
+            self.change_health(
                 id,
                 -zap,
                 query.animations,
                 environment,
                 Some(combat_active),
+                selected,
                 sounds,
             )?;
         }
@@ -612,7 +617,9 @@ impl ScriptWorld {
                             sounds,
                         )?;
                     } else {
-                        self.end_ordinary_slide(id, query, environment, sounds)?;
+                        let selected = (environment.selected_player == Some(id))
+                            .then_some((script, &mut *recovery.random));
+                        self.end_ordinary_slide(id, query, environment, selected, sounds)?;
                     }
                 } else if self.actors[id.index].attributes[107] != 0 {
                     self.actors[id.index]
