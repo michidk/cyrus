@@ -78,6 +78,19 @@ impl WorldReport {
             *self.counts.entry(issue.category.clone()).or_default() += issue.count;
         }
     }
+
+    fn has_preparation_failure(&self) -> bool {
+        [
+            "animation_initialization",
+            "script_initialization",
+            "script_decode",
+            "unsupported_operation",
+            "runtime_failure",
+            "export_failure",
+        ]
+        .iter()
+        .any(|category| self.counts.get(*category).copied().unwrap_or_default() != 0)
+    }
 }
 
 /// Reports observations from loading, not a census of reachable gameplay operations.
@@ -200,6 +213,13 @@ pub fn run(install: &GameInstall) -> Result<()> {
     anyhow::ensure!(
         report.worlds.iter().all(|world| world.exported),
         "world audit contains export failures; see report.json and report.txt"
+    );
+    anyhow::ensure!(
+        report
+            .worlds
+            .iter()
+            .all(|world| !world.has_preparation_failure()),
+        "world audit contains preparation or runtime failures; see report.json and report.txt"
     );
     Ok(())
 }
@@ -351,5 +371,28 @@ mod tests {
         assert_eq!(report.counts["referenced_asset"], 1);
         assert_eq!(report.counts["script_initialization"], 0);
         assert_eq!(report.diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn preparation_failures_make_audit_unsuccessful() {
+        let mut report = WorldReport::default();
+        report.issue(
+            "script_initialization",
+            "maps/test.rgm",
+            "scripts.prepare",
+            "failed".into(),
+        );
+        report.finish();
+        assert!(report.has_preparation_failure());
+
+        let mut report = WorldReport::default();
+        report.issue(
+            "referenced_asset",
+            "WATERSND",
+            "models",
+            "missing".into(),
+        );
+        report.finish();
+        assert!(!report.has_preparation_failure());
     }
 }
