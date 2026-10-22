@@ -181,7 +181,7 @@ fn reader_style(
 }
 
 /// The original draws glyphs with a constant colour factor `A / 255` (255 is full strength).
-fn scale_colour(colour: [u8; 3], scale: u8) -> [u8; 3] {
+pub(super) fn scale_colour(colour: [u8; 3], scale: u8) -> [u8; 3] {
     colour.map(|c| ((u32::from(c) * u32::from(scale) + 127) / 255) as u8)
 }
 

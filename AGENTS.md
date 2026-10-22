@@ -296,8 +296,10 @@ artwork, counts and RTX item name. The directions move the cursor (effect 13); t
 and Enter, A or Escape close it, and Activate or Enter make the cursor item the active item. The examine view on
 the view key is unavailable, and the screen does not call `UseItem`. `WonGame` ends the world loop: the
 world hands over to the book menu host, which stops the sound effects and plays `WIN.SMK` (movie 4) with the
-CD paused, then shows the book. **Unknown/unsupported:** the credits scroll (`CREDITS.TXT` timing and drawing),
-the book's music after the ending, and a return to the main book rather than the paused world under it. `PlayerCollide` and `PlayerCollideStatic`
+CD paused, then scrolls the `CREDITS.TXT` credits (CD track 2) at one pixel per 1/60 s and shows the book;
+Escape ends the credits early, and an install without `CREDITS.TXT` skips them. **Unknown/unsupported:** the
+credits' exact pace on the original's display (**Inferred** from its one-refresh buffer swap), the book's
+music after the ending, and which book page follows. `PlayerCollide` and `PlayerCollideStatic`
 read the contact lists of the selected player's body pass. The installed quick
 sword and quick health keys run in the world loop: the sword key draws, sheathes or uses the
 first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and

@@ -281,8 +281,9 @@ the `bitmap_selected_file` frames (`hud/selected-NN.png`), `INVBORDR.GXA`
 `name` RTX label and the three frame sizes. Re-export older HUD caches for the required
 inventory metadata.
 
-`logbook/reader.logbook` contains the installed paper, small fonts, bindings and
-scroll geometry. The shared reader group prepares it on demand in browser workers;
+`logbook/reader.logbook` contains the installed paper, small fonts, bindings,
+scroll geometry and the parsed `CREDITS.TXT` records (absent when the install has none);
+re-export older caches. The shared reader group prepares it on demand in browser workers;
 native HUD preparation exports the same validated record.
 
 `overlay/<name>-<frame>.png` holds one frame of an installed `system` GXA image, decoded with

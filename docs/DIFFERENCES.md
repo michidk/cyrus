@@ -31,3 +31,10 @@ Faithful music plays every installed byte. `--music modern` (browser
 `?music=modern`, or the debug menu's Music fidelity) mutes the leading
 sync-marked data sectors and keeps the track's length and timing.
 **Unknown:** whether the original's playback path makes the noise audible.
+
+## Credits scroll pace
+
+**Inferred:** the original scrolls the credits one pixel per buffer swap with swap
+interval one, which waits for one display refresh. cyrus scrolls one pixel per 1/60 s
+on any display. The original's refresh rate setting was not recovered, so its visible
+pace is not verified.

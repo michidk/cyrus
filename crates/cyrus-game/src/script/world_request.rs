@@ -46,6 +46,10 @@ pub struct DeathBookEntry {
 #[derive(Resource)]
 pub struct EndingEntry;
 
+/// The ending's credits scroll is running; the music owner plays its CD track meanwhile.
+#[derive(Resource)]
+pub struct CreditsPlaying;
+
 /// Destination of a `LoadWorld(world, marker, heading)` call. The heading is masked to 0 through
 /// 2047 as preservation documents; the world index is validated against WORLD.INI by the scene
 /// preparation that consumes the [`SceneRequest`], which reports failure as `SceneLoadError`.

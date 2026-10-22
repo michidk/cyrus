@@ -61,6 +61,7 @@ impl Plugin for MusicPlugin {
                             .or_else(resource_exists_and_changed::<SoundSettings>),
                     ),
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
+                    credits_track,
                     finish_track,
                     pause_track,
                 )
@@ -169,6 +170,32 @@ fn start_menu_track(
         return;
     }
     if music_enabled(&settings, &audio) {
+        #[cfg(not(target_arch = "wasm32"))]
+        request(&install, &mut music, MENU_TRACK);
+        #[cfg(target_arch = "wasm32")]
+        request(&assets, &mut music, MENU_TRACK);
+    }
+}
+
+/// The ending's credits play the book's CD track and stop the CD when they end.
+fn credits_track(
+    mut commands: Commands,
+    credits: Option<Res<cyrus_game::script::CreditsPlaying>>,
+    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
+    enabled: (Option<Res<SoundSettings>>, Option<Res<Assets<AudioSource>>>),
+    mut music: ResMut<Music>,
+    playing: Query<Entity, With<MusicPlayer>>,
+    mut was_playing: Local<bool>,
+) {
+    let (settings, audio) = enabled;
+    let now = credits.is_some();
+    if now == std::mem::replace(&mut *was_playing, now) {
+        return;
+    }
+    if !now {
+        stop_track(&mut commands, &mut music, &playing);
+    } else if music_enabled(&settings, &audio) {
         #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, MENU_TRACK);
         #[cfg(target_arch = "wasm32")]

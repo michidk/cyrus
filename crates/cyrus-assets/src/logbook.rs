@@ -16,6 +16,89 @@ pub struct LogbookArtwork {
     #[serde(default)]
     pub styles: Vec<Option<ReaderStyle>>,
     pub bindings: [u8; 15],
+    /// `CREDITS.TXT` records; `None` when the install has no such file, which skips the credits.
+    pub credits: Option<Vec<CreditLine>>,
+    /// Set by caches written after the credits were added; `validate` rejects older ones.
+    #[serde(default)]
+    pub credits_exported: bool,
+}
+
+/// How a credits record places its text at its x position.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreditAlign {
+    #[default]
+    Left,
+    Centre,
+    Right,
+}
+
+/// One `CREDITS.TXT` record as the original's loader builds it (preservation engine/menu.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditLine {
+    pub x: i32,
+    /// Drawn at the previous record's height and adding no line advance.
+    pub continued: bool,
+    pub align: CreditAlign,
+    /// Index into the reader style table; 5 draws with the table's entry 9.
+    pub style: u8,
+    /// `None` for a line without fields: it draws nothing but still occupies a line.
+    pub text: Option<Vec<u8>>,
+}
+
+/// Records of `CREDITS.TXT`: at most 2000, split at line feeds after the text-mode read drops
+/// carriage returns and stops at a Ctrl-Z. A line is `[-]x,align,style,text`; an empty line, or
+/// one whose three separating commas do not all lie within its first ten bytes (the original reads
+/// garbage there; none ships), keeps the previous style and draws nothing.
+pub fn parse_credits(bytes: &[u8]) -> Vec<CreditLine> {
+    let end = bytes.iter().position(|&b| b == 0x1a).unwrap_or(bytes.len());
+    let data: Vec<u8> = bytes[..end]
+        .iter()
+        .copied()
+        .filter(|&b| b != b'\r')
+        .collect();
+    let mut lines = Vec::new();
+    let mut style = 0;
+    for line in data.split(|&b| b == b'\n').take(2000) {
+        let mut record = CreditLine {
+            style,
+            ..CreditLine::default()
+        };
+        let body = match line.first() {
+            Some(b'-') => {
+                record.continued = true;
+                &line[1..]
+            }
+            _ => line,
+        };
+        let commas: Vec<usize> = body
+            .iter()
+            .take(10)
+            .enumerate()
+            .filter_map(|(i, &b)| (b == b',').then_some(i))
+            .collect();
+        if !line.is_empty() && commas.len() >= 3 {
+            let number = |field: &[u8]| {
+                let text = String::from_utf8_lossy(field);
+                let text = text.trim_start();
+                let digits = text
+                    .char_indices()
+                    .take_while(|&(i, c)| c.is_ascii_digit() || (i == 0 && (c == '-' || c == '+')))
+                    .count();
+                text[..digits].parse::<i32>().unwrap_or(0)
+            };
+            record.x = number(&body[..commas[0]]);
+            record.align = match body.get(commas[0] + 1) {
+                Some(b'C' | b'c') => CreditAlign::Centre,
+                Some(b'R' | b'r') => CreditAlign::Right,
+                _ => CreditAlign::Left,
+            };
+            record.style = number(&body[commas[1] + 1..commas[2]]) as u8;
+            record.text = Some(body[commas[2] + 1..].to_vec());
+        }
+        style = record.style;
+        lines.push(record);
+    }
+    lines
 }
 
 /// One entry of the original reader's font table: the font drawn, its `A` value (a constant
@@ -64,6 +147,10 @@ impl LogbookArtwork {
                     .flatten()
                     .all(|style| style.font < self.fonts.len()),
             "logbook: reader styles absent or invalid; re-export the logbook"
+        );
+        anyhow::ensure!(
+            self.credits_exported,
+            "logbook: credits absent from this cache; re-export the logbook"
         );
         anyhow::ensure!(
             self.fonts.iter().all(|font| font.line_height > 0
@@ -194,10 +281,56 @@ pub(crate) fn prepare(
         fonts,
         styles,
         bindings,
+        credits: source
+            .manifest()
+            .find("CREDITS.TXT")
+            .map(|file| source.read(&file.path))
+            .transpose()
+            .context("logbook: CREDITS.TXT")?
+            .map(|bytes| parse_credits(&bytes)),
+        credits_exported: true,
     };
     artwork.validate()?;
     output.publish(
         std::path::Path::new("logbook/reader.logbook"),
         &serde_json::to_vec(&artwork)?,
     )
+}
+
+#[cfg(test)]
+mod credits_tests {
+    use super::*;
+
+    #[test]
+    fn records_follow_the_original_loader() {
+        let lines = parse_credits(
+            b"320,C,5,TEAM\r\n\r\n-100,r,3,Name\r\n50,x,0,Plain\r\n\x1aignored,C,0,x",
+        );
+        // The line feed after the last line leaves one more, empty record, as in the original.
+        assert_eq!(lines.len(), 5);
+        assert_eq!(
+            lines[0],
+            CreditLine {
+                x: 320,
+                continued: false,
+                align: CreditAlign::Centre,
+                style: 5,
+                text: Some(b"TEAM".to_vec()),
+            }
+        );
+        // A blank line keeps the previous style and draws nothing.
+        assert_eq!((lines[1].style, lines[1].text.clone()), (5, None));
+        assert!(lines[2].continued && lines[2].align == CreditAlign::Right);
+        assert_eq!((lines[2].x, lines[2].style), (100, 3));
+        assert_eq!(
+            lines[3].align,
+            CreditAlign::Left,
+            "unknown letters stay left"
+        );
+    }
+
+    #[test]
+    fn at_most_two_thousand_records() {
+        assert_eq!(parse_credits(&b"\n".repeat(3000)).len(), 2000);
+    }
 }

@@ -24,13 +24,19 @@ use {
 };
 
 #[derive(Resource, Default)]
-struct MoviePlayback {
+pub(super) struct MoviePlayback {
     new_game: bool,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<anyhow::Result<Prepared>>>,
     #[cfg(target_arch = "wasm32")]
     load: Option<Handle<Prepared>>,
     playing: Option<Playing>,
+}
+impl MoviePlayback {
+    /// No movie is loading or playing.
+    pub(super) fn idle(&self) -> bool {
+        self.load.is_none() && self.playing.is_none()
+    }
 }
 struct Playing {
     movie: Prepared,
@@ -106,8 +112,8 @@ pub(super) fn register(app: &mut App) {
 const ENDING_MOVIE: usize = 4;
 
 /// Runs the ending's movie once the book menu exists: effects stop, the CD pauses with the movie
-/// (the music owner pauses while a cinematic plays) and `WIN.SMK` plays; the book follows it.
-/// The credits scroll that follows the movie in the original is not implemented.
+/// (the music owner pauses while a cinematic plays) and `WIN.SMK` plays; the credits scroll follows
+/// it and the book follows the credits.
 fn ending(
     mut commands: Commands,
     entry: Option<Res<cyrus_game::script::EndingEntry>>,
@@ -122,7 +128,7 @@ fn ending(
     if let Some(sounds) = sounds.as_mut() {
         sounds.write(cyrus_audio::sound::SoundRequest::StopAll);
     }
-    warn!("ending: the credits scroll after WIN.SMK is not implemented");
+    commands.insert_resource(super::credits::CreditsPending);
     movies.write(MovieRequest::Menu(ENDING_MOVIE));
 }
 
@@ -215,7 +221,7 @@ fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
     movie.keys.iter().copied().find(|key| *key > frame)
 }
 
-fn drive(
+pub(super) fn drive(
     runtime: (Commands, Query<Entity, With<CinematicAudio>>),
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
