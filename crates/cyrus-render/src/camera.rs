@@ -194,10 +194,9 @@ fn follow_player(
 pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        // Experimental: draw the original follow camera instead of the player's own view.
-        if std::env::var_os("CYRUS_ORIGINAL_CAMERA").is_some() {
-            app.insert_resource(cyrus_game::script::CameraDrive { enabled: true });
-        }
+        // The game camera is part of the script world. Keep the render camera attached to that
+        // pose so its height, offset and collision follow gameplay rather than the actor origin.
+        app.insert_resource(cyrus_game::script::CameraDrive { enabled: true });
         app.init_resource::<cyrus_game::script::CameraDrive>()
             .init_resource::<cyrus_game::script::CameraFrameState>()
             .init_resource::<crate::fog::RenderDistance>()

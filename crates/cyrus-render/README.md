@@ -6,15 +6,11 @@ The game camera explicitly disables MSAA. Sky materials retain encoded-color
 filtering and fog without adding a software RGB565 framebuffer dither pass.
 The game camera keeps the original horizontal field of view when its viewport
 resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
-defines its scale. The original follow camera and matched-view pixel parity
-remain unsupported and unverified, respectively.
-**Verified:** the current default START camera shares the player's transform and
-intersects the animated CYRUS mesh, exposing a moving outline above the ship rail.
-An explicit inspection view outside the player avoids that symptom; it does not
-implement the original follow camera.
+defines its scale. The original follow camera is now the default game view; matched-view pixel
+parity remains unverified.
 The follow camera lives in `cyrus-game` (`script::camera`, driven per frame by
-`CameraDrive`) and is **off by default**; `CYRUS_ORIGINAL_CAMERA=1` makes the view
-camera draw it instead of the player's transform. **Verified:** for one START
+`CameraDrive`) and is enabled by default, so the view camera follows the game logic instead of the
+player model origin. **Verified:** for one START
 player pose the original's debug overlay showed the camera at (32481, -330, 33642)
 with angles (0, 2027, 0) for a player at (32464, -275, 33892), angles (0, 22, 0), and
 the pose pipeline reproduces it (`script_camera_original`); a START screenshot shows

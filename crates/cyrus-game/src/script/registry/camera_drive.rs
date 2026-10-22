@@ -1,7 +1,7 @@
 //! The original follow camera as a per-frame driver of the world's camera session.
 //!
-//! Off by default: the shipped view still uses the player's pose until this camera has been
-//! compared with the original. `CameraDrive::enabled` switches it on.
+//! The native and browser game views use this camera by default. `CameraDrive::enabled` remains
+//! a resource so hosts can disable it for inspection or diagnostics.
 use super::{ScriptActorId, ScriptWorld, camera::SceneCameraUpdate};
 use crate::script::camera::{
     CameraHitSelection, CameraPose, CameraTerrainHeights, CameraUpdateSettings, GlidePlayer,
