@@ -18,7 +18,8 @@ containing `Redguard`, `DOSBOX`, `game.gog`, and `game.ins`. Files stay on your
 computer; no upload or server is needed. Select the folder again after reloading.
 Use `?install=local` to override a saved server URL.
 
-For native builds, launch `cyrus-viewer` and choose your install, or pass it directly:
+For native builds, double-click `cyrus-viewer` and choose your install. No arguments
+are required. You can also pass the install directly:
 
 ```sh
 ./cyrus-viewer --install /path/to/Redguard

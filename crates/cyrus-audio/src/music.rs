@@ -50,6 +50,10 @@ impl Plugin for MusicPlugin {
         if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
             bevy::audio::AddAudioSource::add_audio_source::<MusicTransport>(app);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        let credits_track = credits_track.run_if(resource_exists::<GameInstall>);
+        #[cfg(target_arch = "wasm32")]
+        let credits_track = credits_track;
         app.init_resource::<Music>()
             .add_systems(OnEnter(cyrus_game::AppState::Menu), start_menu_track)
             .add_systems(
@@ -566,6 +570,38 @@ mod tests {
         assert!(!settings.paused);
         assert_eq!(restored.decoder().take(1024).collect::<Vec<_>>(), expected);
         assert_eq!(live.take(1024).collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn music_updates_while_the_install_picker_is_open() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .insert_state(cyrus_game::AppState::SelectingInstall)
+            .init_resource::<CurrentScene>()
+            .add_plugins(MusicPlugin);
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<Music>().track, None);
+        assert!(app.world().resource::<Music>().load.is_none());
+        app.insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        });
+        app.insert_resource(cyrus_game::script::CreditsPlaying);
+        app.update();
+        app.world_mut().resource_mut::<Music>().track = Some(2);
+        app.world_mut().spawn(MusicPlayer);
+        app.world_mut()
+            .remove_resource::<cyrus_game::script::CreditsPlaying>();
+        app.update();
+        assert_eq!(app.world().resource::<Music>().track, None);
+        assert!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

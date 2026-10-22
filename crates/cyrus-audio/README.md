@@ -4,6 +4,8 @@ Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
 in presentation. This crate has no rendering or startup dependency.
+Native credits music waits for `GameInstall` before its update runs, so the
+install picker can stay open without initializing CD playback.
 
 Loaded sample playback entities carry `PannedGains`, shared with their active
 decoder. A volume/pan update affects subsequent stereo frames without restarting

@@ -65,6 +65,11 @@ Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
 available. Use a windowed run for flycam and screenshot checks.
 
+Both native executables can be opened without arguments, including by double-clicking
+on Windows. If no usable install is found, the same window shows the Redguard
+folder picker. The viewer does not require an asset selection; the game waits for
+the folder before preparing installed audio and images.
+
 Settings, caches and screenshots live in `cyrus-config/`.
 
 `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered

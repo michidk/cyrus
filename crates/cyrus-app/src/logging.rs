@@ -30,7 +30,7 @@ pub struct LogArgs {
     #[arg(long = "log", env = "RUST_LOG", default_value = DEFAULT_CONSOLE_FILTER, value_parser = filter)]
     pub console: String,
     /// Log file filter. `off` disables the file.
-    #[arg(long = "log-file", env = "CYRUS_LOG_FILE", default_value = DEFAULT_FILE_FILTER, value_parser = filter)]
+    #[arg(id = "log_file", long = "log-file", env = "CYRUS_LOG_FILE", default_value = DEFAULT_FILE_FILTER, value_parser = filter)]
     pub file: String,
     /// Directory for the daily log files.
     #[arg(long = "log-dir", env = "CYRUS_LOG_DIR", default_value = DEFAULT_DIR)]

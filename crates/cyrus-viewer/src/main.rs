@@ -12,21 +12,23 @@ mod world_inspection;
 use bevy::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(clap::Parser)]
+#[command(
+    version,
+    about = "Explore your original Redguard assets. The install is read only."
+)]
+struct Args {
+    #[command(flatten)]
+    source: cyrus_app::launch::InstallArgs,
+    #[command(flatten)]
+    selection: cyrus_app::launch::ViewerOptions,
+    #[command(flatten)]
+    log: cyrus_app::logging::LogArgs,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> anyhow::Result<()> {
     use clap::Parser;
-    #[derive(Parser)]
-    #[command(
-        version,
-        about = "Explore your original Redguard assets. The install is read only."
-    )]
-    struct Args {
-        #[command(flatten)]
-        source: cyrus_app::launch::InstallArgs,
-        #[command(flatten)]
-        selection: cyrus_app::launch::ViewerOptions,
-        #[command(flatten)]
-        log: cyrus_app::logging::LogArgs,
-    }
     let args = Args::parse();
     let mut app = App::new();
     let logging = args.log.plugin(&mut app, "cyrus-viewer");
@@ -123,5 +125,34 @@ fn install_ready(
     #[cfg(target_arch = "wasm32")]
     {
         true
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod launch_tests {
+    use super::Args;
+    use clap::{CommandFactory, Parser};
+
+    #[test]
+    fn viewer_launches_without_arguments() {
+        Args::command().debug_assert();
+        let args = Args::try_parse_from(["cyrus-viewer"]).unwrap();
+        assert!(args.selection.asset.is_none());
+        assert!(args.selection.file.is_none());
+        assert!(args.selection.palette.is_none());
+    }
+
+    #[test]
+    fn asset_file_and_log_file_are_independent() {
+        let args = Args::try_parse_from([
+            "cyrus-viewer",
+            "--asset=model",
+            "--file=fxart/A.ROB",
+            "--log-file=off",
+        ])
+        .unwrap();
+        assert_eq!(args.selection.file.as_deref(), Some("fxart/A.ROB"));
+        assert_eq!(args.log.file, "off");
+        assert!(Args::try_parse_from(["cyrus-viewer", "--file=fxart/A.ROB"]).is_err());
     }
 }
