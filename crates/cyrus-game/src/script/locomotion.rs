@@ -26,6 +26,8 @@ pub struct BackwardState {
     /// Attribute bytes 8 (ordinary) and 17 (combat stance) give `MoveForward`'s step length.
     pub forward_step_attribute: u8,
     pub forward_combat_step_attribute: u8,
+    /// Attribute byte 16 gives the selected player's lunge step length.
+    pub lunge_step_attribute: u8,
     /// Attribute bytes 12 and 19 give WalkForward ordinary and combat step lengths.
     pub walk_step_attribute: u8,
     pub walk_combat_step_attribute: u8,

@@ -81,9 +81,8 @@ impl ScriptWorld {
     }
 
     /// The armed player's action key after movement dispatch (jump key not held): pick a combo move
-    /// from the latches and start it through the defence start. A jump attack stays unsupported, the
-    /// lunge fails in its movement service, and the original's in-reach test before a start is not
-    /// modelled.
+    /// from the latches and start it through the defence start. A jump attack stays unsupported and
+    /// the original's in-reach test before a start is not modelled.
     pub(super) fn control_player_attack(
         &mut self,
         id: ScriptActorId,
@@ -169,7 +168,12 @@ impl ScriptWorld {
             clock,
             inputs,
             random,
-            |_, _, _, _| bail!("selected-player lunge unsupported"),
+            // The lunge is a forward step of attribute 16; it requests no animation and so no sound.
+            |world, id, _distance, _mode| {
+                world.step_player(id, "Lunge", inputs, &mut |_, _| {
+                    bail!("selected-player lunge sound unsupported")
+                })
+            },
             sounds,
         )?;
         Ok(())

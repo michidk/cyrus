@@ -3541,6 +3541,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             lateral_step_attribute: actor.attributes[10],
             forward_step_attribute: actor.attributes[8],
             forward_combat_step_attribute: actor.attributes[17],
+            lunge_step_attribute: actor.attributes[16],
             walk_step_attribute: actor.attributes[12],
             walk_combat_step_attribute: actor.attributes[19],
             walk_backward_step_attribute: actor.attributes[13],
@@ -3709,7 +3710,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     }
                 }
             }
-            LocomotionOperation::Forward | LocomotionOperation::WalkForward => {
+            LocomotionOperation::Forward
+            | LocomotionOperation::WalkForward
+            | LocomotionOperation::Lunge => {
                 if super::locomotion::forward_admitted(&state) {
                     let control = self.registry.actors[self.index]
                         .control
@@ -3730,8 +3733,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             )?
                         });
                     } else {
-                        if super::locomotion::forward_plan(&state)
-                            == super::locomotion::ForwardPlan::NeedsEdgeProbe
+                        if operation != LocomotionOperation::Lunge
+                            && super::locomotion::forward_plan(&state)
+                                == super::locomotion::ForwardPlan::NeedsEdgeProbe
                         {
                             admission.edge_probe_clear = Some(self.registry.edge_probe_clear(
                                 id,

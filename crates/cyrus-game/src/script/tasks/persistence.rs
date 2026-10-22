@@ -256,6 +256,8 @@ impl Task {
             Self::WalkBackward => ("WalkBackward", 1, None),
             Self::Forward => ("MoveForward", 1, None),
             Self::WalkForward => ("WalkForward", 1, None),
+            // Only created synchronously, never stored.
+            Self::Lunge => ("Lunge", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
             Self::Location => ("MoveToLocation", 2, None),

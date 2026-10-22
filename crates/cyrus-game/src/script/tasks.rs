@@ -558,6 +558,8 @@ enum Task {
     Strafe(super::locomotion::Strafe),
     Forward,
     WalkForward,
+    /// The selected player's attack lunge: `MoveForward`'s step with attribute 16 and no group request.
+    Lunge,
     Location,
     Duration,
     /// `ViewGXA(name, frame, count)`: an installed image over the world for `count` counter ticks.
@@ -1505,10 +1507,13 @@ impl Task {
                 }
                 !continues(duration, elapsed)
             }
-            Self::Forward | Self::WalkForward => {
+            Self::Forward | Self::WalkForward | Self::Lunge => {
                 let walking = matches!(self, Self::WalkForward);
+                let lunge = matches!(self, Self::Lunge);
                 let name = if walking {
                     "WalkForward"
+                } else if lunge {
+                    "Lunge"
                 } else {
                     "MoveForward"
                 };
@@ -1527,10 +1532,12 @@ impl Task {
                     .locomotion
                     .with_context(|| format!("{name} locomotion state unavailable"))?;
                 let state = motion.state.map_err(anyhow::Error::msg)?;
+                // The lunge also needs the idle lifecycle state.
                 if !motion
                     .admission
                     .forward_admitted
                     .unwrap_or_else(|| forward_admitted(&state))
+                    || (lunge && state.living_state != 0)
                 {
                     return Ok(true);
                 }
@@ -1549,12 +1556,14 @@ impl Task {
                 *receiver.direction = if walking { 6 } else { FORWARD_MOTION_DIRECTION };
                 let mut halved = false;
                 let (group, step) =
-                    if walking {
+                    if lunge {
+                        (None, state.lunge_step_attribute)
+                    } else if walking {
                         if state.holding_weapon || state.combat_mode {
-                            (31, state.walk_combat_step_attribute)
+                            (Some(31), state.walk_combat_step_attribute)
                         } else {
                             (
-                                if state.torch_burning { 21 } else { 20 },
+                                Some(if state.torch_burning { 21 } else { 20 }),
                                 state.walk_step_attribute,
                             )
                         }
@@ -1568,9 +1577,9 @@ impl Task {
                                     return Ok(true);
                                 }
                                 halved = true;
-                                (142, state.forward_step_attribute)
+                                (Some(142), state.forward_step_attribute)
                             }
-                            ForwardPlan::Proceed { group, step } => (group, step),
+                            ForwardPlan::Proceed { group, step } => (Some(group), step),
                         }
                     };
                 let input = animation.as_mut().with_context(|| {
@@ -1579,19 +1588,28 @@ impl Task {
                 let spatial = spatial
                     .as_mut()
                     .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
-                if input.animation.has_group(group) {
-                    let frame = match &mut input.sounds {
-                        Some(sounds) => {
-                            input
-                                .animation
-                                .request_with_sounds(group, 0, input.ticks, *sounds)?
+                let moves = match group {
+                    None => true,
+                    Some(group) if input.animation.has_group(group) => {
+                        let frame = match &mut input.sounds {
+                            Some(sounds) => input.animation.request_with_sounds(
+                                group,
+                                0,
+                                input.ticks,
+                                *sounds,
+                            )?,
+                            None => input.animation.request(group, 0, input.ticks)?,
+                        };
+                        *input.frame = frame.or(*input.frame);
+                        if motion.animation_system && input.animation.current_group() != Some(group)
+                        {
+                            return Ok(!continues(duration, elapsed));
                         }
-                        None => input.animation.request(group, 0, input.ticks)?,
-                    };
-                    *input.frame = frame.or(*input.frame);
-                    if motion.animation_system && input.animation.current_group() != Some(group) {
-                        return Ok(!continues(duration, elapsed));
+                        true
                     }
+                    Some(_) => false,
+                };
+                if moves {
                     *motion.called |= 4;
                     let distance = super::locomotion::initial_step_distance(
                         receiver.counters,
@@ -2364,12 +2382,14 @@ pub struct NativeTasks {
     tasks: BTreeMap<u64, Task>,
 }
 /// Locomotion operation whose geometry must be sampled for the actual receiver.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum LocomotionOperation {
     Backward,
     WalkBackward,
     Forward,
     WalkForward,
+    /// The selected player's attack lunge: a forward step without an animation request.
+    Lunge,
     Strafe(super::locomotion::Strafe),
 }
 impl LocomotionOperation {
@@ -2380,6 +2400,8 @@ impl LocomotionOperation {
             Some(Self::WalkBackward)
         } else if name.eq_ignore_ascii_case("MoveForward") {
             Some(Self::Forward)
+        } else if name.eq_ignore_ascii_case("Lunge") {
+            Some(Self::Lunge)
         } else if name.eq_ignore_ascii_case("WalkForward") {
             Some(Self::WalkForward)
         } else if name.eq_ignore_ascii_case("MoveLeft") {
@@ -2416,6 +2438,7 @@ impl NativeTasks {
             Task::Backward => Some(LocomotionOperation::Backward),
             Task::WalkBackward => Some(LocomotionOperation::WalkBackward),
             Task::Forward => Some(LocomotionOperation::Forward),
+            Task::Lunge => Some(LocomotionOperation::Lunge),
             Task::WalkForward => Some(LocomotionOperation::WalkForward),
             _ => None,
         }
@@ -2658,6 +2681,10 @@ impl NativeTasks {
             Task::WalkBackward
         } else if function.eq_ignore_ascii_case("MoveForward") {
             Task::Forward
+        } else if function.eq_ignore_ascii_case("Lunge")
+            && matches!(mode, NativeTaskMode::SynchronousMovement)
+        {
+            Task::Lunge
         } else if function.eq_ignore_ascii_case("WalkForward") {
             Task::WalkForward
         } else if function.eq_ignore_ascii_case("MoveLeft") {
