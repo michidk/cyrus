@@ -112,23 +112,19 @@ impl ScriptWorld {
             // draw there would shift the shared combat RNG and alter later
             // spacing/defence choices.  Waiting-taunt kind is selected from
             // the allocation/world-loop parity at the point of the draw.
-            if branch == super::OrdinaryCombatBranch::Waiting
-                && random.draw() * 100 / 32767 < 2
-            {
+            if branch == super::OrdinaryCombatBranch::Waiting && random.draw() * 100 / 32767 < 2 {
                 let allocation = self.actors[self.resolve(id)?]
                     .control
                     .as_ref()
                     .and_then(|control| control.combat.as_ref())
                     .context("receiver combat unavailable")?
                     .allocation_index;
-                let trigger = if (allocation as u32).wrapping_add(self.globals.world_loop_frame)
-                    & 1
-                    == 0
-                {
-                    5
-                } else {
-                    8
-                };
+                let trigger =
+                    if (allocation as u32).wrapping_add(self.globals.world_loop_frame) & 1 == 0 {
+                        5
+                    } else {
+                        8
+                    };
                 self.request_timed_combat_taunt(id, trigger, clock, inputs, random, sounds)?;
             }
             Ok(())
