@@ -2,6 +2,7 @@
 use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 mod attack;
+mod attack_input;
 mod camera;
 mod camera_drive;
 pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
@@ -844,22 +845,43 @@ impl ScriptWorld {
                 sounds,
             )?;
         }
+        if selected {
+            let phase = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .map(|combat| combat.decision.attack_state)
+                .expect("admitted combat");
+            if phase == 0 {
+                let combat = self.actors[index]
+                    .control
+                    .as_mut()
+                    .and_then(|control| control.combat.as_mut())
+                    .expect("admitted combat");
+                if combat.action != 0 {
+                    combat.action = -1;
+                    combat.retained_action_indices = [-1; 2];
+                }
+                // Both maintenance helpers with action -1 are inert in phase zero.
+            } else {
+                // The defence executor, then the attack executor, both cleaning up.
+                let clock = inputs
+                    .combat_clock_sample
+                    .context("selected combat BIOS-clock sample unavailable")?
+                    as i32;
+                let random = random
+                    .as_deref_mut()
+                    .context("selected combat random owner unavailable")?;
+                if !self.execute_combat_defence(id, -1, clock, inputs, random, sounds)? {
+                    self.execute_combat_attack(id, -1, inputs, sounds)?;
+                }
+            }
+        }
         let control = self.actors[index]
             .control
             .as_mut()
             .expect("admitted control");
         let combat = control.combat.as_mut().expect("admitted combat");
-        if selected {
-            anyhow::ensure!(
-                combat.decision.attack_state == 0,
-                "selected-player combat nonzero maintenance phase unsupported"
-            );
-            if combat.action != 0 {
-                combat.action = -1;
-                combat.retained_action_indices = [-1; 2];
-            }
-            // Both maintenance helpers with action -1 are inert in phase zero.
-        }
         if !player_weapon_transition {
             if combat.cooldown != 0 {
                 combat.cooldown = combat.cooldown.saturating_sub(ticks);

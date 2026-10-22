@@ -32,6 +32,7 @@ pub(crate) fn prepare(
             .game
             .slide_hurt_height
             .zip(system.game.slide_hurt_zap),
+        tap_time: system.cyrus.tap_time,
         swim_depth: system
             .game
             .swim_depth

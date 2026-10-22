@@ -18,6 +18,7 @@ pub(super) struct PlayerMovement {
     pub(super) history: SupportHistory,
     veto: i32,
     accepted_forward: Option<bool>,
+    pub(super) latches: super::attack_input::AttackLatches,
 }
 
 pub(crate) struct GroundedPresentation {
@@ -78,6 +79,11 @@ impl ScriptWorld {
             let input = inputs
                 .player_controller
                 .context("player controller input unavailable")?;
+            if let (Some(tap_time), Some(scale)) =
+                (query.scene.settings.tap_time, inputs.frame_scale)
+            {
+                world.update_attack_latches(id, input.held, tap_time, scale as i32);
+            }
             let actor = &world.actors[id.index];
             let control = actor.control.as_ref().expect("validated control");
             let group = actor
@@ -168,7 +174,7 @@ impl ScriptWorld {
 
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
             // Holding a weapon or the combat flag selects the armed movement dispatch.
-            let armed = {
+            let holding = {
                 let actor = &world.actors[id.index];
                 let (holding, _, _) = super::super::activation::weapon_predicates(
                     control.living_state,
@@ -184,11 +190,12 @@ impl ScriptWorld {
                     inputs.shell_execution.unwrap_or(false),
                 );
                 holding
-                    || control
-                        .combat
-                        .as_ref()
-                        .is_some_and(|combat| combat.flags & 4 != 0)
             };
+            let armed = holding
+                || control
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.flags & 4 != 0);
             ensure!(
                 world.actors[id.index].attributes[110] == 0,
                 "player controller swimmer actor unsupported"
@@ -250,7 +257,15 @@ impl ScriptWorld {
                 }
             };
             moved?;
-            world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)
+            world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)?;
+            if holding {
+                ensure!(
+                    query.scene.settings.tap_time.is_some(),
+                    "player attack tap_time absent; re-export world"
+                );
+                world.control_player_attack(id, input.held, inputs, sounds)?;
+            }
+            Ok(())
         })
     }
 
@@ -652,6 +667,7 @@ impl ScriptWorld {
                 history: SupportHistory::new(0, 0),
                 veto: 0,
                 accepted_forward: None,
+                latches: Default::default(),
             });
         ensure!(
             movement.accepted_forward.is_none(),
@@ -1077,6 +1093,7 @@ impl ScriptWorld {
                 history: SupportHistory::new(0, 0),
                 veto: 0,
                 accepted_forward: None,
+                latches: Default::default(),
             });
         }
         self.player_animation(tick.actor, data, tick.nominal_ticks, &mut |sound| {
@@ -1244,6 +1261,7 @@ impl PlayerMovement {
             history: SupportHistory::new(snapshot.support_ticks, snapshot.support_metadata),
             veto: snapshot.veto,
             accepted_forward: snapshot.accepted_forward,
+            latches: Default::default(),
         })
     }
 }
