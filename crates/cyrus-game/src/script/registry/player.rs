@@ -263,7 +263,7 @@ impl ScriptWorld {
                     query.scene.settings.tap_time.is_some(),
                     "player attack tap_time absent; re-export world"
                 );
-                world.control_player_attack(id, input.held, inputs, sounds)?;
+                world.control_player_attack(id, input.held, inputs, random, sounds)?;
             }
             Ok(())
         })

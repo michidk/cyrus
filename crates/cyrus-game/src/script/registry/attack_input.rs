@@ -66,14 +66,6 @@ impl AttackLatches {
     }
 }
 
-/// The attack move the key state selects on the ground, before availability tests.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum GroundMove {
-    /// A double-tapped forward key: the lunge.
-    Lunge,
-    Move(i32),
-}
-
 impl ScriptWorld {
     /// Advance the tap latches once per controller iteration with the held keys.
     pub(super) fn update_attack_latches(
@@ -89,13 +81,15 @@ impl ScriptWorld {
     }
 
     /// The armed player's action key after movement dispatch (jump key not held): pick a combo move
-    /// from the latches and start it. A held jump attack and the lunge stay unsupported, and the
-    /// original's in-reach test before a start is not modelled.
+    /// from the latches and start it through the defence start. A jump attack stays unsupported, the
+    /// lunge fails in its movement service, and the original's in-reach test before a start is not
+    /// modelled.
     pub(super) fn control_player_attack(
         &mut self,
         id: ScriptActorId,
         held: &PlayerInput,
         inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let actor = &self.actors[id.index];
@@ -135,15 +129,15 @@ impl ScriptWorld {
             latches.action.matches(latches.action.count, true);
             None
         } else if latches.forward.matches(1, true) {
-            Some(GroundMove::Lunge)
+            Some(4)
         } else if held.forward {
-            Some(GroundMove::Move(3))
+            Some(3)
         } else if latches.action.matches(2, true) {
-            Some(GroundMove::Move(2))
+            Some(2)
         } else if latches.action.matches(1, false) {
-            Some(GroundMove::Move(1))
+            Some(1)
         } else if latches.action.matches(0, false) {
-            Some(GroundMove::Move(0))
+            Some(0)
         } else {
             latches.action.matches(latches.action.count, true);
             None
@@ -153,44 +147,31 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated latches")
             .latches = latches;
-        match chosen {
-            None => Ok(()),
-            Some(GroundMove::Lunge) => bail!("selected-player lunge attack unsupported"),
-            Some(GroundMove::Move(mov)) => self.start_player_attack(id, mov, inputs, sounds),
-        }
-    }
-
-    /// Start combo move `mov` when its authored attack slot exists and the pending word allows it:
-    /// moves 0 and 3 need no pending move, 1 follows 0 and 2 follows 1.
-    fn start_player_attack(
-        &mut self,
-        id: ScriptActorId,
-        mov: i32,
-        inputs: ScriptInputs<'_>,
-        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
-    ) -> Result<()> {
-        let combat = self.actors[id.index]
-            .control
-            .as_mut()
-            .and_then(|control| control.combat.as_mut())
-            .context("player attack combat unavailable")?;
-        let slot = usize::try_from(mov).context("negative attack move")?;
-        if combat.attack_indices.get(slot).copied().flatten().is_none() {
+        let Some(kind) = chosen else {
             return Ok(());
-        }
-        let pending = combat.retained_action_indices[0];
-        let allowed = match mov {
-            0 | 3 => pending == -1,
-            _ => pending == mov - 1,
         };
-        if !allowed {
-            return Ok(());
-        }
-        combat.action = mov;
-        combat.retained_action_indices[0] = mov;
-        // The current motion lookup indexes the attack slots by the action, so the move is the slot.
-        combat.retained_action_indices[1] = mov;
-        self.execute_combat_attack(id, 0, inputs, sounds)?;
+        let weapon = super::WeaponInputs {
+            selected_player: id,
+            item_system_ready: inputs
+                .hud
+                .map(|hud| hud.inventory_ready())
+                .transpose()?
+                .unwrap_or(false),
+            shell_execution: inputs.shell_execution.unwrap_or(false),
+        };
+        let clock = inputs
+            .combat_clock_sample
+            .context("selected combat BIOS-clock sample unavailable")? as i32;
+        self.start_combat_defence(
+            id,
+            kind,
+            weapon,
+            clock,
+            inputs,
+            random,
+            |_, _, _, _| bail!("selected-player lunge unsupported"),
+            sounds,
+        )?;
         Ok(())
     }
 }
