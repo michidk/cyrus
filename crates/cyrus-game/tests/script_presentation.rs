@@ -14,14 +14,14 @@ use cyrus_world::{
 use serde_json::json;
 
 #[test]
-fn player_health_carries_across_world_loads_until_new_game() {
+fn session_state_carries_across_world_loads_until_new_game() {
     let instances = json!([{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"model_name":"test","model_mode":2,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}, {"object_id":1,"actor":"ACTOR","object_type":2,"active":0,"model_name":"test","model_mode":2,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}]);
     let mut script_json = json!({
         "version":27,"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}
-        ],"flags":[],"references":[],"attributes":[]},
+        ],"flags":[{"name":"Story","flag_type":"NUMBER","initial_value":3}],"references":[],"attributes":[]},
         "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":2,
             "namespace":"ACTOR","instance_variables":[[],[]],"location_offsets":[],"attributes":{},"native_hook":null,
             "program":{"version":4,"entry":0,"steps":{
@@ -122,17 +122,42 @@ fn player_health_carries_across_world_loads_until_new_game() {
         .as_mut()
         .unwrap()
         .set_attribute_for_test(selected, 3, 37);
-    // A world replacement keeps the damage the selected player has taken, in both player records.
+    let flag = |app: &App| {
+        let world = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap();
+        (
+            serde_json::to_value(world.snapshot_flags()).unwrap(),
+            world.global_flag_is_set(0).unwrap(),
+        )
+    };
+    let initial_flag = flag(&app);
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .assign_global_flag(0, 9, true)
+        .unwrap();
+    let changed_flag = flag(&app);
+    assert_ne!(initial_flag, changed_flag);
+    // A world replacement keeps the damage the selected player has taken, in both player records,
+    // and the session's global flags.
     app.insert_resource(prepared());
     app.update();
     assert_eq!(health(&app), [37, 37]);
-    // New Game restores full health.
+    assert_eq!(flag(&app), changed_flag);
+    // New Game restores full health and the installed flag values.
     app.world_mut()
         .resource_mut::<ScriptActors>()
         .begin_new_game();
     app.insert_resource(prepared());
     app.update();
     assert_eq!(health(&app), [100, 100]);
+    assert_eq!(flag(&app), initial_flag);
 }
 
 #[test]
