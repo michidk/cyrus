@@ -41,7 +41,7 @@ pub enum PlayerEntrySupport {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerPlacement;
 
-/// Apply startup settling against the prepared static world and dry terrain.
+/// Apply startup settling against the prepared static world and terrain (water cells included).
 /// Caller must account for dynamic/transient support separately before enabling gameplay.
 pub fn settle_static(
     scene: &super::data::PlayerScene,
@@ -53,10 +53,16 @@ pub fn settle_static(
             scene.world
         )
     })?;
-    let terrain = scene
-        .terrain
-        .as_ref()
-        .and_then(|terrain| terrain.sample(pose.position));
+    // Startup settling reads the terrain height the clearance probe reads: water cells count, and
+    // only the height ranks (the normal is unused here).
+    let terrain = scene.terrain.as_ref().and_then(|terrain| {
+        terrain
+            .height(pose.position)
+            .map(|height| cyrus_collision::ground::GroundSupport {
+                height,
+                normal: [0; 3],
+            })
+    });
     if let Some(support) = scene.static_collision.startup_support(
         pose.position,
         definition.positive_extent[1],
@@ -69,7 +75,7 @@ pub fn settle_static(
     } else {
         anyhow::ensure!(
             scene.terrain.is_none() || terrain.is_some(),
-            "world {} startup settling at {:?}: water or terrain edge unsupported without model support",
+            "world {} startup settling at {:?}: terrain height-grid edge unsupported without model support",
             scene.world,
             pose.position
         );

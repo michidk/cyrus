@@ -396,7 +396,7 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
         .unwrap()
         .terrain = Some(
         cyrus_collision::ground::TerrainGround::new(
-            vec![0; 256 * 256],
+            vec![-680; 256 * 256],
             vec![true; 256 * 256],
             None,
         )
@@ -404,18 +404,18 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
     );
     app.world_mut().resource_mut::<MarkerEntry>().heading = 0;
     app.update();
-    assert!(matches!(
+    // Water cells supply their height to startup settling like dry cells.
+    assert_eq!(
         app.world().get::<PlayerEntrySupport>(player),
-        Some(PlayerEntrySupport::InspectionOnly(error))
-            if error.contains("water or terrain edge unsupported")
-    ));
+        Some(&PlayerEntrySupport::StaticSettled)
+    );
     assert_eq!(
         app.world().get::<PlayerPose>(player).unwrap().position,
-        [10_448_896, -178_944, 10_502_144]
+        [10_448_896, -190_464, 10_502_144]
     );
     assert_eq!(
         app.world().get::<Transform>(player).unwrap().translation,
-        Vec3::new(-2040.8, 34.95, -1225.5998)
+        Vec3::new(-2040.8, 37.2, -1225.5998)
     );
     app.world_mut().resource_mut::<MarkerEntry>().marker = 1;
     app.update();

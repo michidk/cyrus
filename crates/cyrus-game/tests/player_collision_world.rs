@@ -62,7 +62,7 @@ fn startup_settling_keeps_first_equal_contact_and_uses_full_search_radius() {
 }
 
 #[test]
-fn startup_settling_accepts_static_support_above_unsupported_water() {
+fn startup_settling_ranks_water_terrain_against_static_support() {
     use cyrus_game::player::data::PlayerScene;
     use cyrus_game::player::placement::{PlayerPose, settle_static};
 
@@ -82,7 +82,7 @@ fn startup_settling_accepts_static_support_above_unsupported_water() {
                 "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
                     "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
             },
-            "heights":vec![0;256*256],"water":vec![true;256*256],
+            "heights":vec![5000;256*256],"water":vec![true;256*256],
             "collision":collision
         }))
         .unwrap(),
@@ -95,7 +95,11 @@ fn startup_settling_accepts_static_support_above_unsupported_water() {
     settle_static(&scene, &mut pose).unwrap();
     assert_eq!(pose.position, [1_280_000, 86_016, 1_280_000]);
 
+    // Water terrain far outside the search segment is eligible but not selected; only a position
+    // off the height grid is unsupported without model support.
     scene.static_collision = StaticCollision::new(&CollisionScene::default()).unwrap();
+    settle_static(&scene, &mut pose).unwrap();
+    pose.position[0] = 100_000 * 256;
     assert!(settle_static(&scene, &mut pose).is_err());
 }
 
