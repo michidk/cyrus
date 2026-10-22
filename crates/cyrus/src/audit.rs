@@ -1,6 +1,6 @@
 //! Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 use anyhow::{Context, Result};
-use bevy::prelude::{App, Assets, MinimalPlugins, default};
+use bevy::prelude::{default, App, Assets, MinimalPlugins};
 use cyrus_assets::{
     animation::Animations,
     install::GameInstall,
@@ -386,12 +386,7 @@ mod tests {
         assert!(report.has_preparation_failure());
 
         let mut report = WorldReport::default();
-        report.issue(
-            "referenced_asset",
-            "WATERSND",
-            "models",
-            "missing".into(),
-        );
+        report.issue("referenced_asset", "WATERSND", "models", "missing".into());
         report.finish();
         assert!(!report.has_preparation_failure());
     }
