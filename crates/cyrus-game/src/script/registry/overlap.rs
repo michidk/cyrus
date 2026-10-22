@@ -56,16 +56,11 @@ impl ScriptWorld {
         );
         let pose = self.spatial(id)?.local;
         let origin = pose.position.map(|value| (value >> 8) as f32);
-        if actor.model.static_radius.is_some() {
-            let model = self.model_presentation(id)?.with_context(|| {
-                format!(
-                    "world {} instance {index}: overlap loaded static model unavailable",
-                    self.world
-                )
-            })?;
+        // The loaded model's radius is retained with the actor, published or not.
+        if let Some(radius) = actor.model.static_radius {
             return Ok(vec![OverlapSphere {
                 center: origin,
-                radius: model.radius,
+                radius,
             }]);
         }
         let definition = data.actor(actor.name())?;
