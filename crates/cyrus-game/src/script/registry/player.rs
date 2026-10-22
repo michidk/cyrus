@@ -166,9 +166,12 @@ impl ScriptWorld {
                         .as_ref()
                         .is_none_or(|combat| combat.flags & 4 == 0)
                     && control.sliding_state == 0
-                    && control.living_state == 0,
+                    && (control.living_state == 0 || (10..=19).contains(&control.living_state)),
                 "player controller requires ordinary sheathed grounded or airborne state"
             );
+            if (10..=19).contains(&control.living_state) {
+                return world.control_ledge_player(id, input.held, query, inputs, timing, sounds);
+            }
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
             ensure!(
                 !(1..=5).contains(&world.actor_surface(id)?),
@@ -225,6 +228,48 @@ impl ScriptWorld {
                 }
             }
         })
+    }
+
+    /// The controller in the ledge states. The jump key drops a hanging player through the hang
+    /// release (refused during the jump cooldown and the action inhibition). Sidestep input along
+    /// a ledge needs the state-15 lateral movement owner and is ignored, as are all other keys.
+    fn control_ledge_player(
+        &mut self,
+        id: super::ScriptActorId,
+        held: &crate::player::input::PlayerInput,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        inputs: super::ScriptInputs<'_>,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("ledge controller control unavailable")?;
+        if !held.jump
+            || control.living_state != 15
+            || control.queued_motion != 0
+            || control.falling_state != 0
+            || self.globals.conditional_ticks()? != 0
+        {
+            return Ok(());
+        }
+        let environment = super::transition::ObstacleEnvironment {
+            selected_player: Some(id),
+            auto_grab: false,
+            item_system_ready: inputs
+                .hud
+                .map(super::super::ScriptHud::inventory_ready)
+                .transpose()?
+                .unwrap_or(false),
+            shell_execution: inputs.shell_execution.unwrap_or(false),
+            ticks: timing.nominal_ticks,
+        };
+        let fine_ticks = inputs
+            .fine_ticks
+            .context("ledge controller needs the step's fine-tick increment")?;
+        self.ledge_hang_release(id, query, environment, fine_ticks, sounds)?;
+        Ok(())
     }
 
     /// The pending action (raised by a steep fatal landing): death animation override 74 and

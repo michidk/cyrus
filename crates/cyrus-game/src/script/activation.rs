@@ -364,6 +364,15 @@ impl GameplayGlobals {
     /// sound-maintenance sample. The pending action runs between this and
     /// [`Self::finish_player_controller`]; units and ordering follow preservation's player
     /// controller contract.
+    /// The conditional preliminary countdown that jump entries refuse the selected player on.
+    pub(super) fn conditional_ticks(&self) -> Result<u32> {
+        Ok(self
+            .controller_prelude
+            .as_ref()
+            .context("player controller: explicit initialization unavailable")?
+            .conditional_ticks)
+    }
+
     pub fn begin_player_controller(
         &mut self,
         nominal_ticks: u32,
