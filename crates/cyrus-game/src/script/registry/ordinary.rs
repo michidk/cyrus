@@ -497,7 +497,10 @@ impl ScriptWorld {
                         .movement_flags,
                     self.globals.locomotion_called,
                 );
-                self.follow_ordinary_support(id, None)?;
+                // Selected players have a distinct support-follow collision path; keep the
+                // ordinary nonplayer transform explicitly unavailable until that admission is
+                // implemented instead of silently moving the selected pose.
+                self.follow_ordinary_support(id, selected_player.then_some(id))?;
                 self.restore_axis_locks(id)?;
                 if self.spatial(id)?.parent.is_none() {
                     self.refresh_transform(id)?;
