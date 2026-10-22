@@ -24277,7 +24277,11 @@ fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed(
 fn point_entry_rejects_unavailable_branches_before_pending_motion() {
     use cyrus_game::script::ScriptInputs;
     for (field, value, error) in [
-        ("body_response_flags", 4, "hit-reaction"),
+        (
+            "body_response_flags",
+            4,
+            "hit reaction requires the shared engine random stream",
+        ),
         ("motion_direction", 15, "direction-15"),
     ] {
         let mut world = point_movement_fixture(

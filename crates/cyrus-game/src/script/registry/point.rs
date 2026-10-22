@@ -304,7 +304,7 @@ impl ScriptWorld {
         destination: [i32; 3],
         tolerance: i32,
         inputs: ScriptInputs<'_>,
-        random: Option<&mut crate::random::EngineRandom>,
+        mut random: Option<&mut crate::random::EngineRandom>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = id.index;
@@ -312,12 +312,35 @@ impl ScriptWorld {
             .control
             .as_ref()
             .expect("admitted point control");
-        anyhow::ensure!(
-            control.body_response_flags & 4 == 0
-                || self.globals.native_command.point_phase == 27
-                || control.overlap_contact_identifier == 1,
-            "point hit-reaction random service unsupported"
-        );
+        // Hit reaction: a body response mark from another actor (contact identifier other than
+        // one) outside phase 27 draws one raw value; its low two bits pick a retarget of the
+        // previous next node (phase 27), a pause of 36 ticks, or nothing.
+        if control.body_response_flags & 4 != 0
+            && self.globals.native_command.point_phase != 27
+            && control.overlap_contact_identifier != 1
+        {
+            let draw = random
+                .as_deref_mut()
+                .context("point hit reaction requires the shared engine random stream")?
+                .draw()
+                & 3;
+            if draw == 1 {
+                let navigation = &mut self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted point control")
+                    .navigation;
+                navigation.next = navigation.previous_next;
+                self.globals.native_command.point_phase = 27;
+            } else if draw == 2 {
+                self.globals.native_command.pause_ticks = 0x24;
+                return Ok(1);
+            }
+        }
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted point control");
         let shared = &mut self.globals.native_command;
         shared.point_counter = if control.collision_response_auxiliary[0] & 128 != 0
             && control.navigation.next != -1
