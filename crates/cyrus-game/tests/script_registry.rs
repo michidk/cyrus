@@ -11297,13 +11297,17 @@ fn dialogue_record_updates_preserve_order_and_speech_specific_completion() {
             index: 1,
         },
         "stale".into(),
-        None,
+        Some(5),
         100,
     );
-    // A line of a speaker from an earlier world generation inhibits nobody and runs out.
+    // A line of a speaker from an earlier world generation inhibits nobody, keeps its voice at
+    // the last volume and runs out.
+    effects.events.clear();
+    effects.playing = true;
     world
         .advance_dialogue(1, true, false, &mut effects)
         .unwrap();
+    assert!(!effects.events.iter().any(|event| event == "volume 5"));
     assert_eq!(world.actors()[1].attributes()[117], 0);
     assert!(world.dialogue_speaker_positions().unwrap().is_empty());
     world

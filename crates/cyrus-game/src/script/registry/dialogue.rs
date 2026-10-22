@@ -17,6 +17,10 @@ impl DialoguePlayback for Effects<'_> {
         self.playback.stop_sample(sample)
     }
     fn refresh_volume(&mut self, speaker: ScriptActorId, sample: u8) -> Result<()> {
+        // A destroyed speaker has no pose to follow: its voice keeps the last volume.
+        if speaker.generation != self.generation {
+            return Ok(());
+        }
         self.playback.refresh_volume(speaker, sample)
     }
     fn present_line(&mut self, index: usize, text: &str) -> Result<()> {
