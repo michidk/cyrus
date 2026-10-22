@@ -3,7 +3,7 @@
 //! (states 12 and 10) stays unsupported: only falls and queued motion, which produce class 3
 //! records, reach the ledge here.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 
 /// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
 /// of the scan and the frame scale that sets the turn rate of a ledge turn.
@@ -77,12 +77,10 @@ impl ScriptWorld {
         {
             return Ok(result);
         }
-        if self.living(index) == 10 {
-            // The high-ledge start needs a group started partway through its frames.
-            bail!(
-                "world {} instance {index}: ledge turn state 10 unsupported",
-                self.world
-            );
+        if self.living(index) == 10
+            && let Some(result) = self.ledge_turn_high(&ctx, sounds)?
+        {
+            return Ok(result);
         }
         if self.living(index) == 14 {
             return self.ledge_catch(&mut ctx, sounds);
@@ -224,8 +222,33 @@ impl ScriptWorld {
         ctx: &Transition<'_>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<Option<u8>> {
-        let (id, index) = (ctx.id, ctx.index);
         let (point, heading) = self.ledge_anchor()?;
+        if let Some(result) = self.ledge_turn_toward(ctx, heading, 1, sounds)? {
+            return Ok(Some(result));
+        }
+        let [dx, dz] =
+            super::ledge::heading_offset(LOW_FORWARD[0] * 256, heading.wrapping_add(1024));
+        self.write_ledge_pose(
+            ctx.index,
+            Some(point[0].wrapping_add(dx)),
+            None,
+            Some(point[2].wrapping_add(dz)),
+        )?;
+        self.force_ledge_group(ctx, 90, sounds)?;
+        self.set_living(ctx.index, 13);
+        Ok(None)
+    }
+
+    /// Turn toward the ledge heading, then rescan once facing it. Returns the transition's result
+    /// while turning or when the rescan no longer finds `class`; `None` once the ledge is held.
+    fn ledge_turn_toward(
+        &mut self,
+        ctx: &Transition<'_>,
+        heading: u16,
+        class: u8,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<Option<u8>> {
+        let (id, index) = (ctx.id, ctx.index);
         let frame_scale = ctx
             .timing
             .frame_scale
@@ -250,20 +273,42 @@ impl ScriptWorld {
             return Ok(Some(0));
         }
         let scan = self.ledge_scan(id, ctx.query, ctx.environment, ctx.timing.fine_ticks, 12)?;
-        if scan.result != 1 {
+        if scan.result != class {
             self.set_living(index, 0);
             return Ok(Some(0));
         }
+        Ok(None)
+    }
+
+    /// State 10: as state 12 toward a high ledge, rescanning for class 2, then start the climb
+    /// group two frames in and continue into state 11.
+    fn ledge_turn_high(
+        &mut self,
+        ctx: &Transition<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<Option<u8>> {
+        let (id, index) = (ctx.id, ctx.index);
+        let (point, heading) = self.ledge_anchor()?;
+        if let Some(result) = self.ledge_turn_toward(ctx, heading, 2, sounds)? {
+            return Ok(Some(result));
+        }
         let [dx, dz] =
-            super::ledge::heading_offset(LOW_FORWARD[0] * 256, heading.wrapping_add(1024));
+            super::ledge::heading_offset(HIGH_FORWARD[0] * 256, heading.wrapping_add(1024));
         self.write_ledge_pose(
             index,
             Some(point[0].wrapping_add(dx)),
-            None,
+            Some(point[1]),
             Some(point[2].wrapping_add(dz)),
         )?;
-        self.force_ledge_group(ctx, 90, sounds)?;
-        self.set_living(index, 13);
+        if self.updates.animation_system {
+            let animation = self.actors[id.index]
+                .animation
+                .as_mut()
+                .context("ledge climb animation unavailable")?;
+            let frame = animation.playback.request_skipping_frames(86, 0, 2)?;
+            animation.frame = frame.or(animation.frame);
+        }
+        self.set_living(index, 11);
         Ok(None)
     }
 

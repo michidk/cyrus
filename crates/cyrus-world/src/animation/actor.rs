@@ -310,6 +310,41 @@ impl ActorAnimation {
             .map(|(_, sequence)| sequence.command_cursor()))
     }
 
+    /// Start `group` at once, skipping its first `frames` ShowFrames, unless it is already the
+    /// current group before its exit marker with at least that many frames shown, in which case
+    /// only the pending request clears. Returns the displayed frame reference.
+    pub fn request_skipping_frames(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        frames: u8,
+    ) -> anyhow::Result<Option<u32>> {
+        self.check_failure()?;
+        if self.current.as_ref().is_some_and(|(current, sequence)| {
+            *current == group && !sequence.exit_reached() && self.frame_progress >= frames
+        }) {
+            self.pending = None;
+            return Ok(None);
+        }
+        let metadata = self
+            .groups
+            .get(&group)
+            .with_context(|| format!("{} group {group}: absent", self.context))?;
+        let mut sequence = FrameSequence::from_group(
+            format!("{} group {group}", self.context),
+            metadata,
+            0,
+            modifier,
+        )?;
+        self.clear_current(&mut None)?;
+        self.pending = None;
+        self.frame_progress = 0;
+        self.reverse = false;
+        let reference = sequence.skip_frames(frames, &mut self.frame_progress)?;
+        self.current = Some((group, sequence));
+        Ok(reference)
+    }
+
     /// Number of commands in the current group's packed command table.
     pub fn current_command_count(&self) -> anyhow::Result<Option<usize>> {
         self.check_failure()?;

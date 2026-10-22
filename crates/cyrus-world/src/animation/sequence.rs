@@ -357,6 +357,44 @@ impl FrameSequence {
         i32::from(self.command)
     }
 
+    /// Skip the first `frames` ShowFrames of a freshly selected group without running any other
+    /// command, counting each in `progress`; returns the frame displayed next.
+    pub(super) fn skip_frames(
+        &mut self,
+        frames: u8,
+        progress: &mut u8,
+    ) -> anyhow::Result<Option<u32>> {
+        let mut remaining = frames;
+        loop {
+            let command = usize::try_from(self.command)
+                .ok()
+                .and_then(|index| self.commands.get(index))
+                .with_context(|| {
+                    format!("{} command {}: outside group", self.context, self.command)
+                })?;
+            match *command {
+                Command::Frame(reference) if remaining == 0 => return Ok(Some(reference)),
+                Command::Frame(_) => {
+                    remaining -= 1;
+                    *progress = progress.wrapping_add(1);
+                }
+                Command::End => {
+                    self.ended = true;
+                    return Ok(None);
+                }
+                Command::Previous(_) | Command::Future(_) | Command::Unsupported(_) => {
+                    anyhow::bail!(
+                        "{} command {}: frame skipping over a jump or unsupported command",
+                        self.context,
+                        self.command
+                    )
+                }
+                _ => {}
+            }
+            self.command += 1;
+        }
+    }
+
     pub(super) fn command_count(&self) -> usize {
         self.commands.len()
     }

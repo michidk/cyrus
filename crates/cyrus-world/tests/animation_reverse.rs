@@ -377,3 +377,16 @@ fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
             .unwrap();
     assert_eq!(actor.advance(0).unwrap(), Some(72));
 }
+
+#[test]
+fn a_skipping_request_starts_the_group_at_once_two_frames_in() {
+    let data = data();
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    assert_eq!(actor.request_skipping_frames(7, 0, 2).unwrap(), Some(72));
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.frame_wait_state().unwrap().2, 2);
+    assert_eq!(actor.current_command_cursor().unwrap(), Some(2));
+    // Already playing with enough frames shown: only a pending request would clear.
+    assert_eq!(actor.request_skipping_frames(7, 0, 2).unwrap(), None);
+    assert_eq!(actor.frame_wait_state().unwrap().2, 2);
+}
