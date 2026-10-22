@@ -1,6 +1,6 @@
 //! The nonplayer step hazard test follows the original's destination surface classification.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 
 /// Receiver-relative destination check. Forward is WalkForward's admission;
 /// the other directions follow preservation's fight-spacing admission rules.
@@ -206,7 +206,8 @@ impl ScriptWorld {
 
     /// Whether stepping to `destination` (Q8 position) is hazardous: the destination surface is a
     /// steep slope, unless both the destination and the current surface are floors. Applies only
-    /// to actors whose attribute 1 has bit 1 set. A surface missing at one of the two points
+    /// to actors whose attribute 1 has bit 1 set, and not to the selected player while its
+    /// support-history counter is nonzero. A surface missing at one of the two points
     /// counts as class one (**Inferred**: the original reads an uninitialized record there).
     pub fn step_hazard(
         &self,
@@ -221,11 +222,15 @@ impl ScriptWorld {
         if actor.attributes[1] & 2 == 0 {
             return Ok(false);
         }
-        ensure!(
-            selected_player != Some(id),
-            "world {} instance {index}: selected-player step hazard gate unavailable",
-            self.world
-        );
+        // The selected player skips the test while its support-history counter is nonzero.
+        if selected_player == Some(id)
+            && actor
+                .player_movement
+                .as_ref()
+                .is_some_and(|movement| movement.history.ticks() != 0)
+        {
+            return Ok(false);
+        }
         let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
         let post = i32::try_from(query.scene.settings.post_collide_height)
             .context("step hazard post_collide_height exceeds signed range")?;
