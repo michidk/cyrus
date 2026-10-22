@@ -25537,7 +25537,21 @@ fn coordinate_walking_initial_arrival_needs_no_movement_or_sound_owner() {
 #[test]
 fn coordinate_walking_reports_live_walk_admission_instead_of_using_run() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
-    let (mut world, _, _) = movement_fixture(18, false, true, |_| {}, |_| {});
+    // Collision attribute bits make the step check need live geometry.
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .attributes
+                .insert("attr_1".into(), 1);
+        },
+        |_| {},
+    );
     let id = world.id(0).unwrap();
     let hud = ScriptHud::default();
     let error = world

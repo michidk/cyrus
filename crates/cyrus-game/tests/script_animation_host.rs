@@ -5748,8 +5748,19 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
 }
 
 fn walk_forward_world(surface: u8, bypass: bool) -> (ScriptWorld, ScriptActorId) {
+    walk_forward_world_with(surface, bypass, u8::from(!bypass))
+}
+
+fn walk_forward_world_with(
+    surface: u8,
+    bypass: bool,
+    collision_attribute: u8,
+) -> (ScriptWorld, ScriptActorId) {
     let mut data = move_backward_scripts(0);
     let actor = data.actors.get_mut("ACTOR").unwrap();
+    actor
+        .attributes
+        .insert("attr_1".into(), collision_attribute);
     for step in actor.program.steps.values_mut() {
         if let Operation::Call { call } = &mut step.operation {
             call.function = "WalkForward".into();
@@ -5797,6 +5808,16 @@ fn walk_forward_world(surface: u8, bypass: bool) -> (ScriptWorld, ScriptActorId)
         .unwrap();
     world.set_actor_surface(id, surface).unwrap();
     (world, id)
+}
+
+#[test]
+fn walk_forward_without_collision_attribute_bits_passes_its_step_checks() {
+    let (mut world, id) = walk_forward_world_with(0, false, 0);
+    forward_stage(&mut world, id, BODY, &locomotion_hud(), None).unwrap();
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        6
+    );
 }
 
 #[test]

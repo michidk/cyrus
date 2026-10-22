@@ -3736,6 +3736,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }
         }
         let Some(geometry) = self.inputs.locomotion_geometry else {
+            // Without collision attribute bits no collision query is prepared for the actor and
+            // every destination test of the walk step passes.
+            if walking
+                && admission.forward_admitted == Some(true)
+                && self.registry.actors[self.index].attributes[1] == 0
+            {
+                admission.forward_step_clear = Some(true);
+            }
             return Ok(admission);
         };
         let obstacle = || obstacle::OrdinaryObstacleQuery {
