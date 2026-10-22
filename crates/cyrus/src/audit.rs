@@ -1,6 +1,6 @@
 //! Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 use anyhow::{Context, Result};
-use bevy::prelude::{default, App, Assets, MinimalPlugins};
+use bevy::prelude::{App, Assets, MinimalPlugins, default};
 use cyrus_assets::{
     animation::Animations,
     install::GameInstall,
