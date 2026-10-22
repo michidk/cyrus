@@ -161,8 +161,8 @@ impl ScriptWorld {
         Ok(true)
     }
 
-    /// Apply the nonplayer unarmed health service, including death dispatch.
-    /// Armed death has a separate service. The selected player forwards to its own death-owning
+    /// Apply the nonplayer health service, including death dispatch.
+    /// An armed receiver dies through the contact death dispatch. The selected player forwards to its own death-owning
     /// health with no source. Combat mode bit two must be supplied when attribute 97 requires
     /// that predicate.
     pub fn change_ordinary_health(
@@ -235,11 +235,6 @@ impl ScriptWorld {
             return Ok(true);
         }
         let health = ordinary_health_value(actor.attributes[3], change);
-        anyhow::ensure!(
-            health != 0 || !holding,
-            "world {} instance {index}: armed health death services unsupported",
-            self.world
-        );
         let death_group =
             if control.falling_state != 0 || matches!(group, Some(114 | 116 | 130 | 131)) {
                 74
@@ -247,7 +242,17 @@ impl ScriptWorld {
                 134
             };
         self.actors[index].attributes[3] = health;
-        if health == 0 {
+        if health == 0 && holding {
+            // An armed receiver dies through the contact death dispatch with selector zero.
+            if self.updates.animation_system {
+                self.dispatch_contact_death(id, 0, Some(environment.ticks), sounds)?;
+            }
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("validated health control")
+                .death_selector = 8;
+        } else if health == 0 {
             if self.updates.animation_system {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
                 let event_context = super::effects::ActorEventContext::capture(self, id);
