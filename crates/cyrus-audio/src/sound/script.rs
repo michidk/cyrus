@@ -1306,6 +1306,9 @@ struct DialogueAssets<'w> {
     install: Option<Res<'w, cyrus_assets::install::GameInstall>>,
 }
 
+/// Combat taunt clips prepared concurrently while a world waits for its taunt catalogue.
+const TAUNT_PREPARATIONS_IN_FLIGHT: usize = 8;
+
 fn scoped_ordinary(
     In(phase): In<cyrus_game::script::OrdinaryPhase>,
     mut context: cyrus_game::script::OrdinaryContext,
@@ -1381,6 +1384,7 @@ fn scoped_ordinary(
             )
         };
         let mut ready = true;
+        let mut in_flight = 0;
         for label in context.combat_taunt_labels() {
             if taunts.iter().any(|clip| clip.entry.label == label) {
                 continue;
@@ -1388,9 +1392,12 @@ fn scoped_ordinary(
             match read(label) {
                 Ok(Poll::Ready(clip)) => taunts.push(clip),
                 Ok(Poll::Pending) => {
-                    // Bound in-flight preparation independently of catalogue size.
                     ready = false;
-                    break;
+                    in_flight += 1;
+                    // Prepare several clips at once, well below the twenty-request retention limit.
+                    if in_flight == TAUNT_PREPARATIONS_IN_FLIGHT {
+                        break;
+                    }
                 }
                 Err(error) => {
                     context.report_error(format!("ordinary combat taunt {label:?}: {error:#}"));
