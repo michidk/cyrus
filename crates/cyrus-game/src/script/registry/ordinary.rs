@@ -178,8 +178,11 @@ impl ScriptWorld {
             if self.selected_player_index() == Some(id.index) {
                 self.globals.clear_player_contacts();
             }
-            let selected_player = self.selected_player_index() == Some(id.index)
-                && inputs.player_controller.is_some();
+            // Eligibility follows the retained selected-player role, even when
+            // this host update has no controller sample. A missing controller
+            // suppresses only player movement input; it must not suppress the
+            // selected actor's ordinary hook, combat, or script stages.
+            let selected_player = self.selected_player_index() == Some(id.index);
             let actor = &mut self.actors[id.index];
             actor.sync_falling_motion();
             if actor.placement().is_none() && !selected_player {
@@ -307,7 +310,7 @@ impl ScriptWorld {
                     }),
                     ..inputs
                 };
-                let player_query = if selected_player {
+                let player_query = if selected_player && inputs.player_controller.is_some() {
                     Some(super::ground::OrdinaryGroundQuery {
                         scene: scene
                             .ok_or_else(|| anyhow::anyhow!("player collision scene unavailable"))?,
