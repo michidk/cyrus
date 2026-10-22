@@ -1682,8 +1682,7 @@ impl Task {
                             };
                             *input.frame = frame.or(*input.frame);
                         }
-                        if motion.animation_system
-                            && input.animation.current_group() != Some(group)
+                        if motion.animation_system && input.animation.current_group() != Some(group)
                         {
                             return Ok(!continues(duration, elapsed));
                         }
