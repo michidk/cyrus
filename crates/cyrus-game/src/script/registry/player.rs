@@ -160,17 +160,34 @@ impl ScriptWorld {
                 .expect("validated control");
             ensure!(
                 !control.rope_attached
-                    && !control.weapon_drawn
-                    && control
-                        .combat
-                        .as_ref()
-                        .is_none_or(|combat| combat.flags & 4 == 0)
                     && control.sliding_state == 0
                     && (control.living_state == 0 || (10..=19).contains(&control.living_state)),
-                "player controller requires ordinary sheathed grounded or airborne state"
+                "player controller requires a grounded or airborne state without rope or slide"
             );
 
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
+            // Holding a weapon or the combat flag selects the armed movement dispatch.
+            let armed = {
+                let actor = &world.actors[id.index];
+                let (holding, _, _) = super::super::activation::weapon_predicates(
+                    control.living_state,
+                    Some(super::super::ActivationAnimation { group }),
+                    control.combat_death_default.is_some(),
+                    control.weapon_drawn,
+                    actor.attributes[110],
+                    inputs
+                        .hud
+                        .map(|hud| hud.inventory_ready())
+                        .transpose()?
+                        .unwrap_or(false),
+                    inputs.shell_execution.unwrap_or(false),
+                );
+                holding
+                    || control
+                        .combat
+                        .as_ref()
+                        .is_some_and(|combat| combat.flags & 4 != 0)
+            };
             ensure!(
                 world.actors[id.index].attributes[110] == 0,
                 "player controller swimmer actor unsupported"
@@ -182,6 +199,7 @@ impl ScriptWorld {
                     dialogue_state,
                     menu_state,
                     walk_mode: input.walk_mode,
+                    armed,
                 },
             )?;
             if matches!(action, SheathedAction::Returned(_)) {

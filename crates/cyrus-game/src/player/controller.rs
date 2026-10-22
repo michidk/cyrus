@@ -12,6 +12,8 @@ pub struct SheathedControllerState {
     pub dialogue_state: u16,
     pub menu_state: u16,
     pub walk_mode: bool,
+    /// The weapon-holding predicate or the combat flag: either forces the held-key choice.
+    pub armed: bool,
 }
 
 /// An early return from keyboard dispatch, not from the outer actor update.
@@ -85,14 +87,20 @@ pub fn select_sheathed_action(
             Strafe::Right
         }));
     }
+    // An armed player ignores the walk-mode toggle: the held walk key alone selects walking.
+    let walking = if state.armed {
+        input.walk
+    } else {
+        state.walk_mode ^ input.walk
+    };
     if input.forward {
-        Ok(if state.walk_mode ^ input.walk {
+        Ok(if walking {
             SheathedAction::WalkForward
         } else {
             SheathedAction::RunForward
         })
     } else if input.backward {
-        Ok(if state.walk_mode ^ input.walk {
+        Ok(if walking {
             SheathedAction::WalkBackward
         } else {
             SheathedAction::RunBackward

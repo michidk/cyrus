@@ -11,6 +11,7 @@ fn state() -> SheathedControllerState {
         dialogue_state: 0,
         menu_state: 0,
         walk_mode: false,
+        armed: false,
     }
 }
 
@@ -242,6 +243,28 @@ fn backward_alone_selects_the_walk_or_run_helper_by_the_same_rule_as_forward() {
         };
         let input = PlayerInput {
             backward: true,
+            walk: held,
+            ..Default::default()
+        };
+        assert_eq!(select_sheathed_action(&input, known).unwrap(), expected);
+    }
+}
+
+#[test]
+fn an_armed_player_ignores_the_walk_toggle() {
+    for (walk_mode, held, expected) in [
+        (false, false, SheathedAction::RunForward),
+        (false, true, SheathedAction::WalkForward),
+        (true, false, SheathedAction::RunForward),
+        (true, true, SheathedAction::WalkForward),
+    ] {
+        let known = SheathedControllerState {
+            walk_mode,
+            armed: true,
+            ..state()
+        };
+        let input = PlayerInput {
+            forward: true,
             walk: held,
             ..Default::default()
         };
