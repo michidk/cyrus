@@ -544,11 +544,17 @@ impl ScriptWorld {
         );
         actor.attributes[1] = 12;
         anyhow::ensure!(
-            control.collision_transition_flags & 1 == 0
-                && control.collision_response_auxiliary[0] & 0x82 == 0
-                && control.body_response_flags & 0x0a == 0,
-            "point route collision response unsupported"
+            control.collision_transition_flags & 1 == 0,
+            "point route collision response unsupported: transition mark"
         );
+        // A blocked-step or body response mark drops the route: held nodes are released and
+        // routing restarts from phase zero.
+        let restart = control.collision_response_auxiliary[0] & 0x82 != 0
+            || control.body_response_flags & 0x0a != 0;
+        if restart {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = 0;
+        }
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
             matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 12 | 21 | 22 | 27),
