@@ -144,7 +144,7 @@ module where it is defined and regenerate.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attachment.rs` — Equipped-model geometry follows preservation's engine/attachment.md transform rules.
-- `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
+- `src/script/attributes.rs` — Immediate attribute services. Runtime writes retain the actor byte; family/model
 - `src/script/camera.rs` — Retained logical camera records; pose correction and publication share this owner.
 - `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
 - `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
