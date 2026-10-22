@@ -240,6 +240,14 @@ impl ScriptWorld {
             .actor_mut(index)?
             .local
             .angles[1] = turn.heading;
+        if inputs.selected_player == Some(id) {
+            // The selected player's turn rebuilds its matrix and copies the angles to history.
+            self.spatial
+                .as_mut()
+                .context("spatial owner unavailable")?
+                .actor_mut(index)?
+                .reset_rotation([false; 3])?;
+        }
         Ok(if turn.group.is_none() {
             0
         } else {
@@ -395,8 +403,8 @@ impl ScriptWorld {
     }
 
     /// Execute the admitted slope helper, including ordered turn/slide requests,
-    /// translation and a second primary support query. Selected-player camera
-    /// updates require their separate owner and are rejected before mutation.
+    /// translation and a second primary support query. The selected player's turn also
+    /// rebuilds its rotation matrix and angle history.
     pub fn resolve_ordinary_slope(
         &mut self,
         id: ScriptActorId,
@@ -407,11 +415,6 @@ impl ScriptWorld {
     ) -> Result<()> {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let index = self.resolve(id)?;
-        ensure!(
-            inputs.selected_player != Some(id),
-            "world {} instance {index}: selected-player slope camera unsupported",
-            self.world
-        );
         ensure!(
             !matches!(support, Some(SelectedSupport::Fallback { .. })),
             "world {} instance {index}: ordinary slope requires primary support",

@@ -9745,23 +9745,6 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
             normal: [0, -100, 200],
         },
     };
-    assert!(
-        world
-            .resolve_ordinary_slope(
-                id,
-                Some(&support),
-                query(),
-                inputs(Some(id)),
-                &mut |_, _| Ok(())
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("selected-player slope camera")
-    );
-    assert_eq!(
-        world.spatial(id).unwrap().local.position,
-        [2560, 5120, 7680]
-    );
     world
         .resolve_ordinary_slope(
             id,
