@@ -512,6 +512,10 @@ impl ScriptActor {
     pub fn control_state(&self) -> Option<&ActorControlState> {
         self.control.as_ref()
     }
+    /// The actor this one stands on, as its ground or landing response left it.
+    pub fn support_actor(&self) -> Option<ScriptActorId> {
+        self.model.support.actor
+    }
     pub(super) fn bound_animation_group(&self) -> Option<Option<u16>> {
         self.animation
             .as_ref()
@@ -618,6 +622,17 @@ impl ScriptWorld {
     #[doc(hidden)]
     pub fn set_attribute_for_test(&mut self, id: ScriptActorId, attribute: usize, value: u8) {
         self.actors[id.index].attributes[attribute] = value;
+    }
+
+    /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
+    #[doc(hidden)]
+    pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: u8, origin_y: i32) {
+        let control = self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state");
+        control.falling_state = state;
+        control.fall_origin_y = origin_y;
     }
 
     pub fn selected_player(&self) -> Option<ScriptActorId> {

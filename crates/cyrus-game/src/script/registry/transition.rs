@@ -239,6 +239,13 @@ impl ScriptWorld {
     ) -> Result<()> {
         let pass =
             self.resolve_ordinary_overlaps(id, query.scene, query.animations, query.prepared)?;
+        if let super::overlap::OrdinaryOverlapPass::Landed {
+            other,
+            admitted: true,
+        } = pass
+        {
+            self.request_landing_groups(id, other, &environment, sounds)?;
+        }
         if matches!(
             pass,
             super::overlap::OrdinaryOverlapPass::Complete {
@@ -246,6 +253,57 @@ impl ScriptWorld {
             }
         ) {
             self.resolve_ordinary_obstacle_wrapper(id, query, environment, sounds)?;
+        }
+        Ok(())
+    }
+
+    /// The animation requests of an admitted actor landing: group 10 on the other actor, then
+    /// the landing group on the actor: 114 holding a weapon, else 66 with a burning torch, else
+    /// 65. Requests need the animation system and a prepared animation; otherwise they are
+    /// skipped, as the original's request routine does.
+    fn request_landing_groups(
+        &mut self,
+        id: ScriptActorId,
+        other: ScriptActorId,
+        environment: &ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if !self.updates.animation_system {
+            return Ok(());
+        }
+        if self.actors[other.index].animation.is_some() {
+            self.request_ordinary_group(other, 10, false, environment.ticks, sounds)?;
+        }
+        let actor = &self.actors[id.index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("ordinary landing control unavailable")?;
+        let group = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let (holding, _, _) = super::super::activation::weapon_predicates(
+            control.living_state,
+            actor
+                .animation
+                .as_ref()
+                .map(|_| super::super::ActivationAnimation { group }),
+            control.combat_death_default.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            environment.item_system_ready,
+            environment.shell_execution,
+        );
+        let landing = if holding {
+            114
+        } else if control.torch_burning != 0 {
+            66
+        } else {
+            65
+        };
+        if actor.animation.is_some() {
+            self.request_ordinary_group(id, landing, false, environment.ticks, sounds)?;
         }
         Ok(())
     }

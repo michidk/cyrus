@@ -116,6 +116,11 @@ pub enum OrdinaryOverlapMotion {
         actor: i32,
         other: i32,
     },
+    /// A falling actor met an actor with bounce power: the pass ends with body-response bit
+    /// `0x80` and no weighted separation. `admitted` says whether the landing took effect.
+    Landing {
+        admitted: bool,
+    },
 }
 
 /// Original ordinary weight split, independent of selected-player overrides.
@@ -209,7 +214,8 @@ impl ScriptWorld {
             self.actors[other.index].control.is_some(),
             "ordinary other overlap control unavailable"
         );
-        let support_bypass = (27..=32).contains(&control.living_state)
+        let support_bypass = control.falling_state == 0
+            && (27..=32).contains(&control.living_state)
             && self.actors[id.index].model.support.actor == Some(other);
         let separation = self.query_ordinary_actor_overlap(id, other, data)?;
         if separation > 0 && self.actors[other.index].attributes[1] & 8 != 0 {
@@ -221,6 +227,9 @@ impl ScriptWorld {
         }
         if separation >= 3 && support_bypass {
             return Ok(OrdinaryOverlapMotion::NoContact);
+        }
+        if separation >= 3 && self.landing_branch_applies(id, other)? {
+            return self.land_on_actor(id, other);
         }
         let response = ordinary_overlap_motion(
             self.actors[id.index].attributes[6],
@@ -269,6 +278,7 @@ impl ScriptWorld {
             }
             OrdinaryOverlapMotion::Touch => {}
             OrdinaryOverlapMotion::NoContact => unreachable!("handled absent overlap"),
+            OrdinaryOverlapMotion::Landing { .. } => unreachable!("handled before weighted motion"),
         }
         let spatial = self
             .spatial
@@ -299,12 +309,90 @@ impl ScriptWorld {
     }
 }
 
+impl ScriptWorld {
+    /// Whether the airborne landing branch of the actor-pair response is taken, per preservation
+    /// player.md: the actor falls, the other actor has bounce power (attribute 98), the fall from
+    /// its retained origin is at least `[game] fall_bounce_height` map units, and its positive Y
+    /// extent is positive. A missing installed height is an explicit error, not a default.
+    fn landing_branch_applies(&self, id: ScriptActorId, other: ScriptActorId) -> Result<bool> {
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("ordinary overlap control unavailable")?;
+        if control.falling_state == 0 || self.actors[other.index].attributes[98] == 0 {
+            return Ok(false);
+        }
+        let bounce = self
+            .updates
+            .fall_landing
+            .and_then(|landing| landing.bounce_height)
+            .with_context(|| {
+                format!(
+                    "world {} instance {}: SYSTEM.INI [game] fall_bounce_height unavailable (re-export)",
+                    self.world, id.index
+                )
+            })?;
+        let y = self.spatial(id)?.local.position[1];
+        let fall = i64::from(y.wrapping_sub(control.fall_origin_y).unsigned_abs());
+        if fall < i64::from(bounce) * 256 {
+            return Ok(false);
+        }
+        let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
+        Ok(y < y.wrapping_add(extent.wrapping_mul(256)))
+    }
+
+    /// Land the actor on the other: set its support, clear its sliding, falling and queued-motion
+    /// bytes and enter living state 27, unless the landing is refused (living states 10 to 19, 27
+    /// and 28, deep water, or no group 10 on the other actor). Body-response bit `0x80` is set
+    /// either way. The two retained action dwords the original also clears are not modelled.
+    fn land_on_actor(
+        &mut self,
+        id: ScriptActorId,
+        other: ScriptActorId,
+    ) -> Result<OrdinaryOverlapMotion> {
+        let living = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("ordinary overlap control unavailable")?
+            .living_state;
+        let surface = self.actor_surface(id)?;
+        let other_has_group = self.actors[other.index]
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.playback.has_group(10));
+        let admitted = !(10..=19).contains(&living)
+            && living != 27
+            && living != 28
+            && !matches!(surface, 2 | 4)
+            && other_has_group;
+        let actor = &mut self.actors[id.index];
+        let control = actor.control.as_mut().expect("checked above");
+        control.body_response_flags |= 0x80;
+        if admitted {
+            control.sliding_state = 0;
+            control.falling_state = 0;
+            control.queued_motion = 0;
+            control.living_state = 27;
+            actor.model.support.actor = Some(other);
+        }
+        Ok(OrdinaryOverlapMotion::Landing { admitted })
+    }
+}
+
 /// Outcome of the retained actor-style pass, preserving repair work across
 /// later rollback or misses. Tiny pair contact exits without polygon repair.
 #[derive(Debug, PartialEq, Eq)]
 pub enum OrdinaryOverlapPass {
-    Complete { needs_polygon_repair: bool },
+    Complete {
+        needs_polygon_repair: bool,
+    },
     Touch,
+    /// The actor landed (or was refused landing) on `other`; the pass ends without the obstacle
+    /// repeat. An admitted landing still owes its animation requests to the stage owner.
+    Landed {
+        other: ScriptActorId,
+        admitted: bool,
+    },
 }
 
 impl ScriptWorld {
@@ -357,8 +445,8 @@ impl ScriptWorld {
                 )?
             }
             OrdinaryOverlapMotion::NoContact => return Ok(response),
-            OrdinaryOverlapMotion::Touch => {
-                unreachable!("static overlaps never take pair touch path")
+            OrdinaryOverlapMotion::Touch | OrdinaryOverlapMotion::Landing { .. } => {
+                unreachable!("static overlaps never take pair touch or landing paths")
             }
         };
         self.spatial
@@ -420,6 +508,15 @@ impl ScriptWorld {
             };
             if response == OrdinaryOverlapMotion::Touch {
                 return Ok(OrdinaryOverlapPass::Touch);
+            }
+            if let OrdinaryOverlapMotion::Landing { admitted } = response {
+                let CandidateOwner::Actor(other) = candidate.owner else {
+                    unreachable!("only actor pairs land")
+                };
+                return Ok(OrdinaryOverlapPass::Landed {
+                    other: self.id(other)?,
+                    admitted,
+                });
             }
             if matches!(response, OrdinaryOverlapMotion::Separate { .. }) {
                 needs_polygon_repair = true;

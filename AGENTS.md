@@ -322,7 +322,7 @@ target beyond the minimum range, and the item swap when it dies; the smoke and f
 from animated vertices is not yet compared with the original in a running world. `projectileAI` flies a created
 projectile along its heading at attribute 8 per tick, ends its flight at its creator's range, under terrain or at a
 wall contact, and sends `0xd005` from the creator to a hit actor; actors with RAVC spheres refuse the hit test. Animated nonplayer actors with ground response fall when support is
-missing and land with the installed `[game]` thresholds (script caches need re-export for them). The selected
+missing and land with the installed `[game]` thresholds (script caches need re-export for them). An actor falling onto an actor with bounce power (attribute 98) after a fall of at least the installed `fall_bounce_height` lands on it instead of being pushed apart: it takes the other as support, enters living state 27 and requests its landing group (114 holding a weapon, 66 with a burning torch, otherwise 65) and group 10 on the other actor; a refused landing (ledge states, deep water, no group 10) only ends the pass (script caches need re-export for the height; **Inferred** actor-pair rule decoded from the original, not yet compared in a running world). The selected
 player falls too: its edge service runs the ledge scan with its record classification, and a scan whose records
 are all rejected leaves the ordinary fall. Its controller runs while it falls (turning and movement helpers stay
 skipped), and it lands with the nonplayer thresholds: a hurt landing applies selected-player health, a fatal one

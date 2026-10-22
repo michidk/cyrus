@@ -70,6 +70,10 @@ pub struct FallLanding {
     pub death_height: i32,
     pub hurt_height: i32,
     pub hurt_zap: i32,
+    /// `[game] fall_bounce_height` in map units: the fall that lets an actor land on a bouncy
+    /// actor. Absent in caches exported before the landing branch had a consumer (re-export).
+    #[serde(default)]
+    pub bounce_height: Option<i32>,
 }
 
 /// Installed switches for ordinary actor updates, separate from per-actor control flags.
@@ -147,6 +151,7 @@ impl UpdateSettings {
                     .game
                     .fall_hurt_zap
                     .context("SYSTEM.INI [game] fall_hurt_zap missing")?,
+                bounce_height: settings.game.fall_bounce_height,
             }),
             dummy_model_manager: dummy || convert,
             task_system: settings

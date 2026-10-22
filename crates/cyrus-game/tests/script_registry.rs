@@ -7110,6 +7110,37 @@ fn overlap_response_fixture_state(
     attr_1: u8,
     living_state: u8,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    overlap_response_fixture_tweaked(weight, other_weight, offset, attr_1, living_state, |_| {})
+}
+
+fn overlap_response_fixture_tweaked(
+    weight: u8,
+    other_weight: u8,
+    offset: i32,
+    attr_1: u8,
+    living_state: u8,
+    tweak: impl FnOnce(&mut Scripts),
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    overlap_response_fixture_edited(
+        weight,
+        other_weight,
+        offset,
+        attr_1,
+        living_state,
+        tweak,
+        &[],
+    )
+}
+
+fn overlap_response_fixture_edited(
+    weight: u8,
+    other_weight: u8,
+    offset: i32,
+    attr_1: u8,
+    living_state: u8,
+    tweak: impl FnOnce(&mut Scripts),
+    control_edits: &[(&str, serde_json::Value)],
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.push(Function {
@@ -7158,9 +7189,10 @@ fn overlap_response_fixture_state(
         placement.object_type = 1;
         placement.map_position = [10, 20, 30];
     }
+    tweak(&mut scripts);
     scripts.content_id = scripts.content_identity().unwrap();
     let (mut world, data, _) = static_model_fixture(scripts.clone());
-    if living_state != 0 {
+    if living_state != 0 || !control_edits.is_empty() {
         let collision = Default::default();
         let sources = cyrus_game::script::WorldSnapshotSources {
             effects: None,
@@ -7171,6 +7203,9 @@ fn overlap_response_fixture_state(
         };
         let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
         saved["actors"][0]["control"]["living_state"] = living_state.into();
+        for (field, value) in control_edits {
+            saved["actors"][0]["control"][*field] = value.clone();
+        }
         world = ScriptWorld::from_snapshot(
             serde_json::from_value(saved).unwrap(),
             &sources,
@@ -7603,6 +7638,143 @@ fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unsupported_later_shape
             .to_string()
             .contains("vertex-bound")
     );
+}
+
+#[test]
+fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
+    use cyrus_assets::{
+        animation::{AnimationModel, Animations},
+        collision::ActorCollisionModels,
+    };
+    use cyrus_collision::actor_models::ActorModelCollision;
+    use cyrus_game::script::OrdinaryOverlapPass as Pass;
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..99).map(|index| format!("attr_{index}")).collect();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_6".into(), 128);
+    let mut other = scripts.actors["LOGIC"].clone();
+    other.instances = 1;
+    other.instance_variables = vec![vec![4]];
+    other.attributes.insert("attr_98".into(), 140);
+    scripts.actors.insert("BOUNCY".into(), other);
+    scripts.instances[1].actor = "BOUNCY".into();
+    scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
+        death_height: 568,
+        hurt_height: 300,
+        hurt_zap: 10,
+        bounce_height: Some(100),
+    });
+    for (placement, x) in scripts.instances.iter_mut().zip([10, 16]) {
+        placement.object_type = 1;
+        placement.map_position = [x, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let group = |index: u16| {
+        serde_json::json!({"group_index":index,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]})
+    };
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id,
+            "actors": (["LOGIC", "BOUNCY"].map(|name| serde_json::json!({
+                "script_name":name, "model_load_path":"animation_table",
+                "ravc_count": 0,
+                "raan_entries":[{"file_path":"MOVING.3D", "frame_count":1}],
+                "animation_groups":[group(0), group(10)]}))),
+            "mpob_objects": scripts.instances.iter().map(|p| serde_json::json!({"script_name":p.actor,"object_type":1})).collect::<Vec<_>>()}),
+        models: BTreeMap::from([(
+            "MOVING".into(),
+            AnimationModel {
+                radius: Some(42.0),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "animated_i16".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        )]),
+        sections: Default::default(),
+        unsupported: Default::default(),
+    };
+    let models = ActorModelCollision::new(&ActorCollisionModels {
+        object_count: 2,
+        collision_flags: BTreeMap::from([(0, 0), (1, 0)]),
+        ..Default::default()
+    })
+    .unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.prepare_model_resources(&data, &models).unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+    for id in ids {
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        world
+            .prepare_ordinary_collision_shape(id, &data, &scene)
+            .unwrap();
+    }
+    world.refresh_model_presentations(&data, &ids).unwrap();
+    world.set_actor_surface(ids[0], 0).unwrap();
+    let y = world.spatial(ids[0]).unwrap().local.position[1];
+    world.set_falling_for_test(ids[0], 1, y - 101 * 256);
+    let query = world
+        .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
+        .unwrap();
+    assert_eq!(
+        world
+            .resolve_ordinary_overlaps(ids[0], &scene, &data, &query)
+            .unwrap(),
+        Pass::Landed {
+            other: ids[1],
+            admitted: true
+        }
+    );
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (
+            control.living_state,
+            control.falling_state,
+            control.queued_motion
+        ),
+        (27, 0, 0)
+    );
+    assert_eq!(control.body_response_flags & 0x80, 0x80);
+    assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
+    // Living state 27 refuses a second landing; the pass still ends, and nothing else changes.
+    world.set_falling_for_test(ids[0], 1, y - 101 * 256);
+    let query = world
+        .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
+        .unwrap();
+    assert_eq!(
+        world
+            .resolve_ordinary_overlaps(ids[0], &scene, &data, &query)
+            .unwrap(),
+        Pass::Landed {
+            other: ids[1],
+            admitted: false
+        }
+    );
+    assert_eq!(world.actors()[0].control_state().unwrap().falling_state, 1);
+    // A shorter fall than the installed bounce height takes the weighted response instead.
+    world.set_falling_for_test(ids[0], 1, y - 99 * 256);
+    let query = world
+        .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
+        .unwrap();
+    assert!(matches!(
+        world
+            .resolve_ordinary_overlaps(ids[0], &scene, &data, &query)
+            .unwrap(),
+        Pass::Complete { .. }
+    ));
 }
 
 #[test]
@@ -30820,6 +30992,7 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
         death_height: 568,
         hurt_height: 300,
         hurt_zap: 10,
+        bounce_height: None,
     });
     scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
