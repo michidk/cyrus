@@ -137,11 +137,6 @@ impl Strafe {
         }
     }
 
-    /// Both ordinary groups of this direction, which end the wait for the requested group.
-    pub fn ordinary_groups(self) -> [u16; 2] {
-        [self.ordinary_group(false), self.ordinary_group(true)]
-    }
-
     /// Bit of the shared direction-called flags the stepper sets once it moves.
     pub fn called_flag(self) -> u8 {
         match self {
@@ -1685,7 +1680,8 @@ mod tests {
             (Strafe::Left.called_flag(), Strafe::Right.called_flag()),
             (1, 2)
         );
-        assert_eq!(Strafe::Right.ordinary_groups(), [26, 27]);
+        assert_eq!(Strafe::Right.ordinary_group(false), 26);
+        assert_eq!(Strafe::Right.ordinary_group(true), 27);
     }
 
     #[test]
