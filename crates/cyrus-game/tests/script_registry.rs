@@ -17020,7 +17020,7 @@ fn push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration()
     assert_eq!(world.selected_player(), Some(world.id(gremlin).unwrap()));
     let moved = world.spatial(world.id(gremlin).unwrap()).unwrap().local;
     assert_eq!(moved.position, placement.position);
-    assert_eq!(moved.angles[1], placement.angles[1]);
+    assert_eq!(moved.angles, placement.angles);
     assert_eq!(
         world.globals_mut().take_host_requests(),
         cyrus_game::script::HostRequests::default()

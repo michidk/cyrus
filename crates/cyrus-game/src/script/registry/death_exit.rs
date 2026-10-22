@@ -152,17 +152,37 @@ impl ScriptWorld {
             .actor(from)?
             .local;
         let movement = self.actors[from].player_movement.clone();
+        let motion = self.actors[from].control.as_ref().map(|control| {
+            (
+                control.sliding_state,
+                control.falling_state,
+                control.queued_motion,
+                control.living_state,
+            )
+        });
         let selected = self.select_player(swapped)?;
         anyhow::ensure!(
             selected.index == to,
             "player swap selected an unexpected role"
         );
-        self.spatial
+        let spatial = self
+            .spatial
             .as_mut()
             .context("player swap: spatial state not prepared")?
-            .actor_mut(to)?
-            .relocate(placement.position, placement.angles[1]);
+            .actor_mut(to)?;
+        spatial.relocate(placement.position, placement.angles[1]);
+        // The orientation setter stores all three angles and both retained angle histories.
+        spatial.local.angles = placement.angles.map(|angle| angle & 2047);
+        spatial.angle_history = spatial.local.angles;
         self.actors[to].player_movement = movement;
+        if let (Some(source), Some(target)) = (motion, self.actors[to].control.as_mut()) {
+            (
+                target.sliding_state,
+                target.falling_state,
+                target.queued_motion,
+                target.living_state,
+            ) = source;
+        }
         self.refresh_transform(selected)?;
         if !swapped && let Some(animation) = self.actors[to].animation.as_mut() {
             for _ in 0..2 {
