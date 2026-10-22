@@ -30699,6 +30699,85 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
 }
 
 #[test]
+fn a_support_miss_in_a_jump_group_carries_the_last_displacement_into_the_fall() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+    let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+    attributes.insert("attr_1".into(), 4);
+    attributes.insert("attr_31".into(), 8);
+    attributes.insert("attr_32".into(), 32);
+    // The default group is the run jump group, which keeps the pending jump bits alive.
+    attributes.insert("attr_44".into(), 41);
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+        placement.object_type = 1;
+        placement.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, mut data, models) = static_model_fixture_at(scripts.clone(), None, [600, 20, 600]);
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = "animation_table".into();
+    definition["animation_groups"] = serde_json::json!([0, 32, 33, 34, 35, 39, 40, 38].map(
+        |group| serde_json::json!({
+            "group_index":group,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
+        })
+    ));
+    // The jump window only holds its pending bits while a run or walk jump group loops.
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .insert(
+            0,
+            serde_json::json!({
+                "group_index":41,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]
+            }),
+        );
+    let stable = [7 * 256, 5000, 9 * 256];
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, 0, 41, |saved| {
+        saved["actors"][0]["control"]["directional_state"] = serde_json::json!([0, 0]);
+        saved["actors"][0]["control"]["motion_direction"] = 2.into();
+        saved["actors"][0]["control"]["stable_local_position"] = serde_json::json!(stable);
+    });
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, 7).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.post_collide_height = 50;
+    let start = world.spatial(id).unwrap().local.position;
+    let mut random = cyrus_game::random::EngineRandom::default();
+    world
+        .update_ordinary(
+            &data,
+            [600, 600],
+            OrdinaryInputs {
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    fine_ticks: Some(8),
+                    step_fps: Some(12),
+                    ..Default::default()
+                },
+                scene: Some(&scene),
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    let actor = &world.actors()[id.index];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    // Direction 2 at distance 4096 translates the actor forward by 16 map units before it falls.
+    assert_ne!(world.spatial(id).unwrap().local.position[2], start[2]);
+}
+
+#[test]
 fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record() {
     for dead in [false, true] {
         let mut ops = Vec::new();

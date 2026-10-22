@@ -275,12 +275,23 @@ impl ScriptWorld {
             )?;
             return Ok(());
         }
-        ensure!(
-            control.jump_selector == 0 || control.jump_selector.abs_diff(24) >= 4,
-            "world {} instance {}: fall entry selector service unsupported",
-            self.world,
-            id.index
-        );
+        // A jump selector within three of 24 turns the support miss into the scripted jump entry.
+        if control.jump_selector != 0 && control.jump_selector.abs_diff(24) < 4 {
+            if environment.selected_player == Some(id) {
+                self.begin_player_jump(id, query, environment, timing, 8, sounds)?;
+            } else {
+                let task_active = self.actors[id.index].tasks.is_active();
+                self.begin_ordinary_jump(
+                    id,
+                    query.animations,
+                    8,
+                    task_active,
+                    environment,
+                    sounds,
+                )?;
+            }
+            return Ok(());
+        }
         if control.directional_state.iter().any(|byte| byte & 3 != 0) {
             return self.recover_ordinary_fall_entry(id, query, environment, fine_ticks, sounds);
         }
@@ -288,12 +299,15 @@ impl ScriptWorld {
             .animation
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
-        ensure!(
-            !matches!(group, Some(41..=43)),
-            "world {} instance {}: fall entry from a jump group's displacement unsupported",
-            self.world,
-            id.index
-        );
+        // The jump groups' last displacement: the retained direction at Q8 distance 4096.
+        if matches!(group, Some(41..=43)) {
+            let direction = self.actors[id.index]
+                .control
+                .as_ref()
+                .context("fall entry control unavailable")?
+                .motion_direction;
+            self.apply_ordinary_directional_motion(id, direction, 4096)?;
+        }
         let path = query.animations.actor(self.actors[id.index].name())?["model_load_path"]
             .as_str()
             .context("fall entry model path unavailable")?;
