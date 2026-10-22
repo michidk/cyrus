@@ -188,6 +188,8 @@ impl ScriptWorld {
         }
         combat.action = mov;
         combat.retained_action_indices[0] = mov;
+        // The current motion lookup indexes the attack slots by the action, so the move is the slot.
+        combat.retained_action_indices[1] = mov;
         self.execute_combat_attack(id, 0, inputs, sounds)?;
         Ok(())
     }
