@@ -6460,7 +6460,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
         });
         let mut steps = BTreeMap::new();
         let falling = scripts.definition.references.len() as u16;
-        scripts.definition.references.push("jump_flag".into());
+        scripts.definition.references.push("fall_flag".into());
         for (offset, axis, delta) in [(0, 0, -3341), (1, 2, 1893)] {
             steps.insert(
                 offset,
@@ -15629,11 +15629,11 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
 fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     for (name, field) in [
-        ("slide_flag", "motion_companion"),
-        ("fall_flag", "sliding_state"),
-        ("jump_flag", "falling_state"),
-        ("extra_flag", "queued_motion"),
-        ("extra_time", "living_state"),
+        ("rope_wait", "motion_companion"),
+        ("slide_flag", "sliding_state"),
+        ("fall_flag", "falling_state"),
+        ("jump_flag", "queued_motion"),
+        ("extra_flag", "living_state"),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name.into();
@@ -15693,6 +15693,81 @@ fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
         );
         let control = serde_json::to_value(world.actors()[0].control_state().unwrap()).unwrap();
         assert_eq!(control[field], 7, "{name}");
+    }
+}
+
+#[test]
+fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    // (property, value written first, then read back)
+    for (name, write, read) in [
+        ("hide", Some(1), true),
+        ("rope", None, true),
+        ("scabbard[0]", Some(42), false),
+        ("scabbard[1]", Some(-3), false),
+    ] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+        let read_step = program.steps[&0].operation.clone();
+        let mut steps = vec![];
+        if let Some(value) = write {
+            steps.push(Operation::Assign {
+                destination: Place::Property {
+                    object: Object::Me,
+                    reference: 294,
+                },
+                formula: Formula {
+                    first: Value::Integer { value },
+                    rest: vec![],
+                },
+            });
+        }
+        if read {
+            steps.push(read_step);
+        }
+        steps.push(Operation::End { target: 0 });
+        program.steps.clear();
+        for (index, operation) in steps.into_iter().enumerate() {
+            program.steps.insert(
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            );
+        }
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_or_else(|error| panic!("{name}: {error:#}"));
+        let control = serde_json::to_value(world.actors()[0].control_state().unwrap()).unwrap();
+        match name {
+            "hide" => {
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [1]);
+                assert_eq!(control["hidden"], true);
+            }
+            "rope" => {
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+            }
+            "scabbard[0]" => {
+                assert_eq!(control["scabbard_override"], serde_json::json!([42, null]))
+            }
+            _ => assert_eq!(control["scabbard_override"], serde_json::json!([null, -3])),
+        }
     }
 }
 

@@ -43,10 +43,12 @@ impl GameHost<'_, '_, '_, '_> {
             .with_context(|| format!("{native} animation data unavailable"))?
             .0;
         let id = self.registry.id(self.index)?;
-        let index = data.actor(self.registry.actors[self.index].name())?["raex"][field]
-            .as_i64()
-            .and_then(|value| i16::try_from(value).ok())
-            .with_context(|| format!("{native}: RAEX {field} unavailable"))?;
+        let index = super::raex_word(
+            self.registry.actors[self.index].control.as_ref(),
+            data.actor(self.registry.actors[self.index].name())?,
+            field,
+        )
+        .with_context(|| format!("{native}: RAEX {field} unavailable"))?;
         let vertex = if self.registry.updates.dummy_model_manager {
             [0; 3]
         } else {

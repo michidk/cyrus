@@ -355,6 +355,9 @@ pub struct ActorControlState {
     pub object_update_excluded: bool,
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
+    /// The signed RAEX `scabbard0`/`scabbard1` words a script rewrote through `scabbard[0]` and
+    /// `scabbard[1]`; None keeps the installed value the loader copied into the actor.
+    pub scabbard_override: [Option<i16>; 2],
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
     /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
@@ -4082,16 +4085,35 @@ enum PoseProperty {
     Angle(usize),
 }
 
-/// Script properties that name the actor bytes +0x1b0 through +0x1b4, in order: the companion
-/// motion, sliding, falling, queued-motion and living-state bytes. Inferred from the property
-/// table's byte offsets; the names (`jump_flag` for the falling byte) do not describe the bytes.
+/// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
+/// installed value the loader copied, unless a script rewrote a scabbard word through the property.
+pub(super) fn raex_word(
+    control: Option<&ActorControlState>,
+    metadata: &serde_json::Value,
+    field: &str,
+) -> Option<i16> {
+    let word = ["scabbard0", "scabbard1"]
+        .iter()
+        .position(|name| *name == field);
+    word.and_then(|word| control?.scabbard_override[word])
+        .or_else(|| {
+            metadata["raex"][field]
+                .as_i64()
+                .and_then(|value| i16::try_from(value).ok())
+        })
+}
+
+/// Script properties that name actor motion bytes. The engine's property descriptors (preservation
+/// engine/SOUPPROPS.md) place `rope_wait` at +0x1b0 (the companion motion byte), `slide_flag` at
+/// +0x1b1 (sliding), `fall_flag` at +0x1b2 (falling), `jump_flag` at +0x1b3 (queued motion) and
+/// `extra_flag` at +0x1b4 (living state). `extra_time` (+0x1b5) has no cyrus field and stays unsupported.
 fn motion_property<'a>(control: &'a mut ActorControlState, name: &str) -> Option<&'a mut u8> {
     Some(match name.to_ascii_lowercase().as_str() {
-        "slide_flag" => &mut control.motion_companion,
-        "fall_flag" => &mut control.sliding_state,
-        "jump_flag" => &mut control.falling_state,
-        "extra_flag" => &mut control.queued_motion,
-        "extra_time" => &mut control.living_state,
+        "rope_wait" => &mut control.motion_companion,
+        "slide_flag" => &mut control.sliding_state,
+        "fall_flag" => &mut control.falling_state,
+        "jump_flag" => &mut control.queued_motion,
+        "extra_flag" => &mut control.living_state,
         _ => return None,
     })
 }
@@ -4157,6 +4179,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("torch_timer control owner unavailable")?;
             return Ok(i32::from(control.torch_burning));
         }
+        // `rope` holds a record pointer in the original; installed scripts only test it against zero.
+        if name.eq_ignore_ascii_case("rope") || name.eq_ignore_ascii_case("hide") {
+            let rope = name.eq_ignore_ascii_case("rope");
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .with_context(|| format!("{name} control owner unavailable"))?;
+            return Ok(i32::from(if rope {
+                control.rope_attached
+            } else {
+                control.hidden
+            }));
+        }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
             let name = name.to_owned();
             let index = self.property_receiver(target)?;
@@ -4202,6 +4238,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             *motion_property(control, &name).expect("named motion byte") = value as u8;
+            return Ok(());
+        }
+        let scabbard = ["scabbard[0]", "scabbard[1]"]
+            .iter()
+            .position(|word| name.eq_ignore_ascii_case(word));
+        if name.eq_ignore_ascii_case("hide") || scabbard.is_some() {
+            let name = name.to_owned();
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            match scabbard {
+                Some(word) => control.scabbard_override[word] = Some(value as i16),
+                None => control.hidden = value as u8 != 0,
+            }
             return Ok(());
         }
         let name = name.to_owned();

@@ -1109,9 +1109,7 @@ impl ScriptWorld {
         let metadata = data.actor(actor.name())?;
         let mut vertices = [[0; 3]; 2];
         for (vertex, field) in vertices.iter_mut().zip(fields) {
-            let index = metadata["raex"][field]
-                .as_i64()
-                .and_then(|value| i16::try_from(value).ok())
+            let index = super::raex_word(actor.control.as_ref(), metadata, field)
                 .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
             *vertex = if self.updates.dummy_model_manager {
                 [0; 3]
