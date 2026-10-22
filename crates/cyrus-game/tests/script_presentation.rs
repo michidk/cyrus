@@ -144,10 +144,34 @@ fn session_state_carries_across_world_loads_until_new_game() {
         .unwrap();
     let changed_flag = flag(&app);
     assert_ne!(initial_flag, changed_flag);
+    let dialogue_line = |app: &mut App| {
+        app.world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .as_mut()
+            .unwrap()
+            .globals_mut()
+            .dialogue_mut()
+            .unwrap()
+            .line_active(Some(1))
+    };
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        let speaker = world.id(0).unwrap();
+        world
+            .globals_mut()
+            .dialogue_mut()
+            .unwrap()
+            .begin_line(speaker, "line".into(), None, 100);
+    }
+    assert!(dialogue_line(&mut app));
     // A world replacement keeps the damage the selected player has taken, in both player records,
-    // and the session's global flags.
+    // and the session's global flags. It ends every active dialogue line, as the original's world
+    // teardown does, so no speaker outlives its world.
     app.insert_resource(prepared());
     app.update();
+    assert!(!dialogue_line(&mut app));
     assert_eq!(health(&app), [37, 37]);
     assert_eq!(flag(&app), changed_flag);
     // New Game restores full health and the installed flag values.

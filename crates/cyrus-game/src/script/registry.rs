@@ -2825,6 +2825,11 @@ impl ScriptActors {
         self.restored_generation = None;
         if let Some(mut world) = self.current.take() {
             self.globals = std::mem::take(&mut world.globals);
+            // The original's world teardown clears every dialogue record, so a line active at the
+            // switch must not keep a speaker from the released world.
+            if let Some(dialogue) = self.globals.dialogue.as_mut() {
+                dialogue.reset_active_lines();
+            }
             if !self.discard_current_on_release {
                 self.retained_flags = Some(world.snapshot_flags());
                 // shortcut: read at release; the original mirrors it at each health change, so a raw
