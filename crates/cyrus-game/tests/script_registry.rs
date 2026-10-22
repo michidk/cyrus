@@ -9959,6 +9959,8 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
         }
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
         actor.attributes.insert("attr_24".into(), u8::from(enabled));
+        // Body contacts enabled make the selected rider need its destination admission.
+        actor.attributes.insert("attr_1".into(), 1);
         actor.program.steps = BTreeMap::from([
             (
                 0,
@@ -10011,7 +10013,7 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
         world.prepare_spatial().unwrap();
         let rider = world.id(0).unwrap();
         let owner = world.id(1).unwrap();
-        assert!(!world.follow_ordinary_support(rider, None).unwrap());
+        assert!(!world.follow_ordinary_support(rider, None, None).unwrap());
         world.snapshot_spatial(owner).unwrap();
         let inputs = ScriptInputs {
             nominal_ticks: Some(0),
@@ -10047,13 +10049,20 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
             .unwrap();
         let initial = world.spatial(rider).unwrap().local;
         if enabled {
-            assert!(world.follow_ordinary_support(rider, Some(rider)).is_err());
+            assert!(
+                world
+                    .follow_ordinary_support(rider, Some(rider), None)
+                    .is_err()
+            );
             assert_eq!(
                 world.spatial(rider).unwrap().local.position,
                 initial.position
             );
         }
-        assert_eq!(world.follow_ordinary_support(rider, None).unwrap(), enabled);
+        assert_eq!(
+            world.follow_ordinary_support(rider, None, None).unwrap(),
+            enabled
+        );
         assert_eq!(
             world.spatial(rider).unwrap().local.position,
             if enabled {

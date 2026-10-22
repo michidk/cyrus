@@ -515,10 +515,17 @@ impl ScriptWorld {
                         .movement_flags,
                     self.globals.locomotion_called,
                 );
-                // Selected players have a distinct support-follow collision path; keep the
-                // ordinary nonplayer transform explicitly unavailable until that admission is
-                // implemented instead of silently moving the selected pose.
-                self.follow_ordinary_support(id, selected_player.then_some(id))?;
+                // The selected player's carried destination is admitted against geometry.
+                self.follow_ordinary_support(
+                    id,
+                    selected_role.then_some(id),
+                    scene.map(|scene| super::follow::FollowAdmission {
+                        scene,
+                        animations: data,
+                        view,
+                        actors: &selected,
+                    }),
+                )?;
                 self.restore_axis_locks(id)?;
                 if self.spatial(id)?.parent.is_none() {
                     self.refresh_transform(id)?;

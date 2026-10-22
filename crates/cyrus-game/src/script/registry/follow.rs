@@ -1,7 +1,19 @@
 //! Supporting actor motion runs after collision and before ordinary axis locks.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use bevy::math::{Mat3, Vec3};
+use cyrus_collision::collision_mesh::BodyProbe;
 use cyrus_world::transform::Matrix;
+
+/// Inputs of the selected player's destination admission: the world's collision scene and the
+/// candidate gather that the original repeats at the follow stage.
+#[derive(Clone, Copy)]
+pub struct FollowAdmission<'a> {
+    pub scene: &'a crate::player::data::PlayerScene,
+    pub animations: &'a cyrus_assets::animation::Animations,
+    pub view: [i32; 2],
+    pub actors: &'a [ScriptActorId],
+}
 
 impl ScriptWorld {
     /// Carry an ordinary nonplayer rider using its retained supporting actor.
@@ -9,13 +21,15 @@ impl ScriptWorld {
     /// independently of stable ground and retained model presentation. Follows
     /// preservation's animation.md supporting actor motion rules. Living states 10 through 19
     /// follow the separate ledge support and carry the retained ledge point and heading along;
-    /// they skip the selected player's collision admission. Selected-player ordinary follow and
-    /// attached/linked support paths require their owners. Unsupported paths fail before
-    /// changing the rider's pose.
+    /// they skip the selected player's collision admission. The selected player in any other
+    /// state keeps the translation and heading turn when its body or its path to the rotated
+    /// destination collides there. Attached/linked support paths require their owners.
+    /// Unsupported paths fail before changing the rider's pose.
     pub fn follow_ordinary_support(
         &mut self,
         id: ScriptActorId,
         selected_player: Option<ScriptActorId>,
+        admission: Option<FollowAdmission<'_>>,
     ) -> Result<bool> {
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
@@ -35,11 +49,16 @@ impl ScriptWorld {
         if self.actors[owner_index].attributes[24] == 0 {
             return Ok(false);
         }
-        ensure!(
-            special || selected_player != Some(id),
-            "world {} instance {index}: selected-player support-follow collision admission unsupported",
-            self.world
-        );
+        let admitted = if !special && selected_player == Some(id) && actor.attributes[1] & 1 != 0 {
+            Some(admission.with_context(|| {
+                format!(
+                    "world {} instance {index}: selected-player support-follow collision admission unavailable",
+                    self.world
+                )
+            })?)
+        } else {
+            None
+        };
         let support = self.spatial(owner)?;
         ensure!(
             support.parent.is_none() && support.linked_position.is_none(),
@@ -65,8 +84,25 @@ impl ScriptWorld {
             }))
         };
         let turn = current.angles[1].wrapping_sub(previous_angles[1]);
-        let position = carry(rider.position)?;
         let heading = rider.angles[1].wrapping_add(turn) & 2047;
+        let translated: [i32; 3] = std::array::from_fn(|axis| {
+            rider.position[axis]
+                .wrapping_add(current.position[axis].wrapping_sub(previous_position[axis]))
+        });
+        let mut position = carry(rider.position)?;
+        if let Some(admission) = admitted {
+            // The translation and the heading turn stand before the destination is tested.
+            let spatial = self
+                .spatial
+                .as_mut()
+                .context("support-follow spatial state unavailable")?
+                .actor_mut(index)?;
+            spatial.local.position = translated;
+            spatial.local.angles[1] = heading;
+            if self.follow_destination_blocked(id, position, admission)? {
+                position = translated;
+            }
+        }
         if special && let Some((point, ledge_heading)) = self.globals.selected_ledge_anchor {
             self.globals.selected_ledge_anchor =
                 Some((carry(point)?, ledge_heading.wrapping_add(turn) & 2047));
@@ -79,6 +115,80 @@ impl ScriptWorld {
         rider.local.position = position;
         rider.local.angles[1] = heading;
         Ok(true)
+    }
+}
+
+impl ScriptWorld {
+    /// Whether the selected player's body at the carried destination, or the segment from its
+    /// update-entry position to it, meets geometry. The candidates are gathered again at the
+    /// translated position; the queued jump state excludes candidate type 128 from the body test.
+    fn follow_destination_blocked(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        admission: FollowAdmission<'_>,
+    ) -> Result<bool> {
+        let FollowAdmission {
+            scene,
+            animations,
+            view,
+            actors,
+        } = admission;
+        let prepared =
+            self.prepare_ordinary_collision_query(id, scene, animations, view, actors)?;
+        let poses = self.ordinary_collision_poses(&prepared)?;
+        let models = scene
+            .actor_collision
+            .as_ref()
+            .context("support-follow live geometry unavailable; re-export world")?;
+        let spatial = self.spatial(id)?;
+        let (angles, previous) = (spatial.local.angles, spatial.previous_local_position);
+        let queued = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("support-follow control unavailable")?
+            .queued_motion;
+        let spheres: Vec<(Vec3, f32)> = self
+            .ordinary_collision_shape(id)?
+            .body
+            .iter()
+            .map(|sphere| {
+                (
+                    Vec3::from_array(sphere.center.map(|value| value as f32)),
+                    sphere.radius as f32,
+                )
+            })
+            .collect();
+        let rows = Matrix::collision_orientation(angles)
+            .0
+            .map(Vec3::from_array);
+        let collision = &scene.static_collision;
+        let body = BodyProbe {
+            position: destination.map(i64::from),
+            rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
+            spheres: &spheres,
+            sidedness: false,
+        };
+        if collision.runtime_blocks_body(
+            &prepared.candidates,
+            models,
+            &poses,
+            &body,
+            (queued == 24).then_some(128),
+        )? {
+            return Ok(true);
+        }
+        Ok(!collision
+            .runtime_segment_contacts(
+                &prepared.candidates,
+                models,
+                &poses,
+                previous.map(|value| value >> 8),
+                destination.map(|value| value >> 8),
+                false,
+                None,
+            )?
+            .is_empty())
     }
 }
 
