@@ -6050,16 +6050,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if let Some(value) = self.registry.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
         }
-        if self.registry.spatial.is_some()
-            && (function.eq_ignore_ascii_case("SetAttribute")
-                || function.eq_ignore_ascii_case("SetMyAttr"))
-            && let Some(index) = arguments.first()
-        {
-            anyhow::ensure!(
-                !matches!(index.integer()?, 25..=28 | 33),
-                "{function}: attachment/rotation attribute lifecycle unsupported after spatial preparation"
-            );
-        }
         if function.eq_ignore_ascii_case("SetAttribute")
             && let [index, value] = arguments
             && index.integer()? == 44

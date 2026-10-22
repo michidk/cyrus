@@ -1,4 +1,5 @@
-//! Immediate attribute services; model-dependent writes remain explicit failures.
+//! Immediate attribute services. Runtime writes retain the actor byte; family/model
+//! ownership is established when spatial state is prepared and is not rebound by a write.
 use anyhow::{Context, Result};
 use cyrus_script::Argument;
 
@@ -50,4 +51,25 @@ pub(super) fn call(
         }
     }
     Ok(Some(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_and_attachment_attributes_are_plain_runtime_byte_writes() {
+        let mut attributes = vec![0; 256];
+        for index in [25, 26, 27, 28, 33] {
+            let result = call(
+                "SetAttribute",
+                &[Argument::Integer(index), Argument::Integer(0x123)],
+                &mut attributes,
+                None,
+            )
+            .unwrap();
+            assert_eq!(result, Some(0));
+            assert_eq!(attributes[index], 0x23);
+        }
+    }
 }
