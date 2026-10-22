@@ -8605,9 +8605,10 @@ fn ordinary_queued_clearance_uses_strict_terrain_height_and_retained_model_order
             expected
         );
     }
+    // Water cells use the same interpolated height as dry cells.
     scene.terrain =
         Some(TerrainGround::new(vec![22; 256 * 256], vec![true; 256 * 256], None).unwrap());
-    assert!(
+    assert_eq!(
         world
             .query_ordinary_queued_clearance(
                 id,
@@ -8619,9 +8620,8 @@ fn ordinary_queued_clearance_uses_strict_terrain_height_and_retained_model_order
                     sidedness: false,
                 }
             )
-            .unwrap_err()
-            .to_string()
-            .contains("water/grid boundary unsupported")
+            .unwrap(),
+        512
     );
 }
 

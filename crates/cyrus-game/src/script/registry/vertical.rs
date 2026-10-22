@@ -147,7 +147,7 @@ pub fn ordinary_falling_vertical(
 
 impl ScriptWorld {
     /// Resolve queued-motion clearance from retained face models and dry terrain.
-    /// Water and terrain boundaries remain unsupported.
+    /// Water cells sample like dry cells; the height-grid edge remains unsupported.
     /// This is not the ordinary ground-support rank selection or player fallback.
     pub fn query_ordinary_queued_clearance(
         &self,
@@ -186,13 +186,15 @@ impl ScriptWorld {
             }
         }
         if let Some(terrain) = &query.scene.terrain {
-            let support = terrain.sample(current.map(i64::from)).with_context(|| {
+            // The original samples water cells like dry cells; only the height-grid edge has no
+            // defined result, so it stays an explicit failure.
+            let terrain_height = terrain.height(current.map(i64::from)).with_context(|| {
                 format!(
-                    "world {} instance {} queued clearance terrain water/grid boundary unsupported",
+                    "world {} instance {} queued clearance terrain height-grid edge unsupported",
                     self.world, id.index
                 )
             })?;
-            let truncated = support.height.trunc();
+            let truncated = terrain_height.trunc();
             anyhow::ensure!(
                 truncated.is_finite()
                     && truncated >= f64::from(i32::MIN)
