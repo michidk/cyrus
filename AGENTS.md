@@ -307,7 +307,10 @@ projectile along its heading at attribute 8 per tick, ends its flight at its cre
 wall contact, and sends `0xd005` from the creator to a hit actor; actors with RAVC spheres refuse the hit test. Animated nonplayer actors with ground response fall when support is
 missing and land with the installed `[game]` thresholds (script caches need re-export for them). The selected
 player falls too: its edge service runs the ledge scan with its record classification, and a scan whose records
-are all rejected leaves the ordinary fall. A usable ledge record stops the update with an unsupported error; the ledge states, body contacts while falling, static-model falls and the jump-selector and
+are all rejected leaves the ordinary fall. Its controller runs while it falls (turning and movement helpers stay
+skipped), and it lands with the nonplayer thresholds: a hurt landing applies selected-player health, a fatal one
+starts the death override. A usable ledge record stops the update with an unsupported error; the ledge states,
+steep-surface fatal landings, static-model falls and the jump-selector and
 jump-group entries remain unavailable. Queued jump motion runs; the walk-off recovery entry runs
 when its directional-state bits are set, which only the selected player's jump-key handling does. `LightTorch`,
 `UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on

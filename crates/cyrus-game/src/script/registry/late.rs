@@ -3,7 +3,8 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 
-pub(super) struct OrdinaryLateInputs {
+pub(super) struct OrdinaryLateInputs<'a> {
+    pub script: super::ScriptInputs<'a>,
     pub ticks: u32,
     pub fine_ticks: Option<u32>,
     pub step_fps: Option<u32>,
@@ -133,6 +134,7 @@ impl ScriptWorld {
         data: &cyrus_assets::animation::Animations,
         environment: super::transition::ObstacleEnvironment,
         weapon: Option<super::weapon::WeaponInputs>,
+        selected: Option<super::falling::SelectedLanding<'_, '_>>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let landing = self.updates.fall_landing.with_context(|| {
@@ -170,12 +172,13 @@ impl ScriptWorld {
                 );
                 Some(holding)
             });
-        let decision = self.resolve_ordinary_landing_damage(
+        let decision = self.land_with_damage(
             id,
             data,
             environment,
             settings,
             Some(combat_mode),
+            selected,
             sounds,
         )?;
         if decision == super::super::OrdinaryLandingDecision::Ordinary {
@@ -319,12 +322,13 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
-        inputs: OrdinaryLateInputs,
+        inputs: OrdinaryLateInputs<'_>,
         rollback: &super::recovery::OrdinaryRollbackSnapshot,
         recovery: super::recovery::OrdinaryStableRecoveryInputs<'_>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let OrdinaryLateInputs {
+            script,
             ticks,
             fine_ticks,
             step_fps,
@@ -439,7 +443,21 @@ impl ScriptWorld {
                         "slide termination damage settings unavailable"
                     );
                     if falling {
-                        self.land_ordinary_fall(id, query.animations, environment, weapon, sounds)?;
+                        let selected = (environment.selected_player == Some(id)).then(|| {
+                            super::falling::SelectedLanding {
+                                inputs: script,
+                                random: &mut *recovery.random,
+                                steep: crate::player::support::classification(support, mask) == 2,
+                            }
+                        });
+                        self.land_ordinary_fall(
+                            id,
+                            query.animations,
+                            environment,
+                            weapon,
+                            selected,
+                            sounds,
+                        )?;
                     }
                     let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
                     let height = i32::try_from(

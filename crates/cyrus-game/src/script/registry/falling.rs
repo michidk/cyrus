@@ -1,6 +1,14 @@
 //! Falling continuation requests precede the shared vertical writer.
-use super::{ScriptActorId, ScriptWorld};
+use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+
+/// What the selected player's landing needs beyond the nonplayer response: the health services
+/// publish through the HUD and draw random numbers, and a steep support changes the fatal path.
+pub(super) struct SelectedLanding<'a, 'b> {
+    pub inputs: ScriptInputs<'a>,
+    pub random: &'b mut crate::random::EngineRandom,
+    pub steep: bool,
+}
 
 /// Animation request selected by an admitted unsupported-ground continuation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,8 +162,9 @@ impl ScriptWorld {
     }
 
     /// Apply the nonplayer unarmed health service, including death dispatch.
-    /// Armed death and selected-player health have separate services. Combat
-    /// mode bit two must be supplied when attribute 97 requires that predicate.
+    /// Armed death has a separate service. The selected player forwards to its own death-owning
+    /// health with no source. Combat mode bit two must be supplied when attribute 97 requires
+    /// that predicate.
     pub fn change_ordinary_health(
         &mut self,
         id: ScriptActorId,
@@ -163,6 +172,29 @@ impl ScriptWorld {
         data: &cyrus_assets::animation::Animations,
         environment: super::transition::ObstacleEnvironment,
         combat_mode_bit_two: Option<bool>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        self.change_health(
+            id,
+            change,
+            data,
+            environment,
+            combat_mode_bit_two,
+            None,
+            sounds,
+        )
+    }
+
+    /// [`Self::change_ordinary_health`] with the selected player's HUD and random inputs.
+    #[allow(clippy::too_many_arguments)] // the public wrapper above is the narrow form
+    pub(super) fn change_health(
+        &mut self,
+        id: ScriptActorId,
+        change: i32,
+        data: &cyrus_assets::animation::Animations,
+        environment: super::transition::ObstacleEnvironment,
+        combat_mode_bit_two: Option<bool>,
+        selected: Option<(ScriptInputs<'_>, &mut crate::random::EngineRandom)>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
         self.require_model_identity(data)?;
@@ -197,11 +229,11 @@ impl ScriptWorld {
         {
             return Ok(false);
         }
-        anyhow::ensure!(
-            environment.selected_player != Some(id),
-            "world {} instance {index}: selected-player health service unsupported",
-            self.world
-        );
+        if environment.selected_player == Some(id) {
+            let (inputs, random) = selected.context("selected-player health inputs unavailable")?;
+            self.apply_selected_death_health(id, change, None, inputs, Some(random), sounds)?;
+            return Ok(true);
+        }
         let health = ordinary_health_value(actor.attributes[3], change);
         anyhow::ensure!(
             health != 0 || !holding,
@@ -281,6 +313,29 @@ impl ScriptWorld {
         combat_mode_bit_two: Option<bool>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<OrdinaryLandingDecision> {
+        self.land_with_damage(
+            id,
+            data,
+            environment,
+            settings,
+            combat_mode_bit_two,
+            None,
+            sounds,
+        )
+    }
+
+    /// [`Self::resolve_ordinary_landing_damage`] with the selected player's landing inputs.
+    #[allow(clippy::too_many_arguments)] // the public wrapper above is the narrow form
+    pub(super) fn land_with_damage(
+        &mut self,
+        id: ScriptActorId,
+        data: &cyrus_assets::animation::Animations,
+        environment: super::transition::ObstacleEnvironment,
+        settings: OrdinaryLandingSettings,
+        combat_mode_bit_two: Option<bool>,
+        mut selected: Option<SelectedLanding<'_, '_>>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<OrdinaryLandingDecision> {
         self.require_model_identity(data)?;
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
@@ -308,20 +363,26 @@ impl ScriptWorld {
             .expect("validated landing control")
             .jump_selector = 0;
         let effect = match decision {
-            OrdinaryLandingDecision::Fatal => {
+            OrdinaryLandingDecision::Fatal if environment.selected_player == Some(id) => {
+                let landing = selected
+                    .as_ref()
+                    .context("selected-player landing inputs unavailable")?;
                 anyhow::ensure!(
-                    environment.selected_player != Some(id),
-                    "world {} instance {index}: selected-player fatal landing service unsupported",
+                    !landing.steep,
+                    "world {} instance {index}: steep-surface fatal landing unsupported",
                     self.world
                 );
-                Some((74, -256))
+                // The death presentation comes from the override group, not an animation request.
+                self.globals.set_player_death_override_group(74)?;
+                Some((None, -256))
             }
-            OrdinaryLandingDecision::Hurt { health_change } => Some((73, health_change)),
+            OrdinaryLandingDecision::Fatal => Some((Some(74), -256)),
+            OrdinaryLandingDecision::Hurt { health_change } => Some((Some(73), health_change)),
             OrdinaryLandingDecision::HurtExcluded => None,
             OrdinaryLandingDecision::Ordinary => return Ok(decision),
         };
         if let Some((group, change)) = effect {
-            if self.updates.animation_system {
+            if let (Some(group), true) = (group, self.updates.animation_system) {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
                 let event_context = super::effects::ActorEventContext::capture(self, id);
                 let event_camera = &mut self.camera;
@@ -365,12 +426,15 @@ impl ScriptWorld {
                     }
                 }
             }
-            self.change_ordinary_health(
+            self.change_health(
                 id,
                 change,
                 data,
                 environment,
                 combat_mode_bit_two,
+                selected
+                    .as_mut()
+                    .map(|landing| (landing.inputs, &mut *landing.random)),
                 sounds,
             )?;
         }

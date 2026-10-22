@@ -474,6 +474,7 @@ impl ScriptWorld {
                                 sidedness: false,
                             },
                             super::late::OrdinaryLateInputs {
+                                script: inputs,
                                 ticks,
                                 fine_ticks: inputs.fine_ticks,
                                 step_fps: inputs.step_fps,
@@ -1274,6 +1275,9 @@ pub fn run_ordinary(
                 activation_use_held: input.as_deref().map(|held| held.action),
                 quick_keys: quick.as_deref().copied(),
                 shell_execution: Some(false),
+                death_suppressed: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.death_suppressed().ok()),
                 combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
