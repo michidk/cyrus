@@ -25,5 +25,7 @@ fi
 # Always build: the layer cache makes it quick, and a changed Dockerfile is never missed.
 docker build -q -t cyrus-retro:dev dev/docker/retro >/dev/null
 docker rm -f cyrus-retro >/dev/null 2>&1 || true
+# The run copy may link fxart, sound, maps and ENGLISH.RTX into ../../gog/...; mounting magic/gog
+# at /gog makes those links resolve inside the container (without it the game stalls on a black screen).
 vibepod-preview run -port 36080 -title "Redguard (original, DOSBox-X)" cyrus-retro -- \
-    docker run --rm --name cyrus-retro -p 127.0.0.1:36080:6080 -v "$PWD/$run:/game" -v "$PWD/$src/game.gog:/game/game.gog:ro" "${pristine[@]}" cyrus-retro:dev
+    docker run --rm --name cyrus-retro -p 127.0.0.1:36080:6080 -v "$PWD/$run:/game" -v "$PWD/magic/gog:/gog:ro" -v "$PWD/$src/game.gog:/game/game.gog:ro" "${pristine[@]}" cyrus-retro:dev
