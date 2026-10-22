@@ -196,6 +196,90 @@ impl super::ScriptWorld {
         self.initialize_ordinary_jump(id, requested_motion, environment, sounds)
     }
 
+    /// The stage between the ordinary animation and script stages: queued (else falling) motion 8
+    /// or 9 carries a jump forward, and motion 2 a forward-steered jump, at a rate set by
+    /// attribute 31 and the frame scale until the accumulated distance reaches its cap. Other
+    /// motion values add no displacement here. It reads no actor kind, so every actor takes it.
+    pub(super) fn run_pre_script_displacement(
+        &mut self,
+        id: super::ScriptActorId,
+        frame_scale: u32,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("pre-script displacement control unavailable")?;
+        let motion = if control.queued_motion != 0 {
+            control.queued_motion
+        } else {
+            control.falling_state
+        };
+        // Per tick distance numerator and the cap of the accumulated distance, both in Q8.
+        let (rate, cap) = match motion & 127 {
+            8 | 9 => (0x10000, 0x18000),
+            2 => (0xb400, 0x10000),
+            _ => return Ok(()),
+        };
+        if control.rope_attached {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            !matches!(actor.surface, Some(2 | 4)),
+            "world {} instance {index}: deep-water jump displacement unsupported",
+            self.world
+        );
+        let divisor = i32::from(actor.attributes[31]);
+        anyhow::ensure!(
+            divisor != 0,
+            "world {} instance {index}: jump displacement needs attribute 31",
+            self.world
+        );
+        let suppressed = actor
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.playback.translation_suppressed());
+        let accumulated = control.sliding_distance;
+        let distance = if accumulated < cap {
+            let step = (rate / divisor).wrapping_mul(frame_scale as i32) >> 8;
+            if cap < accumulated + step {
+                cap - accumulated
+            } else {
+                step
+            }
+        } else {
+            0
+        };
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated displacement control");
+        control.motion_direction = 2;
+        control.movement_flags |= 0x30;
+        self.globals.locomotion_called |= 4;
+        if suppressed {
+            return Ok(());
+        }
+        control.sliding_distance += distance;
+        if distance > 0 {
+            let pose = self.spatial(id)?.local;
+            let position = cyrus_world::transform::translate_forward(
+                pose.position,
+                pose.angles[1] & 2047,
+                distance,
+            )?;
+            self.spatial
+                .as_mut()
+                .context("pre-script displacement spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .position = position;
+        }
+        Ok(())
+    }
+
     /// The per-update jump window of the directional-state bytes, before ordinary movement. A
     /// pending byte is promoted after 36 ticks; outside the run and walk jump groups, or while
     /// queued motion runs, the low bits clear. A set low bit starts the jump with motion 8, and

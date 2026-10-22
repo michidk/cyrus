@@ -206,7 +206,7 @@ impl ScriptWorld {
                 world.control_airborne_player(id, input.held)?;
                 return Ok(());
             }
-            match action {
+            let moved = match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
                 SheathedAction::Sidestep(strafe) => {
                     let function = match strafe {
@@ -226,8 +226,82 @@ impl ScriptWorld {
                 SheathedAction::WalkBackward => {
                     world.step_player(id, "WalkBackward", inputs, sounds)
                 }
-            }
+            };
+            moved?;
+            world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)
         })
+    }
+
+    /// The grounded jump key, after movement dispatch. Running or walking jump groups with the
+    /// step held set both directional-state bytes and wait for the jump window; any other state
+    /// starts the selected jump entry.
+    fn jump_key_arbitration(
+        &mut self,
+        id: super::ScriptActorId,
+        held: &crate::player::input::PlayerInput,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        inputs: super::ScriptInputs<'_>,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if !held.jump {
+            return Ok(());
+        }
+        let actor = &mut self.actors[id.index];
+        let animation = actor
+            .animation
+            .as_ref()
+            .context("jump arbitration animation unavailable")?;
+        let (group, exit_reached) = (
+            animation.playback.current_group(),
+            animation.playback.exit_reached(),
+        );
+        let attribute_11 = actor.attributes[11];
+        let control = actor
+            .control
+            .as_mut()
+            .context("jump arbitration control unavailable")?;
+        if control.directional_state.iter().any(|byte| byte & 1 != 0) {
+            return Ok(());
+        }
+        if matches!(group, Some(65..=74))
+            || control.queued_motion != 0
+            || control.falling_state != 0
+        {
+            control
+                .directional_state
+                .iter_mut()
+                .for_each(|byte| *byte &= !3);
+            return Ok(());
+        }
+        let step_hold = attribute_11 == 0 || (control.movement_flags >> 4) & 3 == 3;
+        if step_hold && matches!(group, Some(18 | 30)) && !exit_reached {
+            control
+                .directional_state
+                .iter_mut()
+                .for_each(|byte| *byte |= 3);
+            control.jump_window = 0;
+            return Ok(());
+        }
+        let environment = super::transition::ObstacleEnvironment {
+            selected_player: Some(id),
+            auto_grab: false,
+            item_system_ready: inputs
+                .hud
+                .map(super::super::ScriptHud::inventory_ready)
+                .transpose()?
+                .unwrap_or(false),
+            shell_execution: inputs.shell_execution.unwrap_or(false),
+            ticks: timing.nominal_ticks,
+        };
+        let ledge_timing = super::ledge_states::LedgeTiming {
+            fine_ticks: inputs
+                .fine_ticks
+                .context("jump arbitration needs the step's fine-tick increment")?,
+            frame_scale: Some(timing.frame_scale),
+        };
+        self.begin_player_jump(id, query, environment, ledge_timing, 8, sounds)?;
+        Ok(())
     }
 
     /// The controller in the ledge states. The jump key drops a hanging player through the hang

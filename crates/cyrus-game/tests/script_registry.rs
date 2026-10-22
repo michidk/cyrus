@@ -30600,6 +30600,7 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
     attributes.insert("attr_1".into(), 4);
+    attributes.insert("attr_31".into(), 8);
     attributes.insert("attr_32".into(), 32);
     // The default group is the run jump group, which keeps the pending jump bits alive.
     attributes.insert("attr_44".into(), 18);
@@ -30693,6 +30694,8 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     // The jump entry's queued state ran one arbitration and survived to the next update.
     assert_ne!(queued_before, 0);
     assert_eq!(world.spatial(id).unwrap().local.position[0], stable[0]);
+    // The running jump carries the actor forward along its heading, a rate of 0x10000 / attribute 31.
+    assert_ne!(world.spatial(id).unwrap().local.position[2], stable[2]);
 }
 
 #[test]
