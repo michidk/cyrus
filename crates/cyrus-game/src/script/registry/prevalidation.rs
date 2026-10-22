@@ -11,7 +11,10 @@ pub struct OrdinaryGroundPrevalidation {
 }
 
 /// Compare selected current/previous surfaces using preservation's ground rules.
-/// Missing normals in a one-sided miss remain explicitly unsupported.
+/// When exactly one position misses, the original reads the missing side's class from
+/// uninitialised data; here a missing side is neither class 2 nor class 4, so a missing current
+/// surface clears both results and a class 2 current surface after a missing previous one takes
+/// the heading comparison (docs/DIFFERENCES.md).
 pub fn ordinary_ground_prevalidation(
     current: Option<GroundSupport>,
     previous: Option<GroundSupport>,
@@ -19,13 +22,11 @@ pub fn ordinary_ground_prevalidation(
     attribute_89: u8,
     default_motion_animation: bool,
 ) -> Result<OrdinaryGroundPrevalidation> {
-    let (current, previous) = match (current, previous) {
-        (None, None) => return Ok(OrdinaryGroundPrevalidation::default()),
-        (Some(current), Some(previous)) => (current, previous),
-        _ => anyhow::bail!("ordinary ground prevalidation one-sided missing normal unsupported"),
+    let Some(current) = current else {
+        return Ok(OrdinaryGroundPrevalidation::default());
     };
     let current_class = current.classification();
-    let previous_class = previous.classification();
+    let previous_class = previous.map_or(0, |previous| previous.classification());
     if current_class == 2 && previous_class == 2 {
         return Ok(OrdinaryGroundPrevalidation {
             rollback: false,

@@ -46,3 +46,11 @@ pace is not verified.
 the floor probe near the ground, the climb helpers do not read the
 animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
 first attached actor; not heard in a running world).
+
+## Ground prevalidation with one missing surface
+
+**Verified:** when an actor's current and previous positions find support, or both miss, cyrus follows
+preservation's ground prevalidation. **Unknown:** when exactly one of them misses, the original reads the
+missing side's surface class from uninitialised stack memory, so its result is not defined. cyrus treats the
+missing side as neither class 2 nor class 4: a missing current surface clears the results, and a class 2
+current surface after a missing previous one runs the heading comparison.

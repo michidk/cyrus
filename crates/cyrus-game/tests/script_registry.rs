@@ -8413,8 +8413,23 @@ fn ordinary_ground_prevalidation_preserves_slope_direction_and_animation_exclusi
         ordinary_ground_prevalidation(Some(steep), Some(flat), [0, 0, 256], 0, true).unwrap(),
         veto
     );
-    assert!(ordinary_ground_prevalidation(Some(steep), None, [0; 3], 0, false).is_err());
-    assert!(ordinary_ground_prevalidation(None, Some(flat), [0; 3], 0, false).is_err());
+    // A missing side is neither class 2 nor class 4 (the original reads uninitialised data).
+    assert_eq!(
+        ordinary_ground_prevalidation(Some(steep), None, [-256, 0, 0], 0, false).unwrap(),
+        slide
+    );
+    assert_eq!(
+        ordinary_ground_prevalidation(Some(steep), None, [256, 0, 0], 0, false).unwrap(),
+        veto
+    );
+    assert_eq!(
+        ordinary_ground_prevalidation(Some(flat), None, [0; 3], 0, false).unwrap(),
+        clear
+    );
+    assert_eq!(
+        ordinary_ground_prevalidation(None, Some(steep), [0; 3], 0, false).unwrap(),
+        clear
+    );
 }
 
 #[test]
