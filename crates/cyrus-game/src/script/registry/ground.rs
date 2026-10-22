@@ -67,7 +67,10 @@ impl ScriptWorld {
             .as_str()
             .context("ordinary collision model path absent")?;
         ensure!(
-            !matches!(actor.source, super::ScriptActorSource::Player) || path == "animation_table",
+            !matches!(
+                actor.source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) || path == "animation_table",
             "world {} selected player: animated collision definition required",
             self.world
         );
@@ -303,10 +306,7 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|terrain| terrain.sample(position.map(i64::from)));
         let mut selected = probe.select(terrain, &contacts);
-        if matches!(
-            self.actors[id.index].source,
-            super::ScriptActorSource::Player
-        ) {
+        if self.selected_player_index() == Some(id.index) {
             let history = &self.actors[id.index]
                 .player_movement
                 .as_ref()

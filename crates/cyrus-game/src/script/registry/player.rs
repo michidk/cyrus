@@ -936,10 +936,7 @@ impl ScriptWorld {
         use bevy::math::{Mat3, Vec3};
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         ensure!(
-            matches!(
-                self.actors[id.index].source,
-                super::ScriptActorSource::Player
-            ),
+            self.selected_player_index() == Some(id.index),
             "walking stage requires selected player"
         );
         ensure!(
