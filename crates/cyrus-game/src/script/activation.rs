@@ -191,6 +191,8 @@ pub struct GameplayGlobals {
     pub(super) selected_health: Option<super::SelectedHealthState>,
     pub(super) selected_action_inhibition: Option<u8>,
     pub(super) selected_ledge_result: Option<i32>,
+    /// Retained ledge point (Q8) and ledge heading of the selected player's current ledge.
+    pub(super) selected_ledge_anchor: Option<([i32; 3], u16)>,
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
     /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
@@ -1204,6 +1206,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     selected_action_inhibition: Option<u8>,
     selected_ledge_result: Option<i32>,
     #[serde(default)]
+    selected_ledge_anchor: Option<([i32; 3], u16)>,
+    #[serde(default)]
     world_loop_frame: u32,
     #[serde(default)]
     dragon_breath_cooldown: u32,
@@ -1252,6 +1256,7 @@ impl GameplayGlobals {
             selected_health: self.selected_health.clone(),
             selected_action_inhibition: self.selected_action_inhibition,
             selected_ledge_result: self.selected_ledge_result,
+            selected_ledge_anchor: self.selected_ledge_anchor,
             world_loop_frame: self.world_loop_frame,
             dragon_breath_cooldown: self.dragon_breath_cooldown,
             sound_maintenance: self.sound_maintenance.snapshot(),
@@ -1332,6 +1337,7 @@ impl GameplayGlobals {
             selected_health: saved.selected_health,
             selected_action_inhibition: saved.selected_action_inhibition,
             selected_ledge_result: saved.selected_ledge_result,
+            selected_ledge_anchor: saved.selected_ledge_anchor,
             world_loop_frame: saved.world_loop_frame,
             dragon_breath_cooldown: saved.dragon_breath_cooldown,
             item_use_latch: false,

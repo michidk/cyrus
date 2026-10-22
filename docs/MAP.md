@@ -192,7 +192,8 @@ module where it is defined and regenerate.
 - `src/script/registry/health.rs` — Selected-player health services retain distinct publication and death ordering.
 - `src/script/registry/item_use.rs` — `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
-- `src/script/registry/ledge.rs` — Selected-player ledge entry: the edge service, the ledge scan and its record classification.
+- `src/script/registry/ledge.rs` — Selected-player ledge entry: the edge service, the ledge scan with its record classification,
+- `src/script/registry/ledge_states.rs` — The selected player's ledge transition (living states 10 through 19), the hang release and the
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update

@@ -310,6 +310,20 @@ impl ActorAnimation {
             .map(|(_, sequence)| sequence.command_cursor()))
     }
 
+    /// Number of commands in the current group's packed command table.
+    pub fn current_command_count(&self) -> anyhow::Result<Option<usize>> {
+        self.check_failure()?;
+        Ok(self
+            .current
+            .as_ref()
+            .map(|(_, sequence)| sequence.command_count()))
+    }
+
+    /// Assign the wrapping frame-progress byte zero, as a ledge climb does when it restarts.
+    pub fn reset_frame_progress(&mut self) {
+        self.frame_progress = 0;
+    }
+
     /// Writes the animation wait byte (HoldAnimation 255, PauseAnimation value). The byte lives
     /// on the current group's sequence, so an actor without one has nothing to write.
     pub fn set_wait(&mut self, wait: u8) -> anyhow::Result<()> {

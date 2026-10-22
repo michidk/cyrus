@@ -229,6 +229,7 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("admitted ordinary control")
                     .advance_action_transition_counter(ticks);
+                self.finish_ledge_climb(id, ticks, sounds)?;
                 if self.actors[id.index].animation.is_some() {
                     if !self.select_selected_death_animation_default(id, ticks, sounds)? {
                         let items_ready = inputs

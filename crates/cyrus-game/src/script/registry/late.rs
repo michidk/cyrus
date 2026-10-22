@@ -255,7 +255,7 @@ impl ScriptWorld {
             .as_ref()
             .context("support miss control unavailable")?;
         if control.falling_state != 0 {
-            if self.selected_edge_service(id, query, environment, fine_ticks)? {
+            if self.selected_edge_service(id, query, environment, fine_ticks, sounds)? {
                 self.end_ordinary_fall(id)?;
                 return Ok(());
             }
@@ -299,7 +299,7 @@ impl ScriptWorld {
                 environment,
                 sounds,
             )? {
-                if self.selected_edge_service(id, query, environment, fine_ticks)? {
+                if self.selected_edge_service(id, query, environment, fine_ticks, sounds)? {
                     return self.end_ordinary_fall(id);
                 }
                 self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;
@@ -426,7 +426,17 @@ impl ScriptWorld {
                     ticks,
                     sounds,
                 )?;
-            } else if !special && !queued_handled {
+            } else if special {
+                // The selected player's ledge states run their transition in place of the
+                // ordinary motion and ground response; other actors change nothing.
+                self.ledge_transition(
+                    id,
+                    query,
+                    environment,
+                    fine_ticks.context("ledge transition needs the step's fine-tick increment")?,
+                    sounds,
+                )?;
+            } else if !queued_handled {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(
