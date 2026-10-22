@@ -81,8 +81,7 @@ impl ScriptWorld {
     }
 
     /// The armed player's action key after movement dispatch (jump key not held): pick a combo move
-    /// from the latches and start it through the defence start. A jump attack stays unsupported and
-    /// the original's in-reach test before a start is not modelled.
+    /// from the latches and start it through the defence start. The original's in-reach test before a start is not modelled.
     pub(super) fn control_player_attack(
         &mut self,
         id: ScriptActorId,
@@ -115,15 +114,18 @@ impl ScriptWorld {
             .context("player attack latches unavailable")?
             .latches;
         let chosen = if airborne || latches.jump_attack_pending {
-            // A jump attack starts only once the player is falling.
+            // A jump attack starts only once the player is falling, and consumes the action latch.
             latches.jump_attack_pending = true;
             if falling {
-                bail!("selected-player jump attack unsupported");
-            }
-            if !airborne {
                 latches.jump_attack_pending = false;
+                latches.action.matches(latches.action.count, true);
+                Some(6)
+            } else {
+                if !airborne {
+                    latches.jump_attack_pending = false;
+                }
+                None
             }
-            None
         } else if walking_jump {
             latches.action.matches(latches.action.count, true);
             None

@@ -119,12 +119,6 @@ impl ScriptWorld {
             snapshot.actor == id,
             "ordinary stable recovery snapshot belongs to another actor"
         );
-        ensure!(
-            self.actors[index]
-                .placement()
-                .is_some_and(|placement| placement.object_type == 1),
-            "ordinary stable recovery selected-player or object path unavailable"
-        );
         let control = self.actors[index]
             .control
             .as_ref()
@@ -144,6 +138,16 @@ impl ScriptWorld {
         if self.query_stable_recovery(id, &prepared, input.scene, input.animations)? {
             return Ok(false);
         }
+        // A rejected probe takes the selected player through a follow-up ground response that is
+        // not modelled, and objects through a separate path.
+        ensure!(
+            self.selected_player_index() != Some(index)
+                && self.actors[index]
+                    .placement()
+                    .is_some_and(|placement| placement.object_type == 1),
+            "world {} instance {index}: stable recovery of the selected player or an object is unavailable",
+            self.world
+        );
         let turn = i32::from(self.actors[index].attributes[15]);
         ensure!(
             turn != 0,
