@@ -560,7 +560,10 @@ impl ScriptWorld {
                 }
                 Ok(())
             })();
-            if let Err(error) = result {
+            // The first failure is the cause; later frames of a failed actor only repeat it.
+            if let Err(error) = result
+                && self.actors[id.index].update_failure.is_none()
+            {
                 self.actors[id.index].update_failure = Some(format!(
                     "world {} instance {} actor {} ordinary update: {error:#}",
                     self.world,
