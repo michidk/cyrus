@@ -9945,6 +9945,124 @@ fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
 }
 
 #[test]
+fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_refreshes() {
+    use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
+    scripts.definition.functions.push(Function {
+        name: "MoveByAxis".into(),
+        param_count: 3,
+        kind: CallKind::Multitask,
+    });
+    let template = scripts.actors["LOGIC"].clone();
+    scripts.actors.clear();
+    scripts.instances.clear();
+    for (index, (name, master, slave, support)) in [
+        ("ROOT", 20, 0, 0),
+        ("PLATFORM", 0, 20, 1),
+        ("RIDER", 0, 0, 0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut actor = template.clone();
+        actor.instances = 1;
+        actor.instance_variables.truncate(1);
+        actor.attributes = BTreeMap::from([
+            ("attr_24".into(), support),
+            ("attr_25".into(), master),
+            ("attr_26".into(), slave),
+        ]);
+        if name == "ROOT" {
+            actor.program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: wait(
+                            1,
+                            "MoveByAxis",
+                            CallKind::Multitask,
+                            vec![
+                                Value::Integer { value: 0 },
+                                Value::Integer { value: 256 },
+                                Value::Integer { value: 1 },
+                            ],
+                        ),
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        }
+        scripts.actors.insert(name.into(), actor);
+        scripts.instances.push(Instance {
+            object_id: index as u32,
+            actor: name.into(),
+            object_type: 1,
+            active: 0,
+            model_name: String::new(),
+            model_mode: 0,
+            light_intensity: 0,
+            light_radius: 0,
+            light_rgb: [0; 3],
+            map_position: [100, 200, 300],
+            angles: [0; 3],
+        });
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 12).unwrap();
+    world.prepare_spatial().unwrap();
+    let (root, platform, rider) = (
+        world.id(0).unwrap(),
+        world.id(1).unwrap(),
+        world.id(2).unwrap(),
+    );
+    world
+        .set_model_support(
+            rider,
+            ModelSupportOwners {
+                actor: Some(platform),
+                static_placement: None,
+            },
+        )
+        .unwrap();
+    for _ in 0..2 {
+        world.refresh_families().unwrap();
+        assert!(!world.follow_ordinary_support(rider, None, None).unwrap());
+    }
+    world.snapshot_spatial(root).unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(0),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(
+            root,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    world
+        .advance(root, ScriptStage::Tasks, inputs, None, None, 20)
+        .unwrap();
+    world.refresh_families().unwrap();
+    let before = world.spatial(rider).unwrap().local.position;
+    assert!(world.follow_ordinary_support(rider, None, None).unwrap());
+    let after = world.spatial(rider).unwrap().local.position;
+    assert_eq!(after, [before[0] + 256, before[1], before[2]]);
+}
+
+#[test]
 fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
     use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
     for enabled in [false, true] {

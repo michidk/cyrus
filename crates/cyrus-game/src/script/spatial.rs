@@ -43,6 +43,8 @@ pub struct ActorSpatial {
     pub(super) locations: Vec<[i32; 3]>,
     pub effective: Option<Pose>,
     pub previous_effective_position: Option<[i32; 3]>,
+    /// Effective angles before the latest family refresh.
+    pub previous_effective_angles: Option<[u16; 3]>,
     /// Local position captured at the ordinary update boundary, in Q8 units.
     pub previous_local_position: [i32; 3],
     /// End-of-update position retained by dry or falling updates for water veto.
@@ -79,6 +81,9 @@ pub struct PositionLink {
 pub(super) struct SpatialWorld {
     actors: Vec<Option<ActorSpatial>>,
     order: Vec<usize>,
+    /// Family refreshes since the world's families were initialized; attached supports
+    /// carry riders only from the third refresh on.
+    refreshes: u32,
 }
 
 impl SpatialWorld {
@@ -173,6 +178,7 @@ impl SpatialWorld {
                     .collect(),
                 effective: parent.is_none().then_some(original),
                 previous_effective_position: None,
+                previous_effective_angles: None,
                 previous_local_position: local.position,
                 water_rollback_position: None,
                 angle_history: original.angles,
@@ -217,6 +223,7 @@ impl SpatialWorld {
         Ok(Self {
             actors: states,
             order,
+            refreshes: 0,
         })
     }
 
@@ -257,6 +264,7 @@ impl SpatialWorld {
                 .collect(),
             effective: Some(pose),
             previous_effective_position: None,
+            previous_effective_angles: None,
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: angles,
@@ -322,6 +330,7 @@ impl SpatialWorld {
                 .collect(),
             effective: Some(pose),
             previous_effective_position: None,
+            previous_effective_angles: None,
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: angles,
@@ -338,6 +347,11 @@ impl SpatialWorld {
             self.order.push(index);
         }
         Ok(())
+    }
+
+    /// Family refreshes since initialization.
+    pub fn refreshes(&self) -> u32 {
+        self.refreshes
     }
 
     pub fn is_initialized(&self, index: usize) -> Result<bool> {
@@ -364,6 +378,7 @@ impl SpatialWorld {
 
     /// One family pass. Does not run scripts or refresh ordinary root matrices.
     pub fn refresh_families(&mut self) -> Result<()> {
+        self.refreshes = self.refreshes.saturating_add(1);
         for &index in &self.order {
             let state = self.actors[index].as_ref().unwrap();
             let Some(parent_index) = state.parent else {
@@ -409,6 +424,11 @@ impl SpatialWorld {
                 state
                     .effective
                     .map_or(state.local.position, |pose| pose.position),
+            );
+            state.previous_effective_angles = Some(
+                state
+                    .effective
+                    .map_or(state.local.angles, |pose| pose.angles),
             );
             state.effective = Some(Pose {
                 position,
@@ -738,6 +758,8 @@ pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {
 pub(super) struct SpatialSnapshot {
     actors: Vec<Option<SavedSpatialActor>>,
     order: Vec<usize>,
+    #[serde(default)]
+    refreshes: u32,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -780,6 +802,8 @@ struct SavedSpatialActor {
     locations: Vec<[i32; 3]>,
     effective: Option<SavedPose>,
     previous_effective_position: Option<[i32; 3]>,
+    #[serde(default)]
+    previous_effective_angles: Option<[u16; 3]>,
     previous_local_position: [i32; 3],
     water_rollback_position: Option<[i32; 3]>,
     angle_history: [u16; 3],
@@ -802,6 +826,7 @@ impl From<&ActorSpatial> for SavedSpatialActor {
             locations: actor.locations.clone(),
             effective: actor.effective.map(Into::into),
             previous_effective_position: actor.previous_effective_position,
+            previous_effective_angles: actor.previous_effective_angles,
             previous_local_position: actor.previous_local_position,
             water_rollback_position: actor.water_rollback_position,
             angle_history: actor.angle_history,
@@ -825,6 +850,7 @@ impl SpatialWorld {
                 .map(|actor| actor.as_ref().map(Into::into))
                 .collect(),
             order: self.order.clone(),
+            refreshes: self.refreshes,
         }
     }
 
@@ -905,6 +931,7 @@ impl SpatialWorld {
                     .transpose()
                     .with_context(|| format!("actor {index} saved effective pose"))?,
                 previous_effective_position: saved.previous_effective_position,
+                previous_effective_angles: saved.previous_effective_angles,
                 previous_local_position: saved.previous_local_position,
                 water_rollback_position: saved.water_rollback_position,
                 angle_history: saved.angle_history,
@@ -944,6 +971,7 @@ impl SpatialWorld {
         Ok(Self {
             actors: restored,
             order: snapshot.order,
+            refreshes: snapshot.refreshes,
         })
     }
 }
@@ -994,6 +1022,7 @@ mod tests {
             locations,
             effective: None,
             previous_effective_position: None,
+            previous_effective_angles: None,
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: [0; 3],

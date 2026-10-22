@@ -1,6 +1,6 @@
 //! Supporting actor motion runs after collision and before ordinary axis locks.
 use super::{ScriptActorId, ScriptWorld};
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::collision_mesh::BodyProbe;
 use cyrus_world::transform::Matrix;
@@ -23,8 +23,8 @@ impl ScriptWorld {
     /// follow the separate ledge support and carry the retained ledge point and heading along;
     /// they skip the selected player's collision admission. The selected player in any other
     /// state keeps the translation and heading turn when its body or its path to the rotated
-    /// destination collides there. Attached support paths require their owners.
-    /// Unsupported paths fail before changing the rider's pose.
+    /// destination collides there. An attached support carries riders by its effective pose once three family refreshes
+    /// ran. Unsupported paths fail before changing the rider's pose.
     pub fn follow_ordinary_support(
         &mut self,
         id: ScriptActorId,
@@ -60,19 +60,53 @@ impl ScriptWorld {
             None
         };
         let support = self.spatial(owner)?;
-        ensure!(
-            support.parent.is_none() && self.actors[owner_index].attributes[26] == 0,
-            "world {} instance {index} support {owner_index}: attached support-follow snapshots unavailable",
-            self.world
-        );
-        // A linked-position record that names an owner supplies the support's positions.
-        let (current_position, previous_position) = if support.linked_position().is_some() {
-            (support.link_cache, support.link_previous)
+        // An attached support publishes its effective pose through the family refresh, which
+        // must have run three times before it carries riders.
+        let attached = support.parent.is_some();
+        if attached
+            && self
+                .spatial
+                .as_ref()
+                .context("support-follow spatial state unavailable")?
+                .refreshes()
+                < 3
+        {
+            return Ok(false);
+        }
+        let support = self.spatial(owner)?;
+        let (current_position, previous_position, current_angles, previous_angles) = if attached {
+            let pose = support.effective.with_context(|| {
+                format!(
+                    "world {} instance {index} support {owner_index}: attached support pose unavailable",
+                    self.world
+                )
+            })?;
+            (
+                pose.position,
+                support
+                    .previous_effective_position
+                    .context("attached support previous position unavailable")?,
+                pose.angles,
+                support
+                    .previous_effective_angles
+                    .context("attached support previous angles unavailable")?,
+            )
+        } else if support.linked_position().is_some() {
+            // A linked-position record that names an owner supplies the support's positions.
+            (
+                support.link_cache,
+                support.link_previous,
+                support.local.angles,
+                support.angle_history,
+            )
         } else {
-            (support.local.position, support.previous_local_position)
+            (
+                support.local.position,
+                support.previous_local_position,
+                support.local.angles,
+                support.angle_history,
+            )
         };
-        let current = support.local;
-        let previous_angles = support.angle_history;
         let rider = self.spatial(id)?.local;
         // The support's translation, then its rotation about its own origin, carry a point.
         let carry = |point: [i32; 3]| -> Result<[i32; 3]> {
@@ -83,12 +117,12 @@ impl ScriptWorld {
             let offset =
                 std::array::from_fn(|axis| translated[axis].wrapping_sub(current_position[axis]));
             let offset = Matrix::orientation(previous_angles).inverse_transform(offset)?;
-            let offset = Matrix::orientation(current.angles).transform(offset)?;
+            let offset = Matrix::orientation(current_angles).transform(offset)?;
             Ok(std::array::from_fn(|axis| {
                 current_position[axis].wrapping_add(offset[axis])
             }))
         };
-        let turn = current.angles[1].wrapping_sub(previous_angles[1]);
+        let turn = current_angles[1].wrapping_sub(previous_angles[1]);
         let heading = rider.angles[1].wrapping_add(turn) & 2047;
         let translated: [i32; 3] = std::array::from_fn(|axis| {
             rider.position[axis]
