@@ -1809,9 +1809,12 @@ fn segment_model_intersects(
     Ok(f64::from(squared) <= f64::from(combined).powi(2))
 }
 
+/// Entries of the camera candidate array (preservation SOUP.md, camera collision candidates).
+const CAMERA_CANDIDATE_CAPACITY: usize = 64;
+
 /// Filter the caller's already eligible, ordered camera model instances.
 /// This does not infer actor eligibility from ordinary-collision candidates.
-/// Candidate saturation is explicitly unsupported until its lifecycle is admitted.
+/// The candidate array holds 64 entries; later candidates are dropped in list order.
 pub fn collect_segment_models(
     start: [i32; 3],
     end: [i32; 3],
@@ -1834,10 +1837,14 @@ pub fn collect_segment_models(
             continue;
         }
         if segment_model_intersects(origin, radius, Some((model.position, model.radius)))? {
-            anyhow::ensure!(
-                result.len() < 64,
-                "camera segment candidate saturation unsupported"
-            );
+            if result.len() == CAMERA_CANDIDATE_CAPACITY {
+                // The original writes a diagnostic line and drops the rest of the scanned list;
+                // the next list meets the full array the same way, so the order truncates here.
+                bevy::log::warn!(
+                    "camera segment candidates exceed {CAMERA_CANDIDATE_CAPACITY}; later models dropped"
+                );
+                break;
+            }
             result.push(model.instance);
         }
     }

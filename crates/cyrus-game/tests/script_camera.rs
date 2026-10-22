@@ -278,7 +278,13 @@ fn model_collection_preserves_eligible_order_and_excludes_only_requested_identit
             .unwrap()
             .is_empty()
     );
-    assert!(collect_segment_models([0; 3], [0; 3], 0, None, &[first; 65]).is_err());
+    // The array holds 64 candidates; the 65th and later are dropped, not an error.
+    assert_eq!(
+        collect_segment_models([0; 3], [0; 3], 0, None, &[first; 65])
+            .unwrap()
+            .len(),
+        64
+    );
     assert!(collect_segment_models([0; 3], [i32::MAX; 3], 0, None, &[first]).is_err());
 }
 
