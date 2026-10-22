@@ -415,7 +415,11 @@ impl ScriptWorld {
                 )?;
                 self.refresh_actor_weapon_attachment(id, data, weapon)
             })();
-            if let Err(error) = refreshed {
+            // A failed actor refreshes with its own failure as the error: keep the first record
+            // instead of wrapping it again every frame.
+            if let Err(error) = refreshed
+                && self.actors[id.index].update_failure.is_none()
+            {
                 self.actors[id.index].update_failure = Some(format!(
                     "world {} instance {} actor {} model presentation: {error:#}",
                     self.world,
