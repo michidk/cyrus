@@ -26,12 +26,11 @@ impl DialoguePlayback for Effects<'_> {
 
 impl DialogueEffects for Effects<'_> {
     fn inhibit_speaker(&mut self, speaker: ScriptActorId) -> Result<()> {
-        anyhow::ensure!(
-            speaker.generation == self.generation,
-            "dialogue speaker {} belongs to expired world generation {}",
-            speaker.index,
-            speaker.generation
-        );
+        // A line outlives the world change that destroyed its speaker (the dialogue records are
+        // session state), and the speaker no longer exists to inhibit: the line only runs out.
+        if speaker.generation != self.generation {
+            return Ok(());
+        }
         let actor = self
             .actors
             .get_mut(speaker.index)

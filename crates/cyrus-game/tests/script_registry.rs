@@ -11299,15 +11299,10 @@ fn dialogue_record_updates_preserve_order_and_speech_specific_completion() {
         None,
         100,
     );
-    assert!(
-        format!(
-            "{:#}",
-            world
-                .advance_dialogue(1, true, false, &mut effects)
-                .unwrap_err()
-        )
-        .contains("expired world generation 2")
-    );
+    // A line of a speaker from an earlier world generation inhibits nobody and runs out.
+    world
+        .advance_dialogue(1, true, false, &mut effects)
+        .unwrap();
     assert_eq!(world.actors()[1].attributes()[117], 0);
     assert!(world.dialogue_speaker_positions().unwrap().is_empty());
     world
