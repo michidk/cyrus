@@ -161,7 +161,8 @@ impl ScriptWorld {
             ensure!(
                 !control.rope_attached
                     && control.sliding_state == 0
-                    && (control.living_state == 0 || (10..=19).contains(&control.living_state)),
+                    && (matches!(control.living_state, 0 | 20 | 21 | 33 | 34)
+                        || (10..=19).contains(&control.living_state)),
                 "player controller requires a grounded or airborne state without rope or slide"
             );
 
