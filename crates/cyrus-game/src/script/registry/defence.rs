@@ -471,9 +471,8 @@ impl ScriptWorld {
                     .get(motion)
                     .map_or(0, |motion| motion.animation_group)
             });
-            let kinds: [i32; 3] = std::array::from_fn(|motion| {
-                attack.motions.get(motion).map_or(0, |motion| motion.kind)
-            });
+            let populated: [bool; 3] =
+                std::array::from_fn(|motion| attack.motions.get(motion).is_some());
             let ticks = inputs.nominal_ticks.context("nominal ticks unavailable")?;
             let position = Some(self.sight_position(index)?);
             let event_context = super::effects::ActorEventContext::capture(self, id);
@@ -500,12 +499,12 @@ impl ScriptWorld {
                         .ok()
                         .and_then(|motion| groups.get(motion).copied())
                 },
-                entry_type_one: &|motion| {
+                next_motion_populated: &|motion| {
                     usize::try_from(motion)
                         .ok()
                         .and_then(|motion| motion.checked_add(1))
-                        .and_then(|next| kinds.get(next))
-                        == Some(&1)
+                        .and_then(|next| populated.get(next))
+                        == Some(&true)
                 },
             };
             let step = defence_step_with_animation(

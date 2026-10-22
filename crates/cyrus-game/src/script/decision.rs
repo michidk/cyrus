@@ -550,8 +550,9 @@ pub struct DefenceView<'a> {
     pub pending_group: Option<i32>,
     /// Animation group of the selected defence for a move selector.
     pub defence_group: &'a dyn Fn(i32) -> Option<i32>,
-    /// Whether the motion following this selector has type one.
-    pub entry_type_one: &'a dyn Fn(i32) -> bool,
+    /// Whether the motion slot following this selector is populated: the loader marks every
+    /// motion it fills with one, and unfilled slots stay zero.
+    pub next_motion_populated: &'a dyn Fn(i32) -> bool,
 }
 
 /// Result of one defence executor invocation.
@@ -643,7 +644,9 @@ pub(crate) fn defence_step_with_animation(
     } else if *defence_selector != -1 {
         let expected = group_for(decision.move_selector)?;
         if view.current_group != Some(expected) {
-            if decision.move_selector + 1 < 3 && (view.entry_type_one)(decision.move_selector) {
+            if decision.move_selector + 1 < 3
+                && (view.next_motion_populated)(decision.move_selector)
+            {
                 decision.move_selector += 1;
                 let next = group_for(decision.move_selector)?;
                 if *flags & 0x10 != 0 && matches!(next, 0x6b | 0x6c) {
@@ -1671,7 +1674,7 @@ mod tests {
             current_group: current,
             pending_group: pending,
             defence_group: groups,
-            entry_type_one: chain,
+            next_motion_populated: chain,
         }
     }
 

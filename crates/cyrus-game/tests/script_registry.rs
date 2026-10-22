@@ -17614,7 +17614,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             motions: (0..2)
                 .map(|motion| {
                     serde_json::from_value(serde_json::json!({
-                        "section":motion,"kind":motion,"animation_group":100+motion,
+                        "section":motion,"kind":0,"animation_group":100+motion,
                         "min_range":0,"max_range":100,"first_collide_frame":0,"collide_duration":0
                     }))
                     .unwrap()
