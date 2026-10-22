@@ -391,7 +391,7 @@ impl Plugin for HudPlugin {
             .init_asset::<HudAsset>()
             .init_asset_loader::<HudLoader>()
             .add_systems(OnEnter(AppState::InGame), spawn)
-            .add_systems(OnEnter(AppState::InGame), spawn_inventory)
+            .add_systems(OnEnter(AppState::InGame), spawn_inventory.after(spawn))
             .add_systems(
                 Update,
                 configure_scripts
@@ -455,14 +455,8 @@ fn spawn_inventory(mut commands: Commands, viewports: Query<Entity, With<HudView
             10.0 / 255.0,
             180.0 / 255.0,
         )),
-        Node {
-            position_type: PositionType::Absolute,
-            left: percent(0.0),
-            top: percent(0.0),
-            width: percent(100.0),
-            height: percent(100.0),
-            ..default()
-        },
+        // The backing quad spans (90, 49) to (550, 433).
+        place([90, 49], [460, 384]),
     ));
 }
 
@@ -539,64 +533,77 @@ fn inventory_draw(
             };
             image(path, at, size);
         }
-        if let Some(cell) = screen.layout.cells.iter().find(|cell| cell.cursor)
-            && let Some(item) = hud.items.iter().find(|item| item.id == cell.id)
-        {
-            let mut rgba = vec![0; 640 * 480 * 4];
+        let mut rgba = vec![0; 640 * 480 * 4];
+        let bottom = hud
+            .font
+            .glyph(b'a')
+            .map_or(0, |g| i32::from(g.offset[1]) + i32::from(g.height));
+        for cell in &screen.layout.cells {
+            let Some(item) = hud.items.iter().find(|item| item.id == cell.id) else {
+                continue;
+            };
+            // Every visible item with more than one unit shows its count, centred on x + 84.
+            if cell.count > 1 {
+                let text = cell.count.to_string();
+                let at = [cell.at[0] + 84 - hud.font.width(&text) / 2, cell.at[1] + 10];
+                hud.font
+                    .draw_shadowed(&mut rgba, 640, &text, at, hud.text_alpha);
+            }
+            if !cell.cursor {
+                continue;
+            }
+            // `name[x]` is an RTX label; text starting with byte 0x9E counts as absent.
             let name = item
                 .name
                 .as_deref()
-                .filter(|name| !name.is_empty() && !name.starts_with('\u{9e}'))
-                .map(cyrus_game::inventory_screen::name_lines)
-                .map(|lines| lines.into_iter().map(str::to_owned).collect::<Vec<_>>())
-                .unwrap_or_else(|| vec![format!("INDEX {}", item.id)]);
-            let bottom = hud
-                .font
-                .glyph(b'a')
-                .map_or(0, |g| i32::from(g.offset[1]) + i32::from(g.height));
-            for (line, text) in name.iter().enumerate() {
-                let y = cell.at[1] + 92 - bottom
-                    + (i32::from(hud.font.line_height) * 9 / 10) * line as i32;
+                .and_then(|label| {
+                    hud.labels
+                        .iter()
+                        .find(|(key, _)| key.eq_ignore_ascii_case(label))
+                })
+                .map(|(_, text)| text.as_str())
+                .filter(|text| !text.is_empty() && !text.starts_with('\u{9e}'));
+            let top = cell.at[1] + 92 - bottom;
+            let lines = name.map(cyrus_game::inventory_screen::name_lines);
+            let centre = cell.at[0]
+                + if lines.is_some() {
+                    i32::from(item.selected_size.unwrap_or(item.size)[0]) / 2
+                } else {
+                    52
+                };
+            let fallback = format!("INDEX {}", item.id);
+            for (line, text) in lines
+                .unwrap_or_else(|| vec![fallback.as_str()])
+                .iter()
+                .enumerate()
+            {
+                let y = top + (line as i32 * i32::from(hud.font.line_height) * 9) / 10;
                 hud.font.draw_shadowed(
                     &mut rgba,
                     640,
                     text,
-                    [
-                        cell.at[0] + i32::from(item.selected_size.unwrap_or(item.size)[0]) / 2
-                            - hud.font.width(text) / 2,
-                        y,
-                    ],
+                    [centre - hud.font.width(text) / 2, y],
                     hud.text_alpha,
                 );
             }
-            if cell.count > 1 {
-                let text = cell.count.to_string();
-                hud.font.draw_shadowed(
-                    &mut rgba,
-                    640,
-                    &text,
-                    [cell.at[0] + i32::from(item.size[0]) - 32, cell.at[1] + 10],
-                    hud.text_alpha,
-                );
-            }
-            let mut text_image = Image::new(
-                Extent3d {
-                    width: 640,
-                    height: 480,
-                    depth_or_array_layers: 1,
-                },
-                TextureDimension::D2,
-                rgba,
-                TextureFormat::Rgba8UnormSrgb,
-                RenderAssetUsages::default(),
-            );
-            text_image.sampler = ImageSampler::nearest();
-            parent.spawn((
-                ImageNode::new(images.add(text_image)),
-                place([0, 0], [640, 480]),
-                ZIndex(2),
-            ));
         }
+        let mut text_image = Image::new(
+            Extent3d {
+                width: 640,
+                height: 480,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            rgba,
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::default(),
+        );
+        text_image.sampler = ImageSampler::nearest();
+        parent.spawn((
+            ImageNode::new(images.add(text_image)),
+            place([0, 0], [640, 480]),
+            ZIndex(2),
+        ));
     });
 }
 
@@ -819,7 +826,15 @@ fn update(
     if compass
         .logbook
         .as_ref()
-        .is_some_and(|screen| screen.suspended())
+        .is_some_and(|screen| screen.inventory_open)
+    {
+        // The inventory screen draws over the last world frame, HUD included.
+        return;
+    }
+    if compass
+        .logbook
+        .as_ref()
+        .is_some_and(|screen| screen.reading())
     {
         state.logbook_frame = None;
         for (_, _, _, mut visibility) in &mut sprites {

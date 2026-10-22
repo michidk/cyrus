@@ -187,10 +187,23 @@ pub(crate) fn register(app: &mut bevy::prelude::App) {
     use bevy::prelude::*;
     app.init_resource::<InventoryScreen>().add_systems(
         PreUpdate,
-        drive
+        (drive, publish_lock)
+            .chain()
             .after(cyrus_console::ConsoleInput)
             .after(bevy::input::InputSystems),
     );
+}
+
+/// Suspension callers read the shared lock on the logbook screen.
+fn publish_lock(
+    screen: bevy::prelude::Res<InventoryScreen>,
+    mut logbook: Option<bevy::prelude::ResMut<crate::logbook::LogbookScreen>>,
+) {
+    if let Some(logbook) = logbook.as_mut()
+        && logbook.inventory_open != screen.suspended()
+    {
+        logbook.inventory_open = screen.suspended();
+    }
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)] // Owns one shared input and clock transition; the tuple only groups optional resources past the system parameter limit.
@@ -439,6 +452,36 @@ mod tests {
         let layout = grid.layout();
         assert_eq!(layout.cells.len(), 12);
         assert!(!layout.up_arrow && !layout.down_arrow);
+    }
+
+    #[test]
+    fn open_screen_suspends_the_shared_lock_but_not_the_reader() {
+        use bevy::prelude::*;
+        let mut app = App::new();
+        app.init_resource::<InventoryScreen>()
+            .init_resource::<crate::logbook::LogbookScreen>()
+            .add_systems(Update, publish_lock);
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<crate::logbook::LogbookScreen>()
+                .suspended()
+        );
+        app.world_mut()
+            .resource_mut::<InventoryScreen>()
+            .waiting_for_release = true;
+        app.update();
+        let logbook = app.world().resource::<crate::logbook::LogbookScreen>();
+        assert!(logbook.suspended() && !logbook.reading());
+        app.world_mut()
+            .resource_mut::<InventoryScreen>()
+            .waiting_for_release = false;
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<crate::logbook::LogbookScreen>()
+                .suspended()
+        );
     }
 
     #[test]

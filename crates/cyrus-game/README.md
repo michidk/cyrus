@@ -13,7 +13,7 @@ a concrete `PreferenceStore`. Preferences use original action units; successful
 persistence precedes runtime application. Fidelity areas default to Faithful.
 
 Player transforms remain independent of camera transforms. Inspection adapters
-set `InputSuppressed` before `InputSample`. Menu, console and logbook suspension
+set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
 
 ## Module guide
@@ -27,6 +27,7 @@ must also suspend the shared simulation clock and automatic gameplay input.
 | [preferences](src/preferences.rs) | Accepted menu settings and host-provided persistence |
 | [fidelity](src/fidelity.rs) | Faithful/Modern policy by gameplay area |
 | [logbook](src/logbook.rs) | Shared reading-screen state and input |
+| [inventory_screen](src/inventory_screen.rs) | Inventory screen list, cursor, layout and lifecycle |
 | [console](src/console.rs) | Console focus, editor and gameplay command registration |
 | [cheats](src/cheats.rs) | Named cheat state and host-provided CHT persistence |
 

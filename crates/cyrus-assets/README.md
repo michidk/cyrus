@@ -275,7 +275,10 @@ and ordered starting acquisitions remain separate installed inputs; gameplay
 applies startup and subsequent acquisition through the same owner. Ordered
 prerequisites, drop/add dependencies and removal flags travel with each definition.
 HUD metadata retains whether each installed item has type one for shared weapon
-validation and selection fallback. Re-export older HUD caches for the required
+validation and selection fallback. The inventory screen's artwork travels with it:
+the `bitmap_selected_file` frames (`hud/selected-NN.png`), `INVBORDR.GXA`
+(`hud/invbordr-00.png`) and `INVARROW.GXA` (`hud/invarrow-NN.png`), plus each item's
+`name` RTX label and the three frame sizes. Re-export older HUD caches for the required
 inventory metadata.
 
 `logbook/reader.logbook` contains the installed paper, small fonts, bindings and

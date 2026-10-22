@@ -138,9 +138,10 @@ fn installed_effect_images_join_the_exact_render_source_census() -> anyhow::Resu
     let mut world = World::new();
     let (mut live, root) = prepared(&mut world);
     live.prepare_effects(source, &mut world.resource_mut::<Assets<Image>>())?;
-    assert_eq!(world.resource::<Assets<Image>>().len(), 38);
+    // 38 frames of the four death effects plus the 5 frames of 0x2380, the `AddFlatEffect` image.
+    assert_eq!(world.resource::<Assets<Image>>().len(), 43);
     let frames = live.snapshot();
-    assert_eq!(frames.len(), 4);
+    assert_eq!(frames.len(), 5);
     assert!(
         frames
             .iter()

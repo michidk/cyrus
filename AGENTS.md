@@ -289,8 +289,12 @@ remain unavailable. World shell scripts (`COMMON` and the map's own script, plus
 shell when SYSTEM.INI `final_version` is off) run every update before the ordinary actors until
 `KillMe`. `OpenShell` starts a named shell script. The `UseItem` native starts a general item's use script as a shell, within the item's
 instance limit, and applies its drop list and use flags, and lights or puts out a torch; weapon
-items draw the sword. `DrawSword` runs the weapon draw admission. No inventory screen calls
-`UseItem` yet. `PlayerCollide` and `PlayerCollideStatic`
+items draw the sword. `DrawSword` runs the weapon draw admission. The installed inventory key opens
+the inventory screen over the frozen world (suspension shared with the logbook reader): a four-column
+grid of owned, unhidden items, three rows visible, with the installed backing quad, border, arrows, item
+artwork, counts and RTX item name. The directions move the cursor (effect 13); the inventory key, D (Activate)
+and Enter, A or Escape close it, and Activate or Enter make the cursor item the active item. The examine view on
+the view key is unavailable, and the screen does not call `UseItem`. `PlayerCollide` and `PlayerCollideStatic`
 read the contact lists of the selected player's body pass. The installed quick
 sword and quick health keys run in the world loop: the sword key draws, sheathes or uses the
 first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and
