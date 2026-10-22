@@ -172,10 +172,6 @@ impl ScriptWorld {
 
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
             ensure!(
-                !(1..=5).contains(&world.actor_surface(id)?),
-                "player controller water/lava dispatch unsupported"
-            );
-            ensure!(
                 world.actors[id.index].attributes[110] == 0,
                 "player controller swimmer actor unsupported"
             );

@@ -13039,12 +13039,8 @@ fn keyboard_walk_runs_through_ordinary_scheduler_and_projects_release() {
     app.update();
     let actors = app.world().resource::<ScriptActors>();
     let world = actors.current.as_ref().unwrap();
-    assert!(
-        world.actors()[player_id.index]
-            .failure()
-            .unwrap()
-            .contains("player controller water/lava dispatch unsupported")
-    );
+    let failure = world.actors()[player_id.index].failure();
+    assert!(failure.is_none(), "{failure:?}");
     assert_eq!(
         world.model_position(player_id).unwrap().unwrap()[1],
         (logical[1] >> 8).wrapping_add(64) as f32
