@@ -28,6 +28,10 @@ pub(crate) fn prepare(
         post_collide_height: config.post_collide_height,
         slide_range: config.slide_range,
         slide_speed: system.game.slide_speed,
+        slide_hurt: system
+            .game
+            .slide_hurt_height
+            .zip(system.game.slide_hurt_zap),
         swim_depth: system
             .game
             .swim_depth

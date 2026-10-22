@@ -10,6 +10,9 @@ pub struct MovementSettings {
     /// Installed [game] slide_speed; absent old caches cannot perform slope motion.
     #[serde(default)]
     pub slide_speed: Option<i32>,
+    /// Installed [game] slide_hurt_height (map units) and slide_hurt_zap; absent in old caches.
+    #[serde(default)]
+    pub slide_hurt: Option<(i32, i32)>,
     /// Effective [game] swim_depth in map units; zero initializes to 40.
     /// Missing older cache/config values remain unknown.
     #[serde(default)]

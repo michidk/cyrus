@@ -337,6 +337,100 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// A slide that ends on support: past the installed slide hurt distance the actor is pushed
+    /// on, plays the hurt animation (group 73) and loses the installed zap of health. Sliding
+    /// state clears either way. The selected player's hurt is its pending death action's owner
+    /// and stays unsupported.
+    fn end_ordinary_slide(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("slide termination control unavailable")?;
+        if control.sliding_state == 0 {
+            return Ok(());
+        }
+        let distance = control.sliding_distance;
+        let (height, zap) = query
+            .scene
+            .settings
+            .slide_hurt
+            .context("slide termination settings unavailable; re-export world")?;
+        if i64::from(distance) > i64::from(height) << 8 {
+            ensure!(
+                environment.selected_player != Some(id),
+                "world {} instance {}: selected-player slide hurt unsupported",
+                self.world,
+                id.index
+            );
+            let group = self.actors[id.index]
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group());
+            self.apply_ordinary_directional_motion(
+                id,
+                if matches!(group, Some(75 | 77)) { 2 } else { 3 },
+                0x800,
+            )?;
+            if self.updates.animation_system {
+                self.request_ordinary_group(id, 73, false, environment.ticks, sounds)?;
+            }
+            let (_, combat_active) = self.slope_stance(id, environment, None)?;
+            self.change_ordinary_health(
+                id,
+                -zap,
+                query.animations,
+                environment,
+                Some(combat_active),
+                sounds,
+            )?;
+        }
+        let control = self.actors[id.index]
+            .control
+            .as_mut()
+            .context("slide termination control unavailable")?;
+        control.sliding_state = 0;
+        Ok(())
+    }
+
+    /// The held-weapon predicate and combat mode bit 2 that the slope turn rate and groups read.
+    fn slope_stance(
+        &self,
+        id: ScriptActorId,
+        environment: super::transition::ObstacleEnvironment,
+        weapon: Option<super::weapon::WeaponInputs>,
+    ) -> Result<(bool, bool)> {
+        let actor = &self.actors[id.index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("slope stance control unavailable")?;
+        let (holding, _, _) = super::super::activation::weapon_predicates(
+            control.living_state,
+            Some(super::super::ActivationAnimation {
+                group: actor
+                    .animation
+                    .as_ref()
+                    .and_then(|animation| animation.playback.current_group()),
+            }),
+            control.combat_death_default.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            environment.item_system_ready || weapon.is_some_and(|input| input.item_system_ready),
+            environment.shell_execution,
+        );
+        let combat_active = control
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.flags & 4 != 0);
+        Ok((holding, combat_active))
+    }
+
     pub(super) fn resolve_ordinary_late_collision(
         &mut self,
         id: ScriptActorId,
@@ -473,10 +567,6 @@ impl ScriptWorld {
                     "queued ground response timing unavailable"
                 );
                 if let Some(support) = support.as_ref() {
-                    ensure!(
-                        control.sliding_state == 0,
-                        "slide termination damage settings unavailable"
-                    );
                     if falling {
                         let selected = (environment.selected_player == Some(id)).then(|| {
                             super::falling::SelectedLanding {
@@ -505,10 +595,35 @@ impl ScriptWorld {
                         .actor_mut(id.index)?
                         .local
                         .position[1] = height;
-                    ensure!(
-                        !prevalidation.sliding,
-                        "slope suppression and combat-mode owner unavailable"
-                    );
+                    // A steep-surface result with a zero native return state ends the ground
+                    // response in the slope response; a nonzero state ignores the result.
+                    if prevalidation.sliding && self.globals.native_command_return == 0 {
+                        let control = self.actors[id.index]
+                            .control
+                            .as_mut()
+                            .expect("admitted ground control");
+                        control.falling_state = 0;
+                        let (holding, combat_active) =
+                            self.slope_stance(id, environment, weapon)?;
+                        self.actors[id.index].sync_falling_motion();
+                        self.resolve_ordinary_slope(
+                            id,
+                            Some(support),
+                            query,
+                            super::slope::OrdinarySlopeInputs {
+                                selected_player: environment.selected_player,
+                                holding_weapon: holding,
+                                combat_active,
+                                frame_scale: script
+                                    .frame_scale
+                                    .context("slope response needs the step's frame scale")?,
+                                ticks,
+                            },
+                            sounds,
+                        )?;
+                    } else {
+                        self.end_ordinary_slide(id, query, environment, sounds)?;
+                    }
                 } else if self.actors[id.index].attributes[107] != 0 {
                     self.actors[id.index]
                         .control

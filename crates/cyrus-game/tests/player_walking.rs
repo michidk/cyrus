@@ -221,6 +221,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
             post_collide_height: 50,
             slide_range: -60000,
             slide_speed: None,
+            slide_hurt: None,
             swim_depth: None,
             turn_speed: 12,
             turn_max_speed: 48,
