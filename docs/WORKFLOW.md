@@ -54,7 +54,9 @@ that bind everyone are in `AGENTS.md`.
   Link separate completed-work issues when available; do not leave the only
   evidence in an archive. Distinguish parsed/exported data from working behavior.
 - Close an issue as completed when its full scope and acceptance criteria are
-  satisfied. A finished investigation or verification step does not complete a
+  satisfied. Agents perform the required playtesting and acceptance themselves;
+  human approval, testing and personal-verification checkboxes are not gates.
+  A finished investigation or verification step does not complete a
   broader feature. When importing historical completed work, retain its evidence
   and limitations in closed issues rather than adding it to the open backlog.
   Update crate documentation when supported behavior changes. Do not keep a

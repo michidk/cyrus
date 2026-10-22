@@ -114,6 +114,14 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Changes
 
+- Agents own implementation, playtesting, acceptance evidence and issue closure
+  autonomously. Do not require human testing, approval or checkbox changes to
+  complete work. Close an issue when its full scope and acceptance criteria are
+  verified, linking the landing commits and evidence; update completed substeps
+  while broader work remains open. Any maintainer personal-verification index
+  is optional and separate from agent acceptance and issue closure. Resolve
+  dependencies with other agents and available tools; document genuine external
+  blockers and continue independent work without waiting for human involvement.
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
   scripts share one queue with at most three concurrent builds; `hauler status`
