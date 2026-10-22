@@ -543,15 +543,29 @@ impl ScriptWorld {
             "ordinary combat routed point navigation unsupported: map selection"
         );
         actor.attributes[1] = 12;
-        anyhow::ensure!(
-            control.collision_transition_flags & 1 == 0,
-            "point route collision response unsupported: transition mark"
+        let transition = control.collision_transition_flags & 1 != 0;
+        let (age, stable) = (
+            control.collision_response_age,
+            control.stable_local_position,
         );
         // A blocked-step or body response mark drops the route: held nodes are released and
-        // routing restarts from phase zero.
+        // routing restarts from phase zero. A transition mark releases them too; a fresh one
+        // returns the actor to its stable position, an older one selects phase 24.
         let restart = control.collision_response_auxiliary[0] & 0x82 != 0
             || control.body_response_flags & 0x0a != 0;
-        if restart {
+        if transition {
+            self.release_held_walk_nodes(id)?;
+            if age < 16 {
+                self.spatial
+                    .as_mut()
+                    .context("point route spatial state unavailable")?
+                    .actor_mut(index)?
+                    .local
+                    .position = stable;
+            } else if !matches!(self.globals.native_command.point_phase, 24 | 25) {
+                self.globals.native_command.point_phase = 24;
+            }
+        } else if restart {
             self.release_held_walk_nodes(id)?;
             self.globals.native_command.point_phase = 0;
         }
