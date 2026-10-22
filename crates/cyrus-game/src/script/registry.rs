@@ -3632,7 +3632,30 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             LocomotionOperation::Strafe(strafe) => {
                 // Only the ordinary dry stance runs the lateral check; combat strafes skip it.
                 let strafe_plan = super::locomotion::strafe_admission(state, strafe);
-                if matches!(
+                if strafe_plan == super::locomotion::StrafeAdmission::Ledge {
+                    // The hanging player's lateral check is the ledge scan one step to the side.
+                    let fine_ticks = self
+                        .inputs
+                        .fine_ticks
+                        .context("ledge sidestep needs the step's fine-tick increment")?;
+                    let environment = self
+                        .inputs
+                        .locomotion_geometry
+                        .map(|geometry| (geometry.ground, geometry.environment));
+                    if let Some((ground, environment)) = environment {
+                        let timing = ledge_states::LedgeTiming {
+                            fine_ticks,
+                            frame_scale: self.inputs.frame_scale,
+                        };
+                        admission.lateral_step_clear = Some(self.registry.ledge_lateral_clear(
+                            id,
+                            strafe == super::locomotion::Strafe::Right,
+                            ground,
+                            environment,
+                            timing,
+                        )?);
+                    }
+                } else if matches!(
                     strafe_plan,
                     super::locomotion::StrafeAdmission::OutsideCombat { .. }
                         | super::locomotion::StrafeAdmission::DeepWater { .. }

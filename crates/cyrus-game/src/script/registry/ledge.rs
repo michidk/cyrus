@@ -144,6 +144,45 @@ impl ScriptWorld {
         Ok(result)
     }
 
+    /// The hanging sidestep's admission: the ledge scan with the player shifted one body width
+    /// and sidestep length along its own X axis finds a class 3 record. The position is restored.
+    pub(super) fn ledge_lateral_clear(
+        &mut self,
+        id: ScriptActorId,
+        right: bool,
+        query: OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: LedgeTiming,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        let shape = self.ordinary_collision_shape(id)?;
+        let reach = i32::from(self.actors[index].attributes[10]);
+        let width = if right {
+            shape.positive_extent[0].wrapping_add(reach)
+        } else {
+            shape.negative_extent[0].wrapping_add(reach).wrapping_neg()
+        };
+        let pose = self.spatial(id)?.local;
+        let shift = pose.matrix.transform([width.wrapping_mul(256), 0, 0])?;
+        let position = &mut self
+            .spatial
+            .as_mut()
+            .context("ledge sidestep spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .position;
+        position[0] = pose.position[0].wrapping_add(shift[0]);
+        position[2] = pose.position[2].wrapping_add(shift[2]);
+        let scan = self.ledge_scan(id, query, environment, timing.fine_ticks, 15);
+        self.spatial
+            .as_mut()
+            .context("ledge sidestep spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = pose.position;
+        Ok(scan?.hand_nearest(pose.position[1]).is_some())
+    }
+
     /// The state-33/34 and group-149/150 block, which applies only while animation is enabled
     /// and shell context is clear.
     pub(super) fn ledge_blocked(

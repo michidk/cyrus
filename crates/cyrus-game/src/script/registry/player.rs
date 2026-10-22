@@ -169,9 +169,7 @@ impl ScriptWorld {
                     && (control.living_state == 0 || (10..=19).contains(&control.living_state)),
                 "player controller requires ordinary sheathed grounded or airborne state"
             );
-            if (10..=19).contains(&control.living_state) {
-                return world.control_ledge_player(id, input.held, query, inputs, timing, sounds);
-            }
+
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
             ensure!(
                 !(1..=5).contains(&world.actor_surface(id)?),
@@ -192,6 +190,15 @@ impl ScriptWorld {
             )?;
             if matches!(action, SheathedAction::Returned(_)) {
                 return Ok(());
+            }
+            if (10..=19).contains(
+                &world.actors[id.index]
+                    .control
+                    .as_ref()
+                    .expect("validated control")
+                    .living_state,
+            ) {
+                return world.control_ledge_player(id, action, query, inputs, timing, sounds);
             }
             // The drawing group and the scabbard-grip idle group return before turning.
             let group = world.actors[id.index]
@@ -305,21 +312,35 @@ impl ScriptWorld {
     }
 
     /// The controller in the ledge states. The jump key drops a hanging player through the hang
-    /// release (refused during the jump cooldown and the action inhibition). Sidestep input along
-    /// a ledge needs the state-15 lateral movement owner and is ignored, as are all other keys.
+    /// release (refused during the jump cooldown and the action inhibition). A sidestep while
+    /// hanging steps along the ledge; all other keys are ignored.
     fn control_ledge_player(
         &mut self,
         id: super::ScriptActorId,
-        held: &crate::player::input::PlayerInput,
+        action: crate::player::controller::SheathedAction,
         query: super::ground::OrdinaryGroundQuery<'_>,
         inputs: super::ScriptInputs<'_>,
         timing: crate::clock::ClockStep,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        use crate::player::controller::SheathedAction;
+        let held = inputs
+            .player_controller
+            .context("ledge controller input unavailable")?
+            .held;
         let control = self.actors[id.index]
             .control
             .as_ref()
             .context("ledge controller control unavailable")?;
+        if control.living_state == 15
+            && let SheathedAction::Sidestep(strafe) = action
+        {
+            let function = match strafe {
+                super::super::locomotion::Strafe::Left => "MoveLeft",
+                super::super::locomotion::Strafe::Right => "MoveRight",
+            };
+            return self.step_player(id, function, inputs, sounds);
+        }
         if !held.jump
             || control.living_state != 15
             || control.queued_motion != 0

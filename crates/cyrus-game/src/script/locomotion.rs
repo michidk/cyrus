@@ -159,8 +159,10 @@ impl Strafe {
 pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
-    /// Hanging at an edge (lifecycle byte 15): not implemented.
-    Unsupported,
+    /// Hanging at an edge (lifecycle byte 15): after the ledge scan finds a record one step to the
+    /// side, move along the ledge by the attribute byte 10 step. The original's animation request
+    /// for this step is not recovered, so none is made.
+    Ledge,
     /// Outside combat stance in deep water: after the lateral step check and the edge probe pass,
     /// request `group` (143) and move by the attribute byte 10 step.
     DeepWater { group: u16 },
@@ -183,7 +185,7 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             turn: state.strafe_turn_attribute,
         }
     } else if state.living_state == 15 {
-        StrafeAdmission::Unsupported
+        StrafeAdmission::Ledge
     } else if matches!(state.surface, 2 | 4) {
         StrafeAdmission::DeepWater { group: 143 }
     } else {
@@ -575,7 +577,7 @@ mod tests {
                 },
                 Strafe::Right
             ),
-            StrafeAdmission::Unsupported
+            StrafeAdmission::Ledge
         );
         for surface in [2, 4] {
             assert_eq!(

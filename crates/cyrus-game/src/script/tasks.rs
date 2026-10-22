@@ -1655,8 +1655,14 @@ impl Task {
                     .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
                 let (group, step, turn) = match admission {
                     StrafeAdmission::Combat { group, step, turn } => (group, step, turn),
-                    StrafeAdmission::OutsideCombat { group }
-                    | StrafeAdmission::DeepWater { group } => {
+                    StrafeAdmission::OutsideCombat { .. }
+                    | StrafeAdmission::DeepWater { .. }
+                    | StrafeAdmission::Ledge => {
+                        let group = match admission {
+                            StrafeAdmission::OutsideCombat { group }
+                            | StrafeAdmission::DeepWater { group } => Some(group),
+                            _ => None,
+                        };
                         if !motion.admission.lateral_step_clear.with_context(|| {
                             format!("{name} lateral step check input unavailable")
                         })? {
@@ -1670,7 +1676,8 @@ impl Task {
                         {
                             return Ok(true);
                         }
-                        if input.animation.has_group(group) {
+                        if let Some(group) = group.filter(|group| input.animation.has_group(*group))
+                        {
                             let frame = match &mut input.sounds {
                                 Some(sounds) => input.animation.request_with_sounds(
                                     group,
@@ -1682,7 +1689,9 @@ impl Task {
                             };
                             *input.frame = frame.or(*input.frame);
                         }
-                        if motion.animation_system && input.animation.current_group() != Some(group)
+                        if motion.animation_system
+                            && group
+                                .is_some_and(|group| input.animation.current_group() != Some(group))
                         {
                             return Ok(!continues(duration, elapsed));
                         }
@@ -1707,9 +1716,6 @@ impl Task {
                             )?;
                         }
                         return Ok(!continues(duration, elapsed));
-                    }
-                    StrafeAdmission::Unsupported => {
-                        anyhow::bail!("{name} hanging at an edge unsupported: lateral edge test")
                     }
                     StrafeAdmission::Refused => unreachable!("refusal returned above"),
                 };
