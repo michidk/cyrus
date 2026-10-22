@@ -198,6 +198,16 @@ impl ScriptWorld {
     /// that omits movement limiting; the caller supplies that pose. Both history poses
     /// start equal, and the CAMERA actor's spatial state is created once.
     pub fn initialize_camera_pose(&mut self, pose: CameraPose) -> Result<()> {
+        self.set_camera_pose(pose, false)
+    }
+
+    /// Camera setup for a world entered again from its saved state: the CAMERA actor already has
+    /// a pose, and setup runs on every world entry and replaces it.
+    pub(super) fn replace_camera_pose(&mut self, pose: CameraPose) -> Result<()> {
+        self.set_camera_pose(pose, true)
+    }
+
+    fn set_camera_pose(&mut self, pose: CameraPose, replace: bool) -> Result<()> {
         let camera = self
             .camera
             .as_ref()
@@ -219,7 +229,7 @@ impl ScriptWorld {
         self.spatial
             .as_mut()
             .context("spatial state not prepared")?
-            .initialize_player(index, &self.actors[index], pose.position, angles)
+            .place_player(index, &self.actors[index], pose.position, angles, replace)
             .with_context(|| {
                 format!(
                     "world {} camera actor {index}: pose initialization",

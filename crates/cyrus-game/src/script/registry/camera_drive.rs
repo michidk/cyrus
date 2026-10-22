@@ -124,10 +124,21 @@ impl ScriptWorld {
         let (position, angles) = self.camera_binding_pose(bound)?;
         let mut record = record.clone();
         let candidate = record.candidate(position, angles)?;
-        self.initialize_camera_pose(CameraPose {
+        let pose = CameraPose {
             position: candidate,
             angles: [0; 3],
-        })?;
+        };
+        let camera_index = self.resolve(camera.camera_actor)?;
+        if self
+            .spatial
+            .as_ref()
+            .context("camera setup spatial state not prepared")?
+            .is_initialized(camera_index)?
+        {
+            self.replace_camera_pose(pose)?;
+        } else {
+            self.initialize_camera_pose(pose)?;
+        }
         let limits = self.camera_limits;
         let settings = CameraUpdateSettings::installed(&limits, frame_scale, false, false);
         let mut geometry = self.scene_camera_geometry(

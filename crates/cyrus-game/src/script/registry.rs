@@ -3735,7 +3735,47 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 return Ok(admission);
             }
         }
-        let Some(geometry) = self.inputs.locomotion_geometry else {
+        // A routed call made by an actor without a collision query runs on a receiver that has
+        // one: prepare the receiver's own query here.
+        let routed_query;
+        let geometry = if let Some(geometry) = self.inputs.locomotion_geometry {
+            geometry
+        } else if self.registry.actors[self.index].attributes[1] != 0
+            && self.registry.actors[self.index].ordinary_collision_role()
+            && let Some(source) = self.inputs.player_collision
+        {
+            routed_query = self.registry.prepare_ordinary_collision_query(
+                id,
+                source.scene,
+                source.animations,
+                source.view,
+                source.actors,
+            )?;
+            LocomotionGeometry {
+                ground: ground::OrdinaryGroundQuery {
+                    scene: source.scene,
+                    animations: source.animations,
+                    prepared: &routed_query,
+                    distance: source.scene.settings.post_collide_height,
+                    sidedness: false,
+                },
+                environment: transition::ObstacleEnvironment {
+                    selected_player: self.selected_player(),
+                    auto_grab: false,
+                    item_system_ready: self
+                        .inputs
+                        .hud
+                        .map(super::ScriptHud::inventory_ready)
+                        .transpose()?
+                        .unwrap_or(false),
+                    shell_execution: self.inputs.shell_execution.unwrap_or(false),
+                    ticks: self
+                        .inputs
+                        .nominal_ticks
+                        .context("routed locomotion needs nominal ticks")?,
+                },
+            }
+        } else {
             // Without collision attribute bits no collision query is prepared for the actor and
             // every destination test of the walk step passes.
             if walking
