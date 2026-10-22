@@ -164,7 +164,7 @@ impl ScriptWorld {
                 // The camera actor has no script body: its `cameraController` native hook runs the
                 // camera update at its place in the list, ahead of the selected player's update.
                 if let Some(service) = inputs.camera_update
-                    && let Err(error) = self.run_camera_controller(service)
+                    && let Err(error) = self.run_camera_controller(service, inputs)
                 {
                     self.actors[id.index].update_failure = Some(format!(
                         "world {} instance {} actor {} ordinary update: {error:#}",

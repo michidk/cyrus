@@ -42,20 +42,71 @@ impl ScriptWorld {
     pub(super) fn run_camera_controller(
         &mut self,
         service: &dyn crate::script::camera::CameraUpdateService,
+        inputs: super::ScriptInputs<'_>,
     ) -> Result<()> {
         let camera = self
             .camera
             .as_ref()
             .with_context(|| format!("world {}: camera session unavailable", self.world))?;
-        let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
-        let (position, angles) = self.camera_binding_pose(bound)?;
         let mut state = camera.clone();
+        // Automatic reselection precedes the pose update unless a scripted camera or the
+        // selected record's 0x20 bit holds the slot.
+        if !state.reselection_inhibited() {
+            state.select(self.automatic_camera_slot(inputs)?)?;
+        }
+        let bound = self.resolve(state.records[state.selected.index()].actor)?;
+        let (position, angles) = self.camera_binding_pose(bound)?;
         let updated = service.update(&mut state, position, angles);
         let published = service.take_published();
         updated?;
         self.apply_camera_publication(published)?;
         self.camera = Some(state);
         Ok(())
+    }
+
+    /// The slot the ordinary camera update chooses for the selected player: 3 while it holds a
+    /// weapon, 4 while it hangs (living state 15), otherwise the default slot zero. The shared
+    /// debug word is zero. The rope slots and the free-look key are not modelled: a rope
+    /// association is an explicit error.
+    fn automatic_camera_slot(&self, inputs: super::ScriptInputs<'_>) -> Result<u8> {
+        let index = self
+            .selected_player_index()
+            .context("automatic camera slot: selected player unavailable")?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("automatic camera slot: selected player control unavailable")?;
+        let (holding, _, _) = super::super::activation::weapon_predicates(
+            control.living_state,
+            Some(super::super::ActivationAnimation {
+                group: actor
+                    .animation
+                    .as_ref()
+                    .and_then(|animation| animation.playback.current_group()),
+            }),
+            control.combat_death_default.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            inputs
+                .hud
+                .map(|hud| hud.inventory_ready())
+                .transpose()?
+                .unwrap_or(false),
+            inputs.shell_execution.unwrap_or(false),
+        );
+        if holding {
+            return Ok(3);
+        }
+        if control.living_state == 15 {
+            return Ok(4);
+        }
+        anyhow::ensure!(
+            !control.rope_attached,
+            "world {}: rope camera slot selection unavailable",
+            self.world
+        );
+        Ok(0)
     }
 
     /// Give the logical camera actors the positions a pose update published.

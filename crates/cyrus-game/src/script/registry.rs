@@ -4877,7 +4877,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .inputs
                 .camera_update
                 .context("cameraController: camera update service unavailable")?;
-            self.registry.run_camera_controller(service)?;
+            self.registry.run_camera_controller(service, self.inputs)?;
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("XResetCamera") {
