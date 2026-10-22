@@ -182,7 +182,8 @@ impl ScriptWorld {
             // this host update has no controller sample. A missing controller
             // suppresses only player movement input; it must not suppress the
             // selected actor's ordinary hook, combat, or script stages.
-            let selected_player = self.selected_player_index() == Some(id.index);
+            let selected_role = self.selected_player_index() == Some(id.index);
+            let selected_player = selected_role && inputs.player_controller.is_some();
             let actor = &mut self.actors[id.index];
             actor.sync_falling_motion();
             if actor.placement().is_none() && !selected_player {
@@ -353,7 +354,13 @@ impl ScriptWorld {
                         random,
                         sounds,
                     )?;
-                } else {
+                } else if !(selected_role && inputs.player_controller.is_none()) {
+                    // A host update without a player-controller sample is a
+                    // preparation/timer pass. Do not drive the selected
+                    // player's input-owned native hook from that pass; the
+                    // production host always supplies the controller for live
+                    // player updates, while inspection callers intentionally
+                    // omit it.
                     self.advance(
                         id,
                         ScriptStage::OrdinaryHook,
