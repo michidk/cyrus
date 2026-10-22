@@ -3,8 +3,9 @@
 //! "Rope attachment", "Rope control while attached", "Rope amplitude updates").
 //!
 //! Angles are engine units (2048 per turn). Positions are the exported world units, one per 20 map
-//! units; the engine adds link offsets in its own frame, which is the negated world frame, so link
-//! deltas are computed with the engine's matrices and negated.
+//! units. The engine frame maps to the world frame by negating X and Y and keeping Z (the importer's
+//! position decode), so link deltas are computed with the engine's matrices and mapped, and a
+//! link's world rotation is the engine matrix conjugated by that mapping.
 use serde_json::Value;
 
 /// Engine angle units per full turn.
@@ -97,6 +98,18 @@ pub struct LinkPose {
     pub pitch: i32,
 }
 
+impl LinkPose {
+    /// The link's rotation in the world frame as rows (`v' = R · v`): the engine matrix with the
+    /// X/Z, Y/Z entries negated by the frame mapping.
+    pub fn world_rotation(&self) -> [[f32; 3]; 3] {
+        let mut m = matrix(self.yaw, self.pitch);
+        for (row, column) in [(0, 2), (2, 0), (1, 2), (2, 1)] {
+            m[row][column] = -m[row][column];
+        }
+        m
+    }
+}
+
 /// A sound the swing asks for at a zero crossing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SwingSound {
@@ -125,9 +138,15 @@ pub struct Rope {
     pub previous_sum: i32,
     pub sounds: [i32; 3],
     pub attachments: Vec<Attachment>,
+    has_end_model: bool,
 }
 
 impl Rope {
+    /// Whether the record names an end model.
+    pub fn has_end_model(&self) -> bool {
+        self.has_end_model
+    }
+
     pub fn new(record: &RopeRecord, link_length: f32) -> Self {
         let mut kind = record.kind;
         if record.has_end_model {
@@ -149,6 +168,7 @@ impl Rope {
             previous_sum: 0,
             sounds: record.sounds,
             attachments: Vec::new(),
+            has_end_model: record.has_end_model,
         }
     }
 
@@ -225,12 +245,31 @@ impl Rope {
             });
             let m = matrix(yaw, pitch);
             let length = f64::from(self.link_length);
-            // The engine adds `M · (0, length, 0)` in its frame; the world frame is its negation.
+            // The engine adds `M · (0, length, 0)` in its frame; the world delta negates X and Y.
             position[0] -= f64::from(m[0][1]) * length;
             position[1] -= f64::from(m[1][1]) * length;
-            position[2] -= f64::from(m[2][1]) * length;
+            position[2] += f64::from(m[2][1]) * length;
         }
         poses
+    }
+
+    /// The end model's pose: one link length below the last link, with the same yaw and the pitch
+    /// of the accumulated step angles. `None` for a rope without links.
+    pub fn end_pose(&self) -> Option<LinkPose> {
+        let last = *self.chain().last()?;
+        let m = matrix(last.yaw, last.pitch);
+        let length = f64::from(self.link_length);
+        let position = [
+            f64::from(last.position[0]) - f64::from(m[0][1]) * length,
+            f64::from(last.position[1]) - f64::from(m[1][1]) * length,
+            f64::from(last.position[2]) + f64::from(m[2][1]) * length,
+        ];
+        let accumulated = self.step * i32::try_from(self.links.saturating_sub(1)).unwrap_or(0);
+        Some(LinkPose {
+            position: position.map(|v| v as f32),
+            yaw: last.yaw,
+            pitch: (-(accumulated >> 8)).rem_euclid(TURN),
+        })
     }
 
     /// Sum of the link step angles, the argument of [`Self::amplitude_service`].
@@ -418,6 +457,29 @@ mod tests {
                 .iter()
                 .all(|l| l.position[0].abs() < 1e-4 && l.position[2].abs() < 1e-4)
         );
+    }
+
+    #[test]
+    fn the_world_rotation_keeps_the_engine_yaw_convention_of_placed_objects() {
+        // Engine yaw minus the heading, mapped to the world frame, is the importer's positive yaw.
+        let pose = LinkPose {
+            position: [0.0; 3],
+            yaw: (-512i32).rem_euclid(2048),
+            pitch: 0,
+        };
+        let r = pose.world_rotation();
+        // A quarter turn: [[0, 0, 1], [0, 1, 0], [-1, 0, 0]].
+        assert!(
+            r[0][0].abs() < 1e-6 && (r[0][2] - 1.0).abs() < 1e-6 && (r[2][0] + 1.0).abs() < 1e-6
+        );
+    }
+
+    #[test]
+    fn the_end_model_hangs_one_link_below_the_last() {
+        let r = rope(3, 10);
+        let end = r.end_pose().unwrap();
+        assert!((end.position[1] - 7.6).abs() < 1e-4);
+        assert!(rope(0, 10).end_pose().is_none());
     }
 
     #[test]

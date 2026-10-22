@@ -302,3 +302,111 @@ impl ScriptEntityBinding {
         }
     }
 }
+
+/// Scene nodes of the rope chains (`R<rope>_<link>_<model>`; the end model uses the link count as its
+/// index), found once the scene exists.
+#[derive(Default)]
+pub(super) struct RopeNodes {
+    generation: Option<u64>,
+    entities: std::collections::BTreeMap<(usize, usize), Entity>,
+    searches: u32,
+    placed: bool,
+}
+
+/// `R<rope>_<link>_...` as `(rope, link)`.
+fn rope_node(name: &str) -> Option<(usize, usize)> {
+    let rest = name.strip_prefix('R')?;
+    let (rope, rest) = rest.split_once('_')?;
+    let (link, _) = rest.split_once('_')?;
+    let digits = |text: &str| {
+        (text.len() == 3 && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    Some((digits(rope)?, digits(link)?))
+}
+
+/// Moves the rope chains' scene nodes to the poses of the world's ropes.
+pub(super) fn apply_ropes(
+    actors: Res<ScriptActors>,
+    mut nodes: Query<(Entity, &Name, &mut Transform)>,
+    mut state: Local<RopeNodes>,
+) {
+    let Some(world) = actors.current.as_ref() else {
+        *state = RopeNodes::default();
+        return;
+    };
+    let ropes = world.ropes();
+    if ropes.is_empty() {
+        return;
+    }
+    if state.generation != Some(world.generation()) {
+        *state = RopeNodes {
+            generation: Some(world.generation()),
+            ..Default::default()
+        };
+    }
+    let expected: usize = ropes
+        .iter()
+        .map(|rope| rope.links + usize::from(rope.has_end_model()))
+        .sum();
+    // Searching stops after a minute of frames: a rope whose model is missing from the scene is
+    // reported by the world's scene checks, not here.
+    if state.entities.len() < expected && state.searches < 3600 {
+        state.searches += 1;
+        for (entity, name, _) in &nodes {
+            if let Some(key) = rope_node(name.as_str())
+                && key.0 < ropes.len()
+            {
+                state.entities.insert(key, entity);
+            }
+        }
+    }
+    let moving = ropes
+        .iter()
+        .any(|rope| rope.step != 0 || rope.amplitude != 0);
+    if !moving && state.placed && state.entities.len() >= expected {
+        return;
+    }
+    let place = |pose: &crate::rope::LinkPose, transform: &mut Transform| {
+        let r = pose.world_rotation();
+        transform.translation = Vec3::from(pose.position);
+        transform.rotation = Quat::from_mat3(&Mat3::from_cols(
+            Vec3::new(r[0][0], r[1][0], r[2][0]),
+            Vec3::new(r[0][1], r[1][1], r[2][1]),
+            Vec3::new(r[0][2], r[1][2], r[2][2]),
+        ));
+    };
+    for (index, rope) in ropes.iter().enumerate() {
+        let chain = rope.chain();
+        for (link, pose) in chain.iter().enumerate() {
+            if let Some(&entity) = state.entities.get(&(index, link))
+                && let Ok((_, _, mut transform)) = nodes.get_mut(entity)
+            {
+                place(pose, &mut transform);
+            }
+        }
+        if rope.has_end_model()
+            && let Some(pose) = rope.end_pose()
+            && let Some(&entity) = state.entities.get(&(index, rope.links))
+            && let Ok((_, _, mut transform)) = nodes.get_mut(entity)
+        {
+            place(&pose, &mut transform);
+        }
+    }
+    state.placed = true;
+}
+
+#[cfg(test)]
+mod rope_tests {
+    use super::rope_node;
+
+    #[test]
+    fn rope_nodes_are_found_by_their_exported_names() {
+        assert_eq!(rope_node("R000_007_ROPELINK"), Some((0, 7)));
+        assert_eq!(rope_node("R012_030_CC#CHAND"), Some((12, 30)));
+        assert_eq!(rope_node("ROPELINK"), None);
+        assert_eq!(rope_node("R00_001_X"), None);
+        assert_eq!(rope_node("S001_ROPE"), None);
+    }
+}

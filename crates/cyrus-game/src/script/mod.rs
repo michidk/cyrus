@@ -301,6 +301,12 @@ impl Plugin for ScriptPlugin {
             )
             .add_systems(
                 Update,
+                presentation::apply_ropes
+                    .after(OrdinaryUpdates)
+                    .run_if(resource_exists::<cyrus_world::animation::AnimationRequest>),
+            )
+            .add_systems(
+                Update,
                 playback::advance
                     .in_set(cyrus_world::animation::AnimationSystems)
                     .after(cyrus_world::lifecycle::WorldChange)
