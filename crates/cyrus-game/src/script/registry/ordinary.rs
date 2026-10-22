@@ -458,15 +458,21 @@ impl ScriptWorld {
                     self.actors[id.index].maintain_light(ticks);
                 }
                 if self.actors[id.index].attributes[1] != 0 {
-                    let collision = collision.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "script enabled collision without pre-script candidate preparation"
-                        )
-                    })?;
                     let scene = anyhow::Context::context(
                         scene,
                         "ordinary late collision scene unavailable",
                     )?;
+                    // A script that enabled collision this update gets its candidates now.
+                    let late_collision;
+                    let collision = match collision.as_ref() {
+                        Some(collision) => collision,
+                        None => {
+                            late_collision = self.prepare_ordinary_collision_query(
+                                id, scene, data, view, &selected,
+                            )?;
+                            &late_collision
+                        }
+                    };
                     anyhow::Context::context(
                         self.resolve_ordinary_late_collision(
                             id,
