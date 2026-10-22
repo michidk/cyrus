@@ -1,7 +1,7 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
-use anyhow::{Context, Result, ensure};
 use crate::script::group_sync;
+use anyhow::{Context, Result, ensure};
 
 impl ScriptWorld {
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.
