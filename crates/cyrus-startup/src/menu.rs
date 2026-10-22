@@ -463,6 +463,9 @@ pub(super) fn drive(
                                 world
                                     .resource_mut::<cyrus_game::script::ScriptActors>()
                                     .begin_new_game();
+                                // The original stops every sound channel before its New Game initializer
+                                // (preservation engine/menu.md); world entry does not.
+                                world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
                                 if let Some(hud) =
                                     world.get_resource::<cyrus_game::script::ScriptHud>()
                                 {
