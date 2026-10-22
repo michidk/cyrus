@@ -8,6 +8,7 @@ pub mod logbook;
 pub mod player;
 pub mod preferences;
 pub mod random;
+pub mod rope;
 pub mod script;
 use bevy::prelude::*;
 use log::info;
