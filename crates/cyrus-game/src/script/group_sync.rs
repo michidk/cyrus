@@ -60,8 +60,9 @@ impl GroupSync {
 
     /// Per-iteration update of every channel that has members.
     pub(super) fn update(&mut self, actors: &[ScriptActor]) {
+        let channels = self.channels.clone();
         self.update_members(actors.iter().enumerate().filter_map(|(index, actor)| {
-            let channel = self.channels.get(&index).copied().unwrap_or(0);
+            let channel = channels.get(&index).copied().unwrap_or(0);
             (channel != 0).then(|| (index, channel, actor.attributes()[IGNORED_ATTRIBUTE] != 0))
         }));
     }

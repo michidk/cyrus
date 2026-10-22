@@ -1,6 +1,7 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use crate::script::group_sync;
 
 impl ScriptWorld {
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.
@@ -16,7 +17,7 @@ impl ScriptWorld {
             anyhow::bail!("world {}: shell script {name} not installed", self.world)
         };
         let actor = super::ScriptActor::shell(self.world, index, key, Some(template));
-        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
         if let Some(spatial) = &mut self.spatial {
@@ -63,7 +64,7 @@ impl ScriptWorld {
             "created object creator has no spatial state"
         );
         let mut actor = super::ScriptActor::created(self.world, index, key, template);
-        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
         actor
             .control
             .as_mut()
@@ -95,7 +96,7 @@ impl ScriptWorld {
             anyhow::bail!("world {}: script {name} not installed", self.world)
         };
         let actor = super::ScriptActor::created(self.world, index, key, template);
-        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
         if let Some(spatial) = &mut self.spatial {
