@@ -1155,10 +1155,13 @@ impl LogicalSessionSnapshot {
             .actors
             .iter()
             .filter_map(|actor| {
-                actor
-                    .light
-                    .as_ref()
-                    .and_then(super::light::LightState::rendered)
+                // Only authored MPOB kind-6 records enter the renderer's
+                // local-light list. Type-4 actors retain a logical script
+                // light record for native calls, but preservation excludes
+                // them from object-light projection.
+                (actor.placement()?.object_type == 6)
+                    .then(|| actor.light.as_ref().and_then(super::light::LightState::rendered))
+                    .flatten()
             })
             .collect())
     }
