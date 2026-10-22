@@ -592,6 +592,8 @@ pub struct ScriptWorld {
     /// frame loop.
     pending_player_placement: Option<([i32; 3], u16)>,
     effects: Option<EnvironmentalEffects>,
+    /// Retained ropes of the installed `MPRP` records; rebuilt on preparation, not saved.
+    ropes: Vec<crate::rope::Rope>,
 }
 impl ScriptWorld {
     /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
@@ -1186,6 +1188,7 @@ impl ScriptWorld {
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
+            ropes: Vec::new(),
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -1212,6 +1215,70 @@ impl ScriptWorld {
                 .with_context(|| format!("world {} marker preparation", self.world))?,
         );
         Ok(())
+    }
+
+    /// Build the world's ropes from the exported `MPRP` records. Only the shipped link models
+    /// (`ROPELINK`, `CHAINLNK`, both 0.8 world units tall) are supported; another model, or more
+    /// than 255 ropes, is a contextual error. A cache without the records has no ropes.
+    pub fn prepare_ropes(&mut self, data: &Animations) -> Result<()> {
+        anyhow::ensure!(
+            self.ropes.is_empty(),
+            "world {} ropes already prepared",
+            self.world
+        );
+        let Some(records) = data.metadata["ropes"].as_array() else {
+            return Ok(());
+        };
+        anyhow::ensure!(
+            records.len() <= crate::rope::MAX_ROPES,
+            "world {}: {} ropes exceed the engine's {}",
+            self.world,
+            records.len(),
+            crate::rope::MAX_ROPES
+        );
+        for (index, value) in records.iter().enumerate() {
+            let record = crate::rope::RopeRecord::from_metadata(value)
+                .with_context(|| format!("world {} rope {index}", self.world))?;
+            let model = value["rope_model"].as_str().unwrap_or_default();
+            anyhow::ensure!(
+                ["ROPELINK", "CHAINLNK"]
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(model.trim_end_matches(".3D"))),
+                "world {} rope {index}: link model {model:?} has no recovered height",
+                self.world
+            );
+            self.ropes.push(crate::rope::Rope::new(&record, 0.8));
+        }
+        Ok(())
+    }
+
+    /// The world's ropes, in construction order (the engine lists the newest first).
+    pub fn ropes(&self) -> &[crate::rope::Rope] {
+        &self.ropes
+    }
+
+    /// One rope-system step at its place in the world loop: each rope's amplitude service, then its
+    /// swing step and attachment climbs.
+    pub(super) fn update_ropes(&mut self, ticks: i32) {
+        for rope in &mut self.ropes {
+            rope.clamp_nodes();
+            let sum = rope.step_sum();
+            rope.amplitude_service(sum);
+        }
+        let actors = &self.actors;
+        for rope in &mut self.ropes {
+            rope.update(
+                ticks,
+                |actor| {
+                    actors
+                        .get(actor)
+                        .and_then(|actor| actor.animation.as_ref())
+                        .and_then(|animation| animation.playback.current_group())
+                        .map_or(0, i32::from)
+                },
+                |_, _, node| node,
+            );
+        }
     }
 
     /// Load cleared reservations and associate ordinary placements from authored
@@ -2857,6 +2924,7 @@ pub(super) fn prepare(
         }
         world.prepare_markers(animation_data)?;
         world.prepare_navigation(animation_data)?;
+        world.prepare_ropes(animation_data)?;
         if clock.is_none() {
             commands.insert_resource(crate::clock::SimulationClock::new(scripts.clock)?);
         }
@@ -6616,6 +6684,7 @@ mod fighting_tests {
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
+            ropes: Vec::new(),
         };
         let host = GameHost {
             native_source_program: None,

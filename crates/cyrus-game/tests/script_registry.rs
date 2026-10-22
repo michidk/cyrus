@@ -31079,3 +31079,47 @@ fn projectile_ai_stops_at_a_wall_contact() {
         assert!(path.len() < 15, "yaw {yaw}: {path:?}");
     }
 }
+
+#[test]
+fn the_world_owns_its_exported_ropes() {
+    use cyrus_assets::animation::Animations;
+    let scripts = cache();
+    let animations = |ropes: serde_json::Value| Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"actors":[], "markers":[], "walk_node_maps":[], "script_content_id":scripts.content_id, "ropes": ropes}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let rope = |model: &str| {
+        serde_json::json!({
+            "angle_y": 512, "length": 3, "position": [1.0, 2.0, 3.0], "rope_model": model,
+            "rope_type": 0, "speed": 100, "static_model": "", "swing": 9,
+            "unknown1": [62, 62, 63, 0, 0, 0, 0]
+        })
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world
+        .prepare_ropes(&animations(serde_json::json!([rope("ROPELINK")])))
+        .unwrap();
+    assert_eq!(world.ropes().len(), 1);
+    assert_eq!(world.ropes()[0].links, 3);
+    assert_eq!(world.ropes()[0].chain().len(), 3);
+    let mut none = ScriptWorld::prepare(&scripts, 1).unwrap();
+    none.prepare_ropes(&animations(serde_json::Value::Null))
+        .unwrap();
+    assert!(
+        none.ropes().is_empty(),
+        "a cache without the records has no ropes"
+    );
+    let mut unknown = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let error = unknown
+        .prepare_ropes(&animations(serde_json::json!([rope("STRANGE")])))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("rope 0") && error.contains("STRANGE"),
+        "{error}"
+    );
+}
