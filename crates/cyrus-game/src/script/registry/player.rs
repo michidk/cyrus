@@ -119,6 +119,19 @@ impl ScriptWorld {
                 )?;
                 animation.frame = frame.or(animation.frame);
             }
+            {
+                // Queued motion 3 ends once the actor is back on its default group.
+                let actor = &mut world.actors[id.index];
+                let at_default = actor.animation.as_ref().is_some_and(|animation| {
+                    animation.playback.current_group() == Some(animation.playback.default_group())
+                });
+                if let Some(control) = actor.control.as_mut()
+                    && control.queued_motion == 3
+                    && at_default
+                {
+                    control.queued_motion = 0;
+                }
+            }
             let lockout = world
                 .globals
                 .lockout()
@@ -145,12 +158,11 @@ impl ScriptWorld {
                         .combat
                         .as_ref()
                         .is_none_or(|combat| combat.flags & 4 == 0)
-                    && control.queued_motion == 0
-                    && control.falling_state == 0
                     && control.sliding_state == 0
                     && control.living_state == 0,
-                "player controller requires ordinary sheathed grounded state"
+                "player controller requires ordinary sheathed grounded or airborne state"
             );
+            let airborne = control.queued_motion != 0 || control.falling_state != 0;
             ensure!(
                 !(1..=5).contains(&world.actor_surface(id)?),
                 "player controller water/lava dispatch unsupported"
@@ -180,6 +192,10 @@ impl ScriptWorld {
                 return Ok(());
             }
             world.turn_player(id, input.held, timing, sounds)?;
+            if airborne {
+                world.control_airborne_player(id, input.held)?;
+                return Ok(());
+            }
             match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
                 SheathedAction::Sidestep(strafe) => {
@@ -202,6 +218,29 @@ impl ScriptWorld {
                 }
             }
         })
+    }
+
+    /// The sheathed player's controller while its queued or falling byte is nonzero. Turning
+    /// has been skipped and every movement helper refuses, so only these writes remain: forward
+    /// steering of queued motion 1 in groups 32 and 33, the falling jump key's clearing of the
+    /// companion motion byte, and the jump-key arbitration that clears the directional-state
+    /// low bits.
+    fn control_airborne_player(
+        &mut self,
+        id: super::ScriptActorId,
+        held: &crate::player::input::PlayerInput,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let group = self.actors[index]
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("airborne player control unavailable")?;
+        steer_airborne(control, group, held);
+        Ok(())
     }
 
     /// One of the controller's steppers (`MoveForward` for running, `MoveLeft` or `MoveRight` for a
@@ -1023,5 +1062,73 @@ impl PlayerMovement {
             veto: snapshot.veto,
             accepted_forward: snapshot.accepted_forward,
         })
+    }
+}
+
+/// The airborne controller's writes: forward steering of queued motion 1 in groups 32 and 33,
+/// the falling jump key's clearing of the companion motion byte, and the jump-key arbitration.
+fn steer_airborne(
+    control: &mut super::ActorControlState,
+    group: Option<u16>,
+    held: &crate::player::input::PlayerInput,
+) {
+    if held.forward && control.queued_motion & 127 == 1 && matches!(group, Some(32 | 33)) {
+        control.queued_motion = 2;
+    }
+    if held.jump {
+        // shortcut: the two retained rope-release flags are not modelled (ropes #21);
+        // upgrade when the rope owner retains them.
+        if control.falling_state != 0 {
+            control.motion_companion = 0;
+        }
+        if control.directional_state.iter().all(|byte| byte & 1 == 0) {
+            for byte in &mut control.directional_state {
+                *byte &= !3;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod airborne_tests {
+    use super::*;
+    use crate::player::input::PlayerInput;
+
+    #[test]
+    fn forward_steers_queued_motion_in_the_fall_groups_only() {
+        let held = PlayerInput {
+            forward: true,
+            ..Default::default()
+        };
+        let mut control = super::super::ActorControlState {
+            queued_motion: 0x81,
+            ..Default::default()
+        };
+        steer_airborne(&mut control, Some(30), &held);
+        assert_eq!(control.queued_motion, 0x81);
+        steer_airborne(&mut control, Some(32), &held);
+        assert_eq!(control.queued_motion, 2);
+    }
+
+    #[test]
+    fn the_jump_key_clears_companion_motion_and_the_low_directional_bits() {
+        let held = PlayerInput {
+            jump: true,
+            ..Default::default()
+        };
+        let mut control = super::super::ActorControlState {
+            falling_state: 1,
+            motion_companion: 5,
+            directional_state: [6, 0x82],
+            ..Default::default()
+        };
+        steer_airborne(&mut control, None, &held);
+        assert_eq!(
+            (control.motion_companion, control.directional_state),
+            (0, [4, 0x80])
+        );
+        control.directional_state = [1, 0];
+        steer_airborne(&mut control, None, &held);
+        assert_eq!(control.directional_state, [1, 0]);
     }
 }
