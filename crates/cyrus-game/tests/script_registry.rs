@@ -24024,6 +24024,45 @@ fn point_node_arrival_advances_even_when_claim_is_rejected_and_registers_once() 
     }
 }
 #[test]
+fn point_phase_twelve_claims_the_node_on_arrival_like_a_walked_link() {
+    use cyrus_game::script::ScriptInputs;
+    let (world, scripts, data) = point_node_fixture(8);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+    saved["actors"][0]["control"]["point_command"] =
+        serde_json::json!({"value":7654321,"word":65535,"phase":12,"counter":0});
+    saved["walk_nodes"]["maps"][0] = serde_json::json!([1, 0]);
+    // The receiver stands on node one, so the arrival test passes before any leap starts.
+    let origin = [256, 200, 768];
+    saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(origin);
+    saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!(origin);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .move_ordinary_point(
+            id,
+            [1000000, 999, 1000000],
+            17,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .unwrap();
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(control.point_command.phase, 8);
+    assert_eq!(
+        (control.navigation.current, control.navigation.next),
+        (1, -1)
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, origin);
+}
+
+#[test]
 fn point_node_rejects_missing_weapon_owner_without_claiming_or_registering() {
     use cyrus_game::script::ScriptInputs;
     let (world, scripts, data) = point_node_fixture(8);

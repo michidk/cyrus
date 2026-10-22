@@ -551,7 +551,7 @@ impl ScriptWorld {
         );
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 21 | 22 | 27),
+            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 12 | 21 | 22 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
         if phase == 0 {
@@ -616,6 +616,33 @@ impl ScriptWorld {
                         self.globals.native_command.point_phase = 8;
                     } else {
                         self.globals.native_command.point_phase = 0;
+                    }
+                }
+            } else if phase == 12 {
+                // A flagged link is crossed by a leap: claim the node on arrival, otherwise turn
+                // to it and start the leap once facing.
+                if self.point_destination_arrived(index, destination, tolerance, inputs)? {
+                    self.assign_walk_node(
+                        id,
+                        navigation.next,
+                        super::super::WalkNodeSlot::Current,
+                    )?;
+                    self.globals.native_command.point_phase = 8;
+                } else {
+                    let facing_inputs = self.point_facing_inputs(id, inputs)?;
+                    let sounds = sounds
+                        .as_mut()
+                        .context("point facing requires synchronous sounds")?;
+                    let facing =
+                        self.face_ordinary_point(id, destination, facing_inputs, sounds)?;
+                    if facing == 0 {
+                        let ticks = inputs
+                            .nominal_ticks
+                            .context("point leap requires nominal_ticks")?;
+                        let selected = self
+                            .selected_player_index()
+                            .map(|selected| self.id(selected));
+                        self.begin_point_leap(id, selected.transpose()?, ticks, sounds)?;
                     }
                 }
             } else {
