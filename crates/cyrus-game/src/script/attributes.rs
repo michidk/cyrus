@@ -60,10 +60,13 @@ mod tests {
     #[test]
     fn model_and_attachment_attributes_are_plain_runtime_byte_writes() {
         let mut attributes = vec![0; 256];
-        for index in [25, 26, 27, 28, 33] {
+        for index in [25usize, 26, 27, 28, 33] {
             let result = call(
                 "SetAttribute",
-                &[Argument::Integer(index), Argument::Integer(0x123)],
+                &[
+                    Argument::Integer(index as i32),
+                    Argument::Integer(0x123),
+                ],
                 &mut attributes,
                 None,
             )
