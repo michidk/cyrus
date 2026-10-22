@@ -252,7 +252,7 @@ impl ScriptWorld {
             .as_ref()
             .context("support miss control unavailable")?;
         if control.falling_state != 0 {
-            if self.selected_edge_service(id, query, environment)? {
+            if self.selected_edge_service(id, query, environment, fine_ticks)? {
                 self.end_ordinary_fall(id)?;
                 return Ok(());
             }
@@ -296,7 +296,7 @@ impl ScriptWorld {
                 environment,
                 sounds,
             )? {
-                if self.selected_edge_service(id, query, environment)? {
+                if self.selected_edge_service(id, query, environment, fine_ticks)? {
                     return self.end_ordinary_fall(id);
                 }
                 self.run_ordinary_falling_writer(id, true, fine_ticks, 0, post)?;

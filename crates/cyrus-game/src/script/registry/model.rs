@@ -1000,10 +1000,30 @@ impl ScriptWorld {
                 actor.name()
             )
         };
-        let vertex_index = usize::try_from(vertex).with_context(context)?;
         let reference = self
             .animation_frame(id)?
             .with_context(|| format!("{}: animation frame unavailable", context()))?;
+        self.actor_frame_source_vertex(id, data, reference, vertex)
+    }
+
+    /// Original Q8 source vertex of an authored frame reference of this actor.
+    pub(super) fn actor_frame_source_vertex(
+        &self,
+        id: ScriptActorId,
+        data: &Animations,
+        reference: u32,
+        vertex: i32,
+    ) -> Result<[i32; 3]> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let context = || {
+            format!(
+                "world {} instance {index} actor {} model vertex {vertex}",
+                self.world,
+                actor.name()
+            )
+        };
+        let vertex_index = usize::try_from(vertex).with_context(context)?;
         let frame = if actor.placement().is_some() {
             data.resolve_map_frame(index, reference)
         } else {
