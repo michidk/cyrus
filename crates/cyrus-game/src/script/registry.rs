@@ -3432,7 +3432,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     /// `SheathSword`'s action: when the receiver can sheathe it enters the sheathing state. The
-    /// selected player's HUD timer and camera selection are not wired.
+    /// selected player also refreshes the HUD health timer and returns to camera slot zero.
     fn sheath_sword(&mut self, function: &str, id: ScriptActorId) -> Result<()> {
         let selected = self.selected_player() == Some(id);
         let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
@@ -3448,9 +3448,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         }
         super::combat::begin_sheathing(control);
         if selected {
-            // The selected player's sheath restarts the candle display and returns to the first
-            // camera record.
-            self.registry.globals.request_candle_show();
+            // Preservation refreshes the selected player's health display for 25
+            // ticks when sheathing. This is a HUD timer, distinct from the
+            // logical candle-show request used by weapon cleanup.
+            self.inputs
+                .hud
+                .context("SheathSword selected-player HUD unavailable")?
+                .request_health_feedback();
             if let Some(camera) = self.registry.camera.as_mut() {
                 camera.select(0)?;
             }
