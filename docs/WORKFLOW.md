@@ -86,7 +86,8 @@ Each slice is one file `<N>-<name>-<SUFFIX>`. The suffix says whose move it is:
 
 - `-FINAL` — the slice's goal is done.
 - `-PART` — unfinished; another agent continues from here.
-- `-READY` — the human must act: playtest, decide, supply something.
+- `-READY` — an external dependency must act: record the exact missing input or
+  service, then continue with every autonomous part of the task.
 
 When unsure, choose the suffix that keeps responsibility with you. Past slices
 are never edited or renamed; a correction is a new `N+1` slice. Only the
@@ -109,7 +110,7 @@ The artifact `README.md` starts with:
 status: active | blocked | landed
 updated: 2026-10-10
 owner: <agent/session>
-next: <one line: what the next agent or the human does>
+next: <one line: what the next agent or external dependency does>
 ---
 <one-line summary, at most 200 characters> Current slice: 2-wave-timing-PART.md
 ```
