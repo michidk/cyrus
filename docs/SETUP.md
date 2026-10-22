@@ -138,11 +138,14 @@ workflow token and needs no repository secret. Repeating a matching version/tag
 retries the release without another version commit. Alternatively, update the
 version and lockfile locally and push the version commit and tag.
 
-`Release` checks that every workspace package matches the tag and runs the gates
-while all platforms build; nothing is published unless both succeed. The macOS
+`Release` checks that every workspace package matches the tag and runs lint and
+test gates in parallel while all platforms build. Both verification jobs reuse
+the matching CI caches. Nothing is published unless every job succeeds.
+Verification and native Linux builds remove preinstalled SDKs only when less than
+12 GiB is free; browser builds still free space for their additional swap. The macOS
 Intel build runs on an Apple Silicon runner. Browser release builds use two Cargo
 jobs, extra swap, and the `wasm-release` profile (thin link-time optimization,
-one codegen unit) to stay within hosted-runner memory; build logs include
+16 codegen units) to stay within hosted-runner memory; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
 commits with git-cliff and `cliff.toml`, attaches all packages and `SHA256SUMS`,
 and publishes the release. No release is created when a build fails; successful
@@ -166,9 +169,10 @@ rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # v
 just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
 
-Local browser builds use the `wasm-dev` profile: about three times faster than
-`wasm-release`, with a larger download. Set `CYRUS_WASM_PROFILE=wasm-release`
-to build what releases ship.
+Local browser builds use the `wasm-dev` profile, which inherits `wasm-release`.
+Both use 16 codegen units and thin LTO. Releases trade a larger download for
+shorter compilation compared with the former single-unit profile.
+Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics

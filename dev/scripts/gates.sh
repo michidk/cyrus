@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+stage="${1:-all}"
+case "$stage" in
+    all|lints|test) ;;
+    *) echo "usage: gates.sh [all|lints|test]" >&2; exit 2 ;;
+esac
 source dev/scripts/toolchain.sh
 . dev/scripts/cargo.sh
 # Cargo tests run from crate directories; make the workspace link explicit.
 if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
     export REDGUARD_DIR="$(cd redguard && pwd -P)"
 fi
-dev/scripts/publish-check.sh
-dev/scripts/genmap.sh --check
-python3 dev/scripts/test-build-provenance.py
-python3 -B dev/scripts/test-surface-audio.py
-node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+if [[ "$stage" != test ]]; then
+    dev/scripts/publish-check.sh
+    dev/scripts/genmap.sh --check
+    python3 dev/scripts/test-build-provenance.py
+    python3 -B dev/scripts/test-surface-audio.py
+    node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+fi
+if [[ "$stage" == lints ]]; then exit 0; fi
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 cargo test --workspace -- --nocapture 2>&1 | tee "$log"

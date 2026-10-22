@@ -43,7 +43,7 @@ exit 17
                 os.close(slave)
                 os.close(master)
 
-    def run_gate(self, explicit=None, skip=False, linked=True):
+    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail=""):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scripts = root / "dev/scripts"
@@ -59,6 +59,8 @@ exit 17
                          "browser-provenance.test.mjs", "matched-capture.test.mjs"):
                 (scripts / name).write_text("")
             (scripts / "cargo.sh").write_text('''cargo() {
+    echo "cargo $*"
+    [[ "$1" != "$FAIL_COMMAND" ]] || return 17
     [[ "${REDGUARD_DIR-}" == "$EXPECTED_INSTALL" ]] || return 98
     if [[ "$1" == test && "$TEST_SKIP" == yes ]]; then
         echo 'skipped: no install (synthetic test)'
@@ -69,11 +71,34 @@ exit 17
                 script = scripts / name
                 script.write_text("#!/bin/bash\nexit 0\n")
                 script.chmod(0o755)
-            env = dict(os.environ, EXPECTED_INSTALL=explicit or (str(install) if linked else ""), TEST_SKIP="yes" if skip else "no")
+            env = dict(os.environ, EXPECTED_INSTALL=explicit or (str(install) if linked else ""), TEST_SKIP="yes" if skip else "no", FAIL_COMMAND=fail)
             env.pop("REDGUARD_DIR", None)
             if explicit is not None:
                 env["REDGUARD_DIR"] = explicit
-            return subprocess.run(["bash", str(scripts / "gates.sh")], env=env, capture_output=True, text=True)
+            args = ["bash", str(scripts / "gates.sh")]
+            if stage is not None:
+                args.append(stage)
+            return subprocess.run(args, env=env, capture_output=True, text=True)
+
+    def test_split_gates_cover_the_full_gate(self):
+        def cargo_calls(result):
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return [line for line in result.stdout.splitlines() if line.startswith("cargo ")]
+
+        lint = cargo_calls(self.run_gate(stage="lints"))
+        test = cargo_calls(self.run_gate(stage="test"))
+        self.assertEqual(lint, ["cargo fmt --all -- --check",
+                                "cargo clippy --workspace --all-targets -- -D warnings"])
+        self.assertEqual(test, ["cargo test --workspace -- --nocapture"])
+        self.assertEqual(cargo_calls(self.run_gate()), lint + test)
+        self.assertEqual(cargo_calls(self.run_gate(stage="all")), lint + test)
+
+    def test_split_gate_failures_are_not_hidden(self):
+        for stage, command in (("lints", "fmt"), ("lints", "clippy"), ("test", "test")):
+            with self.subTest(stage=stage, command=command):
+                self.assertEqual(self.run_gate(stage=stage, fail=command).returncode, 17)
+        self.assertNotEqual(self.run_gate(stage="test", skip=True).returncode, 0)
+        self.assertEqual(self.run_gate(stage="unknown").returncode, 2)
 
     def test_gate_resolves_link_without_overriding_explicit_install(self):
         for explicit in (None, "/explicit/install"):

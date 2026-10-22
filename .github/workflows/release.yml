@@ -30,8 +30,16 @@ defaults:
 
 jobs:
   verify:
-    name: Verify release
-    runs-on: ubuntu-24.04
+    name: Verify release (${{ matrix.stage }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [lints, test]
+    env:
+      # Match CI so release verification can restore its compiled dependencies.
+      RUSTFLAGS: "-D warnings"
+      RUST_BACKTRACE: short
     timeout-minutes: 90
     steps:
       - name: Validate release tag
@@ -45,13 +53,21 @@ jobs:
           ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free disk space
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        run: |
+          # Keep 12 GiB for compilation; avoid minutes of SDK removal when it fits.
+          if (( $(df -Pk / | awk 'NR == 2 {print $4}') < 12 * 1024 * 1024 )); then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          fi
+          df -h /
       - name: Install Bevy's Linux libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: ${{ matrix.stage }}
+          cache-workspace-crates: true
       - name: Verify workspace versions match tag
         run: |
           metadata="$(cargo metadata --locked --no-deps --format-version 1)"
@@ -61,7 +77,10 @@ jobs:
             exit 1
           fi
       - name: Run gates
-        run: bash dev/scripts/gates.sh
+        env:
+          GATE_STAGE: ${{ matrix.stage }}
+          RUST_MIN_STACK: 8388608
+        run: bash dev/scripts/gates.sh "$GATE_STAGE"
 
   # Builds start alongside verify; publishing still requires it.
   native:
@@ -88,7 +107,12 @@ jobs:
           persist-credentials: false
       - name: Free Linux disk space
         if: runner.os == 'Linux'
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        run: |
+          # Keep 12 GiB for compilation; avoid minutes of SDK removal when it fits.
+          if (( $(df -Pk / | awk 'NR == 2 {print $4}') < 12 * 1024 * 1024 )); then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          fi
+          df -h /
       - name: Install Bevy's Linux libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev

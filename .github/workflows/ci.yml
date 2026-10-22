@@ -38,7 +38,7 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          key: ${{ hashFiles('Cargo.toml') }}
+          shared-key: test
           cache-workspace-crates: true
 
       - name: Test
@@ -63,6 +63,9 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: lints
+          cache-workspace-crates: true
 
       - name: Run publish-check
         run: dev/scripts/publish-check.sh

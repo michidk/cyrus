@@ -43,18 +43,17 @@ rodio = { path = "dev/vendor/rodio" }
 [patch."https://github.com/taboky-dev/bevy_egui.git"]
 bevy_egui = { version = "=0.43.0" }
 
-# Thin LTO fits hosted-runner memory; one codegen unit keeps the shipped download small.
+# Thin LTO keeps downloads small; parallel codegen avoids the single-unit build bottleneck.
 [profile.wasm-release]
 inherits = "release"
 opt-level = "s"
 lto = "thin"
-codegen-units = 1
+codegen-units = 16
 strip = true
 
-# Local browser builds: about 3x faster than wasm-release, with a larger download.
+# Keep a separate local profile for development overrides.
 [profile.wasm-dev]
 inherits = "wasm-release"
-codegen-units = 16
 
 # Backtraces keep file and line; full variable debug info mostly slows linking.
 [profile.dev]
