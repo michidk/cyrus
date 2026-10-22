@@ -320,6 +320,21 @@ pub fn defence_arc(own_heading: i32, bearing: i32, arc: i32, arc_center: i32) ->
     center.wrapping_add(arc) > angle && center.wrapping_sub(arc) < angle
 }
 
+/// [`defence_arc`] with the half-width scaled by `scale`, evaluated in single precision as the
+/// forward-move reach test does with its factor of six.
+pub fn defence_arc_scaled(
+    own_heading: i32,
+    bearing: i32,
+    arc: i32,
+    arc_center: i32,
+    scale: f32,
+) -> bool {
+    let angle = heading_difference(own_heading, bearing).abs() as f32;
+    let center = arc_center.wrapping_add(512) as f32;
+    let half = arc as f32 * scale;
+    angle < center + half && center - half < angle
+}
+
 /// Arc admission from the actors' ordinary Q8 origins and receiver heading.
 /// Follows preservation's [bearing inputs](https://github.com/michidk/redguard-preservation/pull/113):
 /// wrapping differences shift eight bits, then Z/Y/X is normalized before polar conversion.
@@ -330,11 +345,34 @@ pub fn defence_arc_from_positions(
     arc: i32,
     arc_center: i32,
 ) -> bool {
+    defence_arc_from_positions_scaled(
+        own_position,
+        target_position,
+        own_heading,
+        arc,
+        arc_center,
+        1.0,
+    )
+}
+
+/// [`defence_arc_from_positions`] with the arc half-width scaled by `scale`.
+pub fn defence_arc_from_positions_scaled(
+    own_position: [i32; 3],
+    target_position: [i32; 3],
+    own_heading: i32,
+    arc: i32,
+    arc_center: i32,
+    scale: f32,
+) -> bool {
     let delta: [i32; 3] =
         std::array::from_fn(|axis| target_position[axis].wrapping_sub(own_position[axis]) >> 8);
     let [x, _, z] = super::spatial::normalized_direction([delta[2], delta[1], delta[0]]);
     let bearing = (1024 - i32::from(super::spatial::query_bearing(x, z))) & 2047;
-    defence_arc(own_heading, bearing, arc, arc_center)
+    if scale == 1.0 {
+        defence_arc(own_heading, bearing, arc, arc_center)
+    } else {
+        defence_arc_scaled(own_heading, bearing, arc, arc_center, scale)
+    }
 }
 
 /// Ordinary defence forward-arc admission from local Q8 actor positions.
@@ -931,6 +969,20 @@ mod tests {
         assert!(super::defence_arc(0, 449, 64, 0));
         assert!(super::defence_arc(2047, 511, 64, 0));
         assert!(!super::defence_arc(0, 576, 64, 0));
+    }
+
+    #[test]
+    fn scaled_arc_widens_the_half_width_with_strict_edges() {
+        assert!(!super::defence_arc_scaled(0, 128, 64, 0, 6.0));
+        assert!(super::defence_arc_scaled(0, 129, 64, 0, 6.0));
+        assert!(super::defence_arc_scaled(0, 895, 64, 0, 6.0));
+        assert!(!super::defence_arc_scaled(0, 896, 64, 0, 6.0));
+        for bearing in [0, 448, 449, 575, 576, 1500] {
+            assert_eq!(
+                super::defence_arc_scaled(0, bearing, 64, 0, 1.0),
+                super::defence_arc(0, bearing, 64, 0)
+            );
+        }
     }
 
     #[test]

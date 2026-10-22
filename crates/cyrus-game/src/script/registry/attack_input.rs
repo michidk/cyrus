@@ -80,8 +80,95 @@ impl ScriptWorld {
         }
     }
 
+    /// The reach test before a combo move starts. A start proceeds when an actor with a combat
+    /// record in the move's arc and range is attackable (attribute 97 zero, or lifecycle selector 6),
+    /// and otherwise unless an actor in that arc and range is a protected one (attribute 97 nonzero,
+    /// selector neither 6 nor 8): then the player speaks the opponent-unarmed taunt (type 11 when the
+    /// target's attribute 118 is nonzero, else 10) and the move does not start. The forward move (3)
+    /// tests the protected actor against an arc six times as wide. Arc and range come from the first
+    /// motion of the move's own attack slot; the receiver itself is not excluded.
+    fn attack_reach_admits(
+        &mut self,
+        id: ScriptActorId,
+        kind: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let slot = usize::try_from(kind).context("attack reach: negative move")?;
+        // An unpopulated slot is refused by the move's own start gate.
+        let Some(attack) = self.combat_attack(id, slot)? else {
+            return Ok(true);
+        };
+        let motion = attack
+            .motions
+            .first()
+            .with_context(|| format!("attack reach: slot {slot} first motion unavailable"))?;
+        let arc = motion
+            .arc
+            .with_context(|| format!("attack reach: slot {slot} arc unavailable"))?;
+        let (center, near, far) = (
+            motion.arc_center.unwrap_or(0),
+            motion.min_range,
+            motion.max_range,
+        );
+        let own_position = self.query_position(id)?;
+        let own = self.spatial(id)?.local;
+        let traversal = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .context("attack reach: ordinary traversal unavailable")?
+            .to_vec();
+        let in_reach = |world: &Self, other: ScriptActorId, scale: f32| -> Result<bool> {
+            let other_position = world.query_position(other)?;
+            let distance =
+                cyrus_collision::distance::rounded_distance(std::array::from_fn(|axis| {
+                    other_position[axis].wrapping_sub(own_position[axis])
+                }))?;
+            Ok(distance > near
+                && distance < far
+                && crate::script::decision::defence_arc_from_positions_scaled(
+                    own.position,
+                    world.spatial(other)?.local.position,
+                    i32::from(own.angles[1]),
+                    arc,
+                    center,
+                    scale,
+                ))
+        };
+        for &other in &traversal {
+            let index = self.resolve(other)?;
+            let actor = &self.actors[index];
+            let Some(control) = actor.control.as_ref() else {
+                continue;
+            };
+            if control.combat.is_some()
+                && in_reach(self, other, 1.0)?
+                && (actor.attributes[97] == 0 || control.death_selector == 6)
+            {
+                return Ok(true);
+            }
+        }
+        for &other in &traversal {
+            let index = self.resolve(other)?;
+            let actor = &self.actors[index];
+            let selector = actor.control.as_ref().map(|control| control.death_selector);
+            if matches!(selector, Some(6 | 8))
+                || actor.attributes[97] == 0
+                || !in_reach(self, other, if kind == 3 { 6.0 } else { 1.0 })?
+            {
+                continue;
+            }
+            let trigger = if actor.attributes[118] != 0 { 11 } else { 10 };
+            self.request_combat_taunt(id, trigger, 0, inputs, random, sounds)?;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     /// The armed player's action key after movement dispatch (jump key not held): pick a combo move
-    /// from the latches and start it through the defence start. The original's in-reach test before a start is not modelled.
+    /// from the latches and start it through the defence start once the reach test admits it.
     pub(super) fn control_player_attack(
         &mut self,
         id: ScriptActorId,
@@ -151,6 +238,9 @@ impl ScriptWorld {
         let Some(kind) = chosen else {
             return Ok(());
         };
+        if !self.attack_reach_admits(id, kind, inputs, random, sounds)? {
+            return Ok(());
+        }
         let weapon = super::WeaponInputs {
             selected_player: id,
             item_system_ready: inputs

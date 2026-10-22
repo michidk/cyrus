@@ -171,7 +171,13 @@ impl ScriptWorld {
                     return Ok(());
                 }
             }
-            let taunt = if matches!(trigger, 2 | 6) {
+            // Opponent-unarmed taunts wait on the sample slot of the retained cache entry, which
+            // is not retained per actor here.
+            anyhow::ensure!(
+                !(matches!(trigger, 10 | 11) && combat.taunt_cache.is_some()),
+                "opponent-unarmed taunt gate over the retained cache sample is unsupported"
+            );
+            let taunt = if matches!(trigger, 2 | 6 | 10 | 11) {
                 super::select_combat_taunt(actor, trigger, random).cloned()
             } else {
                 let chosen = super::super::combat::select_timed_combat_taunt(
@@ -221,7 +227,7 @@ impl ScriptWorld {
             Ok(())
         };
         request().with_context(|| {
-            let selection = if matches!(trigger, 2 | 6) {
+            let selection = if matches!(trigger, 2 | 6 | 10 | 11) {
                 "ordered"
             } else {
                 "timed"
