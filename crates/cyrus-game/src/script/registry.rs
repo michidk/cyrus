@@ -2620,6 +2620,9 @@ pub struct ScriptActors {
     pub current: Option<ScriptWorld>,
     visited: BTreeMap<u32, ScriptWorld>,
     discard_current_on_release: bool,
+    /// Global SOUP flags survive ordinary world replacement. New Game clears this snapshot
+    /// before releasing the prior world, matching the session initializer's fresh definitions.
+    retained_flags: Option<super::GlobalFlagsSnapshot>,
     pub(crate) restored_generation: Option<u64>,
     generation: u64,
     requested: Option<Handle<Scripts>>,
@@ -2633,6 +2636,7 @@ impl Default for ScriptActors {
             current: None,
             visited: BTreeMap::new(),
             discard_current_on_release: false,
+            retained_flags: None,
             restored_generation: None,
             generation: 0,
             requested: None,
@@ -2692,6 +2696,7 @@ impl ScriptActors {
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {
         self.world_loop_outcome = None;
+        self.retained_flags = None;
         if let Some(world) = self.current.as_mut() {
             let player = world.selected_player_index();
             let lockout = world.globals.lockout_player(0);
@@ -2710,6 +2715,7 @@ impl ScriptActors {
         if let Some(mut world) = self.current.take() {
             self.globals = std::mem::take(&mut world.globals);
             if !self.discard_current_on_release {
+                self.retained_flags = Some(world.snapshot_flags());
                 // An unfinished revisit must not overwrite its retained actor state.
                 self.visited.entry(world.world).or_insert(world);
             }
@@ -2798,6 +2804,9 @@ pub(super) fn prepare(
         }
         actors.globals.prepare_dialogue(&scripts.dialogue)?;
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
+        if let Some(snapshot) = actors.retained_flags.clone() {
+            world.restore_flags(snapshot)?;
+        }
         world.prepare_markers(animation_data)?;
         world.prepare_navigation(animation_data)?;
         if clock.is_none() {
@@ -2807,6 +2816,7 @@ pub(super) fn prepare(
     })();
     match result {
         Ok(mut world) => {
+            actors.retained_flags = None;
             world.globals = std::mem::take(&mut actors.globals);
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
