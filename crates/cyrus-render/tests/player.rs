@@ -20,6 +20,9 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
         .init_resource::<AccumulatedMouseMotion>()
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
         .add_plugins((PlayerPlugin, cyrus_render::camera::CameraPlugin));
+    // The game camera drive is on by default and needs a script world; without one the view camera
+    // would keep the flown pose. This test covers the player-transform camera it replaces.
+    app.insert_resource(cyrus_game::script::CameraDrive { enabled: false });
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
