@@ -919,6 +919,7 @@ impl RegistryCandidate {
             visited: self.visited,
             discard_current_on_release: false,
             retained_flags: None,
+            retained_health: None,
             restored_generation,
             generation: self.generation,
             requested: None,

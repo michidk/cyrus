@@ -2628,6 +2628,10 @@ pub struct ScriptActors {
     /// Global SOUP flags survive ordinary world replacement. New Game clears this snapshot
     /// before releasing the prior world, matching the session initializer's fresh definitions.
     retained_flags: Option<super::GlobalFlagsSnapshot>,
+    /// The selected player's health (attribute 3) when the last world was released. The original
+    /// retains it outside the world, copies it into both player records at world entry and resets
+    /// it to 100 at New Game (preservation engine/menu.md).
+    retained_health: Option<u8>,
     pub(crate) restored_generation: Option<u64>,
     generation: u64,
     requested: Option<Handle<Scripts>>,
@@ -2642,6 +2646,7 @@ impl Default for ScriptActors {
             visited: BTreeMap::new(),
             discard_current_on_release: false,
             retained_flags: None,
+            retained_health: None,
             restored_generation: None,
             generation: 0,
             requested: None,
@@ -2702,6 +2707,7 @@ impl ScriptActors {
     pub fn begin_new_game(&mut self) {
         self.world_loop_outcome = None;
         self.retained_flags = None;
+        self.retained_health = None;
         if let Some(world) = self.current.as_mut() {
             let player = world.selected_player_index();
             let lockout = world.globals.lockout_player(0);
@@ -2721,6 +2727,11 @@ impl ScriptActors {
             self.globals = std::mem::take(&mut world.globals);
             if !self.discard_current_on_release {
                 self.retained_flags = Some(world.snapshot_flags());
+                // shortcut: read at release; the original mirrors it at each health change, so a raw
+                // SetAttribute(3) from a script persists here but not there. Upgrade with evidence.
+                self.retained_health = world
+                    .selected_player_index()
+                    .map(|player| world.actors[player].attributes[3]);
                 // An unfinished revisit must not overwrite its retained actor state.
                 self.visited.entry(world.world).or_insert(world);
             }
@@ -2812,6 +2823,16 @@ pub(super) fn prepare(
         if let Some(snapshot) = actors.retained_flags.clone() {
             world.restore_flags(snapshot)?;
         }
+        if let Some(health) = actors.retained_health {
+            for actor in world.actors.iter_mut().filter(|actor| {
+                matches!(
+                    actor.source,
+                    ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+                )
+            }) {
+                actor.attributes[3] = health;
+            }
+        }
         world.prepare_markers(animation_data)?;
         world.prepare_navigation(animation_data)?;
         if clock.is_none() {
@@ -2822,6 +2843,7 @@ pub(super) fn prepare(
     match result {
         Ok(mut world) => {
             actors.retained_flags = None;
+            actors.retained_health = None;
             world.globals = std::mem::take(&mut actors.globals);
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
