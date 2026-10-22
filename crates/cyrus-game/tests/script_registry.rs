@@ -16864,6 +16864,133 @@ fn session_request_natives_raise_requests_for_the_host() {
     assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
 }
 
+/// Fixture whose `LOGIC` script calls the given natives on every ordinary update.
+fn player_swap_fixture(
+    calls: &[(&str, &[i32])],
+) -> (Scripts, ScriptWorld, cyrus_assets::animation::Animations) {
+    let (scripts, world, data, _) = player_walking_fixture_with(|scripts| {
+        let mut steps = BTreeMap::new();
+        for (index, (name, arguments)) in calls.iter().enumerate() {
+            scripts.definition.functions.push(Function {
+                name: (*name).into(),
+                param_count: arguments.len() as u8,
+                kind: CallKind::Function,
+            });
+            let id = scripts.definition.functions.len() as u16 - 1;
+            steps.insert(
+                index as u32,
+                assign_call(index as u32 + 1, id, name, arguments),
+            );
+        }
+        steps.insert(
+            calls.len() as u32,
+            Step {
+                next: calls.len() as u32 + 1,
+                operation: Operation::End { target: 0 },
+            },
+        );
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps;
+    });
+    (scripts, world, data)
+}
+
+fn update_player_swap_world(world: &mut ScriptWorld, data: &cyrus_assets::animation::Animations) {
+    world
+        .update_ordinary(
+            data,
+            [0, 0],
+            cyrus_game::script::OrdinaryInputs {
+                scene: None,
+                scripts: cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+}
+
+#[test]
+fn push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration() {
+    use cyrus_game::script::{ScriptActorSource, WorldLoopOutcome};
+    let (_, mut world, mut data) = player_swap_fixture(&[("PushPlayer", &[1])]);
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    update_player_swap_world(&mut world, &data);
+    let role = |world: &ScriptWorld, source: ScriptActorSource| {
+        world
+            .actors()
+            .iter()
+            .position(|actor| {
+                std::mem::discriminant(&actor.source) == std::mem::discriminant(&source)
+            })
+            .unwrap()
+    };
+    let cyrus = role(&world, ScriptActorSource::Player);
+    let gremlin = role(&world, ScriptActorSource::AlternatePlayer);
+    assert!(!world.globals().player_swapped());
+    world
+        .initialize_player_spatial(world.id(gremlin).unwrap(), [404, -505, 606], [0, 1185, 0])
+        .unwrap();
+    let placement = world.spatial(world.id(cyrus).unwrap()).unwrap().local;
+    assert_eq!(
+        world.finish_world_loop(1).unwrap(),
+        WorldLoopOutcome::Continue
+    );
+    assert!(world.globals().player_swapped());
+    assert_eq!(world.selected_player(), Some(world.id(gremlin).unwrap()));
+    let moved = world.spatial(world.id(gremlin).unwrap()).unwrap().local;
+    assert_eq!(moved.position, placement.position);
+    assert_eq!(moved.angles[1], placement.angles[1]);
+    assert_eq!(
+        world.globals_mut().take_host_requests(),
+        cyrus_game::script::HostRequests::default()
+    );
+}
+
+#[test]
+fn pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration_as_push() {
+    use cyrus_game::script::WorldLoopOutcome;
+    type Calls<'a> = &'a [(&'a str, &'a [i32])];
+    let cases: [(Calls, bool); 3] = [
+        (&[("PopPlayer", &[1])], false),
+        (&[("PushPlayer", &[1]), ("PopPlayer", &[1])], false),
+        (&[("PushPlayer", &[1]), ("PushPlayer", &[1])], true),
+    ];
+    for (calls, swapped) in cases {
+        let (_, mut world, mut data) = player_swap_fixture(calls);
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        update_player_swap_world(&mut world, &data);
+        let gremlin = world
+            .actors()
+            .iter()
+            .position(|actor| {
+                matches!(
+                    actor.source,
+                    cyrus_game::script::ScriptActorSource::AlternatePlayer
+                )
+            })
+            .unwrap();
+        world
+            .initialize_player_spatial(world.id(gremlin).unwrap(), [404, -505, 606], [0, 1185, 0])
+            .unwrap();
+        assert_eq!(
+            world.finish_world_loop(1).unwrap(),
+            WorldLoopOutcome::Continue
+        );
+        assert_eq!(world.globals().player_swapped(), swapped, "{calls:?}");
+        assert_eq!(
+            world.globals_mut().take_host_requests(),
+            cyrus_game::script::HostRequests::default()
+        );
+    }
+}
+
 #[test]
 fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
     use cyrus_game::script::{

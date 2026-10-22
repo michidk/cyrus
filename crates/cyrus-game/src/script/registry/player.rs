@@ -13,6 +13,7 @@ use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
 use cyrus_world::animation::AnimationSound;
 
+#[derive(Clone)]
 pub(super) struct PlayerMovement {
     startup: WalkingStartup,
     pub(super) history: SupportHistory,

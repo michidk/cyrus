@@ -43,6 +43,7 @@ pub enum SupportSource {
 
 /// Shared fallback history, including metadata retained by a failed support query.
 /// Seed from the caller's runtime state; actor activation and reset are separate.
+#[derive(Clone)]
 pub struct SupportHistory {
     ticks: u32,
     metadata: u8,

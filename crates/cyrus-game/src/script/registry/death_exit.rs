@@ -101,7 +101,76 @@ impl ScriptWorld {
                 WorldLoopOutcome::Continue
             })
         })();
+        if matches!(result, Ok(WorldLoopOutcome::Continue)) {
+            self.consume_player_swap_requests(ticks)
+                .with_context(|| format!("world {} PushPlayer/PopPlayer", self.world))?;
+        }
         result.with_context(|| format!("world {} end-of-frame exit", self.world))
+    }
+
+    /// `PushPlayer`, then `PopPlayer`, at the end of a world-loop iteration that does not leave
+    /// the loop. Each clears its own flag whether or not it acts; push acts only while the swap
+    /// state is clear and pop only while it is set. The exclusion of the inactive role follows
+    /// from the retained swap state, which the world loop re-asserts every iteration.
+    fn consume_player_swap_requests(&mut self, ticks: u32) -> Result<()> {
+        let request = self.globals.request_mut();
+        let push = std::mem::take(&mut request.push_player);
+        let pop = std::mem::take(&mut request.pop_player);
+        if push && !self.globals.player_swapped {
+            self.exchange_players(true, ticks)?;
+        }
+        if pop && self.globals.player_swapped {
+            self.exchange_players(false, ticks)?;
+        }
+        Ok(())
+    }
+
+    /// Select the other player role: it takes the selected role's position, heading and retained
+    /// movement state, then the camera defaults follow the new selection. Returning to CYRUS
+    /// also issues an ordinary request for animation group zero twice.
+    fn exchange_players(&mut self, swapped: bool, ticks: u32) -> Result<()> {
+        let from = self
+            .selected_player_index()
+            .context("player swap: selected player unavailable")?;
+        let to = self
+            .actors
+            .iter()
+            .enumerate()
+            .position(|(index, actor)| {
+                index != from
+                    && matches!(
+                        actor.source,
+                        super::ScriptActorSource::Player
+                            | super::ScriptActorSource::AlternatePlayer
+                    )
+            })
+            .context("player swap: other player role unavailable")?;
+        let placement = self
+            .spatial
+            .as_ref()
+            .context("player swap: spatial state not prepared")?
+            .actor(from)?
+            .local;
+        let movement = self.actors[from].player_movement.clone();
+        let selected = self.select_player(swapped)?;
+        anyhow::ensure!(
+            selected.index == to,
+            "player swap selected an unexpected role"
+        );
+        self.spatial
+            .as_mut()
+            .context("player swap: spatial state not prepared")?
+            .actor_mut(to)?
+            .relocate(placement.position, placement.angles[1]);
+        self.actors[to].player_movement = movement;
+        self.refresh_transform(selected)?;
+        if !swapped && let Some(animation) = self.actors[to].animation.as_mut() {
+            for _ in 0..2 {
+                let frame = animation.playback.request(0, 0, ticks)?;
+                animation.frame = frame.or(animation.frame);
+            }
+        }
+        Ok(())
     }
 }
 
