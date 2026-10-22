@@ -198,19 +198,21 @@ fn the_walk_key_with_only_left_or_right_selects_a_sidestep() {
 }
 
 #[test]
-fn jumping_is_rejected_but_activation_reaches_the_script_hook() {
-    let error = select_sheathed_action(
-        &PlayerInput {
-            forward: true,
-            jump: true,
-            ..Default::default()
-        },
-        state(),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(error.contains("sheathed player controller"), "{error}");
-    assert!(error.contains("jumping"), "{error}");
+fn jumping_does_not_change_the_selector_and_activation_reaches_the_script_hook() {
+    // The jump key runs the controller's jump arbitration, not the walking selector, so the
+    // selector keeps returning the movement the other keys ask for.
+    assert_eq!(
+        select_sheathed_action(
+            &PlayerInput {
+                forward: true,
+                jump: true,
+                ..Default::default()
+            },
+            state(),
+        )
+        .unwrap(),
+        SheathedAction::RunForward
+    );
 
     assert_eq!(
         select_sheathed_action(
