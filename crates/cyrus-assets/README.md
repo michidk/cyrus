@@ -1,6 +1,6 @@
 # cyrus-assets
 
-Script cache schema 27 retains the installed falling-death limit in nominal ticks and the
+Script cache schema 28 retains the installed rope jump-off speed and attach window, the installed falling-death limit in nominal ticks, the
 installed lineup distance in Q8 units, and the frame count of every installed texture bank
 image. It also lists the world's shell scripts (the debug shell unless SYSTEM.INI `final_version`
 is set, `COMMON`, and the script named after the map file) in creation order. Re-export older

@@ -76,6 +76,10 @@ pub struct FallLanding {
 /// Eligibility and stage ordering follow preservation's engine/animation.md and SOUP.md.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UpdateSettings {
+    /// `[game] rope_jump_add` and `rope_attach_angle`; absent in caches exported before the rope
+    /// attachment had a consumer (re-export).
+    #[serde(default)]
+    pub rope: Option<RopeSettings>,
     /// Falling-death limit in nominal ticks, with original signed clamp and wrapping conversion.
     pub fall_death_ticks: i32,
     /// `[game] fall_death_height`, `fall_hurt_height` and `fall_hurt_zap` in map units; absent in
@@ -91,6 +95,14 @@ pub struct UpdateSettings {
     pub disable_master_slaves: bool,
 }
 
+/// Installed rope attachment values, as the engine stores them: the jump-off speed is
+/// `rope_jump_add` shifted left eight bits and the attach window is `rope_attach_angle & 0x3ff`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RopeSettings {
+    pub jump_add: i32,
+    pub attach_angle: i32,
+}
+
 impl UpdateSettings {
     /// Missing switches are unsupported rather than assigned invented defaults.
     #[cfg(feature = "parsers")]
@@ -104,6 +116,18 @@ impl UpdateSettings {
             .convert_static_angles
             .context("SYSTEM.INI [debug] convert_static_angles missing")?;
         Ok(Self {
+            rope: Some(RopeSettings {
+                jump_add: settings
+                    .game
+                    .rope_jump_add
+                    .context("SYSTEM.INI [game] rope_jump_add missing")?
+                    .wrapping_shl(8),
+                attach_angle: settings
+                    .game
+                    .rope_attach_angle
+                    .context("SYSTEM.INI [game] rope_attach_angle missing")?
+                    & 0x3ff,
+            }),
             fall_death_ticks: settings
                 .game
                 .player_fall_dead_time
@@ -519,7 +543,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 27,
+            self.version == 28,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

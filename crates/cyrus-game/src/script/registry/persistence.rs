@@ -36,6 +36,8 @@ struct ControlSnapshot {
     collision_response_age: u8,
     overlap_contact_identifier: u16,
     rope_attached: bool,
+    #[serde(default)]
+    rope_speed: i32,
     torch_burning: u8,
     #[serde(default)]
     torch_saved: u8,
@@ -117,6 +119,7 @@ impl ControlSnapshot {
             collision_response_age: control.collision_response_age,
             overlap_contact_identifier: control.overlap_contact_identifier,
             rope_attached: control.rope_attached,
+            rope_speed: control.rope_speed,
             torch_burning: control.torch_burning,
             torch_saved: control.torch_saved,
             weapon_drawn: control.weapon_drawn,
@@ -166,6 +169,7 @@ impl ControlSnapshot {
             overlap_contact_identifier: self.overlap_contact_identifier,
             ground_kind: 0,
             rope_attached: self.rope_attached,
+            rope_speed: self.rope_speed,
             torch_burning: self.torch_burning,
             torch_saved: self.torch_saved,
             weapon_drawn: self.weapon_drawn,

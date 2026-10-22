@@ -143,7 +143,10 @@ impl ScriptWorld {
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
         super::reassert_player_update_exclusion(&mut self.actors, &self.globals);
         // The render lists and the rope system run before the shells and the ordinary actors.
-        self.update_ropes(i32::try_from(ticks).unwrap_or(i32::MAX));
+        self.update_ropes(
+            i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
+            i32::try_from(ticks).unwrap_or(i32::MAX),
+        );
         self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();
@@ -252,6 +255,16 @@ impl ScriptWorld {
                         )?;
                     }
                 }
+                // The selected player on a rope skips the movement and collision stages below.
+                let on_rope = selected_player
+                    && self.update_player_rope(
+                        id,
+                        data,
+                        inputs.player_controller.map(|controller| controller.held),
+                        i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
+                        ticks,
+                        sounds,
+                    )?;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
                 if let Some(scale) = inputs.frame_scale {
                     self.run_pre_script_displacement(id, scale)?;
@@ -274,6 +287,7 @@ impl ScriptWorld {
                 // actually admitted (all nonplayers and controller-driven input).
                 let collision = if self.actors[id.index].attributes[1] != 0
                     && (!selected_player || inputs.player_controller.is_some())
+                    && !on_rope
                 {
                     let scene = scene
                         .ok_or_else(|| anyhow::anyhow!("ordinary collision scene unavailable"))?;
@@ -323,20 +337,22 @@ impl ScriptWorld {
                     }),
                     ..inputs
                 };
-                let player_query = if selected_player && inputs.player_controller.is_some() {
-                    Some(super::ground::OrdinaryGroundQuery {
-                        scene: scene
-                            .ok_or_else(|| anyhow::anyhow!("player collision scene unavailable"))?,
-                        animations: data,
-                        prepared: collision.as_ref().ok_or_else(|| {
-                            anyhow::anyhow!("player collision candidates unavailable")
-                        })?,
-                        distance: scene.unwrap().settings.post_collide_height,
-                        sidedness: false,
-                    })
-                } else {
-                    None
-                };
+                let player_query =
+                    if selected_player && inputs.player_controller.is_some() && !on_rope {
+                        Some(super::ground::OrdinaryGroundQuery {
+                            scene: scene.ok_or_else(|| {
+                                anyhow::anyhow!("player collision scene unavailable")
+                            })?,
+                            animations: data,
+                            prepared: collision.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!("player collision candidates unavailable")
+                            })?,
+                            distance: scene.unwrap().settings.post_collide_height,
+                            sidedness: false,
+                        })
+                    } else {
+                        None
+                    };
                 let player_timing = crate::clock::ClockStep {
                     frame_scale: inputs.frame_scale.expect("validated frame scale"),
                     nominal_ticks: ticks,
@@ -360,7 +376,7 @@ impl ScriptWorld {
                         random,
                         sounds,
                     )?;
-                } else if !(selected_role && inputs.player_controller.is_none()) {
+                } else if !(selected_role && inputs.player_controller.is_none()) && !on_rope {
                     // A host update without a player-controller sample is a
                     // preparation/timer pass. Do not drive the selected
                     // player's input-owned native hook from that pass; the
@@ -459,7 +475,7 @@ impl ScriptWorld {
                 {
                     self.actors[id.index].maintain_light(ticks);
                 }
-                if self.actors[id.index].attributes[1] != 0 {
+                if self.actors[id.index].attributes[1] != 0 && !on_rope {
                     let scene = anyhow::Context::context(
                         scene,
                         "ordinary late collision scene unavailable",
@@ -527,16 +543,18 @@ impl ScriptWorld {
                     self.globals.locomotion_called,
                 );
                 // The selected player's carried destination is admitted against geometry.
-                self.follow_ordinary_support(
-                    id,
-                    selected_role.then_some(id),
-                    scene.map(|scene| super::follow::FollowAdmission {
-                        scene,
-                        animations: data,
-                        view,
-                        actors: &selected,
-                    }),
-                )?;
+                if !on_rope {
+                    self.follow_ordinary_support(
+                        id,
+                        selected_role.then_some(id),
+                        scene.map(|scene| super::follow::FollowAdmission {
+                            scene,
+                            animations: data,
+                            view,
+                            actors: &selected,
+                        }),
+                    )?;
+                }
                 self.restore_axis_locks(id)?;
                 if self.spatial(id)?.parent.is_none() {
                     self.refresh_transform(id)?;

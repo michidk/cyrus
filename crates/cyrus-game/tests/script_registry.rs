@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 27,
+        version: 28,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -98,6 +98,7 @@ fn cache() -> Scripts {
         },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
+            rope: None,
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,

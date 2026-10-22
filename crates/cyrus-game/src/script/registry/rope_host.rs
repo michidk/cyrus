@@ -1,0 +1,543 @@
+//! The selected player on a rope: the attach test, the attached controls, the release and the
+//! placement on the node. Rules are preservation's engine/SOUP.md "Rope attachment", "Rope control
+//! while attached" and "Rope attachment removal"; the rope model itself is [`crate::rope`].
+//!
+//! Shortcuts, each recorded in docs/DIFFERENCES.md: the grabbed link is the lowest touching link
+//! (the hand-height refinement needs the animation hand point), the player is placed on the link
+//! without the hand offset, a downward climb is not limited by the floor probe, and the climb helpers'
+//! animation-record byte checks are not modelled.
+use super::{ScriptActorId, ScriptWorld};
+use crate::player::input::PlayerInput;
+use crate::rope::{Attachment, PumpKeys};
+use anyhow::{Context, Result};
+use cyrus_assets::animation::Animations;
+
+/// Group requests the rope controls make.
+const GROUP_IDLE: u16 = 6;
+const GROUP_CLIMB_UP: u16 = 82;
+const GROUP_CLIMB_DOWN: u16 = 83;
+const GROUP_GRAB: u16 = 84;
+const GROUP_JUMP: u16 = 85;
+/// The ordinary jump entry's queued motion after a rope release.
+const QUEUED_ROPE_JUMP: u8 = 24;
+/// Engine Z of world Z zero in map units (the importer's position decode offset).
+const ENGINE_Z_OFFSET: f64 = 16_777_215.0 / 256.0;
+
+/// Retained state of the selected player's rope handling. Not saved: ropes are rebuilt with the world.
+#[derive(Clone, Debug, Default)]
+pub(super) struct PlayerRope {
+    /// The rope the player last held; skipped while the 24-tick countdown (the runtime jump
+    /// selector) runs.
+    last_rope: Option<usize>,
+    /// The jump key was held when the rope was grabbed; the release waits for it to be up.
+    latch: bool,
+    turn_rate: i32,
+    turn_total: i32,
+    /// The node position of the previous update, engine map units, for the node's measured speed.
+    previous_node: Option<[f64; 3]>,
+}
+
+fn angle_difference(a: i32, b: i32) -> i32 {
+    let d = (a & 0x7ff) - (b & 0x7ff);
+    if d > 0x400 {
+        d - 0x800
+    } else if d < -0x400 {
+        d + 0x800
+    } else {
+        d
+    }
+}
+
+/// The shorter heading difference of an actor to a rope heading or to that heading plus 0x400.
+fn rope_heading_difference(rope_heading: i32, actor_heading: i32) -> i32 {
+    let first = angle_difference(rope_heading, actor_heading);
+    let second = angle_difference((rope_heading + 0x400) & 0x7ff, actor_heading);
+    if first.abs() < second.abs() {
+        first
+    } else {
+        second
+    }
+}
+
+/// Exported world position to engine map units.
+fn to_engine(world: [f32; 3]) -> [f64; 3] {
+    [
+        -f64::from(world[0]) * f64::from(crate::ENGINE_UNIT_SCALE),
+        -f64::from(world[1]) * f64::from(crate::ENGINE_UNIT_SCALE),
+        f64::from(world[2]) * f64::from(crate::ENGINE_UNIT_SCALE) + ENGINE_Z_OFFSET,
+    ]
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
+impl ScriptWorld {
+    /// Whether the selected player hangs on a rope; the movement stages skip while it does.
+    pub fn selected_player_on_rope(&self) -> bool {
+        self.selected_player_index()
+            .and_then(|index| self.actors[index].control.as_ref())
+            .is_some_and(|control| control.rope_attached)
+    }
+
+    /// One selected-player rope update before the movement stages: while attached the controls run
+    /// and the player is placed on its node; otherwise the attach test runs. Returns whether the
+    /// player is on a rope, which skips the ordinary movement and combat stages.
+    pub(super) fn update_player_rope(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        held: Option<&PlayerInput>,
+        frame_scale: i32,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        let Some(settings) = self.updates.rope else {
+            return Ok(false);
+        };
+        let attached = self.actors[index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.rope_attached);
+        let holder = self
+            .ropes
+            .iter()
+            .position(|rope| rope.attachments.iter().any(|a| a.actor == index));
+        if attached && holder.is_none() {
+            // A restored session keeps the flag but not the rope: let go.
+            if let Some(control) = self.actors[index].control.as_mut() {
+                control.rope_attached = false;
+            }
+            return Ok(false);
+        }
+        if let Some(rope) = holder {
+            self.run_rope_controls(id, rope, held, frame_scale, ticks, settings, sounds)?;
+            return Ok(true);
+        }
+        if self.ropes.is_empty() {
+            return Ok(false);
+        }
+        let Some((rope, link)) = self.rope_attach_candidate(id, data, settings, ticks)? else {
+            return Ok(false);
+        };
+        self.attach_player(id, rope, link, held, frame_scale, ticks, sounds)?;
+        Ok(true)
+    }
+
+    fn holding_weapon(&self, index: usize) -> bool {
+        let actor = &self.actors[index];
+        actor.attributes[110] != 0
+            || actor
+                .control
+                .as_ref()
+                .is_some_and(|control| control.weapon_drawn)
+    }
+
+    /// The attach test of preservation "Rope attachment": a rope and link when the airborne,
+    /// weaponless player touches one.
+    fn rope_attach_candidate(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        settings: cyrus_assets::script::RopeSettings,
+        ticks: u32,
+    ) -> Result<Option<(usize, i32)>> {
+        let index = self.resolve(id)?;
+        if self.holding_weapon(index) || self.actors[index].animation.is_none() {
+            return Ok(None);
+        }
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("rope attach control unavailable")?;
+        if control.falling_state == 0 && control.queued_motion == 0 {
+            return Ok(None);
+        }
+        if control.jump_selector != 0 {
+            let ticks = u8::try_from(ticks).unwrap_or(u8::MAX);
+            if control.jump_selector > ticks {
+                control.jump_selector -= ticks;
+            } else {
+                control.jump_selector = 0;
+                self.player_rope.last_rope = None;
+            }
+        }
+        let skipped = self.actors[index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.jump_selector != 0)
+            .then_some(self.player_rope.last_rope)
+            .flatten();
+        let Ok(spheres) = self.ordinary_overlap_spheres(id, data) else {
+            return Ok(None);
+        };
+        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        for (rope_index, rope) in self.ropes.iter().enumerate().rev() {
+            if rope.links <= 1 || skipped == Some(rope_index) {
+                continue;
+            }
+            if rope.kind & 1 != 0
+                && rope_heading_difference(rope.heading, heading).abs() > settings.attach_angle
+            {
+                continue;
+            }
+            let radius = f64::from(rope.link_length) * f64::from(crate::ENGINE_UNIT_SCALE);
+            let mut lowest: Option<usize> = None;
+            let links: Vec<[f64; 3]> = rope
+                .chain()
+                .iter()
+                .map(|pose| to_engine(pose.position))
+                .collect();
+            for sphere in &spheres {
+                let center = sphere.center.map(f64::from);
+                for (link, position) in links.iter().enumerate() {
+                    let reach = f64::from(sphere.radius) + radius;
+                    let measured = (distance(center, *position) * 256.0).round();
+                    if measured < (reach * 256.0).trunc() && lowest.is_none_or(|l| link < l) {
+                        lowest = Some(link);
+                    }
+                }
+            }
+            if let Some(link) = lowest {
+                let last = i32::try_from(rope.links).unwrap_or(i32::MAX) - 1;
+                return Ok(Some((rope_index, i32::try_from(link)?.clamp(0, last))));
+            }
+        }
+        Ok(None)
+    }
+
+    #[allow(clippy::too_many_arguments)] // The grab reads the keys, clock and sound sink of one update.
+    fn attach_player(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        link: i32,
+        held: Option<&PlayerInput>,
+        frame_scale: i32,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.request_ordinary_group(id, GROUP_GRAB, false, ticks, sounds)?;
+        let pose = self.spatial(id)?.local;
+        let heading = i32::from(pose.angles[1]);
+        let step = {
+            let previous = self.spatial(id)?.previous_local_position;
+            let dx = f64::from(pose.position[0] - previous[0]);
+            let dz = f64::from(pose.position[2] - previous[2]);
+            dx.hypot(dz).round() as i64
+        };
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("rope attach control unavailable")?;
+        let airborne = control.queued_motion > 1 || control.falling_state > 1;
+        let backward = matches!(control.motion_classification, 3 | 7);
+        control.rope_attached = true;
+        control.falling_state = 0;
+        control.queued_motion = 0;
+        control.sliding_state = 0;
+        control.living_state = 0;
+        control.directional_state = [0; 2];
+        control.jump_selector = 0;
+        let rope = &mut self.ropes[rope_index];
+        rope.attachments.push(Attachment {
+            actor: index,
+            node: link,
+            motion: 0,
+        });
+        if rope.kind & 1 == 0 {
+            rope.heading = heading;
+        } else {
+            let shifted = (heading + rope_heading_difference(rope.heading, heading)) & 0x7ff;
+            self.spatial
+                .as_mut()
+                .context("rope attach spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .angles[1] = shifted as u16;
+        }
+        let rope = &mut self.ropes[rope_index];
+        if airborne {
+            rope.phase = if backward { 0 } else { 0x40000 };
+            let links = i64::try_from(rope.links).unwrap_or(i64::MAX);
+            let divisor = i64::from(link.max(1));
+            rope.amplitude = i32::try_from((step / 1000) * links / divisor).unwrap_or(i32::MAX);
+        }
+        rope.push = 0;
+        self.player_rope = PlayerRope {
+            last_rope: Some(rope_index),
+            latch: held.is_some_and(|keys| keys.jump),
+            turn_rate: 0,
+            turn_total: 0,
+            previous_node: None,
+        };
+        let _ = frame_scale;
+        self.place_player_on_rope(id, rope_index)
+    }
+
+    #[allow(clippy::too_many_arguments)] // The controls read the keys, clock, sound sink and installed values.
+    fn run_rope_controls(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        held: Option<&PlayerInput>,
+        frame_scale: i32,
+        ticks: u32,
+        settings: cyrus_assets::script::RopeSettings,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let keys = held;
+        let pressed = |select: fn(&PlayerInput) -> bool| keys.is_some_and(select);
+        let (up, down) = (pressed(|k| k.forward), pressed(|k| k.backward));
+        let (left, right) = (pressed(|k| k.left), pressed(|k| k.right));
+        let (walk, jump, look) = (
+            pressed(|k| k.walk),
+            pressed(|k| k.jump),
+            pressed(|k| k.look),
+        );
+        let weapon = self.holding_weapon(index);
+        if weapon || (!up && !down) {
+            self.request_ordinary_group(id, GROUP_IDLE, false, ticks, sounds)?;
+        }
+        if jump {
+            if !self.player_rope.latch {
+                self.release_player(
+                    id,
+                    rope_index,
+                    up,
+                    down,
+                    frame_scale,
+                    ticks,
+                    settings,
+                    sounds,
+                )?;
+                return Ok(());
+            }
+        } else {
+            self.player_rope.latch = false;
+        }
+        if !weapon && !look {
+            if up {
+                self.climb(id, rope_index, true, ticks, sounds)?;
+            } else if down {
+                self.climb(id, rope_index, false, ticks, sounds)?;
+            }
+        }
+        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let mut turned = heading;
+        if self.player_rope.turn_rate != 0 {
+            let rate = self.player_rope.turn_rate;
+            let step = ((rate >> 4) * frame_scale) >> 8;
+            turned = (heading + step) & 0x7ff;
+            self.player_rope.turn_total += step;
+            if self.player_rope.turn_total.abs() > rate.abs() {
+                self.player_rope.turn_rate = 0;
+            }
+        } else if walk {
+            let rope = &self.ropes[rope_index];
+            if rope.amplitude < 5 {
+                if rope.kind & 1 != 0 {
+                    if left {
+                        self.player_rope.turn_rate = 0x400;
+                        self.player_rope.turn_total = 0;
+                    } else if right {
+                        self.player_rope.turn_rate = -0x400;
+                        self.player_rope.turn_total = 0;
+                    }
+                } else {
+                    let step = ((i32::from(right) * frame_scale) >> 8)
+                        - ((i32::from(left) * frame_scale) >> 8);
+                    turned = (heading + step) & 0x7ff;
+                }
+            }
+        } else if !look {
+            let difference = angle_difference(self.ropes[rope_index].heading, heading).abs();
+            self.ropes[rope_index].pump(PumpKeys { left, right }, difference);
+        }
+        if turned != heading {
+            self.spatial
+                .as_mut()
+                .context("rope turn spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .angles[1] = turned as u16;
+        }
+        self.place_player_on_rope(id, rope_index)
+    }
+
+    /// The climb helpers of preservation "Rope control while attached".
+    fn climb(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        up: bool,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let node = self.ropes[rope_index]
+            .attachments
+            .iter()
+            .find(|a| a.actor == index)
+            .map(|a| a.node)
+            .context("rope climb: attachment unavailable")?;
+        let last = i32::try_from(self.ropes[rope_index].links).unwrap_or(i32::MAX) - 1;
+        if up && node - 1 <= 0 || !up && node + 1 > last {
+            return Ok(());
+        }
+        let group = if up { GROUP_CLIMB_UP } else { GROUP_CLIMB_DOWN };
+        self.request_ordinary_group(id, group, false, ticks, sounds)
+    }
+
+    /// The jump-key release: the removal's detach motion, then the ordinary jump entry with the
+    /// 24-tick countdown running, which queues motion 24 and forces the rope-jump group.
+    #[allow(clippy::too_many_arguments)] // The release reads the keys, clock, installed values and sound sink.
+    fn release_player(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        up: bool,
+        down: bool,
+        frame_scale: i32,
+        ticks: u32,
+        settings: cyrus_assets::script::RopeSettings,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let rope = &mut self.ropes[rope_index];
+        let position = rope
+            .attachments
+            .iter()
+            .position(|a| a.actor == index)
+            .context("rope release: attachment unavailable")?;
+        let attachment = rope.attachments.remove(position);
+        let motion = i64::from(attachment.motion);
+        let scale = i64::from(frame_scale.max(1));
+        let speed = if rope.amplitude < 6 && motion.abs() < (scale * 0x1800) >> 8 {
+            if up {
+                settings.jump_add
+            } else if down {
+                -settings.jump_add
+            } else {
+                0
+            }
+        } else {
+            let mut direction = rope.direction;
+            if rope.kind & 1 != 0 && angle_difference(heading, rope.heading).abs() > 0x10 {
+                direction = (direction + 1) & 1;
+            }
+            let extra = i32::try_from((motion.abs() << 8) / scale).unwrap_or(i32::MAX);
+            if direction == 1 {
+                settings.jump_add.saturating_add(extra)
+            } else {
+                -settings.jump_add.saturating_sub(extra)
+            }
+        };
+        let origin_y = self.spatial(id)?.local.position[1];
+        self.spatial
+            .as_mut()
+            .context("rope release spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .angles[0] = 0;
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("rope release control unavailable")?;
+        control.rope_attached = false;
+        control.rope_speed = speed;
+        control.jump_selector = 24;
+        control.stable_position_valid = false;
+        control.fall_origin_y = origin_y;
+        control.fall_timer = 0;
+        control.sliding_distance = 0;
+        control.queued_motion = QUEUED_ROPE_JUMP;
+        control.motion_classification = 2;
+        self.player_rope.latch = true;
+        self.player_rope.turn_rate = 0;
+        self.player_rope.previous_node = None;
+        self.request_ordinary_group(id, GROUP_JUMP, true, ticks, sounds)
+    }
+
+    /// Puts the player on its link, measures the node's speed and sets the actor's pitch from the
+    /// accumulated step angle, as the chain update does for each attachment.
+    fn place_player_on_rope(&mut self, id: ScriptActorId, rope_index: usize) -> Result<()> {
+        let index = self.resolve(id)?;
+        let rope = &mut self.ropes[rope_index];
+        rope.clamp_nodes();
+        let node = rope
+            .attachments
+            .iter()
+            .find(|a| a.actor == index)
+            .map(|a| a.node)
+            .context("rope placement: attachment unavailable")?;
+        let chain = rope.chain();
+        let pose = chain
+            .get(usize::try_from(node)?)
+            .context("rope placement: node outside the chain")?;
+        let engine = to_engine(pose.position);
+        let speed = self
+            .player_rope
+            .previous_node
+            .map_or(0.0, |previous| (distance(engine, previous) * 256.0).round());
+        self.player_rope.previous_node = Some(engine);
+        let rope = &mut self.ropes[rope_index];
+        if let Some(attachment) = rope.attachments.iter_mut().find(|a| a.actor == index) {
+            let signed = speed as i32;
+            attachment.motion = if rope.direction == 0 { -signed } else { signed };
+            attachment.node = node;
+        }
+        let accumulated = rope.step * (node - 1).max(0);
+        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let close = angle_difference(heading, self.ropes[rope_index].heading).abs() < 0x10;
+        let pitch = if close {
+            (accumulated >> 8) & 0x7ff
+        } else {
+            (-(accumulated >> 8)) & 0x7ff
+        };
+        let position = engine.map(|value| (value * 256.0).round() as i32);
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("rope placement spatial state unavailable")?
+            .actor_mut(index)?;
+        spatial.local.position = position;
+        spatial.previous_local_position = position;
+        spatial.local.angles[0] = pitch as u16;
+        spatial.local.angles[2] = 0;
+        self.refresh_transform(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn angle_differences_take_the_short_way_round() {
+        assert_eq!(angle_difference(10, 2040), 18);
+        assert_eq!(angle_difference(2040, 10), -18);
+        assert_eq!(angle_difference(0x400, 0), 0x400);
+        assert_eq!(angle_difference(0x401, 0), -0x3ff);
+    }
+
+    #[test]
+    fn a_rope_heading_matches_either_end_of_its_line() {
+        assert_eq!(rope_heading_difference(0, 5), -5);
+        assert_eq!(rope_heading_difference(0, 0x400 + 5), -5);
+        assert!(rope_heading_difference(0, 0x200).abs() == 0x200);
+    }
+
+    #[test]
+    fn exported_positions_map_back_to_the_engine_frame() {
+        // World 24's player stands at engine map units (2174, -64, 2067).
+        let engine = to_engine([-108.7, 3.2, -3173.45]);
+        assert!((engine[0] - 2174.0).abs() < 1e-2);
+        assert!((engine[1] + 64.0).abs() < 1e-2);
+        assert!((engine[2] - 2067.0).abs() < 1e-1);
+    }
+}

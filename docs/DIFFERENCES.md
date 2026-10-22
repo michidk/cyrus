@@ -38,3 +38,12 @@ sync-marked data sectors and keeps the track's length and timing.
 interval one, which waits for one display refresh. cyrus scrolls one pixel per 1/60 s
 on any display. The original's refresh rate setting was not recovered, so its visible
 pace is not verified.
+
+## Rope attachment shortcuts
+
+**Verified:** the attach test, the controls, the swing and the release follow preservation's rope sections.
+**Inferred or simplified:** the grabbed link is the lowest touching link instead of the link nearest the
+hand (the hand height needs the animation key point), the player sits on the link without the hand
+offset, a downward climb is not limited by the floor probe, the climb helpers do not read the
+animation record's progress bytes, and the swing sounds are computed but not played. Ropes are not
+saved: a restored player on a rope lets go.

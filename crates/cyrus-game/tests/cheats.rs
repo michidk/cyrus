@@ -503,7 +503,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 27,
+        version: 28,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -533,6 +533,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
             use_smooth_divisor: true,
         },
         updates: UpdateSettings {
+            rope: None,
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,

@@ -174,9 +174,10 @@ impl Rope {
 
     /// One update: the swing step, then each attachment's climb. `group_of` is the actor's current
     /// animation group and `limit` the lowest allowed node for a downward step (the hand-height link
-    /// choice); `ticks` is the shared nominal tick count.
+    /// choice); `frame_scale` is the Q8 frame scale (256 per nominal tick) and `ticks` the whole tick count.
     pub fn update(
         &mut self,
+        frame_scale: i32,
         ticks: i32,
         group_of: impl Fn(usize) -> i32,
         limit: impl Fn(&Self, usize, i32) -> i32,
@@ -186,14 +187,14 @@ impl Rope {
             if self.amplitude == 0 {
                 self.step = 0;
             } else {
-                self.phase += (self.speed * 0x40 * ticks) >> 8;
+                self.phase += (self.speed * 0x40 * frame_scale) >> 8;
                 self.step = (sine((self.phase >> 8) & 0x7ff) * self.amplitude) >> 9;
             }
         } else {
             // The swinging types hold the maximum amplitude; their step angle is the table's zero
             // entry, so they do not tilt.
             self.amplitude = self.maximum;
-            self.phase += (self.speed * 0x40 * ticks) >> 8;
+            self.phase += (self.speed * 0x40 * frame_scale) >> 8;
             self.step = 0;
         }
         for index in 0..self.attachments.len() {
@@ -487,7 +488,7 @@ mod tests {
         let mut r = rope(10, 20);
         r.amplitude = 20;
         r.phase = 0x100 * 300;
-        r.update(1, |_| 0, |_, _, _| 0);
+        r.update(256, 1, |_| 0, |_, _, _| 0);
         assert!(r.step != 0);
         let chain = r.chain();
         assert_eq!(chain[0].position, [0.0, 10.0, 0.0]);
@@ -533,7 +534,7 @@ mod tests {
             node: 5,
             motion: 0,
         });
-        r.update(1, |_| 0x52, |_, _, _| 0);
+        r.update(256, 1, |_| 0x52, |_, _, _| 0);
         assert_eq!((r.attachments[0].node, r.amplitude, r.phase), (4, 2, 0));
         let mut down = rope(10, 10);
         down.attachments.push(Attachment {
@@ -541,7 +542,7 @@ mod tests {
             node: 5,
             motion: 0,
         });
-        down.update(1, |_| 0x53, |_, _, wanted| wanted + 1);
+        down.update(256, 1, |_| 0x53, |_, _, wanted| wanted + 1);
         assert_eq!(down.attachments[0].node, 6);
         let mut blocked = rope(10, 10);
         blocked.attachments.push(Attachment {
@@ -549,7 +550,7 @@ mod tests {
             node: 5,
             motion: 0,
         });
-        blocked.update(1, |_| 0x53, |_, _, _| 5);
+        blocked.update(256, 1, |_| 0x53, |_, _, _| 5);
         assert_eq!(
             blocked.attachments[0].node, 5,
             "the limit routine blocks the step"

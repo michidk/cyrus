@@ -217,6 +217,9 @@ impl super::ScriptWorld {
         } else {
             control.falling_state
         };
+        if motion & 127 == 24 {
+            return self.run_rope_jump_displacement(id, frame_scale);
+        }
         // Per tick distance numerator and the cap of the accumulated distance, both in Q8.
         let (rate, cap) = match motion & 127 {
             8 | 9 => (0x10000, 0x18000),
@@ -277,6 +280,52 @@ impl super::ScriptWorld {
                 .local
                 .position = position;
         }
+        Ok(())
+    }
+
+    /// Queued motion 24, the jump after a rope release: the speed word moves the actor
+    /// `|speed| × frame scale >> 8` (Q8) forward at its heading, or backward (heading plus 1024)
+    /// for a negative word, unless the current animation suppresses translation. It marks the
+    /// motion classification (2 or 3) and the forward or backward movement bits, and does nothing
+    /// while the actor is attached.
+    fn run_rope_jump_displacement(
+        &mut self,
+        id: super::ScriptActorId,
+        frame_scale: u32,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let suppressed = self.actors[index]
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.playback.translation_suppressed());
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("rope jump displacement control unavailable")?;
+        if control.rope_attached {
+            return Ok(());
+        }
+        let backward = control.rope_speed < 0;
+        control.motion_classification = if backward { 3 } else { 2 };
+        control.movement_flags |= if backward { 0xc0 } else { 0x30 };
+        let distance = control.rope_speed.unsigned_abs().wrapping_mul(frame_scale) >> 8;
+        if suppressed || distance < 1 {
+            return Ok(());
+        }
+        let pose = self.spatial(id)?.local;
+        let heading = (pose.angles[1] + if backward { 1024 } else { 0 }) & 2047;
+        let position = cyrus_world::transform::translate_forward(
+            pose.position,
+            heading,
+            i32::try_from(distance).unwrap_or(i32::MAX),
+        )?;
+        self.spatial
+            .as_mut()
+            .context("rope jump displacement spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = position;
         Ok(())
     }
 

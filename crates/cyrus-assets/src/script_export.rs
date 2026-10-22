@@ -195,7 +195,7 @@ pub fn prepare_source(
     };
     let shells = world_shells(source, &system, world, &actors)?;
     let mut scripts = Scripts {
-        version: 27,
+        version: 28,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),

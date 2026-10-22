@@ -256,6 +256,10 @@ pub(crate) fn step(
         if runtime.error.is_some() {
             continue;
         }
+        // A player on a rope is moved by the rope update, not by the grounded step.
+        if world.selected_player_on_rope() {
+            continue;
+        }
         runtime.explicit_updated = true;
         let result = (|| -> anyhow::Result<()> {
             let scene = scenes

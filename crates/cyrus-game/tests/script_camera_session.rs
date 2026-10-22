@@ -73,7 +73,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 27,
+        version: 28,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -97,6 +97,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         },
         player_distance_override: false,
         updates: UpdateSettings {
+            rope: None,
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,

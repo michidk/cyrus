@@ -45,6 +45,7 @@ mod point_tasks;
 mod probe;
 mod projectile;
 mod quick_keys;
+mod rope_host;
 mod torch;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
@@ -346,6 +347,9 @@ pub struct ActorControlState {
     /// 0 none, 0x20 a model or actor face, 0x40 terrain. `PlayerOnScape` reads it.
     pub ground_kind: u8,
     pub rope_attached: bool,
+    /// The speed word queued motion 24 turns into a horizontal move after a rope release: the
+    /// installed jump-off speed plus the node's measured speed, negative for a backward jump.
+    pub rope_speed: i32,
     pub torch_burning: u8,
     /// The counter saved when a torch is put out, restored when it is lit again; zero starts afresh.
     pub torch_saved: u8,
@@ -597,6 +601,8 @@ pub struct ScriptWorld {
     effects: Option<EnvironmentalEffects>,
     /// Retained ropes of the installed `MPRP` records; rebuilt on preparation, not saved.
     ropes: Vec<crate::rope::Rope>,
+    /// The selected player's rope handling state; not saved.
+    player_rope: rope_host::PlayerRope,
 }
 impl ScriptWorld {
     /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
@@ -1192,6 +1198,7 @@ impl ScriptWorld {
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),
+            player_rope: Default::default(),
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -1262,7 +1269,7 @@ impl ScriptWorld {
 
     /// One rope-system step at its place in the world loop: each rope's amplitude service, then its
     /// swing step and attachment climbs.
-    pub(super) fn update_ropes(&mut self, ticks: i32) {
+    pub(super) fn update_ropes(&mut self, frame_scale: i32, ticks: i32) {
         for rope in &mut self.ropes {
             rope.clamp_nodes();
             let sum = rope.step_sum();
@@ -1271,6 +1278,7 @@ impl ScriptWorld {
         let actors = &self.actors;
         for rope in &mut self.ropes {
             rope.update(
+                frame_scale,
                 ticks,
                 |actor| {
                     actors
@@ -6694,6 +6702,7 @@ mod fighting_tests {
             flags: Vec::new(),
             flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
             updates: cyrus_assets::script::UpdateSettings {
+                rope: None,
                 fall_death_ticks: 144,
                 fall_landing: None,
                 dummy_model_manager: false,
@@ -6740,6 +6749,7 @@ mod fighting_tests {
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),
+            player_rope: Default::default(),
         };
         let host = GameHost {
             native_source_program: None,
