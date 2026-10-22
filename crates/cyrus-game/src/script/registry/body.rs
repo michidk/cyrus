@@ -155,7 +155,8 @@ impl ScriptWorld {
     /// Each admitted facing contact of a falling, queued or interrupted actor first runs the
     /// motion `transition`; only an actor left grounded with no motion adjusts its heading.
     /// Residual separation and support following are later stages, not performed here. The
-    /// sliding state's contact exclusion remains unsupported.
+    /// sliding actor's contacts of candidate type 64 are excluded by the caller's query and its
+    /// contacts at or below `slide_range` leave the position alone.
     pub fn resolve_ordinary_primary_contacts(
         &mut self,
         id: ScriptActorId,
@@ -183,11 +184,7 @@ impl ScriptWorld {
         if !matches!(control.living_state, 0 | 15 | 27..=32) {
             return Ok(());
         }
-        ensure!(
-            control.sliding_state == 0,
-            "world {} instance {index}: sliding body-contact exclusion unavailable",
-            self.world
-        );
+        let sliding = control.sliding_state != 0;
         let spatial = self.spatial(id)?;
         let previous = spatial.previous_local_position.map(i64::from);
         let attempted = spatial.local.position.map(i64::from);
@@ -234,6 +231,8 @@ impl ScriptWorld {
                 body.normal,
                 settings.slide_range,
             ) {
+                // A sliding actor keeps its position and sets no result bit below `slide_range`.
+                contact::WallResponse::Rollback(_) if sliding => {}
                 contact::WallResponse::Rollback(position) => {
                     current = position;
                     flags |= 2;

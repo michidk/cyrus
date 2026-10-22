@@ -199,6 +199,9 @@ pub struct GameplayGlobals {
     pub(super) item_use_latch: bool,
     /// Nominal ticks until the dragon may breathe fire again; process-wide, zero at startup.
     pub(super) dragon_breath_cooldown: u32,
+    /// Contacts of the most recent primary body response, retained across actors: a sliding
+    /// actor's update clears its sliding byte when this is nonzero.
+    pub(super) primary_body_contacts: u32,
     /// Actors the selected player's body touched in its latest contact pass.
     pub(super) player_contacts: PlayerContacts,
     pub(super) sound_maintenance: super::SoundMaintenance,
@@ -1273,6 +1276,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     world_loop_frame: u32,
     #[serde(default)]
     dragon_breath_cooldown: u32,
+    #[serde(default)]
+    primary_body_contacts: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
     menu_state: u16,
     #[serde(default)]
@@ -1321,6 +1326,7 @@ impl GameplayGlobals {
             selected_ledge_anchor: self.selected_ledge_anchor,
             world_loop_frame: self.world_loop_frame,
             dragon_breath_cooldown: self.dragon_breath_cooldown,
+            primary_body_contacts: self.primary_body_contacts,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
             menu: self.menu.clone(),
@@ -1402,6 +1408,7 @@ impl GameplayGlobals {
             selected_ledge_anchor: saved.selected_ledge_anchor,
             world_loop_frame: saved.world_loop_frame,
             dragon_breath_cooldown: saved.dragon_breath_cooldown,
+            primary_body_contacts: saved.primary_body_contacts,
             item_use_latch: false,
             player_contacts: Default::default(),
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),

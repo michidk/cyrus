@@ -689,6 +689,7 @@ impl ScriptWorld {
             // Ordinary entry clears the extra-contact append flag. These admitted
             // stages do not produce an appended normal; heightmap availability
             // is independent of that flag and still feeds the support queries.
+            let sliding = control.sliding_state != 0;
             let contacts = self.query_ordinary_body(
                 id,
                 super::body::OrdinaryBodyQuery {
@@ -696,10 +697,11 @@ impl ScriptWorld {
                     animations: query.animations,
                     prepared: query.prepared,
                     sidedness: false,
-                    excluded_candidate_type: None,
+                    excluded_candidate_type: sliding.then_some(64),
                     terrain: None,
                 },
             )?;
+            self.globals.primary_body_contacts = contacts.len() as u32;
             if self.selected_player_index() == Some(id.index) {
                 for contact in &contacts {
                     if let cyrus_collision::ground::SupportSource::Actor { actor, .. } =
@@ -731,6 +733,15 @@ impl ScriptWorld {
                 },
             )?;
             self.resolve_ordinary_residual_contacts(id, &contacts, &query.scene.settings)?;
+        }
+        // A sliding actor's slide ends after a body response that found contacts; the retained
+        // count is tested even when this actor's own response did not run.
+        if self.globals.primary_body_contacts != 0 {
+            let control = self.actors[id.index]
+                .control
+                .as_mut()
+                .expect("admitted body control");
+            control.sliding_state = 0;
         }
         self.actors[id.index].attributes[6] = self.actors[id.index].attributes[115];
         let control = self.actors[id.index]
