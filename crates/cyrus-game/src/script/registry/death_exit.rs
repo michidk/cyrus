@@ -165,6 +165,17 @@ impl ScriptWorld {
             selected.index == to,
             "player swap selected an unexpected role"
         );
+        let angles = placement.angles.map(|angle| angle & 2047);
+        // Only the selected role's pose is initialized at world entry; the other role's first
+        // pose is the one it takes here.
+        if !self
+            .spatial
+            .as_ref()
+            .context("player swap: spatial state not prepared")?
+            .is_initialized(to)?
+        {
+            self.initialize_player_spatial(selected, placement.position, angles)?;
+        }
         let spatial = self
             .spatial
             .as_mut()

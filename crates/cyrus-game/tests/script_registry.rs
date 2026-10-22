@@ -17008,9 +17008,6 @@ fn push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration()
     let cyrus = role(&world, ScriptActorSource::Player);
     let gremlin = role(&world, ScriptActorSource::AlternatePlayer);
     assert!(!world.globals().player_swapped());
-    world
-        .initialize_player_spatial(world.id(gremlin).unwrap(), [404, -505, 606], [0, 1185, 0])
-        .unwrap();
     let placement = world.spatial(world.id(cyrus).unwrap()).unwrap().local;
     assert_eq!(
         world.finish_world_loop(1).unwrap(),
