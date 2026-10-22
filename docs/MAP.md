@@ -308,6 +308,7 @@ module where it is defined and regenerate.
 
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
+- `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
