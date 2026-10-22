@@ -294,7 +294,10 @@ the inventory screen over the frozen world (suspension shared with the logbook r
 grid of owned, unhidden items, three rows visible, with the installed backing quad, border, arrows, item
 artwork, counts and RTX item name. The directions move the cursor (effect 13); the inventory key, D (Activate)
 and Enter, A or Escape close it, and Activate or Enter make the cursor item the active item. The examine view on
-the view key is unavailable, and the screen does not call `UseItem`. `PlayerCollide` and `PlayerCollideStatic`
+the view key is unavailable, and the screen does not call `UseItem`. `WonGame` ends the world loop: the
+world hands over to the book menu host, which stops the sound effects and plays `WIN.SMK` (movie 4) with the
+CD paused, then shows the book. **Unknown/unsupported:** the credits scroll (`CREDITS.TXT` timing and drawing),
+the book's music after the ending, and a return to the main book rather than the paused world under it. `PlayerCollide` and `PlayerCollideStatic`
 read the contact lists of the selected player's body pass. The installed quick
 sword and quick health keys run in the world loop: the sword key draws, sheathes or uses the
 first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and
