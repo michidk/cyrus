@@ -1102,6 +1102,9 @@ impl RegistryRestorePlan<'_> {
         }
         let mut current = current.context("restored current world absent")?;
         current.globals = globals;
+        // Backfill membership for snapshots written before channel registration was retained.
+        // Existing entries win so restored actors keep their creation-time channel.
+        current.globals.group_sync.register_actors(&current.actors);
         Ok(RegistryCandidate {
             current,
             visited,

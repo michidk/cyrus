@@ -15,6 +15,10 @@ const POSTED: u8 = 0x80;
 /// Retained channel state. Cleared when a world is entered, as the engine reinitializes its tables.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GroupSync {
+    /// Channel membership is sampled when an actor record is created.  Later writes to attribute
+    /// 29 do not move the actor between rendezvous tables.
+    #[serde(default)]
+    channels: BTreeMap<usize, u8>,
     /// Released value per channel: the current group in the low seven bits, `POSTED` when every
     /// active member has posted.
     released: BTreeMap<u8, u8>,
@@ -23,6 +27,18 @@ pub struct GroupSync {
 }
 
 impl GroupSync {
+    /// Register an actor's channel at creation time.  Re-registration is intentionally ignored so
+    /// an attribute write cannot silently move an existing actor to another channel.
+    pub(super) fn register(&mut self, actor: usize, channel: u8) {
+        self.channels.entry(actor).or_insert(channel);
+    }
+
+    pub(super) fn register_actors(&mut self, actors: &[ScriptActor]) {
+        for (index, actor) in actors.iter().enumerate() {
+            self.register(index, actor.attributes()[CHANNEL_ATTRIBUTE]);
+        }
+    }
+
     /// One `SyncWithGroup(group)` invocation by `actor` on `channel` (nonzero). Returns whether the
     /// task completes: the channel's released value, compared as a whole byte, must equal the posted
     /// group with its mark, so a group that is not released, or a channel where not every member
@@ -45,7 +61,7 @@ impl GroupSync {
     /// Per-iteration update of every channel that has members.
     pub(super) fn update(&mut self, actors: &[ScriptActor]) {
         self.update_members(actors.iter().enumerate().filter_map(|(index, actor)| {
-            let channel = actor.attributes()[CHANNEL_ATTRIBUTE];
+            let channel = self.channels.get(&index).copied().unwrap_or(0);
             (channel != 0).then(|| (index, channel, actor.attributes()[IGNORED_ATTRIBUTE] != 0))
         }));
     }

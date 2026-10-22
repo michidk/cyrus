@@ -1093,6 +1093,7 @@ impl ScriptWorld {
         }
         let mut globals = super::GameplayGlobals::default();
         globals.prepare_dialogue(&scripts.dialogue)?;
+        globals.group_sync.register_actors(&actors);
         let actor_id = |source: fn(&ScriptActorSource) -> bool| {
             actors
                 .iter()

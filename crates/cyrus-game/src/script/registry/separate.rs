@@ -16,7 +16,9 @@ impl ScriptWorld {
             anyhow::bail!("world {}: shell script {name} not installed", self.world)
         };
         let actor = super::ScriptActor::shell(self.world, index, key, Some(template));
+        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
         self.actors.push(actor);
+        self.globals.group_sync.register(index, channel);
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
         }
@@ -61,12 +63,14 @@ impl ScriptWorld {
             "created object creator has no spatial state"
         );
         let mut actor = super::ScriptActor::created(self.world, index, key, template);
+        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
         actor
             .control
             .as_mut()
             .expect("created objects allocate control")
             .creator = Some(creator_index);
         self.actors.push(actor);
+        self.globals.group_sync.register(index, channel);
         self.spatial
             .as_mut()
             .expect("created-object spatial state validated above")
@@ -90,9 +94,10 @@ impl ScriptWorld {
         let Some((key, template)) = installed else {
             anyhow::bail!("world {}: script {name} not installed", self.world)
         };
-        self.actors.push(super::ScriptActor::created(
-            self.world, index, key, template,
-        ));
+        let actor = super::ScriptActor::created(self.world, index, key, template);
+        let channel = actor.attributes()[super::group_sync::CHANNEL_ATTRIBUTE];
+        self.actors.push(actor);
+        self.globals.group_sync.register(index, channel);
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
         }
