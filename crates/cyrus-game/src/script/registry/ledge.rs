@@ -428,7 +428,7 @@ impl ScriptWorld {
                 });
             }
             if stance.airborne && stance.hand_y.is_none() && !records.is_empty() {
-                stance.grip = self.ledge_hand_vertex(id, query.animations)?;
+                stance.grip = self.group_hand_vertex(id, query.animations, LEDGE_HAND_GROUP)?;
                 stance.hand_y = Some(match stance.grip {
                     Some(grip) => y.wrapping_add(grip[1] >> 8),
                     None => y.wrapping_sub(1000),
@@ -573,14 +573,15 @@ fn wall_heading(normal: [i32; 3]) -> u16 {
         & 2047
 }
 
-/// Hand vertex lookup of the actor's group 7, shared with the later ledge states.
+/// Hand vertex lookup of an animation group, shared with the later ledge states and the rope grab.
 impl ScriptWorld {
-    /// Grip vertex 0 of the first `ShowFrame` of the actor's animation group 7, in Q8. None when
-    /// the group or its frame is absent.
-    pub(super) fn ledge_hand_vertex(
+    /// Grip vertex 0 of the first `ShowFrame` of the actor's animation group `group`, in Q8. None
+    /// when the group or its frame is absent.
+    pub(super) fn group_hand_vertex(
         &self,
         id: ScriptActorId,
         data: &cyrus_assets::animation::Animations,
+        group: u64,
     ) -> Result<Option<[i32; 3]>> {
         let index = self.resolve(id)?;
         let metadata = data.actor(self.actors[index].name())?;
@@ -589,7 +590,7 @@ impl ScriptWorld {
             .and_then(|groups| {
                 groups
                     .iter()
-                    .find(|group| group["group_index"].as_u64() == Some(LEDGE_HAND_GROUP))
+                    .find(|candidate| candidate["group_index"].as_u64() == Some(group))
             })
             .and_then(|group| group["commands"].as_array())
             .and_then(|commands| commands.iter().find(|command| command["opcode"] == 0))

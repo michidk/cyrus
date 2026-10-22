@@ -42,8 +42,7 @@ pace is not verified.
 ## Rope attachment shortcuts
 
 **Verified:** the attach test, the controls, the swing and the release follow preservation's rope sections.
-**Inferred or simplified:** the grabbed link is the lowest touching link instead of the link nearest the
-hand (the hand height needs the animation key point), the player sits on the link without the hand
-offset, a downward climb is not limited by the floor probe, the climb helpers do not read the
+**Inferred or simplified:** the hand-height link choice (grab and downward climb) skips its clamp against
+the floor probe near the ground, the climb helpers do not read the
 animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
 first attached actor; not heard in a running world).
