@@ -3723,7 +3723,10 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             LocomotionOperation::Strafe(strafe) => {
                 // Only the ordinary dry stance runs the lateral check; combat strafes skip it.
                 let strafe_plan = super::locomotion::strafe_admission(state, strafe);
-                if strafe_plan == super::locomotion::StrafeAdmission::Ledge {
+                if matches!(
+                    strafe_plan,
+                    super::locomotion::StrafeAdmission::Ledge { .. }
+                ) {
                     // The hanging player's lateral check is the ledge scan one step to the side.
                     let fine_ticks = self
                         .inputs

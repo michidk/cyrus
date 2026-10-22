@@ -1675,10 +1675,11 @@ impl Task {
                     StrafeAdmission::Combat { group, step, turn } => (group, step, turn),
                     StrafeAdmission::OutsideCombat { .. }
                     | StrafeAdmission::DeepWater { .. }
-                    | StrafeAdmission::Ledge => {
+                    | StrafeAdmission::Ledge { .. } => {
                         let group = match admission {
                             StrafeAdmission::OutsideCombat { group }
-                            | StrafeAdmission::DeepWater { group } => Some(group),
+                            | StrafeAdmission::DeepWater { group }
+                            | StrafeAdmission::Ledge { group } => Some(group),
                             _ => None,
                         };
                         if !motion.admission.lateral_step_clear.with_context(|| {

@@ -129,6 +129,14 @@ impl Strafe {
     /// Both strafe groups; a receiver already in either completes without moving.
     pub const COMBAT_GROUPS: [u16; 2] = [94, 95];
 
+    /// Animation group of the sidestep along a ledge.
+    pub fn ledge_group(self) -> u16 {
+        match self {
+            Self::Left => 28,
+            Self::Right => 29,
+        }
+    }
+
     /// Animation group of the ordinary (outside combat stance, dry) strafe.
     pub fn ordinary_group(self, torch_burning: bool) -> u16 {
         match (self, torch_burning) {
@@ -162,9 +170,9 @@ pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
     /// Hanging at an edge (lifecycle byte 15): after the ledge scan finds a record one step to the
-    /// side, move along the ledge by the attribute byte 10 step. The original's animation request
-    /// for this step is not recovered, so none is made.
-    Ledge,
+    /// side, request `group` (28 left, 29 right) and move along the ledge by the attribute byte 10
+    /// step.
+    Ledge { group: u16 },
     /// Outside combat stance in deep water: after the lateral step check and the edge probe pass,
     /// request `group` (143) and move by the attribute byte 10 step.
     DeepWater { group: u16 },
@@ -187,7 +195,9 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             turn: state.strafe_turn_attribute,
         }
     } else if state.living_state == 15 {
-        StrafeAdmission::Ledge
+        StrafeAdmission::Ledge {
+            group: strafe.ledge_group(),
+        }
     } else if matches!(state.surface, 2 | 4) {
         StrafeAdmission::DeepWater { group: 143 }
     } else {
@@ -579,7 +589,17 @@ mod tests {
                 },
                 Strafe::Right
             ),
-            StrafeAdmission::Ledge
+            StrafeAdmission::Ledge { group: 29 }
+        );
+        assert_eq!(
+            strafe_admission(
+                BackwardState {
+                    living_state: 15,
+                    ..ready()
+                },
+                Strafe::Left
+            ),
+            StrafeAdmission::Ledge { group: 28 }
         );
         for surface in [2, 4] {
             assert_eq!(
