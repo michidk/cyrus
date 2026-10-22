@@ -520,12 +520,6 @@ impl ScriptWorld {
                     0,
                     sounds,
                 )?;
-                ensure!(
-                    queued_handled,
-                    "world {} instance {}: queued motion left unhandled before the ground response is unsupported",
-                    self.world,
-                    id.index
-                );
             }
         }
         if mask & 4 != 0 {
@@ -561,10 +555,6 @@ impl ScriptWorld {
                 ensure!(
                     !matches!(control.living_state, 27..=32),
                     "state-specific ground response owner unavailable"
-                );
-                ensure!(
-                    control.queued_motion == 0,
-                    "queued ground response timing unavailable"
                 );
                 if let Some(support) = support.as_ref() {
                     if falling {
