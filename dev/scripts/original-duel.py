@@ -43,12 +43,18 @@ def main():
     if not args.attach:
         run = MAGIC / "retro-run"
         sh("docker", "rm", "-f", name, check=False)
-        # Leaving a world saves MAPS\\<world>.TSG; the game hangs if that write fails, so mount a
-        # fresh writable copy of the (otherwise read-only) maps directory over the linked one.
-        maps = MAGIC / "retro-maps-run"
-        # The container writes as root, so remove the previous copy through it.
-        sh("docker", "run", "--rm", "--entrypoint", "rm", "-v", f"{MAGIC}:/m", "cyrus-retro:dev", "-rf", "/m/retro-maps-run")
-        shutil.copytree(MAGIC / "gog/extracted/app/Redguard/maps", maps)
+        # Leaving a world saves MAPS\\<world>.TSG, and the game hangs if that write fails. The run copy
+        # links `maps` into the read-only install, and the emulator cannot create files through that
+        # link, so make it a real directory holding a copy, and clear snapshots of earlier runs.
+        maps = run / "Redguard/maps"
+        if maps.is_symlink():
+            source = maps.resolve()
+            maps.unlink()
+            shutil.copytree(source, maps)
+            for path in [maps, *maps.rglob("*")]:
+                path.chmod(0o777 if path.is_dir() else 0o666)
+        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", "cyrus-retro:dev",
+           "/game/Redguard/maps", "-iname", "*.tsg", "-delete")
         sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
            "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
            "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
@@ -108,10 +114,11 @@ def main():
         me = next(a for a in s["actors"] if a["selected"])
         if pirates is None:  # the living combat actors at the start, as in the native script
             pirates = [a["pointer"] for a in s["actors"] if a["combat"] and not a["selected"] and a["health"] and a["health"] < 100]
-        found = [a for a in s["actors"] if a["pointer"] in pirates]
+        found = sorted((a for a in s["actors"] if a["pointer"] in pirates), key=lambda a: a["pointer"])  # the list reorders
         alive = [a for a in found if a["health"] > 0 and a["death_selector"] != 8]
         sample = {"t": round(time.time() - t0, 1), "game_s": game_seconds(s["counters"]), **s["counters"], "player": me["health"],
-                  "pirates": [(a["id"], a["health"]) for a in found], "actors": len(s["actors"])}
+                  "pirates": [(a["id"], a["health"]) for a in found], "actors": len(s["actors"]),
+                  "groups": {"player": me["group"], "pirates": [a["group"] for a in found]}}
         print(json.dumps(sample), flush=True)
         if log:
             log.write(json.dumps({**sample, "me": me, "found": found}) + "\n")
@@ -146,7 +153,20 @@ def main():
         if frame == last:
             stalled_since = stalled_since or time.time()
             if time.time() - stalled_since > 4:
-                print(json.dumps({"t": round(stalled_since - t0, 1), "game_s": game_seconds(s["counters"]), "event": "world change", "frame": frame}))
+                print(json.dumps({"t": round(stalled_since - t0, 1), "game_s": game_seconds(s["counters"]), "event": "world change", "frame": frame}), flush=True)
+                # Arrival: once the next world's loop runs again, where the player is placed.
+                for _ in range(120):
+                    time.sleep(2)
+                    s = state()
+                    if s and s["counters"]["mainloop_frame"] != frame:
+                        break
+                time.sleep(5)
+                s = state()
+                me = next((a for a in s["actors"] if a["selected"]), None) if s else None
+                if me:
+                    print(json.dumps({"t": round(time.time() - t0, 1), "event": "arrival", "position": me["position"],
+                                      "yaw": me["yaw"], "health": me["health"], "actors": len(s["actors"])}))
+                    sh("docker", "exec", "-e", "DISPLAY=:1", name, "scrot", "-o", "/game/arrival.png", check=False)
                 return 0
         else:
             last, stalled_since = frame, None

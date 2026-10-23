@@ -56,12 +56,13 @@ def main():
         call({"type": "input", "key": key, "action": "release"})
 
     def actors():
-        found, offset = {}, 0
+        found, offset, every = {}, 0, []
         while True:
             page = call({"type": "scripts", "offset": offset, "limit": 64})
+            every += page["actors"]
             found.update({actor["name"]: actor for actor in page["actors"]})
             if len(page["actors"]) < 64:
-                found["total"], found["loop_frame"] = page["total"], page["globals"]["world_loop_frame"]
+                found["total"], found["loop_frame"], found["every"] = page["total"], page["globals"]["world_loop_frame"], every
                 return found
             offset += 64
 
@@ -72,19 +73,42 @@ def main():
         )
         return (-math.atan2(dx, dz) * 2048 / math.tau) % 2048, math.hypot(dx, dz)
 
+    def arrival():
+        """Once the next world runs, report where the player is placed and how it faces."""
+        state = wait(lambda s: s["scene"] != "START" and s["state"] == "InGame" and s["scene_ready"])
+        time.sleep(5)
+        me = None
+        for _ in range(30):
+            try:  # the player roles are the actors sourced from the player; the world names them freely
+                me = next((a for a in actors()["every"] if a.get("source") == "player" and a["name"] == "CYRUS"), None)
+                if me and me["spatial"]:
+                    break
+                me = None
+            except SystemExit:  # the script world is still preparing
+                pass
+            time.sleep(2)
+        if me is None:
+            print(json.dumps({"event": "arrival", "error": "no CYRUS player actor"}), flush=True)
+            return
+        position = [v // 256 for v in me["spatial"]["effective"]["position"]]
+        print(json.dumps({"t": round(time.time() - t0, 1), "event": "arrival", "scene": state["scene"], "position": position,
+                          "yaw": me["spatial"]["effective"]["angles"][1], "health": me["attributes"][3]}), flush=True)
+
     def follow_story(defeated):
         """Report the actor-count changes and the world change that follow the duel."""
         seen, scene = defeated["actors"], call({"type": "state"})["scene"]
         for _ in range(300):
             time.sleep(1)
             state = call({"type": "state"})
-            if state["scene"] != scene:
-                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change", "scene": state["scene"]}), flush=True)
-                return
-            try:
-                total = actors()["total"]
-            except SystemExit:  # the script world is torn down while the next world prepares
-                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change", "scene": "loading"}), flush=True)
+            changed = state["scene"] != scene
+            if not changed:
+                try:
+                    total = actors()["total"]
+                except SystemExit:  # the script world is torn down while the next world prepares
+                    changed = True
+            if changed:
+                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change"}), flush=True)
+                arrival()
                 return
             if total != seen:
                 seen = total
@@ -107,7 +131,9 @@ def main():
         alive = [p for p in pirates if p["attributes"][3] > 0 and not (p["control"] or {}).get("killed")]
         # Same sample schema as original-duel.py: seconds, loop frame, player and pirate health.
         sample = {"t": round(time.time() - t0, 1), "mainloop_frame": found["loop_frame"], "player": me["attributes"][3],
-                  "pirates": [(p["name"], p["attributes"][3]) for p in pirates], "actors": found["total"]}
+                  "pirates": [(p["name"], p["attributes"][3]) for p in pirates], "actors": found["total"],
+                  "groups": {"player": (me["animation"] or {}).get("current_group"),
+                             "pirates": [(p["animation"] or {}).get("current_group") for p in pirates]}}
         print(json.dumps(sample), flush=True)
         if not alive:
             print("both pirates defeated", json.dumps(sample), flush=True)

@@ -76,15 +76,20 @@ data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel
 events (a software-rendered tab runs at about 2 frames per second, so its key holds are long).
 
 `dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
-policy (xdotool keys, positions, yaw and health read from the emulator's memory by a reader kept
-under `magic/tools/` and archived in redguard-decomp, because it holds executable addresses; the
-container is started with `--cap-add SYS_PTRACE` and a writable copy of `maps`, without which the
-game hangs when it leaves START). `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
-the two logs: same damage steps per hit, both pirates defeated, the story reaches the next world,
-and the delay after the last kill agrees within a factor of two. Measured (three original runs, two cyrus runs): the
-original takes 37 to 45 game seconds from the last kill to the world change, cyrus 32 to 36; the
-cause of cyrus's 20 to 30 percent quicker story is not found. Frame-synchronised replay and audio
-are not compared.
+policy (xdotool keys; positions, yaw and health read from the emulator's memory by a reader kept
+under `magic/tools/` and archived in redguard-decomp, because it holds executable addresses). The
+container is started with `--cap-add SYS_PTRACE`, and the run copy's `maps` link is replaced by a
+real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and hangs if the
+emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
+the two logs: pirate health falls in whole 10-point hits, both pirates are defeated, the story
+reaches the next world, the player arrives at the same place and heading, and the delay after the
+last kill agrees within a factor of two. **Verified** (pair of runs, PASS): both place the player
+at (38112, -278, 36352) facing 256 in world 1. Across five original and six cyrus runs the delay
+from the last kill to the world change is 41 to 45 game seconds in the original (the engine's own
+clock: frames over its measured frame rate) and 28 to 36 seconds in cyrus, so cyrus's story is
+about 25 percent quicker; the cause is not found. Animation groups seen at the samples overlap
+(the death groups 122 and 124 and the attack groups 102 to 104 appear in both); frame-synchronised
+replay, camera and audio are not compared.
 
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
