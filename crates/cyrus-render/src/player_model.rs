@@ -160,7 +160,7 @@ fn texture_set(
     cyrus_assets::animation::actor_texture_set(data.actor(actor.name())?).map(Some)
 }
 
-fn model_source(
+pub(crate) fn model_source(
     prepared: &PreparedWorld,
     model: &str,
     texture_set: Option<u16>,

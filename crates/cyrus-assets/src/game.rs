@@ -40,7 +40,7 @@ pub(crate) fn scene(
     let mut world = crate::runtime::geometry::world(source, name)?;
     let entry = &world.entry;
     source.progress(1, 6, "Animations");
-    crate::animation_export::prepare(
+    let weapons = crate::animation_export::prepare(
         &world.rgm,
         &world.models,
         &world.registry,
@@ -58,6 +58,7 @@ pub(crate) fn scene(
         &mut world.textures,
         out,
         output,
+        &weapons,
     )?;
     crate::runtime::geometry::report_textures(source, &world.textures);
     source.progress(3, 6, "Environment");

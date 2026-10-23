@@ -9,6 +9,8 @@ use std::{
     path::Path,
 };
 
+// Independent export inputs, as in the other preparation entry points.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare(
     map: &rgm::RgmFile,
     placed: &[rgm::PositionedModel],
@@ -17,6 +19,7 @@ pub(crate) fn prepare(
     textures: &mut TextureCache,
     out: &Path,
     output: &mut dyn crate::preparation::Output,
+    weapons: &crate::animation_export::WeaponModels,
 ) -> anyhow::Result<BTreeMap<String, f32>> {
     let metadata = rgm::export_rgm_metadata_json(map, None);
     let actors = metadata["actors"]
@@ -48,11 +51,20 @@ pub(crate) fn prepare(
             names.insert((name, texture_set));
         }
     }
+    // Weapon items draw with their own textures, like an actor frame source without a skin.
+    names.extend(weapons.names.iter().map(|name| (name.clone(), None)));
     let directory = out.with_extension("player-models");
     let mut radii = BTreeMap::new();
     for (name, texture_set) in names {
-        let model = crate::animation_export::resolve_model(&name, placed, registry)
-            .with_context(|| format!("actor model {name}"))?;
+        let model = if weapons.names.contains(&name) {
+            std::borrow::Cow::Owned(
+                crate::animation_export::archive_model(&name, registry, weapons.archive.as_deref())
+                    .with_context(|| format!("weapon model {name}"))?,
+            )
+        } else {
+            crate::animation_export::resolve_model(&name, placed, registry)
+                .with_context(|| format!("actor model {name}"))?
+        };
         if player_names.contains(&name) {
             radii.insert(name.clone(), model.header.radius as f32 / 256.0);
         }

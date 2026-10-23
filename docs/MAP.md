@@ -284,6 +284,7 @@ module where it is defined and regenerate.
 - `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
 - `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
+- `src/weapon_model.rs` — Equipped weapon models, placed from the retained logical attachment pose.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 

@@ -18,6 +18,7 @@ mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;
 mod terrain;
+mod weapon_model;
 pub use terrain::TextureAdmission as TerrainTextureAdmission;
 mod water;
 use bevy::prelude::*;
@@ -37,6 +38,7 @@ impl Plugin for WorldRenderPlugin {
             animation::AnimationRenderPlugin,
             script_transform::ScriptTransformPlugin,
             player_model::PlayerModelPlugin,
+            weapon_model::WeaponModelPlugin,
             environment::EnvironmentPlugin,
         ))
         .add_systems(

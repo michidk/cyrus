@@ -87,7 +87,7 @@ fn corner_normals(model: &Model3DFile) -> Vec<Vec<Option<[f32; 3]>>> {
         .collect()
 }
 
-fn archive_model(
+pub(crate) fn archive_model(
     name: &str,
     registry: &Registry,
     selected_archive: Option<&str>,
@@ -177,6 +177,12 @@ pub(crate) fn resolve_model<'a>(
     Ok(std::borrow::Cow::Owned(model))
 }
 
+/// Hand and hilt model stems of the world's weapon items, with the ROB archive that holds them.
+pub(crate) struct WeaponModels {
+    pub names: BTreeSet<String>,
+    pub archive: Option<String>,
+}
+
 pub(crate) fn prepare(
     rgm: &RgmFile,
     placed: &[PositionedModel],
@@ -185,7 +191,7 @@ pub(crate) fn prepare(
     source: &dyn crate::source::ReadAssets,
     out: &Path,
     output: &mut dyn crate::preparation::Output,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<WeaponModels> {
     let mut metadata = rgm::export_rgm_metadata_json(rgm, None);
     let scripts = crate::script_export::prepare_source(rgm, source, world, Some(registry))?;
     metadata["script_content_id"] = serde_json::json!(scripts.content_id);
@@ -273,10 +279,10 @@ pub(crate) fn prepare(
         models: BTreeMap::new(),
         unsupported: BTreeMap::new(),
     };
-    let weapon_names: BTreeSet<_> = scripts
+    let weapon_names: BTreeSet<String> = scripts
         .weapons
         .values()
-        .flat_map(|weapon| [&weapon.hand_model, &weapon.hilt_model])
+        .flat_map(|weapon| [weapon.hand_model.clone(), weapon.hilt_model.clone()])
         .collect();
     let weapon_archive = if weapon_names.is_empty() {
         None
@@ -313,7 +319,10 @@ pub(crate) fn prepare(
         &out.with_extension("animations"),
         &serde_json::to_vec(&result)?,
     )?;
-    Ok(())
+    Ok(WeaponModels {
+        names: weapon_names,
+        archive: weapon_archive,
+    })
 }
 
 #[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]
