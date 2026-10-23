@@ -2095,6 +2095,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        let selected = self.selected_player_index() == Some(index);
         let events = effects::ActorEventContext::capture(self, id);
         let camera = &mut self.camera;
         let effects = &mut self.effects;
@@ -2122,6 +2123,10 @@ impl ScriptWorld {
             } else {
                 124
             }
+        } else if selected && matches!(actor.surface, Some(2 | 4)) {
+            // The selected player in deep water treads water; the branch's weapon-state cleanup
+            // is not modelled.
+            141
         } else if control.rope_attached {
             79
         } else if control.living_state == 15 {

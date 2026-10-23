@@ -161,7 +161,7 @@ impl ScriptWorld {
             .texture_surfaces
             .as_ref()
             .context("edge probe SURFACE.INI assignments unavailable; re-export world")?;
-        terrain.edge_blocked(point, assignments)
+        Ok(!terrain.edge_blocked(point, assignments)?)
     }
 
     /// `MoveForward`'s forward step check. `None` when the check needs the collision query and
