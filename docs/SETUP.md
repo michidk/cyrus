@@ -70,6 +70,17 @@ In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
 data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
 events (a software-rendered tab runs at about 2 frames per second, so its key holds are long).
 
+`dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
+policy (xdotool keys, positions, yaw and health read from the emulator's memory by a reader kept
+under `magic/tools/` and archived in redguard-decomp, because it holds executable addresses; the
+container is started with `--cap-add SYS_PTRACE` and a writable copy of `maps`, without which the
+game hangs when it leaves START). `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
+the two logs: same damage steps per hit, both pirates defeated, the story reaches the next world,
+and the delay after the last kill agrees within a factor of two. Measured (three runs each): the
+original takes 37 to 45 game seconds from the last kill to the world change, cyrus 32 to 36; the
+cause of cyrus's 20 to 30 percent quicker story is not found. Frame-synchronised replay and audio
+are not compared.
+
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
 available. Use a windowed run for flycam and screenshot checks.

@@ -45,7 +45,7 @@ def main():
                 state = call({"type": "state"})
                 if done(state):
                     return state
-            except OSError:  # the control server is not listening yet
+            except (OSError, ValueError):  # the control server is not answering yet
                 pass
             time.sleep(3)
         raise SystemExit("timed out waiting for the game")
@@ -61,6 +61,7 @@ def main():
             page = call({"type": "scripts", "offset": offset, "limit": 64})
             found.update({actor["name"]: actor for actor in page["actors"]})
             if len(page["actors"]) < 64:
+                found["total"], found["loop_frame"] = page["total"], page["globals"]["world_loop_frame"]
                 return found
             offset += 64
 
@@ -71,13 +72,31 @@ def main():
         )
         return (-math.atan2(dx, dz) * 2048 / math.tau) % 2048, math.hypot(dx, dz)
 
+    def follow_story(defeated):
+        """Report the actor-count changes and the world change that follow the duel."""
+        seen, scene = defeated["actors"], call({"type": "state"})["scene"]
+        for _ in range(300):
+            time.sleep(1)
+            state = call({"type": "state"})
+            if state["scene"] != scene:
+                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change", "scene": state["scene"]}), flush=True)
+                return
+            try:
+                total = actors()["total"]
+            except SystemExit:  # the script world is torn down while the next world prepares
+                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change", "scene": "loading"}), flush=True)
+                return
+            if total != seen:
+                seen = total
+                print(json.dumps({"t": round(time.time() - t0, 1), "event": "actors", "count": total}), flush=True)
+        print("no world change within 300 s after the duel")
+
     wait(lambda state: state["state"] == "Menu")
     call({"type": "load_scene", "name": "START"})
     wait(lambda state: state["state"] == "InGame" and state["scene_ready"])
     time.sleep(10)  # the opening settles before the player accepts input
     call({"type": "cheat", "name": "drevil"})
-    tap("KeyS", 1.0)  # quick sword
-    left_is_positive = None
+    t0 = time.time()
     for step in range(args.limit):
         state = call({"type": "state"})
         if state["state"] != "InGame":
@@ -86,21 +105,23 @@ def main():
         me = found["CYRUS"]
         pirates = [found[name] for name in ("SPIRATE1", "SPIRATE2") if name in found]
         alive = [p for p in pirates if p["attributes"][3] > 0 and not (p["control"] or {}).get("killed")]
-        if step % 5 == 0:
-            print(step, state["frame"], [(p["name"], p["attributes"][3]) for p in pirates], "player", me["attributes"][3], flush=True)
+        # Same sample schema as original-duel.py: seconds, loop frame, player and pirate health.
+        sample = {"t": round(time.time() - t0, 1), "mainloop_frame": found["loop_frame"], "player": me["attributes"][3],
+                  "pirates": [(p["name"], p["attributes"][3]) for p in pirates], "actors": found["total"]}
+        print(json.dumps(sample), flush=True)
         if not alive:
-            print("both pirates defeated at frame", state["frame"])
+            print("both pirates defeated", json.dumps(sample), flush=True)
+            follow_story(sample)
             return
+        if not (me["control"] or {}).get("weapon_drawn"):
+            tap("KeyS", 0.5)  # the quick sword key is ignored while the player is reacting to a hit
+            continue
         target = min(alive, key=lambda p: bearing(me, p)[1])
         want, distance = bearing(me, target)
         current = me["spatial"]["effective"]["angles"][1]
         diff = (want - current + 1024) % 2048 - 1024
         if abs(diff) > 70:
-            key = "ArrowLeft" if (diff > 0) == (left_is_positive is not False) else "ArrowRight"
-            tap(key, 0.25)
-            if left_is_positive is None:  # calibrate the turn direction from the first turn
-                after = actors()["CYRUS"]["spatial"]["effective"]["angles"][1]
-                left_is_positive = ((after - current + 1024) % 2048 - 1024) * diff > 0
+            tap("ArrowLeft" if diff > 0 else "ArrowRight", 0.25)  # Left raises the yaw
         elif distance > 120:
             tap("ArrowUp", 0.6)
         else:

@@ -34,8 +34,6 @@
   window.__duelDone = false;
   window.__duelAbort = false;
   (async () => {
-    await hold('KeyS', 1500); // quick sword
-    let turnsLeftForPositive = null;
     for (let step = 0; step < 600 && !window.__duelAbort; step++) {
       const found = actors();
       const me = found.CYRUS;
@@ -44,17 +42,13 @@
       if (step % 3 === 0) window.__duelLog.push([step, pirates.map((p) => [p.name, p.attributes[3]]), me.attributes[3]]);
       if (!alive.length) return void (window.__duelDone = 'both defeated');
       if (me.attributes[3] <= 0) return void (window.__duelDone = 'player at 0');
+      if (!(me.control && me.control.weapon_drawn)) { await hold('KeyS', 500); continue; } // ignored mid hit-reaction
       const target = alive.reduce((a, b) => (bearing(me, a)[1] <= bearing(me, b)[1] ? a : b));
       const [want, distance] = bearing(me, target);
       const current = me.spatial.effective.angles[1];
       const diff = wrap(want - current, 1024);
       if (Math.abs(diff) > 70) {
-        const key = diff > 0 === (turnsLeftForPositive !== false) ? 'ArrowLeft' : 'ArrowRight';
-        await hold(key, 500);
-        if (turnsLeftForPositive === null) {
-          const moved = wrap(actors().CYRUS.spatial.effective.angles[1] - current, 1024);
-          if (Math.abs(moved) > 5) turnsLeftForPositive = moved * diff > 0;
-        }
+        await hold(diff > 0 ? 'ArrowLeft' : 'ArrowRight', 500); // Left raises the yaw
       } else if (distance > 120) await hold('ArrowUp', 900);
       else await hold('ControlLeft', 500);
     }
