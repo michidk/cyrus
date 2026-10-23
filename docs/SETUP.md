@@ -81,7 +81,7 @@ under `magic/tools/` and archived in redguard-decomp, because it holds executabl
 container is started with `--cap-add SYS_PTRACE` and a writable copy of `maps`, without which the
 game hangs when it leaves START). `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
 the two logs: same damage steps per hit, both pirates defeated, the story reaches the next world,
-and the delay after the last kill agrees within a factor of two. Measured (three runs each): the
+and the delay after the last kill agrees within a factor of two. Measured (three original runs, two cyrus runs): the
 original takes 37 to 45 game seconds from the last kill to the world change, cyrus 32 to 36; the
 cause of cyrus's 20 to 30 percent quicker story is not found. Frame-synchronised replay and audio
 are not compared.
