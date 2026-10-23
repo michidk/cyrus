@@ -1047,9 +1047,16 @@ impl ScriptWorld {
                 }
                 _ => None,
             };
+            // A type-three placement gets an enabled flat record showing the placement's texture.
+            let flat = match &source {
+                ScriptActorSource::Map(placement) if placement.object_type == 3 => {
+                    Some(flat::FlatState::placed(placement.texture as u16))
+                }
+                _ => None,
+            };
             ScriptActor {
                 light,
-                flat: None,
+                flat,
                 message_read: 0,
                 surface: (control.is_some()
                     || matches!(
@@ -6792,6 +6799,7 @@ mod fighting_tests {
                     light_intensity: 0,
                     light_radius: 0,
                     light_rgb: [0; 3],
+                    texture: 0,
                     map_position: [0; 3],
                     angles: [0; 3],
                 }),
@@ -6979,6 +6987,7 @@ mod selector_tests {
             light_intensity: 0,
             light_radius: 0,
             light_rgb: [0; 3],
+            texture: 0,
             map_position: [0; 3],
             angles: [0; 3],
         });
@@ -7045,6 +7054,7 @@ mod selector_tests {
                 light_intensity: 0,
                 light_radius: 0,
                 light_rgb: [0; 3],
+                texture: 0,
                 map_position: [0; 3],
                 angles: [0; 3],
             })),

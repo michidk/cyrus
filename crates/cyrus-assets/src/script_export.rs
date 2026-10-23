@@ -195,7 +195,7 @@ pub fn prepare_source(
     };
     let shells = world_shells(source, &system, world, &actors)?;
     let mut scripts = Scripts {
-        version: 28,
+        version: 29,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
@@ -255,6 +255,7 @@ pub fn prepare_source(
                 light_intensity: record.intensity,
                 light_radius: record.radius,
                 light_rgb: [record.red, record.green, record.blue],
+                texture: record.texture_data_raw,
                 map_position: [
                     i64::from(record.pos_x),
                     i64::from(record.pos_y),

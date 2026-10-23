@@ -466,6 +466,10 @@ pub struct Instance {
     pub light_intensity: i16,
     pub light_radius: i16,
     pub light_rgb: [i16; 3],
+    /// Raw MPOB texture word: the flat texture identifier of a type-3 placement (bank in the upper nine
+    /// bits, image in the low seven). Required in exported caches (schema 29).
+    #[serde(default)]
+    pub texture: i16,
     /// Packed map coordinates retained in their original field units.
     pub map_position: [i64; 3],
     pub angles: [u32; 3],
@@ -548,7 +552,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 28,
+            self.version == 29,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

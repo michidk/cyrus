@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 28,
+        version: 29,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -158,6 +158,7 @@ fn cache() -> Scripts {
                 light_intensity: 0,
                 light_radius: 0,
                 light_rgb: [0; 3],
+                texture: 0,
                 map_position: [0; 3],
                 angles: [0; 3],
             })
@@ -2017,6 +2018,7 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
             light_intensity: 0,
             light_radius: 0,
             light_rgb: [0; 3],
+            texture: 0,
             map_position: position,
             angles,
         });
@@ -10242,6 +10244,7 @@ fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_r
             light_intensity: 0,
             light_radius: 0,
             light_rgb: [0; 3],
+            texture: 0,
             map_position: [100, 200, 300],
             angles: [0; 3],
         });
@@ -14466,6 +14469,22 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn type_three_placement_starts_with_an_enabled_flat_record_of_its_texture() {
+    let mut scripts = random_scripts("FlatThree", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(2);
+    scripts.instances[0].object_type = 3;
+    scripts.instances[0].texture = -20351;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let flat = world.actors()[0].flat_state().unwrap();
+    assert_eq!(flat["enabled"], true);
+    assert_eq!(flat["texture"], 0xb081);
+    assert_eq!(flat["offset"], serde_json::json!([0, 0, 0]));
+    assert!(world.actors()[1].flat_state().is_none());
 }
 
 #[test]

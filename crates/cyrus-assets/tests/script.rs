@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 28,
+        version: 29,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -121,6 +121,7 @@ fn portable_script_records_round_trip_with_the_same_identity() {
             light_intensity: -123,
             light_radius: 32767,
             light_rgb: [-32768, 19, -7],
+            texture: 0,
             map_position: [0; 3],
             angles: [0; 3],
         })
@@ -648,7 +649,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 28);
+    assert_eq!(scripts.version, 29);
     assert!(scripts.shells.is_empty(), "no installed shell programs");
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];

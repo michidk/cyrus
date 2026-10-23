@@ -73,7 +73,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 28,
+        version: 29,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -148,6 +148,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
             light_intensity: 0,
             light_radius: 0,
             light_rgb: [0; 3],
+            texture: 0,
             map_position: [0; 3],
             angles: [0; 3],
         }],

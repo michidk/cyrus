@@ -72,7 +72,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 28,
+        version: 29,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -157,6 +157,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
                 light_intensity: 0,
                 light_radius: 0,
                 light_rgb: [0; 3],
+                texture: 0,
                 map_position: [0; 3],
                 angles: [0; 3],
             })

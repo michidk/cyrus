@@ -26,6 +26,15 @@ pub(super) struct FlatState {
 }
 
 impl FlatState {
+    /// The record map loading gives a type-three placement: enabled, offsets zero, the placement's texture.
+    pub(super) fn placed(texture: u16) -> Self {
+        Self {
+            enabled: true,
+            texture,
+            ..Self::default()
+        }
+    }
+
     fn show(&mut self, texture: u16, frame: u16) {
         self.enabled = true;
         self.pending = 0;
