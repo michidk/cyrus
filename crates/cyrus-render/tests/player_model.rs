@@ -7,6 +7,23 @@ use cyrus_world::{
     lifecycle::PreparedWorld,
 };
 
+fn roots_of(app: &mut App, path: &str) -> Vec<Entity> {
+    let expected = bevy::asset::AssetPath::parse(path);
+    let handles: Vec<_> = app
+        .world_mut()
+        .query::<(Entity, &WorldAssetRoot)>()
+        .iter(app.world())
+        .map(|(entity, handle)| (entity, handle.0.id()))
+        .collect();
+    handles
+        .into_iter()
+        .filter(|(_, id)| {
+            app.world().resource::<AssetServer>().get_path(*id).as_ref() == Some(&expected)
+        })
+        .map(|(entity, _)| entity)
+        .collect()
+}
+
 #[test]
 fn player_pose_binds_updates_replaces_and_removes_its_model() {
     let mut app = App::new();
@@ -72,33 +89,36 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         .unwrap()
         .model = "CYRSA012".into();
     app.update();
+    // The shown model stays until its successor has loaded.
+    assert!(app.world().get_entity(root).is_ok());
+    assert_eq!(
+        roots_of(&mut app, "cache://ISLAND.player-models/CYRSA012.glb#Scene0").len(),
+        1
+    );
+    let next = roots_of(&mut app, "cache://ISLAND.player-models/CYRSA012.glb#Scene0")[0];
+    assert_eq!(
+        *app.world().get::<Visibility>(next).unwrap(),
+        Visibility::Hidden
+    );
+    app.world_mut()
+        .spawn((Name::new("CYRSA012"), ChildOf(next)));
+    app.update();
+    app.update();
     assert!(app.world().get_entity(root).is_err());
     assert!(app.world().get_entity(node).is_err());
-    let (_, handle) = app
-        .world_mut()
-        .query::<(Entity, &WorldAssetRoot)>()
-        .single(app.world())
-        .unwrap();
-    assert_eq!(
-        app.world()
-            .resource::<AssetServer>()
-            .get_path(handle.0.id())
-            .unwrap(),
-        bevy::asset::AssetPath::parse("cache://ISLAND.player-models/CYRSA012.glb#Scene0")
-    );
     app.world_mut().resource_mut::<PreparedWorld>().scene_path = "cache://PALACE.glb".into();
     app.update();
-    let (_, handle) = app
-        .world_mut()
-        .query::<(Entity, &WorldAssetRoot)>()
-        .single(app.world())
-        .unwrap();
+    let next = roots_of(&mut app, "cache://PALACE.player-models/CYRSA012.glb#Scene0")[0];
+    app.world_mut()
+        .spawn((Name::new("CYRSA012"), ChildOf(next)));
+    app.update();
+    app.update();
     assert_eq!(
-        app.world()
-            .resource::<AssetServer>()
-            .get_path(handle.0.id())
-            .unwrap(),
-        bevy::asset::AssetPath::parse("cache://PALACE.player-models/CYRSA012.glb#Scene0")
+        app.world_mut()
+            .query::<&WorldAssetRoot>()
+            .iter(app.world())
+            .count(),
+        1
     );
     app.world_mut().entity_mut(player).remove::<AnimationPose>();
     app.update();

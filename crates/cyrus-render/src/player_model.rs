@@ -17,6 +17,13 @@ struct ModelRoot {
     texture_set: Option<u16>,
 }
 
+/// A replaced model kept on screen until its successor has loaded, so a frame-source switch
+/// never leaves the player invisible while the next scene loads.
+#[derive(Component)]
+struct RetiredRoot {
+    player: Entity,
+}
+
 /// Loads only a caller-selected pose; supplies no animation state or clock.
 pub struct PlayerModelPlugin;
 impl Plugin for PlayerModelPlugin {
@@ -52,15 +59,37 @@ fn bind(
     animations: Option<Res<Assets<Animations>>>,
     players: ModelOwners,
     roots: Query<(Entity, &ModelRoot)>,
+    retired: Query<(Entity, &RetiredRoot)>,
+    visibilities: Query<&Visibility>,
     children: Query<&Children>,
     nodes: Query<(&Name, Option<&AnimationPose>)>,
 ) {
     let Some(prepared) = prepared else {
-        for (root, _) in &roots {
+        for root in roots
+            .iter()
+            .map(|(root, _)| root)
+            .chain(retired.iter().map(|(root, _)| root))
+        {
             commands.entity(root).despawn();
         }
         return;
     };
+    for (old, owner) in &retired {
+        let successor_shown = roots
+            .iter()
+            .find(|(_, binding)| binding.player == owner.player)
+            .is_none_or(|(root, _)| {
+                visibilities
+                    .get(root)
+                    .is_ok_and(|shown| *shown != Visibility::Hidden)
+            });
+        let old_hidden = visibilities
+            .get(old)
+            .is_ok_and(|shown| *shown == Visibility::Hidden);
+        if successor_shown || old_hidden || players.get(owner.player).is_err() {
+            commands.entity(old).despawn();
+        }
+    }
     for (root, binding) in &roots {
         if players
             .get(binding.player)
@@ -116,7 +145,7 @@ fn bind(
                 }
                 continue;
             }
-            commands.entity(root).despawn();
+            retire(&mut commands, root, player);
         }
         commands.entity(player).insert_if_new(Visibility::Inherited);
         commands.spawn((
@@ -132,6 +161,13 @@ fn bind(
             ChildOf(player),
         ));
     }
+}
+
+fn retire(commands: &mut Commands, root: Entity, player: Entity) {
+    commands
+        .entity(root)
+        .remove::<ModelRoot>()
+        .insert(RetiredRoot { player });
 }
 
 /// The bound actor's texture set, or `None` while its world or animation data is unavailable
