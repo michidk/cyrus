@@ -64,6 +64,11 @@ impl ActorModelCollision {
             .with_context(|| format!("MPOB {actor} model {name}: prepared geometry absent"))
     }
 
+    /// Whether any initial actor carries a prepared model.
+    pub fn has_models(&self) -> bool {
+        !self.instances.is_empty()
+    }
+
     /// Original header radius in map units, before any actor shape radius scaling.
     pub fn radius(&self, actor: usize) -> Result<f32> {
         Ok(self.model(actor)?.radius)

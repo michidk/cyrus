@@ -104,6 +104,61 @@ fn startup_settling_ranks_water_terrain_against_static_support() {
 }
 
 #[test]
+fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
+    use cyrus_assets::collision::ActorCollisionModels;
+    use cyrus_game::player::data::PlayerScene;
+    use cyrus_game::player::placement::{PlayerPose, settle_static};
+
+    // The original also ranks the actors' solid models (a ship deck) against the terrain; this
+    // pass does not, so water terrain support is refused while an actor model could outrank it.
+    let scene_with = |actors: Option<ActorCollisionModels>| {
+        let collision = CollisionScene {
+            actor_models: actors,
+            ..Default::default()
+        };
+        PlayerScene::decode(
+            &serde_json::to_vec(&serde_json::json!({
+                "version":2,"world":0,
+                "settings":{"standing_height":-2,"post_collide_height":50,"slide_range":-60000,
+                    "turn_speed":12,"turn_max_speed":48,"poly_push_units":16},
+                "definition":{
+                    "actors":[{"script_name":"CYRUS","attributes":{},"mpsz_bounds_primary":0,
+                        "raex":{"unknown_12":256}}],
+                    "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
+                        "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
+                },
+                "heights":vec![0;256*256],"water":vec![true;256*256],
+                "collision":collision
+            }))
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    let pose = || PlayerPose {
+        position: [5000 * 256, -240 * 256, 5000 * 256],
+        heading: 0,
+    };
+    let mut settled = pose();
+    settle_static(&scene_with(None), &mut settled).unwrap();
+    assert_eq!(settled.position[1], -64 * 256);
+
+    let actors = ActorCollisionModels {
+        object_count: 1,
+        models: [("DECK".into(), model(0).geometry)].into(),
+        instances: [(0, "DECK".to_string())].into(),
+        collision_flags: [(0, 1)].into(),
+        unsupported: Default::default(),
+    };
+    let mut kept = pose();
+    let error = settle_static(&scene_with(Some(actors)), &mut kept).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("actor model support"),
+        "{error:#}"
+    );
+    assert_eq!(kept.position, pose().position);
+}
+
+#[test]
 fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
     use cyrus_collision::ground::GroundSupport;
     let world = StaticCollision::new(&CollisionScene::default()).unwrap();

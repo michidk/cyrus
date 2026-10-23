@@ -68,6 +68,23 @@ pub fn settle_static(
         definition.positive_extent[1],
         terrain,
     )? {
+        // The original's candidate list also holds the solid models of the ordinary actors, which
+        // this pass does not see. Water terrain, the only support such a model (a ship deck)
+        // would outrank, is therefore not trusted while the world has actor models.
+        anyhow::ensure!(
+            !(support.source() == cyrus_collision::ground::SupportSource::Terrain
+                && scene
+                    .terrain
+                    .as_ref()
+                    .is_some_and(|terrain| terrain.sample(pose.position).is_none())
+                && scene
+                    .actor_collision
+                    .as_ref()
+                    .is_some_and(|models| models.has_models())),
+            "world {} startup settling at {:?}: water or terrain edge unsupported without actor model support",
+            scene.world,
+            pose.position
+        );
         pose.position[1] = support.actor_height(
             definition.positive_extent[1],
             scene.settings.standing_height,
