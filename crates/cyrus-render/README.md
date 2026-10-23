@@ -204,6 +204,15 @@ and light coordinates follow the [generated-flat lighting contract](https://gith
 Ordinary flats use the [spatial-list and alpha-partition order](https://github.com/michidk/redguard-preservation/blob/a9e6b62/docs/engine/model-lighting.md#flat-submission-order),
 with the inspection camera selecting the region. Excluded retained draws return
 when admitted again and still participate in material removal/respecialization.
+Actor flat records (the `Flat*` natives and type-three placements such as the lava bubbles and
+fires) draw through the same billboard path as environmental effects, after the effect pool. Each
+record uses the texture's own flags and alpha, the world's `world_ambientfx` brightness and its frame
+word (`0xffff` selects the shared automatic playback), at the actor pose plus the rotated offset
+(**Verified** from the executable; preservation SOUP.md 'Actor flat drawing'). The world's effect images
+hold the type-three textures and the literal textures the world's scripts give the natives; a texture
+only computed at run time is reported once and not drawn, and older caches need re-export.
+**Unknown:** the submission order against placed flats and effects (flats draw after the effect pool
+here), the original's visibility test per actor, and pixel parity with the original.
 Scripted/translucent model ordering, synchronized phase and full pixel parity
 remain **Unknown**. Placed flats use the recovered
 [quantized sprite bound and first-polygon admission](https://github.com/michidk/redguard-preservation/blob/4b1f28b/docs/engine/texture-animation.md#placed-flat-admission)
