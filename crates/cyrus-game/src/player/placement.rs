@@ -106,7 +106,7 @@ fn settle(
             && scene
                 .terrain
                 .as_ref()
-                .is_some_and(|terrain| terrain.sample(pose.position).is_none())
+                .is_some_and(|terrain| terrain.sample_dry(pose.position).is_none())
             && scene
                 .actor_collision
                 .as_ref()

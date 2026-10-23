@@ -22,11 +22,24 @@ fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
 }
 
 #[test]
-fn unsupported_water_and_outside_grid_do_not_fabricate_support() {
+fn water_cells_support_with_live_heights_near_the_camera_and_outside_grid_does_not() {
     let mut water = vec![false; 256 * 256];
     water[(256 - 161) * 256 + 159] = true;
     let terrain = TerrainGround::new(vec![-680; 256 * 256], water, None).unwrap();
-    assert!(terrain.sample([10_448_896, 0, 10_502_144]).is_none());
+    let water_position = [10_448_896, 0, 10_502_144];
+    // A water cell supplies the same interpolated height as a dry one; settling still refuses it.
+    assert_eq!(terrain.sample(water_position).unwrap().height, -680.0);
+    assert!(terrain.sample_dry(water_position).is_none());
+    // Within 15 cells of the camera the live vertex cache replaces the decoded heights.
+    let mut live = vec![-680.0f32; 256 * 256];
+    live[(256 - 161) * 256 + 159] = -650.0;
+    live[(256 - 161) * 256 + 160] = -650.0;
+    live[(256 - 160) * 256 + 159] = -650.0;
+    live[(256 - 160) * 256 + 160] = -650.0;
+    terrain.live().publish([160, 160], &live);
+    assert_eq!(terrain.sample(water_position).unwrap().height, -650.0);
+    terrain.live().publish([160 + 16, 160], &live);
+    assert_eq!(terrain.sample(water_position).unwrap().height, -680.0);
     assert!(terrain.sample([-256, 0, 0]).is_none());
     assert!(terrain.sample([65_536 * 256, 0, 0]).is_none());
     assert!(TerrainGround::new(vec![], vec![], None).is_err());

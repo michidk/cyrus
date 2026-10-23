@@ -108,6 +108,13 @@ fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
     -wave_height(water, vertex, ticks, 0.0) / 20.0
 }
 
+/// The loaded world's player scene, whose terrain receives the live vertex heights.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct PlayerTerrain<'w> {
+    request: Option<Res<'w, cyrus_game::player::data::PlayerSceneRequest>>,
+    scenes: Option<Res<'w, Assets<cyrus_game::player::data::PlayerScene>>>,
+}
+
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn animate_water(
@@ -128,8 +135,11 @@ pub(crate) fn animate_water(
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
-    mut preparation: Local<crate::terrain::Preparation>,
-    mut camera_grid: Local<Vec<[f32; 3]>>,
+    (mut preparation, mut camera_grid, player_scene): (
+        Local<crate::terrain::Preparation>,
+        Local<Vec<[f32; 3]>>,
+        PlayerTerrain,
+    ),
 ) {
     let (parents, staged) = hierarchy;
     if playback.source != Some(request.0.id())
@@ -263,6 +273,17 @@ pub(crate) fn animate_water(
                 }
             })
             .collect();
+        // Ground queries near the camera read these live vertex heights (water moves actors).
+        if playback.engine_heights.len() == 256 * 256
+            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
+            && let Some(terrain) = scenes
+                .get(&request.0)
+                .and_then(|scene| scene.terrain.as_ref())
+        {
+            terrain
+                .live()
+                .publish(window.engine_center(), &playback.engine_heights);
+        }
         let mut grid = playback.base.clone();
         for (vertex, position) in grid.iter_mut().enumerate() {
             if let Some(water) =

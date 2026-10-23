@@ -2,11 +2,48 @@
 use bevy::math::DVec3;
 
 /// Decoded WLD heights in source row order. Engine Y is positive down.
-/// Water vertices must be excluded until moving-water support is available.
+/// Queries within 15 grid cells of the camera read the live vertex cache the water update
+/// publishes (water vertices move with the waves); farther cells read the decoded heights.
 pub struct TerrainGround {
     heights: Vec<i16>,
     water: Vec<bool>,
     textures: Option<Vec<u8>>,
+    live: std::sync::Arc<LiveTerrain>,
+}
+
+/// The engine's live terrain vertex cache: heights in source row order around a grid cell.
+/// The water update publishes it; ground queries read it. Empty until the first publication.
+#[derive(Default)]
+pub struct LiveTerrain(std::sync::RwLock<Option<LiveGrid>>);
+
+struct LiveGrid {
+    center: [i32; 2],
+    heights: Vec<f32>,
+}
+
+impl LiveTerrain {
+    /// Replace the cache. `heights` is the whole 256-by-256 grid in source row order and
+    /// `center` the grid cell (column, engine row) the camera window is centred on.
+    pub fn publish(&self, center: [i32; 2], heights: &[f32]) {
+        let mut cache = self.0.write().expect("live terrain lock");
+        match cache.as_mut() {
+            Some(grid) if grid.heights.len() == heights.len() => {
+                grid.center = center;
+                grid.heights.copy_from_slice(heights);
+            }
+            _ => {
+                *cache = Some(LiveGrid {
+                    center,
+                    heights: heights.to_vec(),
+                });
+            }
+        }
+    }
+
+    /// Forget the cache, as when the world is replaced.
+    pub fn clear(&self) {
+        *self.0.write().expect("live terrain lock") = None;
+    }
 }
 
 /// Resolved terrain sound surface and original blend coverage, from zero through 256.
@@ -388,6 +425,7 @@ impl TerrainGround {
             heights,
             water,
             textures,
+            live: std::sync::Arc::default(),
         })
     }
 
@@ -430,10 +468,20 @@ impl TerrainGround {
         Ok(Some(textures[(256 - row) as usize * 256 + column as usize]))
     }
 
-    /// Samples dry interior terrain. Returns `None` for unsupported water or grid edges.
+    /// The cache the water update publishes into; cloned by the host that animates the water.
+    pub fn live(&self) -> std::sync::Arc<LiveTerrain> {
+        self.live.clone()
+    }
+
+    /// Whether the vertex at a grid column and engine row is a water vertex.
+    pub fn is_water_vertex(&self, column: usize, row: usize) -> bool {
+        (1..=256).contains(&row) && column < 256 && self.water[(256 - row) * 256 + column]
+    }
+
+    /// Samples interior terrain, water cells included. Returns `None` at grid edges.
     /// Input coordinates retain the original eight fractional bits.
     pub fn sample(&self, position: [i64; 3]) -> Option<GroundSupport> {
-        let (height, plane) = self.plane(position, true)?;
+        let (height, plane) = self.plane(position)?;
         let normal = plane.normalize();
         Some(GroundSupport {
             height,
@@ -443,13 +491,29 @@ impl TerrainGround {
         })
     }
 
-    /// Terrain surface height in map units at a runtime position, water cells included;
-    /// `None` only off the height grid. Same cell and triangle selection as [`Self::sample`].
-    pub fn height(&self, position: [i64; 3]) -> Option<f64> {
-        self.plane(position, false).map(|(height, _)| height)
+    /// [`Self::sample`] that also refuses a cell with a water vertex: startup settling does not
+    /// trust water terrain while actor models may support the player.
+    pub fn sample_dry(&self, position: [i64; 3]) -> Option<GroundSupport> {
+        let x = (position[0] >> 8) as f64;
+        let z = (position[2] >> 8) as f64;
+        let i = (x / 256.0 - 0.5).round_ties_even() as i32;
+        let j = (z / 256.0 + 0.5).round_ties_even() as i32;
+        let water = (0..2).any(|dc| {
+            (0..2).any(|dr| {
+                let (column, row) = (i + dc, j - dr);
+                column >= 0 && row >= 1 && self.is_water_vertex(column as usize, row as usize)
+            })
+        });
+        if water { None } else { self.sample(position) }
     }
 
-    fn plane(&self, position: [i64; 3], dry_only: bool) -> Option<(f64, DVec3)> {
+    /// Terrain surface height in map units at a runtime position; `None` only off the height
+    /// grid. Same cell and triangle selection as [`Self::sample`].
+    pub fn height(&self, position: [i64; 3]) -> Option<f64> {
+        self.plane(position).map(|(height, _)| height)
+    }
+
+    fn plane(&self, position: [i64; 3]) -> Option<(f64, DVec3)> {
         let x = (position[0] >> 8) as f64;
         let z = (position[2] >> 8) as f64;
         let i = (x / 256.0 - 0.5).round_ties_even() as i32;
@@ -457,15 +521,21 @@ impl TerrainGround {
         if !(0..255).contains(&i) || !(2..=255).contains(&j) {
             return None;
         }
+        let live = self.live.0.read().expect("live terrain lock");
+        let live = live
+            .as_ref()
+            .filter(|grid| (i - grid.center[0]).abs() <= 15 && (j - grid.center[1]).abs() <= 15);
         let corner = |column: i32, row: i32| {
             let index = (256 - row) as usize * 256 + column as usize;
-            (!dry_only || !self.water[index]).then(|| {
-                DVec3::new(
-                    f64::from(column * 256),
-                    f64::from(self.heights[index]),
-                    f64::from(row * 256),
-                )
-            })
+            let height = live.map_or_else(
+                || f64::from(self.heights[index]),
+                |grid| f64::from(grid.heights[index]),
+            );
+            Some(DVec3::new(
+                f64::from(column * 256),
+                height,
+                f64::from(row * 256),
+            ))
         };
         let a = corner(i, j)?;
         let diagonal = corner(i + 1, j - 1)?;
