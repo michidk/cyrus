@@ -78,6 +78,9 @@ pub struct SimulationClock {
     warmup: u8,
     /// FPS the exposed step used: twelve during the startup countdown, else measured.
     step_fps: u32,
+    /// Sum of every step's frame scale, in 1/256 nominal tick. Observation only: it is not part
+    /// of a snapshot and restarts at zero after a restore.
+    elapsed_scale: u64,
 }
 
 impl SimulationClock {
@@ -178,6 +181,7 @@ impl SimulationClock {
             } else {
                 snapshot.measured
             },
+            elapsed_scale: 0,
         })
     }
 
@@ -230,6 +234,7 @@ impl SimulationClock {
             fine_fraction: 0,
             warmup: 12,
             step_fps: 12,
+            elapsed_scale: 0,
         })
     }
 
@@ -344,7 +349,15 @@ impl SimulationClock {
                 fine_ticks: fine >> 5,
             }
         };
+        self.elapsed_scale += u64::from(self.step.frame_scale);
         self.step
+    }
+
+    /// Game seconds simulated since this clock was created or restored: each update advances
+    /// `frame_scale / 256` nominal ticks of `1 / normal_frame_rate` second, so a host slower than
+    /// the minimum frame rate runs the game slower than wall time, as the original does.
+    pub fn game_seconds(&self) -> f64 {
+        self.elapsed_scale as f64 / 256.0 / f64::from(self.settings.normal_frame_rate)
     }
 }
 

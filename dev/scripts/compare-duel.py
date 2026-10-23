@@ -11,9 +11,9 @@ coarse). Checks (exit 1 if one fails):
   * every pirate health step is a whole number of 10-point hits in both runs (a hit is 10);
   * both runs reach the next world after the duel, the player arrives within 300 map units
     (horizontal) and 70 heading units (of 2048) of the same place, and the delay from the last
-    pirate's death to the world change agrees within a factor of two. The original's delay is in its own game
-    seconds (frames over its measured fps; the emulator runs slower than wall time here); cyrus's
-    is wall seconds, which its clock follows.
+    pirate's death to the world change agrees within a factor of two. Both delays are in game seconds: the original's from frames over
+    its measured frame rate, cyrus's from the sum of its simulation clock's frame scales (a host
+    below the minimum frame rate runs the game slower than wall time in both).
 
     dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log
 """
@@ -33,11 +33,11 @@ def load(path):
     return samples, events, defeated
 
 
-def summarize(path, game_clock):
+def summarize(path):
     samples, events, defeated = load(path)
     if not samples:
         sys.exit(f"{path}: no samples")
-    clock = (lambda row: row.get("game_s", row["t"])) if game_clock else (lambda row: row["t"])
+    clock = lambda row: row["game_s"]  # each engine's own simulated seconds, not wall time
     by_start = {}
     for index in range(len(samples[0]["pirates"])):
         start = samples[0]["pirates"][index][1]
@@ -60,7 +60,7 @@ def summarize(path, game_clock):
 
 
 def main():
-    original, native = summarize(sys.argv[1], True), summarize(sys.argv[2], False)
+    original, native = summarize(sys.argv[1]), summarize(sys.argv[2])
     for key in ("defeated", "player_start", "player_end", "duel_s", "kill_order", "steps", "delay_s", "groups", "arrival"):
         print(f"{key:13} original={original[key]}  native={native[key]}")
     failures = []

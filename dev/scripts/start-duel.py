@@ -107,12 +107,12 @@ def main():
                 except SystemExit:  # the script world is torn down while the next world prepares
                     changed = True
             if changed:
-                print(json.dumps({"t": round(time.time() - t0, 1), "event": "world change"}), flush=True)
+                print(json.dumps({"t": round(time.time() - t0, 1), "game_s": round(state["clock"]["game_seconds"] - game0, 1) if state.get("clock") else None, "event": "world change"}), flush=True)
                 arrival()
                 return
             if total != seen:
                 seen = total
-                print(json.dumps({"t": round(time.time() - t0, 1), "event": "actors", "count": total}), flush=True)
+                print(json.dumps({"t": round(time.time() - t0, 1), "game_s": round(state["clock"]["game_seconds"] - game0, 1), "event": "actors", "count": total}), flush=True)
         print("no world change within 300 s after the duel")
 
     wait(lambda state: state["state"] == "Menu")
@@ -121,6 +121,7 @@ def main():
     time.sleep(10)  # the opening settles before the player accepts input
     call({"type": "cheat", "name": "drevil"})
     t0 = time.time()
+    game0 = call({"type": "state"})["clock"]["game_seconds"]  # the simulated clock, not wall time
     for step in range(args.limit):
         state = call({"type": "state"})
         if state["state"] != "InGame":
@@ -130,7 +131,8 @@ def main():
         pirates = [found[name] for name in ("SPIRATE1", "SPIRATE2") if name in found]
         alive = [p for p in pirates if p["attributes"][3] > 0 and not (p["control"] or {}).get("killed")]
         # Same sample schema as original-duel.py: seconds, loop frame, player and pirate health.
-        sample = {"t": round(time.time() - t0, 1), "mainloop_frame": found["loop_frame"], "player": me["attributes"][3],
+        game_s = round(state["clock"]["game_seconds"] - game0, 1)
+        sample = {"t": round(time.time() - t0, 1), "game_s": game_s, "mainloop_frame": found["loop_frame"], "player": me["attributes"][3],
                   "pirates": [(p["name"], p["attributes"][3]) for p in pirates], "actors": found["total"],
                   "groups": {"player": (me["animation"] or {}).get("current_group"),
                              "pirates": [(p["animation"] or {}).get("current_group") for p in pirates]}}

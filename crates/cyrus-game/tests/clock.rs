@@ -200,3 +200,16 @@ fn world_entry_warmup_retains_measurement_and_fractional_carry() {
         }
     );
 }
+
+#[test]
+fn game_seconds_sum_every_step_as_frame_scale_over_256_nominal_ticks() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    assert_eq!(clock.game_seconds(), 0.0);
+    let mut scale = 0u64;
+    for tick in 0..40 {
+        scale += u64::from(clock.advance(18 + tick / 2).frame_scale);
+    }
+    // One nominal tick is 1/12 second: normal_frame_rate in `settings`.
+    assert!((clock.game_seconds() - scale as f64 / 256.0 / 12.0).abs() < 1e-9);
+    assert!(clock.game_seconds() > 1.0);
+}
