@@ -100,6 +100,12 @@ camera and audio are not compared.
 player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
 whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
 
+`dev/scripts/new-game-compare.py` loads START, waits for the idle player to die, chooses NEW in the
+death book (INTRO.SMK plays first and is skipped with Enter; the install's parent must hold the CD
+image) and compares the script globals, HUD and inventory with the first start. Measured: inventory,
+compass, power-ups and flags are identical; only timing-driven values differ (frame counters, health
+mid-fight, the retained death position, the script choice highlight).
+
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
 available. Use a windowed run for flycam and screenshot checks.
