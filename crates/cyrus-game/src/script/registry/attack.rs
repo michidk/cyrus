@@ -204,10 +204,11 @@ impl ScriptWorld {
             self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
             self.request_timed_combat_taunt(sender, 7, 0, inputs, random, sounds)?;
             let motion_kind = self.current_combat_motion(sender)?.kind;
-            self.dispatch_contact_death(
+            self.dispatch_combat_death(
                 receiver,
                 if motion_kind == 0 { 0 } else { 1 },
-                Some(ticks),
+                inputs,
+                random,
                 sounds,
             )?;
         }
@@ -373,7 +374,7 @@ impl ScriptWorld {
             if !selected {
                 self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
             }
-            self.dispatch_contact_death(receiver, 0, inputs.nominal_ticks, sounds)?;
+            self.dispatch_combat_death(receiver, 0, inputs, random, sounds)?;
         }
         Ok(())
     }
@@ -837,6 +838,84 @@ impl ScriptWorld {
             .context("contact death control unavailable")?
             .death_selector = 8;
         Ok(())
+    }
+
+    /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
+    /// response). The selected player stores group 122 (selector zero with the group present) or
+    /// 121 as the death override when none is set, drops its combat target, runs the combat reset
+    /// (a receiver already at selector eight only releases its walk nodes), takes selector eight
+    /// and applies health -256 through the death-owning service with no source, which enables
+    /// hit inhibition for the world loop's death exit. A selected player under death suppression
+    /// or hit inhibition is left alone. Nonplayer receivers use the contact-death dispatch; the
+    /// service's attribute-69 gate, coordination message and animation start are not modelled.
+    pub(super) fn dispatch_combat_death(
+        &mut self,
+        id: ScriptActorId,
+        selector: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        if self.selected_player_index() != Some(index) {
+            return self.dispatch_contact_death(id, selector, inputs.nominal_ticks, sounds);
+        }
+        let state = self
+            .globals
+            .selected_health
+            .as_ref()
+            .context("selected combat death health owner unavailable")?;
+        if state.hit_inhibited()
+            || inputs
+                .death_suppressed
+                .context("selected combat death suppression state unavailable")?
+        {
+            return Ok(());
+        }
+        if self.actors[index].attributes[69] == 0
+            && self
+                .globals
+                .player_death_override_group()
+                .context("selected combat death override unavailable")?
+                == 0
+        {
+            let has_122 = self.actors[index]
+                .animation
+                .as_ref()
+                .context("selected combat death animation unavailable")?
+                .playback
+                .has_group(122);
+            let group = if selector == 0 && has_122 { 122 } else { 121 };
+            self.globals.set_player_death_override_group(group)?;
+        }
+        let was_dead = {
+            let control = self.actors[index]
+                .control
+                .as_mut()
+                .context("selected combat death control unavailable")?;
+            control
+                .combat
+                .as_mut()
+                .context("selected combat death record unavailable")?
+                .target = None;
+            control.death_selector == 8
+        };
+        if was_dead {
+            self.release_held_walk_nodes(id)?;
+        }
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated combat death control");
+        if !was_dead {
+            super::super::combat::end_combat_reset(control);
+        }
+        control.death_selector = 8;
+        let combat = control.combat.as_mut().expect("validated combat record");
+        combat.flags &= !4;
+        combat.close_distance_passes = 0;
+        combat.attacker_selection_state = 0;
+        self.apply_selected_death_health(id, -256, None, inputs, Some(random), sounds)
     }
 
     /// Execute a caller-selected attack move synchronously, without allocating a VM task.

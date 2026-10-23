@@ -30958,6 +30958,52 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
 }
 
 #[test]
+fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_combat_death_service()
+ {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (_, mut world, _, _) = player_health_fixture();
+    let receiver = world.selected_player().unwrap();
+    let sender = (0..world.actors().len())
+        .map(|index| world.id(index).unwrap())
+        .find(|id| {
+            *id != receiver && !matches!(world.actors()[id.index].source, ScriptActorSource::Player)
+        })
+        .unwrap();
+    world.ordinary_actors([0, 0]).unwrap();
+    world.set_attribute_for_test(sender, 96, 255);
+    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    let hud = ScriptHud::default();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                hud: Some(&hud),
+                death_suppressed: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::from_state(42)),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let health = world.globals().selected_health().unwrap();
+    assert!(health.hit_inhibited(), "the death-owning health ran");
+    assert_eq!(health.displayed(), 0);
+    assert!(
+        matches!(
+            world.globals().player_death_override_group(),
+            Some(121 | 122)
+        ),
+        "the combat death service stored the armed death group"
+    );
+    let control = world.actors()[receiver.index].control_state().unwrap();
+    assert_eq!(control.death_selector, 8);
+    assert!(control.combat.as_ref().unwrap().target.is_none());
+}
+
+#[test]
 fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_clearing_intent() {
     use cyrus_game::script::ScriptInputs;
     let (mut world, _, _) = coordination_message_fixture(|saved| {

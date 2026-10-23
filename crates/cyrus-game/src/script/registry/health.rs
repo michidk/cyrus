@@ -880,6 +880,12 @@ impl ScriptWorld {
                         .expect("validated control")
                         .combat_death_default = Some(if group == 122 { 124 } else { 123 });
                     self.release_held_walk_nodes(id)?;
+                    self.actors[index]
+                        .control
+                        .as_mut()
+                        .and_then(|control| control.combat.as_mut())
+                        .context("selected armed death combat record unavailable")?
+                        .target = None;
                 }
             } else {
                 self.globals.set_player_death_override_group(0)?;
