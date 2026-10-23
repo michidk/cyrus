@@ -284,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn refused_calls_end_without_effects() {
+    fn bounce_object_refused_calls_end_without_effects() {
         for actor in [
             Actor {
                 item_ready: false,
@@ -320,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn the_entry_request_picks_weapon_torch_or_plain_group() {
+    fn bounce_object_entry_request_picks_weapon_torch_or_plain_group() {
         for (holding, torch, group) in [(true, false, 114), (false, true, 66), (false, false, 65)] {
             let mut actor = Actor {
                 holding,

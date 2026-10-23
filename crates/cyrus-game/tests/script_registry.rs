@@ -3809,6 +3809,110 @@ fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
 }
 
 #[test]
+fn update_player_view_attrib_is_an_empty_call_and_reset_position_keeps_the_home_position() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    // updatePlayerViewAttrib is an empty routine in the original: it completes and changes nothing.
+    // ResetPosition on an actor already at home leaves it there.
+    for (function, arguments, param_count) in [
+        ("updatePlayerViewAttrib", vec![], 0),
+        (
+            "ResetPosition",
+            vec![
+                Value::Integer { value: 1 },
+                Value::Integer { value: 1 },
+                Value::Integer { value: 1 },
+            ],
+            3,
+        ),
+    ] {
+        let mut scripts = random_scripts(function, arguments, Object::Me);
+        scripts.definition.functions[1].param_count = param_count;
+        if function == "updatePlayerViewAttrib" {
+            // Installed scripts call it as a statement: the routine has no numeric result.
+            let step = scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .program
+                .steps
+                .get_mut(&0)
+                .unwrap();
+            let Operation::Assign { formula, .. } = &step.operation else {
+                unreachable!()
+            };
+            let Value::Call { call } = &formula.first else {
+                unreachable!()
+            };
+            step.operation = Operation::Call {
+                call: (**call).clone(),
+            };
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let before = world.spatial(id).unwrap().local.position;
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert!(world.actors()[0].failure().is_none(), "{function}");
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            before,
+            "{function}"
+        );
+    }
+}
+
+#[test]
+fn move_player_above_me_names_the_missing_input_instead_of_guessing_a_placement() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    // The placement needs the selected player and the installed standing height, which the ground
+    // service supplies; a world without them stops with an error that names the native.
+    let mut scripts = random_scripts(
+        "MovePlayerAboveMe",
+        [0, 0, 0, 512]
+            .map(|value| Value::Integer { value })
+            .to_vec(),
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = 4;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let error = world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("MovePlayerAboveMe"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
     let mut scripts = random_scripts("KillMe", vec![], Object::Me);
@@ -30239,6 +30343,100 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
 }
 
 #[test]
+fn light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_torch() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let mut call = |name: &str| {
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: name.into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            Operation::ObjectCall {
+                call: Call {
+                    function_id: id,
+                    function: name.into(),
+                    target: Object::Player,
+                    kind: CallKind::Function,
+                    arguments: vec![],
+                },
+            }
+        };
+        // The first update lights the torch and parks the continuation on the dousing call.
+        let steps = [
+            call("LightTorch"),
+            Operation::End { target: 2 },
+            call("UnlightTorch"),
+            Operation::End { target: 2 },
+        ];
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    let mut asset = inventory_asset(&[(45, 1)]);
+    asset.inventory.get_mut(&45).unwrap().item_type = 3;
+    asset.torch_time = Some(60);
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let map = world.id(0).unwrap();
+    let player = world
+        .id(world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, cyrus_game::script::ScriptActorSource::Player))
+            .unwrap())
+        .unwrap();
+    let inputs = || ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        nominal_ticks: Some(2),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let torch = |world: &ScriptWorld| {
+        let control = world.actors()[player.index].control_state().unwrap();
+        (control.living_state, control.torch_burning)
+    };
+    let run = |world: &mut ScriptWorld| {
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                inputs(),
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+        assert!(world.actors()[map.index].failure().is_none());
+    };
+    run(&mut world);
+    assert_eq!(
+        torch(&world),
+        (33, 0),
+        "LightTorch begins the lighting state"
+    );
+    // The torch is still lighting: dousing is not admitted, so UnlightTorch completes and changes nothing.
+    run(&mut world);
+    assert_eq!(
+        torch(&world),
+        (33, 0),
+        "UnlightTorch leaves a lighting torch alone"
+    );
+}
+
+#[test]
 fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     for item_use in [false, true] {
@@ -30315,6 +30513,97 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
         assert_eq!(control.combat.as_ref().unwrap().flags & 4, 4);
         if item_use {
             assert_eq!(actor.attributes()[23], 1, "the item becomes the weapon");
+        }
+    }
+}
+
+#[test]
+fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    // An unarmed player cannot sheathe, so SheathSword completes without a state change; endCombat
+    // still runs its unconditional reset of the lifecycle selector, AI mode and combat flag.
+    for function in ["SheathSword", "endCombat"] {
+        let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: function.into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let call = Operation::ObjectCall {
+                call: Call {
+                    function_id: id,
+                    function: function.into(),
+                    target: Object::Player,
+                    kind: CallKind::Function,
+                    arguments: vec![],
+                },
+            };
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps =
+                [call, Operation::End { target: 0 }]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, operation)| {
+                        (
+                            index as u32,
+                            Step {
+                                next: index as u32 + 1,
+                                operation,
+                            },
+                        )
+                    })
+                    .collect();
+        });
+        let hud = cyrus_game::script::ScriptHud::default();
+        hud.configure(
+            &inventory_asset(&[]),
+            &cyrus_game::preferences::Preferences::default(),
+        );
+        let map = world.id(0).unwrap();
+        let player = world
+            .id(world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Player)
+                })
+                .unwrap())
+            .unwrap();
+        let before = world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .death_selector;
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+        assert!(world.actors()[map.index].failure().is_none(), "{function}");
+        let control = world.actors()[player.index].control_state().unwrap();
+        assert_eq!(
+            control.living_state, 0,
+            "{function} leaves an unarmed player idle"
+        );
+        if function == "endCombat" {
+            assert_eq!(control.death_selector, 1);
+            assert_eq!(control.death_response, 0);
+            assert_eq!(control.combat.as_ref().unwrap().flags & 4, 0);
+        } else {
+            assert_eq!(
+                control.death_selector, before,
+                "SheathSword leaves the selector"
+            );
         }
     }
 }

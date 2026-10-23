@@ -68,7 +68,8 @@ def sources(root):
                 tests.append(text)
             elif "#[cfg(test)]" in text:
                 tests.append(text[text.index("#[cfg(test)]"):])
-    return "\n".join(code), "\n".join(tests)
+    # Test names spell natives in snake case, so underscores are ignored when matching them.
+    return "\n".join(code), "\n".join(tests).replace("_", "")
 
 
 def main():
