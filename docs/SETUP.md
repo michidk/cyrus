@@ -70,6 +70,10 @@ through the same port, lets its scripts run and prints every actor whose script 
 any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
 scene that polls it. Run native cyrus with a null audio device so voiced lines can finish.
 
+`dev/scripts/native-audit.py --scripts cyrus-config/cache` lists the natives that the exported
+installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
+up there, though a mention does not prove the handler works.
+
 In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
 `window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
 data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
