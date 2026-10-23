@@ -687,6 +687,7 @@ pub struct OrdinaryContext<'w, 's> {
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
+    script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
     fidelity: Option<Res<'w, crate::fidelity::Fidelity>>,
     explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
@@ -1123,6 +1124,7 @@ pub fn run_ordinary(
         entry,
         input,
         quick,
+        script_keys,
         toggles,
         fidelity,
         explicit,
@@ -1352,6 +1354,7 @@ pub fn run_ordinary(
                 hud: hud.as_deref(),
                 activation_use_held: input.as_deref().map(|held| held.action),
                 quick_keys: quick.as_deref().copied(),
+                script_keys: script_keys.as_deref().copied(),
                 shell_execution: Some(false),
                 death_suppressed: cheats
                     .as_ref()

@@ -233,6 +233,8 @@ pub struct ScriptInputs<'a> {
     pub activation_use_held: Option<bool>,
     /// Quick sword and quick health keys for the ordinary update's key handler.
     pub quick_keys: Option<super::QuickKeys>,
+    /// Held letter and modifier keys for the debug `InKey` native; absence is unknown.
+    pub script_keys: Option<super::ScriptKeys>,
     /// Installed animation data for natives that read model vertices; the ordinary update supplies it.
     pub animations: Option<AnimationData<'a>>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
@@ -4814,6 +4816,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             self.registry.create_object(id, name, position, angles)?;
             return Ok(CallResult::Complete(0));
+        }
+        // InKey(code): whether the key of the code's low byte is down, with the modifiers the
+        // higher bytes name. Only the debug shell and a few bridge and door scripts call it.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("InKey") {
+            let [code] = arguments else {
+                anyhow::bail!("InKey requires one argument")
+            };
+            let code = code.integer()? as u32;
+            let keys = self
+                .inputs
+                .script_keys
+                .context("InKey keyboard sample unavailable")?;
+            let down = keys.in_key(code).with_context(|| {
+                format!("InKey code {code:#x}: key without a recovered scan code")
+            })?;
+            return Ok(CallResult::Complete(i32::from(down)));
         }
         // GolemSteam: once every few updates, a puff of steam at one of the receiver's four weapon
         // attachment vertices (a grip or a scabbard point), in the alternating effect variants.

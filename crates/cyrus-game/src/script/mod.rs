@@ -157,7 +157,7 @@ pub use navigation::{ActorNavigation, PointCommandState, WalkNodeSlot, WalkRoute
 mod order;
 mod playback;
 mod quick_keys;
-pub use quick_keys::QuickKeys;
+pub use quick_keys::{QuickKeys, ScriptKeys};
 mod presentation;
 mod registry;
 pub use registry::ordinary::{
@@ -252,6 +252,7 @@ impl Plugin for ScriptPlugin {
                     .run_if(resource_exists::<cyrus_world::lifecycle::PreparedWorld>),
             )
             .init_resource::<QuickKeys>()
+            .init_resource::<ScriptKeys>()
             .add_systems(
                 Update,
                 quick_keys::sample
