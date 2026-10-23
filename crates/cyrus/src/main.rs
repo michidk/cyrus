@@ -52,6 +52,12 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Bevy's task-pool threads take the default 2 MiB stack, which a debug build overflows while
+    // loading ISLAND (an IO pool thread, minutes after load). Set before any thread exists.
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        // SAFETY: nothing else is running yet; the process is still single-threaded.
+        unsafe { std::env::set_var("RUST_MIN_STACK", "33554432") };
+    }
     cyrus_app::logging::attach_parent_console();
     let args = Args::parse();
     let mut app = App::new();
