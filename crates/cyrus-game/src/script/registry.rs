@@ -2684,6 +2684,11 @@ impl ScriptWorld {
                     "pending_group": animation.playback.pending_group(),
                     "frame": animation.frame,
                 })),
+                "weapon": actor.model.weapon.as_ref().map(|weapon| serde_json::json!({
+                    "item": weapon.item, "model": weapon.model, "position": weapon.geometry.position,
+                    "retained_point": weapon.geometry.retained_point,
+                    "retained_angles": weapon.geometry.retained_angles, "endpoints": weapon.endpoints,
+                })),
                 "tasks": actor.runtime.as_ref().map(|runtime| runtime.active_tasks()),
                 "failure": actor.failure(),
             })).collect::<Vec<_>>()
