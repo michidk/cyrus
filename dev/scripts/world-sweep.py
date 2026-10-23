@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Soak installed worlds through the control port and report failed script actors.
+
+For each world the sweep loads it with `load_scene`, waits for the scene to be ready, lets the
+ordinary updates run for `--seconds`, and prints every actor whose script reported a failure
+(once per distinct message). An optional `--flag WORLD:NAME=VALUE` first sets a global flag
+through the console, which starts the story scene that polls it (for example
+`CATACOMB:scene2=1`, `JAILINT:scene5=1`, `MGUILD:gremlin_scene=1`, `START:deadpirates=2`).
+Exits 0 when no world failed to load and no actor failed, 1 otherwise. Needs a running native
+cyrus with CYRUS_CONTROL_ADDR set (a null audio device lets voiced lines finish), for example
+
+    dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT
+    dev/scripts/world-sweep.py --port 7117 --seconds 240 --flag CATACOMB:scene2=1 CATACOMB
+"""
+import argparse
+import json
+import socket
+import sys
+import time
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("worlds", nargs="+", help="scene names as for load_scene, e.g. START")
+    parser.add_argument("--port", type=int, default=7117)
+    parser.add_argument("--seconds", type=int, default=60, help="soak time per world")
+    parser.add_argument("--ready-timeout", type=int, default=300)
+    parser.add_argument("--flag", action="append", default=[], metavar="WORLD:NAME=VALUE")
+    args = parser.parse_args()
+    flags = {}
+    for entry in args.flag:
+        world, _, assignment = entry.partition(":")
+        flags.setdefault(world, []).append(assignment.replace("=", ","))
+
+    def call(cmd):
+        with socket.create_connection(("127.0.0.1", args.port), timeout=300) as conn:
+            conn.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
+            buf = b""
+            while not buf.endswith(b"\n"):
+                chunk = conn.recv(1 << 24)
+                if not chunk:
+                    raise ConnectionError("control port closed")
+                buf += chunk
+        reply = json.loads(buf)
+        if not reply.get("ok", True):
+            raise RuntimeError(reply.get("error", "control request failed"))
+        return reply.get("result", reply)
+
+    def wait_ready(world):
+        deadline = time.time() + args.ready_timeout
+        while time.time() < deadline:
+            try:
+                state = call({"type": "state"})
+                if (
+                    state["state"] == "InGame"
+                    and state.get("scene_ready")
+                    and state["scene"] == world
+                ):
+                    return True
+            except (OSError, RuntimeError, KeyError):
+                pass
+            time.sleep(3)
+        return False
+
+    def failures():
+        found, offset = {}, 0
+        while True:
+            page = call({"type": "scripts", "offset": offset, "limit": 64})
+            if not page.get("actors"):
+                return found
+            for actor in page["actors"]:
+                if actor.get("failure"):
+                    found[(actor["name"], actor["failure"])] = True
+            offset += len(page["actors"])
+
+    bad = 0
+    for world in args.worlds:
+        call({"type": "load_scene", "name": world})
+        time.sleep(8)
+        if not wait_ready(world):
+            print(f"{world}: not ready after {args.ready_timeout} s")
+            bad += 1
+            continue
+        for assignment in flags.get(world, []):
+            call({"type": "console", "open": True})
+            call({"type": "console", "line": f"setflag {assignment}"})
+            call({"type": "console", "open": False})
+        seen, end = {}, time.time() + args.seconds
+        while True:
+            seen.update(failures())
+            if time.time() >= end:
+                break
+            time.sleep(min(15, max(1, end - time.time())))
+        for (name, message) in seen:
+            print(f"{world}: {name}: {message[:300]}")
+        print(f"{world}: {len(seen)} failing actors")
+        bad += bool(seen)
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -65,6 +65,11 @@ just run-native          # in dev/docker/dev with a virtual display, no preview:
 and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
 pirates are defeated; the story then loads the next world by itself.
 
+`dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
+through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
+any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
+scene that polls it. Run native cyrus with a null audio device so voiced lines can finish.
+
 In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
 `window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
 data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
