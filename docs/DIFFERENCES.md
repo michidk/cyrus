@@ -60,3 +60,14 @@ preservation's ground prevalidation. **Unknown:** when exactly one of them misse
 missing side's surface class from uninitialised stack memory, so its result is not defined. cyrus treats the
 missing side as neither class 2 nor class 4: a missing current surface clears the results, and a class 2
 current surface after a missing previous one runs the heading comparison.
+
+## Natives no installed script calls
+
+**Verified:** the native catalogue has 367 entries; the installed scripts of all 36 worlds call 168 of
+them, and `dev/scripts/native-audit.py` shows that every one of those is handled by a source module. The
+other entries (script messaging and broadcasts, the `pipe*` family, the `spare*` parameters, slave and
+hook management, and debug helpers, among others) are called by no installed script and have no recovered
+contract, so they are outside the SOUP completion scope, which asks for what an original script contract
+requires. cyrus does not implement them: a script that reaches one stops with a contextual native error
+naming the function, never a panic or a silent default. A modified or added script that needs one first
+needs its behaviour recovered in redguard-preservation.
