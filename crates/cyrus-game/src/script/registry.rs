@@ -2983,11 +2983,27 @@ pub(super) fn prepare(
         }
         Ok(world)
     })();
+    let result = result.and_then(|mut world| {
+        world.globals = std::mem::take(&mut actors.globals);
+        // A retained swap state rebinds the world's camera to the selected role, as the swap
+        // itself does; the fresh camera starts bound to CYRUS.
+        let has_alternate = world
+            .actors
+            .iter()
+            .any(|actor| matches!(actor.source, ScriptActorSource::AlternatePlayer));
+        if world.globals.player_swapped()
+            && has_alternate
+            && let Err(error) = world.select_player(true)
+        {
+            actors.globals = std::mem::take(&mut world.globals);
+            return Err(error);
+        }
+        Ok(world)
+    });
     match result {
         Ok(mut world) => {
             actors.retained_flags = None;
             actors.retained_health = None;
-            world.globals = std::mem::take(&mut actors.globals);
             // A retained swap state excludes the other role before the first update, including
             // the model presentation that runs ahead of the first world-loop admission.
             reassert_player_update_exclusion(&mut world.actors, &world.globals);
