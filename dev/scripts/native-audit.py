@@ -24,10 +24,10 @@ import os
 import sys
 
 
-def collect(directory):
+def collect(directory, pattern):
     catalogue = {}
     used = collections.defaultdict(set)
-    files = sorted(glob.glob(os.path.join(directory, "*.scripts")))
+    files = sorted(glob.glob(os.path.join(directory, pattern)))
     for path in files:
         with open(path) as handle:
             try:
@@ -76,9 +76,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="cyrus-config/cache")
     parser.add_argument("--sources", default="crates")
+    parser.add_argument("--pattern", default="*.scripts", help="export file name pattern")
     parser.add_argument("--list-unused", action="store_true")
     args = parser.parse_args()
-    catalogue, used, count = collect(args.scripts)
+    catalogue, used, count = collect(args.scripts, args.pattern)
     if not used:
         print(f"no natives found in {count} script exports under {args.scripts}")
         return 1

@@ -63,7 +63,7 @@ current surface after a missing previous one runs the heading comparison.
 
 ## Natives no installed script calls
 
-**Verified:** the native catalogue has 367 entries; the installed scripts of all 36 worlds call 168 of
+**Verified:** the native catalogue has 367 entries; the installed scripts of all 27 maps call 151 of
 them, and `dev/scripts/native-audit.py` shows that every one of those is handled by a source module. The
 other entries (script messaging and broadcasts, the `pipe*` family, the `spare*` parameters, slave and
 hook management, and debug helpers, among others) are called by no installed script and have no recovered
