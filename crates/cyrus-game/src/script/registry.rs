@@ -1307,6 +1307,7 @@ impl ScriptWorld {
                         volume: 0,
                         rate_offset_hz: 0,
                         position: engine.map(|value| (value * 256.0).round() as i32),
+                        start_index: Some(6),
                     },
                 )?;
             }
@@ -5987,6 +5988,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     volume: volume.integer()?,
                     rate_offset_hz: rate.integer()?,
                     position,
+                    start_index: None,
                 },
             )?;
             return Ok(CallResult::Complete(0));

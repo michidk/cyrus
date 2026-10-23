@@ -502,7 +502,7 @@ fn handle(
                         sound => {
                             let event = match &sound {
                                 ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
-                                ScriptSound::Positional { effect, volume, rate_offset_hz, position } => json!({"type":"positional", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz, "position":position}),
+                                ScriptSound::Positional { effect, volume, rate_offset_hz, position, start_index } => json!({"type":"positional", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz, "position":position, "start_index":start_index}),
                                 ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
                                 ScriptSound::StopOwned => json!({"type":"stop_owned"}),
                                 ScriptSound::StopAll => json!({"type":"stop_all"}),

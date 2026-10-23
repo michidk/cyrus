@@ -111,6 +111,7 @@ impl ScriptWorld {
                     volume: 0,
                     rate_offset_hz,
                     position,
+                    start_index: None,
                 },
             )?;
             self.send_combat_message(defender, attacker, 0xd000)?;

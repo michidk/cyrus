@@ -641,6 +641,7 @@ fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
                 volume,
                 rate_offset_hz: 0,
                 position: [0, 0, 16_777_215],
+                start_index: None,
             },
         });
     }

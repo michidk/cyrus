@@ -317,6 +317,7 @@ struct PositionalCue {
     volume: i32,
     rate_offset_hz: i32,
     position: [i32; 3],
+    start_index: Option<u8>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -376,7 +377,7 @@ impl Channels {
                 volume,
                 pan: Some(pan),
                 speed: playback_speed(effect.sample_rate, cue.rate_offset_hz),
-                start_index: self.start,
+                start_index: cue.start_index.map_or(self.start, usize::from),
             },
         );
     }

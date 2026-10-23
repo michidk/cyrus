@@ -103,6 +103,9 @@ pub enum ScriptSound {
         volume: i32,
         rate_offset_hz: i32,
         position: [i32; 3],
+        /// Sample channel start index the engine sets for this start (4 for combat hits, 6 for
+        /// rope swings). None uses the shared index, which animation and speech starts reset.
+        start_index: Option<u8>,
     },
     Flat {
         effect: i32,

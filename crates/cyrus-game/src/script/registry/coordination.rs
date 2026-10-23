@@ -87,6 +87,7 @@ impl ScriptWorld {
                 volume: 0,
                 rate_offset_hz,
                 position: self.sight_position(index)?,
+                start_index: Some(4),
             },
         )?;
         self.request_hurt_combat_taunt(id, inputs, random, sounds)?;

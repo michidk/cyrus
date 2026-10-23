@@ -62,6 +62,7 @@ impl ScriptWorld {
                 volume: 0,
                 rate_offset_hz,
                 position: self.sight_position(receiver_index)?,
+                start_index: Some(4),
             },
         )?;
         self.request_hurt_combat_taunt(receiver, inputs, random, sounds)?;
@@ -625,6 +626,7 @@ impl ScriptWorld {
                         volume: 0,
                         rate_offset_hz,
                         position,
+                        start_index: None,
                     },
                 )?;
             }
@@ -685,6 +687,7 @@ impl ScriptWorld {
                 volume: 0,
                 rate_offset_hz,
                 position: self.sight_position(id.index)?,
+                start_index: Some(4),
             },
         )?;
         if self.actors[defender.index].attributes[3] == 0 {

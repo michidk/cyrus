@@ -4896,6 +4896,7 @@ fn positional_sound_uses_the_routed_receivers_pose_and_returns_zero() {
                     volume: -40,
                     rate_offset_hz: 2000,
                     position: [768, 1024, 1280],
+                    start_index: None,
                 }
             )]
         );
@@ -27331,7 +27332,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
         assert_eq!(sounds.len(), usize::from(hit));
         if hit {
             assert!(
-                matches!(sounds[0],(actor,ScriptSound::Positional {effect:31,volume:0,rate_offset_hz:96,..}) if actor==defender)
+                matches!(sounds[0],(actor,ScriptSound::Positional {effect:31,volume:0,rate_offset_hz:96,start_index:None,..}) if actor==defender)
             );
             assert_eq!(random.state(), 1103527590);
         } else {

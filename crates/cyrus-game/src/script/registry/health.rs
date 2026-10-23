@@ -584,6 +584,7 @@ impl ScriptWorld {
                                     spatial.linked_position.unwrap_or(spatial.local.position)
                                 }
                             },
+                            start_index: None,
                         },
                     )?;
                 }

@@ -200,12 +200,14 @@ impl SoundFrame<'_, '_> {
                             volume,
                             rate_offset_hz,
                             position,
+                            start_index,
                         } => {
                             let cue = PositionalCue {
                                 effect: *effect,
                                 volume: *volume,
                                 rate_offset_hz: *rate_offset_hz,
                                 position: *position,
+                                start_index: *start_index,
                             };
                             #[cfg(target_arch = "wasm32")]
                             if bank_loading.is_some() {
