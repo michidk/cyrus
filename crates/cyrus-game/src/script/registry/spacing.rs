@@ -23,6 +23,7 @@ pub enum OrdinaryMovement {
     Forward,
     WalkForward,
     Backward,
+    WalkBackward,
     Left,
     Right,
 }
@@ -32,6 +33,7 @@ impl OrdinaryMovement {
             Self::Forward => "MoveForward",
             Self::WalkForward => "WalkForward",
             Self::Backward => "MoveBackward",
+            Self::WalkBackward => "WalkBackward",
             Self::Left => "MoveLeft",
             Self::Right => "MoveRight",
         }

@@ -594,7 +594,7 @@ impl ScriptWorld {
         }
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 12 | 21 | 22 | 27),
+            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 12 | 21 | 22 | 24 | 25 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
         if phase == 0 {
@@ -609,6 +609,35 @@ impl ScriptWorld {
             }
         } else if phase == 9 {
             self.advance_point_delay(id, inputs, random, sounds)?;
+        } else if phase == 24 {
+            // The back-off after a blocked route: one step backward, then wait for the default
+            // animation group.
+            self.release_held_walk_nodes(id)?;
+            let movement = if self.actors[index].attributes[93] == 0 {
+                super::spacing::OrdinaryMovement::WalkBackward
+            } else {
+                super::spacing::OrdinaryMovement::Backward
+            };
+            self.move_ordinary(
+                id,
+                movement,
+                1,
+                0,
+                inputs,
+                sounds
+                    .as_mut()
+                    .context("point back-off requires synchronous sounds")?,
+            )?;
+            self.globals.native_command.point_phase = 25;
+        } else if phase == 25 {
+            let playback = &self.actors[index]
+                .animation
+                .as_ref()
+                .context("point back-off animation unavailable")?
+                .playback;
+            if playback.current_group() == Some(playback.default_group()) {
+                self.globals.native_command.point_phase = 0;
+            }
         } else if navigation.next == -1 {
             self.release_held_walk_nodes(id)?;
             self.globals.native_command.point_phase = 0;
