@@ -326,6 +326,7 @@ impl ScriptWorld {
                     )?;
                 }
                 self.actors[id.index].maintain_light(inputs.nominal_ticks.unwrap());
+                self.actors[id.index].maintain_flat(inputs.nominal_ticks.unwrap());
                 Ok(())
             })();
             let actor = &mut self.actors[id.index];

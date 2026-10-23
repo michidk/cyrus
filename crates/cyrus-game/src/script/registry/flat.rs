@@ -11,7 +11,7 @@ pub(super) type TextureFrames = BTreeMap<u16, BTreeMap<u16, u16>>;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct FlatState {
     pub enabled: bool,
-    /// Cleared by every flat native; the drawing owner is not implemented.
+    /// Ticks the record has been disabled (byte-wrapping); cleared by every flat native.
     pub pending: u8,
     pub offset: [u16; 3],
     /// Texture identifier: bank in the upper nine bits, image in the low seven.
@@ -43,6 +43,50 @@ impl FlatState {
             .and_then(|images| images.get(&image))
             .copied()
             .with_context(|| format!("texture bank {bank} image {image} not installed"))
+    }
+
+    /// One actor update of the retained record, in `ticks` original ticks. Returns false when the
+    /// record has been disabled for more than 32 ticks and is released.
+    fn maintain(&mut self, ticks: u32) -> bool {
+        if self.texture == 0 || self.texture == 0xffff {
+            self.enabled = false;
+        }
+        if !self.enabled {
+            self.pending = self.pending.wrapping_add(ticks as u8);
+            return self.pending <= 0x20;
+        }
+        if self.animate[1] & 0x80 != 0 {
+            self.animate[1] &= 0x7f;
+            self.frame = self.counter;
+        }
+        // A frame word of 0xffff shows the static image; equal bounds do not animate.
+        if self.frame == 0xffff || self.counter == self.last_frame {
+            return true;
+        }
+        let step = (ticks as u16).wrapping_mul(u16::from(self.animate[0]));
+        let forward = (self.counter as i16) < (self.last_frame as i16);
+        self.frame = if forward {
+            self.frame.wrapping_add(step)
+        } else {
+            self.frame.wrapping_sub(step)
+        };
+        let (frame, last) = (self.frame as i16, self.last_frame as i16);
+        if if forward { last < frame } else { frame < last } {
+            if self.animate[1] == 0 {
+                self.enabled = false;
+                self.pending = 0;
+            } else {
+                self.animate[1] |= 0x80;
+                self.frame = self
+                    .counter
+                    .wrapping_add(self.frame.wrapping_sub(self.last_frame));
+                let frame = self.frame as i16;
+                if if forward { last < frame } else { frame < last } {
+                    self.frame = self.counter;
+                }
+            }
+        }
+        true
     }
 
     /// Select the bitmap for a texture identifier unless the record already shows it.
@@ -133,6 +177,13 @@ pub(super) fn call(
 }
 
 impl super::ScriptActor {
+    /// The per-update flat step, run beside light maintenance for an actor that is not hidden.
+    pub(super) fn maintain_flat(&mut self, ticks: u32) {
+        if self.flat.as_mut().is_some_and(|flat| !flat.maintain(ticks)) {
+            self.flat = None;
+        }
+    }
+
     /// The actor's retained flat record as inspection JSON, when it has one.
     pub fn flat_state(&self) -> Option<serde_json::Value> {
         self.flat
@@ -252,6 +303,56 @@ Flat 132=0100000000000000840000000000000000000000;FlatOffset 677,-588,-645=0100a
             }
         }
         assert!(steps > 100, "{steps} steps");
+    }
+
+    fn animating(speed: u8, looping: u8) -> FlatState {
+        FlatState {
+            enabled: true,
+            texture: 0x0a02,
+            last_frame: 2,
+            animate: [speed, looping],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_looping_flat_wraps_to_its_start_and_a_one_shot_flat_disables() {
+        let mut looping = animating(1, 1);
+        looping.maintain(2);
+        assert_eq!(looping.frame, 2);
+        looping.maintain(2);
+        // Past the last frame: the wrap marker is set and the overshoot (4 - 2) restarts from the counter.
+        assert_eq!((looping.frame, looping.animate[1]), (2, 0x81));
+        looping.maintain(1);
+        assert_eq!((looping.frame, looping.animate[1]), (1, 0x01));
+        let mut once = animating(1, 0);
+        once.maintain(2);
+        assert!(once.enabled);
+        once.maintain(2);
+        assert!(!once.enabled);
+        assert_eq!(once.pending, 0);
+    }
+
+    #[test]
+    fn static_and_disabled_flats_do_not_advance_and_a_stale_record_is_released() {
+        let mut still = animating(5, 1);
+        still.frame = 0xffff;
+        still.maintain(9);
+        assert_eq!(still.frame, 0xffff);
+        let mut stopped = animating(5, 1);
+        stopped.counter = stopped.last_frame;
+        stopped.maintain(9);
+        assert_eq!(stopped.frame, 0);
+        let mut off = FlatState {
+            texture: 7,
+            ..Default::default()
+        };
+        assert!(off.maintain(32));
+        assert!(!off.maintain(1), "released once the counter exceeds 32");
+        let mut unset = animating(1, 1);
+        unset.texture = 0;
+        unset.maintain(1);
+        assert!(!unset.enabled);
     }
 
     #[test]

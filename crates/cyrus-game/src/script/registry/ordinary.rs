@@ -476,6 +476,7 @@ impl ScriptWorld {
                     .is_some_and(|control| control.hidden)
                 {
                     self.actors[id.index].maintain_light(ticks);
+                    self.actors[id.index].maintain_flat(ticks);
                 }
                 if self.actors[id.index].attributes[1] != 0 && !on_rope {
                     let scene = anyhow::Context::context(
