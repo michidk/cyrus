@@ -419,8 +419,14 @@ impl ActorSnapshot {
             "saved actor {}: control allocation differs",
             self.name
         );
+        // A shell or created object that ended with `KillMe` keeps no executable.
+        let finished_separate = self.runtime.is_none()
+            && matches!(
+                actor.source,
+                ScriptActorSource::Shell(_) | ScriptActorSource::Created(_)
+            );
         ensure!(
-            self.runtime.is_some() == actor.runtime.is_some()
+            (self.runtime.is_some() == actor.runtime.is_some() || finished_separate)
                 && self.unavailable == actor.unavailable,
             "saved actor {}: executable availability differs",
             self.name
