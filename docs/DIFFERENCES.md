@@ -42,10 +42,12 @@ pace is not verified.
 ## Rope attachment shortcuts
 
 **Verified:** the attach test, the controls, the swing and the release follow preservation's rope sections.
-**Inferred or simplified:** the hand-height link choice (grab and downward climb) skips its clamp against
-the floor probe near the ground, the climb helpers do not read the
-animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
-first attached actor; not heard in a running world). A hit on the hanging selected player lets go through
+**Inferred or simplified:** the climb helpers do not read the animation record's progress bytes, and the
+swing sound plays without its channel start index (owned by the first attached actor; not heard in a running
+world). The hand-height link choice clamps against the floor probe as decoded; **Inferred:** the terrain sample
+truncates like the queued clearance's, and the clamp has no live comparison with the original (the shipped
+rope's room was not reached in the original). A host without collision data skips the clamp.
+A hit on the hanging selected player lets go through
 the same detach routine as the jump release, with no vertical key held; **Unknown:** whether the original reads
 the held keys there.
 

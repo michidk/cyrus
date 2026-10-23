@@ -2,8 +2,8 @@
 //! placement on the node. Rules are preservation's engine/SOUP.md "Rope attachment", "Rope control
 //! while attached" and "Rope attachment removal"; the rope model itself is [`crate::rope`].
 //!
-//! Shortcuts, each recorded in docs/DIFFERENCES.md: the hand-height link choice skips its clamp
-//! against the floor probe, and the climb helpers' animation-record byte checks are not modelled.
+//! Shortcuts, each recorded in docs/DIFFERENCES.md: the climb helpers' animation-record byte checks
+//! are not modelled, and a host without collision data skips the hand-height link choice's floor clamp.
 use super::{ScriptActorId, ScriptWorld};
 use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
@@ -22,6 +22,15 @@ const GROUP_HAND: u64 = 79;
 const HAND_SEARCH_BACK: i32 = 8;
 /// The ordinary jump entry's queued motion after a rope release.
 const QUEUED_ROPE_JUMP: u8 = 24;
+/// The live world data the hand-height link choice reads for its floor probe. Absent when the
+/// host has no collision scene; the clamp is then skipped.
+#[derive(Clone, Copy)]
+pub(super) struct RopeProbe<'a> {
+    pub scene: &'a crate::player::data::PlayerScene,
+    pub view: [i32; 2],
+    pub actors: &'a [ScriptActorId],
+}
+
 /// Retained state of the selected player's rope handling. Not saved: ropes are rebuilt with the world.
 #[derive(Clone, Debug, Default)]
 pub(super) struct PlayerRope {
@@ -75,6 +84,7 @@ impl ScriptWorld {
     /// One selected-player rope update before the movement stages: while attached the controls run
     /// and the player is placed on its node; otherwise the attach test runs. Returns whether the
     /// player is on a rope, which skips the ordinary movement and combat stages.
+    #[allow(clippy::too_many_arguments)] // The update reads the keys, clock, probe data and sound sink.
     pub(super) fn update_player_rope(
         &mut self,
         id: ScriptActorId,
@@ -82,6 +92,7 @@ impl ScriptWorld {
         held: Option<&PlayerInput>,
         frame_scale: i32,
         ticks: u32,
+        probe: Option<RopeProbe<'_>>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
         let index = self.resolve(id)?;
@@ -104,7 +115,17 @@ impl ScriptWorld {
             return Ok(false);
         }
         if let Some(rope) = holder {
-            self.run_rope_controls(id, rope, data, held, frame_scale, ticks, settings, sounds)?;
+            self.run_rope_controls(
+                id,
+                rope,
+                data,
+                held,
+                frame_scale,
+                ticks,
+                settings,
+                probe,
+                sounds,
+            )?;
             return Ok(true);
         }
         if self.ropes.is_empty() {
@@ -113,7 +134,7 @@ impl ScriptWorld {
         let Some((rope, link)) = self.rope_attach_candidate(id, data, settings, ticks)? else {
             return Ok(false);
         };
-        let link = self.rope_hand_link(id, rope, link, data)?;
+        let link = self.rope_hand_link(id, rope, link, data, probe)?;
         self.attach_player(id, data, rope, link, held, frame_scale, ticks, sounds)?;
         Ok(true)
     }
@@ -281,6 +302,7 @@ impl ScriptWorld {
         frame_scale: i32,
         ticks: u32,
         settings: cyrus_assets::script::RopeSettings,
+        probe: Option<RopeProbe<'_>>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -316,9 +338,9 @@ impl ScriptWorld {
         }
         if !weapon && !look {
             if up {
-                self.climb(id, rope_index, data, true, ticks, sounds)?;
+                self.climb(id, rope_index, data, true, ticks, probe, sounds)?;
             } else if down {
-                self.climb(id, rope_index, data, false, ticks, sounds)?;
+                self.climb(id, rope_index, data, false, ticks, probe, sounds)?;
             }
         }
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
@@ -366,14 +388,15 @@ impl ScriptWorld {
     /// The link nearest below the player's hand, searched from eight links before `start`: the
     /// hand point is the grip vertex of the first frame of group 79 plus the player's height and
     /// two link lengths, and the winner is the link at or above it that is closest. Without that
-    /// frame `start` stands. Shortcut: the clamp against the floor probe near the ground is not
-    /// modelled.
+    /// frame `start` stands. Near the ground the hand height is clamped a margin (the grip's height
+    /// plus the actor's feet extent) above the floor probe.
     fn rope_hand_link(
-        &self,
+        &mut self,
         id: ScriptActorId,
         rope_index: usize,
         start: i32,
         data: &Animations,
+        probe: Option<RopeProbe<'_>>,
     ) -> Result<i32> {
         let Some(grip) = self.group_hand_vertex(id, data, GROUP_HAND)? else {
             return Ok(start);
@@ -384,7 +407,17 @@ impl ScriptWorld {
         let base = self.spatial(id)?.local.position[1]
             .wrapping_add(length.wrapping_mul(2))
             .wrapping_sub(1);
-        let target = f64::from(grip[1].wrapping_add(base) >> 8);
+        let mut target = grip[1].wrapping_add(base) >> 8;
+        if let Some(probe) = probe {
+            let floor = self.rope_floor_height(id, probe, data)? >> 8;
+            let margin = (grip[1].wrapping_abs() >> 8)
+                .wrapping_add(self.ordinary_collision_shape(id)?.positive_extent[1]);
+            if (floor.wrapping_sub(target)).wrapping_abs() < margin {
+                target = floor.wrapping_sub(margin);
+            }
+        }
+        let target = f64::from(target);
+        let rope = &self.ropes[rope_index];
         let mut best = (f64::from(999_999), None);
         for (link, pose) in rope
             .chain()
@@ -401,7 +434,83 @@ impl ScriptWorld {
         Ok(best.1.map_or(start, |link| link as i32))
     }
 
+    /// The actor floor probe the hand-height link choice clamps against, in Q8 engine units: the
+    /// lowest class 2 or 4 face crossing the vertical column from the actor's head extent down to
+    /// twice its feet extent, replaced by the terrain sample when that lies strictly inside the
+    /// column and above the face; 0x3e800 below the actor when nothing is found. The terrain
+    /// height truncates like the queued clearance's (Inferred: the same conversion service).
+    fn rope_floor_height(
+        &mut self,
+        id: ScriptActorId,
+        probe: RopeProbe<'_>,
+        data: &Animations,
+    ) -> Result<i32> {
+        let prepared =
+            self.prepare_ordinary_collision_query(id, probe.scene, data, probe.view, probe.actors)?;
+        let current = self.spatial(id)?.query_pose()?.position;
+        let (positive, negative) = {
+            let shape = self.ordinary_collision_shape(id)?;
+            (shape.positive_extent[1], shape.negative_extent[1])
+        };
+        let column = current.map(|value| value >> 8);
+        let top = column[1].wrapping_sub(negative);
+        let bottom = column[1].wrapping_add(positive.wrapping_mul(2));
+        let poses = self.ordinary_collision_poses(&prepared)?;
+        let models = probe
+            .scene
+            .actor_collision
+            .as_ref()
+            .context("rope floor probe live geometry unavailable; re-export world")?;
+        let contacts = probe.scene.static_collision.runtime_segment_contacts(
+            &prepared.candidates,
+            models,
+            &poses,
+            [column[0], top, column[2]],
+            [column[0], bottom, column[2]],
+            false,
+            None,
+        )?;
+        let mut floor = 999_999;
+        for (_, contact) in contacts {
+            let contact = contact.integer()?;
+            let support = cyrus_collision::ground::GroundSupport {
+                height: f64::from(contact.point[1]),
+                normal: contact.normal,
+            };
+            if matches!(support.classification(), 2 | 4) && contact.point[1] < floor {
+                floor = contact.point[1];
+            }
+        }
+        if let Some(terrain) = &probe.scene.terrain {
+            let sample = terrain
+                .height(current.map(i64::from))
+                .with_context(|| {
+                    format!(
+                        "world {} instance {} rope floor probe terrain height-grid edge unsupported",
+                        self.world, id.index
+                    )
+                })?
+                .trunc();
+            anyhow::ensure!(
+                sample.is_finite()
+                    && sample >= f64::from(i32::MIN)
+                    && sample <= f64::from(i32::MAX),
+                "rope floor probe terrain height outside integer range"
+            );
+            let sample = sample as i32;
+            if top < sample && sample < bottom && sample < floor {
+                floor = sample;
+            }
+        }
+        Ok(if floor == 999_999 {
+            current[1].wrapping_add(0x3e800)
+        } else {
+            floor.wrapping_shl(8)
+        })
+    }
+
     /// The climb helpers of preservation "Rope control while attached".
+    #[allow(clippy::too_many_arguments)] // The climb reads the keys' direction, clock, probe data and sound sink.
     fn climb(
         &mut self,
         id: ScriptActorId,
@@ -409,6 +518,7 @@ impl ScriptWorld {
         data: &Animations,
         up: bool,
         ticks: u32,
+        probe: Option<RopeProbe<'_>>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -419,7 +529,7 @@ impl ScriptWorld {
             .map(|a| a.node)
             .context("rope climb: attachment unavailable")?;
         if up && node - 1 <= 0
-            || !up && self.rope_hand_link(id, rope_index, node + 1, data)? <= node
+            || !up && self.rope_hand_link(id, rope_index, node + 1, data, probe)? <= node
         {
             return Ok(());
         }

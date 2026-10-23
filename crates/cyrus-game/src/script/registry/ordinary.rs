@@ -264,6 +264,11 @@ impl ScriptWorld {
                         inputs.player_controller.map(|controller| controller.held),
                         i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
                         ticks,
+                        scene.map(|scene| super::rope_host::RopeProbe {
+                            scene,
+                            view,
+                            actors: &selected,
+                        }),
                         sounds,
                     )?;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
