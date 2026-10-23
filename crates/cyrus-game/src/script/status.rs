@@ -34,6 +34,8 @@ pub enum ScriptStatus {
         waiting: usize,
         failed: usize,
         unsupported: usize,
+        /// Actor flat records the world's drawing pass would submit now.
+        actor_flats: usize,
         examples: BTreeMap<String, String>,
     },
     Failed {
@@ -94,6 +96,7 @@ pub(super) fn update(
             waiting,
             failed,
             unsupported: scripts.unsupported.len(),
+            actor_flats: world.actor_flat_draws().map_or(0, |draws| draws.len()),
             examples: scripts
                 .unsupported
                 .iter()
