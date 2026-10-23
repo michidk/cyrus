@@ -5436,6 +5436,12 @@ fn move_forward_world(step: u8) -> (ScriptWorld, ScriptActorId, Scripts) {
         }
     }
     data.definition.functions.last_mut().unwrap().name = "MoveForward".into();
+    // Collision attribute bits make the step check need an input.
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_1".into(), 1);
     data.actors
         .get_mut("ACTOR")
         .unwrap()

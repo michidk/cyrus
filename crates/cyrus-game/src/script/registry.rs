@@ -3794,8 +3794,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         } else {
             // Without collision attribute bits no collision query is prepared for the actor and
             // every destination test of the walk step passes.
-            if walking
-                && admission.forward_admitted == Some(true)
+            if matches!(
+                operation,
+                LocomotionOperation::WalkForward
+                    | LocomotionOperation::Forward
+                    | LocomotionOperation::Lunge
+            ) && admission.forward_admitted == Some(true)
+                && admission.forward_step_clear.is_none()
                 && self.registry.actors[self.index].attributes[1] == 0
             {
                 admission.forward_step_clear = Some(true);
