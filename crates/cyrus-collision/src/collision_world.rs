@@ -411,12 +411,14 @@ impl StaticCollision {
 
     /// Startup settling against terrain and static models, per preservation player.md.
     /// Uses an actor-centered window, radius 1000 and a vertical half-length of 500.
-    /// Dynamic/transient actor contacts are outside this static registry.
+    /// Live actor models are the caller's: `actors` holds their contacts in candidate order,
+    /// ranked after the static placements.
     pub fn startup_support(
         &self,
         position: [i64; 3],
         positive_y_extent: i32,
         terrain: Option<GroundSupport>,
+        actors: Vec<ModelSupport>,
     ) -> anyhow::Result<Option<SelectedSupport>> {
         let view = [
             i32::try_from(position[0] >> 8)?,
@@ -424,7 +426,8 @@ impl StaticCollision {
         ];
         let candidates = self.candidates_in_radius(view, position, 1000.0)?;
         let probe = GroundProbe::new(position, positive_y_extent, 500)?;
-        let contacts = self.ground_contacts(&candidates, &probe, false)?;
+        let mut contacts = self.ground_contacts(&candidates, &probe, false)?;
+        contacts.extend(actors);
         Ok(probe.select_startup(terrain, &contacts))
     }
 
@@ -951,7 +954,7 @@ fn static_indices(candidates: CollisionCandidates) -> StaticCandidates {
     }
 }
 
-fn support_contact(
+pub(crate) fn support_contact(
     source: SupportSource,
     contact: super::collision_mesh::WorldSegmentContact,
 ) -> ModelSupport {

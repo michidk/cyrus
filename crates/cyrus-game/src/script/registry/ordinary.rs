@@ -738,6 +738,11 @@ impl OrdinaryContext<'_, '_> {
             data,
             clock.step().nominal_ticks,
             self.players.single().ok(),
+            self.prepared
+                .scene_request
+                .as_ref()
+                .zip(self.prepared.scenes.as_ref())
+                .and_then(|(request, scenes)| scenes.get(&request.0)),
             self.entry.as_deref().copied(),
             &mut |actor, sound| send_actor_sound(actor, sound, &request.0, &self.bindings, emit),
         )?;
@@ -994,11 +999,37 @@ fn send_actor_sound(
     emit(cue)
 }
 
+/// The entry position, settled against the live actor models when the host's static pass could
+/// not decide (water terrain with a deck among the actors); otherwise the host's position.
+fn settled_entry_position(
+    world: &ScriptWorld,
+    scene: Option<&crate::player::data::PlayerScene>,
+    pose: &crate::player::placement::PlayerPose,
+) -> anyhow::Result<[i64; 3]> {
+    use crate::player::placement::{ActorModelSupportRequired, PlayerPose};
+    let Some(scene) = scene.filter(|scene| scene.world == world.world) else {
+        return Ok(pose.position);
+    };
+    let mut settled = PlayerPose {
+        position: pose.position,
+        heading: pose.heading,
+    };
+    match crate::player::placement::settle_static(scene, &mut settled) {
+        Err(error) if error.downcast_ref::<ActorModelSupportRequired>().is_some() => {
+            let contacts = world.startup_actor_contacts(scene, pose.position)?;
+            crate::player::placement::settle_with_actors(scene, &mut settled, contacts)?;
+            Ok(settled.position)
+        }
+        _ => Ok(pose.position),
+    }
+}
+
 fn initialize_entry(
     world: &mut ScriptWorld,
     data: &Animations,
     ticks: u32,
     player_pose: Option<&crate::player::placement::PlayerPose>,
+    scene: Option<&crate::player::data::PlayerScene>,
     entry: Option<crate::player::placement::MarkerEntry>,
     send_sound: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
@@ -1022,7 +1053,10 @@ fn initialize_entry(
                     .is_initialized(index)?
             {
                 let mut position = [0; 3];
-                for (axis, value) in pose.position.into_iter().enumerate() {
+                for (axis, value) in settled_entry_position(world, scene, pose)?
+                    .into_iter()
+                    .enumerate()
+                {
                     position[axis] = i32::try_from(value).map_err(|_| {
                         anyhow::anyhow!(
                             "player spatial initialization axis {axis}: Q8 position outside i32"
@@ -1176,6 +1210,9 @@ pub fn run_ordinary(
                 data,
                 timing.nominal_ticks,
                 players.single().ok(),
+                scene_request
+                    .as_ref()
+                    .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
                 entry.as_deref().copied(),
                 &mut send_sound,
             )?;

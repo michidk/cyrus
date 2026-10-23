@@ -64,6 +64,11 @@ impl ActorModelCollision {
             .with_context(|| format!("MPOB {actor} model {name}: prepared geometry absent"))
     }
 
+    /// Whether this initial actor carries a prepared model of its own.
+    pub fn has_model(&self, actor: usize) -> bool {
+        self.instances.contains_key(&actor)
+    }
+
     /// Whether any initial actor carries a prepared model.
     pub fn has_models(&self) -> bool {
         !self.instances.is_empty()
@@ -137,6 +142,34 @@ impl ActorModelCollision {
             .mesh
             .world_segment_contacts(pose, start, end, sidedness)
             .with_context(|| format!("MPOB {actor} live model segment"))
+    }
+
+    /// Ground-probe contacts of one live model at the caller's stored pose, in face order.
+    pub fn ground_contacts(
+        &self,
+        actor: usize,
+        pose: &ModelPose,
+        probe: &crate::ground::GroundProbe,
+        sidedness: bool,
+    ) -> Result<Vec<crate::ground::ModelSupport>> {
+        let (start, end) = probe.endpoints();
+        Ok(self
+            .segment_contacts(
+                actor,
+                pose,
+                start.map(|value| value as f32),
+                end.map(|value| value as f32),
+                sidedness,
+            )?
+            .into_iter()
+            .map(|contact| {
+                let face = contact.face;
+                crate::collision_world::support_contact(
+                    crate::ground::SupportSource::Actor { actor, face },
+                    contact,
+                )
+            })
+            .collect())
     }
 
     /// Body geometry uses the host's stored model pose and original actor spheres.

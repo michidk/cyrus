@@ -56,7 +56,10 @@ fn startup_settling_keeps_first_equal_contact_and_uses_full_search_radius() {
             .faces
             .is_empty()
     );
-    let support = world.startup_support(position, 62, None).unwrap().unwrap();
+    let support = world
+        .startup_support(position, 62, None, Vec::new())
+        .unwrap()
+        .unwrap();
     assert_eq!(support.source(), SupportSource::Model { model: 1, face: 0 });
     assert_eq!(support.actor_height(62, -2), 86_016);
 }
@@ -172,7 +175,8 @@ fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
                     Some(GroundSupport {
                         height,
                         normal: [0, -256, 0],
-                    })
+                    }),
+                    Vec::new()
                 )
                 .unwrap()
                 .is_none()
@@ -187,6 +191,7 @@ fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
                     height,
                     normal: [0, -256, 0],
                 }),
+                Vec::new(),
             )
             .unwrap()
             .unwrap();
@@ -211,6 +216,7 @@ fn startup_settling_retains_distinct_terrain_and_model_rank_scales() {
                 height: -100.0,
                 normal: [0, -256, 0],
             }),
+            Vec::new(),
         )
         .unwrap()
         .unwrap();

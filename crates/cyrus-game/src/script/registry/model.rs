@@ -1147,6 +1147,57 @@ impl ScriptWorld {
         Ok(self.actors[index].model.current.as_ref())
     }
 
+    /// Contacts of the placed actors' static models with the startup settling probe at a Q8
+    /// position, in actor order. A candidate has a prepared model of its own, is visible and not
+    /// excluded from updates, and has attribute 55 clear; its pose is the initial placement.
+    pub fn startup_actor_contacts(
+        &self,
+        scene: &crate::player::data::PlayerScene,
+        position: [i64; 3],
+    ) -> Result<Vec<cyrus_collision::ground::ModelSupport>> {
+        let Some(models) = scene.actor_collision.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let definition = scene
+            .definition
+            .as_ref()
+            .context("startup actor contacts: player definition unavailable")?;
+        let probe = cyrus_collision::ground::GroundProbe::new(
+            position,
+            definition.positive_extent[1],
+            500,
+        )?;
+        let mut contacts = Vec::new();
+        for (index, actor) in self.actors.iter().enumerate() {
+            let Some(control) = actor.control.as_ref() else {
+                continue;
+            };
+            if actor.placement().is_none()
+                || control.hidden
+                || control.object_update_excluded
+                || actor.attributes[55] != 0
+                || !actor.model.prepared
+                || actor.model.static_radius.is_none()
+                || !models.has_model(index)
+            {
+                continue;
+            }
+            let Ok(spatial) = self.spatial(self.id(index)?) else {
+                continue;
+            };
+            let pose = spatial.local;
+            let model_pose = ModelPresentation {
+                position: pose.position.map(|value| (value >> 8) as f32),
+                pose,
+                radius: 0.0,
+                animation: None,
+            }
+            .collision_pose()?;
+            contacts.extend(models.ground_contacts(index, &model_pose, &probe, false)?);
+        }
+        Ok(contacts)
+    }
+
     /// Stored map-unit model coordinates, independent of current geometry and logical movement.
     /// Fresh actors begin at zero. Older snapshots without retained geometry may be unknown.
     pub fn model_position(&self, id: ScriptActorId) -> Result<Option<[f32; 3]>> {

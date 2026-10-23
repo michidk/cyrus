@@ -41,11 +41,42 @@ pub enum PlayerEntrySupport {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerPlacement;
 
+/// Startup settling ranks the live models of the ordinary actors too, which only the script world
+/// can pose. Returned (as the source of an `anyhow` error) when the static pass alone cannot decide.
+#[derive(Debug)]
+pub struct ActorModelSupportRequired(pub String);
+
+impl std::fmt::Display for ActorModelSupportRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ActorModelSupportRequired {}
+
 /// Apply startup settling against the prepared static world and terrain (water cells included).
-/// Caller must account for dynamic/transient support separately before enabling gameplay.
+/// Refuses water-terrain support while the world has actor models, since a deck among them could
+/// outrank it ([`ActorModelSupportRequired`]); [`settle_with_actors`] decides those cases.
 pub fn settle_static(
     scene: &super::data::PlayerScene,
     pose: &mut PlayerPose,
+) -> anyhow::Result<()> {
+    settle(scene, pose, None)
+}
+
+/// Startup settling with the contacts of the live actor models, in candidate order.
+pub fn settle_with_actors(
+    scene: &super::data::PlayerScene,
+    pose: &mut PlayerPose,
+    actors: Vec<cyrus_collision::ground::ModelSupport>,
+) -> anyhow::Result<()> {
+    settle(scene, pose, Some(actors))
+}
+
+fn settle(
+    scene: &super::data::PlayerScene,
+    pose: &mut PlayerPose,
+    actors: Option<Vec<cyrus_collision::ground::ModelSupport>>,
 ) -> anyhow::Result<()> {
     let definition = scene.definition.as_ref().with_context(|| {
         format!(
@@ -63,28 +94,29 @@ pub fn settle_static(
                 normal: [0; 3],
             })
     });
+    let actors_known = actors.is_some();
     if let Some(support) = scene.static_collision.startup_support(
         pose.position,
         definition.positive_extent[1],
         terrain,
+        actors.unwrap_or_default(),
     )? {
-        // The original's candidate list also holds the solid models of the ordinary actors, which
-        // this pass does not see. Water terrain, the only support such a model (a ship deck)
-        // would outrank, is therefore not trusted while the world has actor models.
-        anyhow::ensure!(
-            !(support.source() == cyrus_collision::ground::SupportSource::Terrain
-                && scene
-                    .terrain
-                    .as_ref()
-                    .is_some_and(|terrain| terrain.sample(pose.position).is_none())
-                && scene
-                    .actor_collision
-                    .as_ref()
-                    .is_some_and(|models| models.has_models())),
-            "world {} startup settling at {:?}: water or terrain edge unsupported without actor model support",
-            scene.world,
-            pose.position
-        );
+        if !actors_known
+            && support.source() == cyrus_collision::ground::SupportSource::Terrain
+            && scene
+                .terrain
+                .as_ref()
+                .is_some_and(|terrain| terrain.sample(pose.position).is_none())
+            && scene
+                .actor_collision
+                .as_ref()
+                .is_some_and(|models| models.has_models())
+        {
+            return Err(anyhow::Error::new(ActorModelSupportRequired(format!(
+                "world {} startup settling at {:?}: water or terrain edge unsupported without actor model support",
+                scene.world, pose.position
+            ))));
+        }
         pose.position[1] = support.actor_height(
             definition.positive_extent[1],
             scene.settings.standing_height,
@@ -236,8 +268,13 @@ pub(super) fn enter_marker(
             let support = match settle_static(scene, &mut pose) {
                 Ok(()) => PlayerEntrySupport::StaticSettled,
                 Err(error) => {
-                    // shortcut: retain inspection marker until dynamic/water support is implemented.
-                    error!("player settling unavailable; retaining marker: {error:#}");
+                    // The script world settles against its actor models when it initializes the
+                    // entry; until then the marker is retained.
+                    if error.downcast_ref::<ActorModelSupportRequired>().is_some() {
+                        log::debug!("player settling deferred to the script world: {error:#}");
+                    } else {
+                        error!("player settling unavailable; retaining marker: {error:#}");
+                    }
                     PlayerEntrySupport::InspectionOnly(format!("{error:#}"))
                 }
             };
