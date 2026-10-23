@@ -68,7 +68,10 @@ pirates are defeated; the story then loads the next world by itself.
 `dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
 through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
 any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
-scene that polls it. Run native cyrus with a null audio device so voiced lines can finish.
+scene that polls it. Run native cyrus with a real-time audio sink: ALSA's `null` device drains faster than real time, which
+shortens every voiced line (**Verified:** the START story from the last kill to the world change took
+30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
+prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
 
 `dev/scripts/native-audit.py --scripts cyrus-config/cache` lists the natives that the exported
 installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows

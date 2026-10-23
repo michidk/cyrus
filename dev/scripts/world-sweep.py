@@ -7,7 +7,7 @@ ordinary updates run for `--seconds`, and prints every actor whose script report
 through the console, which starts the story scene that polls it (for example
 `CATACOMB:scene2=1`, `JAILINT:scene5=1`, `MGUILD:gremlin_scene=1`, `START:deadpirates=2`).
 Exits 0 when no world failed to load and no actor failed, 1 otherwise. Needs a running native
-cyrus with CYRUS_CONTROL_ADDR set (a null audio device lets voiced lines finish), for example
+cyrus with CYRUS_CONTROL_ADDR set (a real-time audio sink, see docs/SETUP.md, lets voiced lines finish at their own pace), for example
 
     dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT
     dev/scripts/world-sweep.py --port 7117 --seconds 240 --flag CATACOMB:scene2=1 CATACOMB
