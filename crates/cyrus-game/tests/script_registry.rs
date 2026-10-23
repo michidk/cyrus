@@ -24297,42 +24297,39 @@ fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed(
 #[test]
 fn point_entry_rejects_unavailable_branches_before_pending_motion() {
     use cyrus_game::script::ScriptInputs;
-    for (field, value, error) in [(
-        "body_response_flags",
-        4,
-        "hit reaction requires the shared engine random stream",
-    )] {
-        let mut world = point_movement_fixture(
-            0,
-            false,
-            false,
-            |_| {},
-            |saved| {
-                saved["actors"][0]["control"][field] = value.into();
-            },
-        )
-        .0;
-        let id = world.id(0).unwrap();
-        let position = world.spatial(id).unwrap().local.position;
-        let message = format!(
-            "{:#}",
-            world
-                .move_ordinary_point(
-                    id,
-                    position,
-                    0,
-                    ScriptInputs {
-                        nominal_ticks: Some(1),
-                        frame_scale: Some(256),
-                        ..Default::default()
-                    },
-                    None,
-                    None
-                )
-                .unwrap_err()
-        );
-        assert!(message.contains(error), "{message}");
-    }
+    let mut world = point_movement_fixture(
+        0,
+        false,
+        false,
+        |_| {},
+        |saved| {
+            saved["actors"][0]["control"]["body_response_flags"] = 4.into();
+        },
+    )
+    .0;
+    let id = world.id(0).unwrap();
+    let position = world.spatial(id).unwrap().local.position;
+    let message = format!(
+        "{:#}",
+        world
+            .move_ordinary_point(
+                id,
+                position,
+                0,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None
+            )
+            .unwrap_err()
+    );
+    assert!(
+        message.contains("hit reaction requires the shared engine random stream"),
+        "{message}"
+    );
 }
 
 fn point_movement_fixture(
