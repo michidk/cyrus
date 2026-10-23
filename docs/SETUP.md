@@ -83,13 +83,22 @@ real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and ha
 emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
 the two logs: pirate health falls in whole 10-point hits, both pirates are defeated, the story
 reaches the next world, the player arrives at the same place and heading, and the delay after the
-last kill agrees within a factor of two. **Verified** (pair of runs, PASS): both place the player
-at (38112, -278, 36352) facing 256 in world 1. Across five original and six cyrus runs the delay
-from the last kill to the world change is 41 to 45 game seconds in the original (the engine's own
-clock: frames over its measured frame rate) and 28 to 36 seconds in cyrus, so cyrus's story is
-about 25 percent quicker; the cause is not found. Animation groups seen at the samples overlap
-(the death groups 122 and 124 and the attack groups 102 to 104 appear in both); frame-synchronised
-replay, camera and audio are not compared.
+last kill agrees within a factor of two. **Verified** (runs PASS): both place the player at
+(38112, -278, 36352) facing 256 in world 1 (a later run's arrival sample, taken while the player was
+already turning, differed by 127 units and 45 heading units). Pacing is compared in each engine's
+own game seconds (the original: frames over its measured frame rate; cyrus: `state.clock`), and
+that is not frame-rate independent: the guards' and pirates' attack cadence is counted per update
+in both engines. With cyrus at 3 to 7 frames per second here and the original at 8 to 13, a
+catacomb guard (`original-idle.py --world 2`) lands a 10-point hit every 0.65 to 0.94 game seconds
+in the original and every 1.0 to 1.7 in cyrus, but every 12 engine frames in the original against
+10 in cyrus, so the two agree per update. The story after the duel took 41 to 45 game seconds in
+the original and 28 to 36 in cyrus; its cause is not found. Animation groups seen at the samples
+overlap (death groups 122 and 124, attack groups 102 to 104 in both); frame-synchronised replay,
+camera and audio are not compared.
+
+`dev/scripts/original-idle.py --world N` starts the original in world N with no input and logs the
+player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
+whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
 
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain

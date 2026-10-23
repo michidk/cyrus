@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -42,6 +43,8 @@ def main():
     name = args.attach or "retro-duel"
     if not args.attach:
         run = MAGIC / "retro-run"
+        ini = run / "Redguard/WORLD.INI"  # an interrupted original-idle.py can leave another start world
+        ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=0", ini.read_text(errors="surrogateescape")), errors="surrogateescape")
         sh("docker", "rm", "-f", name, check=False)
         # Leaving a world saves MAPS\\<world>.TSG, and the game hangs if that write fails. The run copy
         # links `maps` into the read-only install, and the emulator cannot create files through that
