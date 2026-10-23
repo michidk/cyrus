@@ -3840,7 +3840,7 @@ fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
 }
 
 #[test]
-fn kill_me_releases_the_receivers_light_record() {
+fn kill_me_releases_the_receivers_light_and_flat_records() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = random_scripts("KillMe", vec![], Object::Me);
     scripts.definition.functions.push(Function {
@@ -3849,12 +3849,19 @@ fn kill_me_releases_the_receivers_light_record() {
         kind: CallKind::Function,
     });
     let light_id = scripts.definition.functions.len() as u16 - 1;
+    scripts.definition.functions.push(Function {
+        name: "FlatOffset".into(),
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    let flat_id = scripts.definition.functions.len() as u16 - 1;
     let steps = &mut scripts.actors.get_mut("LOGIC").unwrap().program.steps;
     let kill = steps.remove(&0).unwrap();
     let end = steps.remove(&1).unwrap();
     steps.insert(0, assign_call(1, light_id, "Light", &[50, 200]));
-    steps.insert(1, Step { next: 2, ..kill });
-    steps.insert(2, Step { next: 3, ..end });
+    steps.insert(1, assign_call(2, flat_id, "FlatOffset", &[1, 2, 3]));
+    steps.insert(2, Step { next: 3, ..kill });
+    steps.insert(3, Step { next: 4, ..end });
     scripts.definition.functions[1].param_count = 0;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -3875,6 +3882,7 @@ fn kill_me_releases_the_receivers_light_record() {
         .unwrap();
     assert!(world.actors()[0].control_state().unwrap().killed);
     assert!(world.actors()[0].light_state().is_none());
+    assert!(world.actors()[0].flat_state().is_none());
 }
 
 #[test]
