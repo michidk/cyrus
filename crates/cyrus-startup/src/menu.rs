@@ -36,6 +36,37 @@ pub(super) enum MovieRequest {
     NewGame,
 }
 
+/// What the startup book does by itself once it exists, instead of waiting for a key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaunchAction {
+    /// The New Game entry.
+    NewGame,
+    /// The Movies-page cinematic with this zero-based MENU.INI index; hidden entries play too.
+    Movie(usize),
+}
+
+/// Launch-time shortcuts through the book. The action runs once; `skip_movies` stays for the session.
+#[derive(Resource, Default, Debug)]
+pub struct LaunchRequest {
+    pub action: Option<LaunchAction>,
+    /// New Game enters its world without the introduction movie.
+    pub skip_movies: bool,
+}
+
+impl LaunchRequest {
+    /// The shared launch options in the book's terms.
+    pub fn new(new_game: bool, movie: Option<usize>, skip_movies: bool) -> Self {
+        Self {
+            action: if new_game {
+                Some(LaunchAction::NewGame)
+            } else {
+                movie.map(LaunchAction::Movie)
+            },
+            skip_movies,
+        }
+    }
+}
+
 struct MenuTiming {
     checkpoint: ClockCheckpoint,
     last_tick: u32,
@@ -150,6 +181,8 @@ impl AssetLoader for MenuLoader {
 
 pub(super) fn register(app: &mut App) {
     app.init_resource::<cyrus_game::preferences::Preferences>()
+        .init_resource::<LaunchRequest>()
+        .add_message::<MovieRequest>()
         .init_asset::<MenuAsset>()
         .init_asset_loader::<MenuLoader>()
         .add_systems(OnEnter(AppState::Menu), (pause_cameras, setup))
@@ -160,10 +193,53 @@ pub(super) fn register(app: &mut App) {
                 fit_image,
                 super::last_game::drive.before(drive),
                 drive.before(cyrus_audio::ApplyPreferences),
+                launch.after(drive),
             )
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(OnExit(AppState::Menu), cleanup);
+}
+
+/// Session reset the New Game entry performs before its movie or world entry.
+fn reset_for_new_game(commands: &mut Commands) {
+    commands.queue(|world: &mut World| {
+        world
+            .resource_mut::<cyrus_game::script::ScriptActors>()
+            .begin_new_game();
+        // The original stops every sound channel before its New Game initializer
+        // (preservation engine/menu.md); world entry does not.
+        world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
+        if let Some(hud) = world.get_resource::<cyrus_game::script::ScriptHud>() {
+            hud.begin_new_game();
+        }
+    });
+}
+
+/// Runs the launch request once the book has its opening motion, as a key press on the entry would.
+fn launch(
+    mut request: ResMut<LaunchRequest>,
+    menu: Res<MenuState>,
+    mut commands: Commands,
+    mut movies: MessageWriter<MovieRequest>,
+) {
+    if request.action.is_none()
+        || menu.motion.is_none()
+        || menu.movie.is_some()
+        || menu.last_game.is_some()
+        || menu.context != MenuContext::Startup
+    {
+        return;
+    }
+    match request.action.take() {
+        Some(LaunchAction::NewGame) => {
+            reset_for_new_game(&mut commands);
+            movies.write(MovieRequest::NewGame);
+        }
+        Some(LaunchAction::Movie(index)) => {
+            movies.write(MovieRequest::Menu(index));
+        }
+        None => {}
+    }
 }
 
 fn setup(
@@ -459,19 +535,7 @@ pub(super) fn drive(
                     // shortcut: Startup Load starts fresh until the save-slot system is implemented.
                     2 | 10 => {
                         if entry.action == 10 {
-                            commands.queue(|world: &mut World| {
-                                world
-                                    .resource_mut::<cyrus_game::script::ScriptActors>()
-                                    .begin_new_game();
-                                // The original stops every sound channel before its New Game initializer
-                                // (preservation engine/menu.md); world entry does not.
-                                world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
-                                if let Some(hud) =
-                                    world.get_resource::<cyrus_game::script::ScriptHud>()
-                                {
-                                    hud.begin_new_game();
-                                }
-                            });
+                            reset_for_new_game(&mut commands);
                         }
                         if entry.action == 10 {
                             commands.write_message(MovieRequest::NewGame);
@@ -724,6 +788,33 @@ fn begin_world_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_request_runs_once_and_only_when_the_startup_book_is_open() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.init_resource::<Messages<MovieRequest>>();
+        world.insert_resource(LaunchRequest::new(false, Some(3), false));
+        world.init_resource::<MenuState>();
+        world.run_system_once(launch).unwrap();
+        assert_eq!(
+            world.resource::<LaunchRequest>().action,
+            Some(LaunchAction::Movie(3))
+        );
+        world.resource_mut::<MenuState>().motion = Some(BookMotion::opening([1; 5]));
+        world.run_system_once(launch).unwrap();
+        world.run_system_once(launch).unwrap();
+        assert_eq!(world.resource::<LaunchRequest>().action, None);
+        let movies: Vec<_> = world
+            .resource_mut::<Messages<MovieRequest>>()
+            .drain()
+            .collect();
+        assert!(matches!(movies.as_slice(), [MovieRequest::Menu(3)]));
+        assert_eq!(
+            LaunchRequest::new(true, None, true).action,
+            Some(LaunchAction::NewGame)
+        );
+    }
 
     #[test]
     fn restored_entry_does_not_resume_the_replaced_menu_clock() {

@@ -45,6 +45,17 @@ struct Args {
     /// Export splash, title, book-menu, cinematics and HUD assets to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
+    /// Restore the newest save in this slot of cyrus-config/slots through the book. Implies
+    /// --skip-startup.
+    #[arg(
+        long,
+        value_name = "SLOT",
+        conflicts_with_all = ["scene", "new_game", "movie", "headless"]
+    )]
+    load_slot: Option<u16>,
+    /// Print the saved slots as JSON and exit.
+    #[arg(long)]
+    list_slots: bool,
     /// Control server bind address.
     #[arg(long, env = "CYRUS_CONTROL_ADDR")]
     control: Option<String>,
@@ -69,6 +80,22 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run(args: Args, mut app: App) -> anyhow::Result<()> {
+    if args.list_slots {
+        println!(
+            "{}",
+            serde_json::to_string(&session::slots::SlotStore::default().list()?)?
+        );
+        return Ok(());
+    }
+    anyhow::ensure!(
+        !args.headless || !(args.launch.new_game || args.launch.movie.is_some()),
+        "--new-game and --movie drive the book menu, which --headless does not open"
+    );
+    if let Some(slot) = args.load_slot {
+        // Fail before a window opens when the slot is absent or unreadable.
+        session::slots::SlotStore::default().metadata(slot, None)?;
+        app.insert_resource(session::LaunchSlot(slot));
+    }
     let install = if args.audit_worlds
         || args.headless
         || args.list_worlds
@@ -195,7 +222,14 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         debug::register(&mut app);
         if startup {
             app.add_plugins(cyrus_startup::StartupPlugin);
-            let mut presentation = if args.launch.skip_startup {
+            let direct =
+                args.launch.new_game || args.launch.movie.is_some() || args.load_slot.is_some();
+            app.insert_resource(cyrus_startup::LaunchRequest::new(
+                args.launch.new_game,
+                args.launch.movie,
+                args.launch.skip_movies,
+            ));
+            let mut presentation = if args.launch.skip_startup || direct {
                 cyrus_startup::StartupPresentation::without_splash()
             } else {
                 cyrus_startup::StartupPresentation::default()

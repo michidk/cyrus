@@ -47,6 +47,16 @@ pub struct GameOptions {
     /// Bypass the splash while preparing the book menu behind the title.
     #[arg(long)]
     pub skip_startup: bool,
+    /// Start a new game as the book's New Game entry does. Implies --skip-startup.
+    #[arg(long, conflicts_with_all = ["scene", "movie"])]
+    pub new_game: bool,
+    /// Play a Movies-page cinematic directly, by zero-based MENU.INI index, then return to the
+    /// book. Plays hidden entries too. Implies --skip-startup.
+    #[arg(long, value_name = "INDEX", conflicts_with = "scene")]
+    pub movie: Option<usize>,
+    /// Enter a new game without its introduction movie, from this launch and from the menu entry.
+    #[arg(long)]
+    pub skip_movies: bool,
     /// Water presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub water: Option<String>,
@@ -179,6 +189,17 @@ mod tests {
         assert_eq!(game.scene.as_deref(), Some("START"));
         assert_eq!(game.water.as_deref(), Some("modern"));
         assert!(game.skip_startup);
+        let direct = GameOptions::try_parse_from(["game", "--new-game", "--skip-movies"]).unwrap();
+        assert!(direct.new_game && direct.skip_movies);
+        let movie = GameOptions::try_parse_from(["game", "--movie=2"]).unwrap();
+        assert_eq!(movie.movie, Some(2));
+        for conflict in [
+            ["--new-game", "--movie=0"],
+            ["--new-game", "--scene=START"],
+            ["--movie=0", "--scene=START"],
+        ] {
+            assert!(GameOptions::try_parse_from(["game"].into_iter().chain(conflict)).is_err());
+        }
         assert!(GameOptions::try_parse_from(["game", "--scene=../START"]).is_err());
         assert!(GameOptions::try_parse_from(["game", "--fog=other"]).is_err());
         let viewer = ViewerOptions::try_parse_from([

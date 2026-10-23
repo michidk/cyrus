@@ -25,6 +25,11 @@ world-listing and export commands keep contextual command-line errors.
 Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
 for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, then the remembered location, then default local/GOG folders), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
+`--new-game`, `--movie INDEX` and `--load-slot SLOT` start from the open book instead of waiting for a key
+(each implies `--skip-startup`; with `--scene` and each other they conflict, and `--headless` has no book).
+`--movie` takes the zero-based MENU.INI index and plays hidden entries too. `--load-slot` restores the newest
+revision of slot SLOT of the saved slots and exits with an error when it cannot; `--list-slots` prints the
+saved slots as JSON and exits. `--skip-movies` enters New Game without its introduction movie.
 Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`).
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
 from a writable directory. On Windows the executable is `cyrus.exe`.
@@ -51,6 +56,9 @@ Shared browser/CLI options use exactly the same names:
 | `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
 | `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | First-world scene-space inspection camera pose; accepts menu entry and requires a unit quaternion |
 | `--skip-startup` | `?skip-startup=true` | Bypass the splash |
+| `--new-game` | `?new-game=true` | Start a new game from the open book (implies `--skip-startup`) |
+| `--movie 2` | `?movie=2` | Play that Movies-page cinematic (zero-based MENU.INI index) from the open book |
+| `--skip-movies` | `?skip-movies=true` | New Game enters its world without the introduction movie |
 | `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |

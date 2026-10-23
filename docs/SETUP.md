@@ -53,6 +53,10 @@ The link is gitignored. cyrus only reads from it.
 ```sh
 just run                 # splash, title, then the book menu
 just run --skip-startup   # skip splash, prepare menu assets behind the title
+just run --new-game       # New Game from the book, with its introduction movie
+just run --new-game --skip-movies   # ... entering the world straight away
+just run --movie 0        # play Movies-page cinematic 0, then return to the book
+just run --load-slot 3    # restore the newest save in slot 3 (`--list-slots` prints them)
 just run --scene START
 just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
@@ -249,7 +253,7 @@ Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--water`, `--fog`, and `--sky` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--water`, `--fog`, and `--sky` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
@@ -318,8 +322,10 @@ the Windows Glide splash; the full DOS overlay contains the older shield logo.
 caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
-`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads
-a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
+`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--new-game`,
+`--movie INDEX` and `--load-slot SLOT` (native) skip the splash and drive the book once it is open, as the
+entry's key press would; `--skip-movies` makes New Game, from the book too, enter its world without the
+introduction movie. `--scene` loads a world directly and excludes all three. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
 
 The book menu reads `MENU.INI` through rgpre, using original geometry, page

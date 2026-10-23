@@ -99,7 +99,12 @@ fn main() {
             .run_if(in_state(cyrus_game::AppState::Loading))
             .run_if(resource_exists::<cyrus_startup::StartGame>),
     );
-    let mut presentation = if options.skip_startup {
+    app.insert_resource(cyrus_startup::LaunchRequest::new(
+        options.new_game,
+        options.movie,
+        options.skip_movies,
+    ));
+    let mut presentation = if options.skip_startup || options.new_game || options.movie.is_some() {
         cyrus_startup::StartupPresentation::without_splash()
     } else {
         cyrus_startup::StartupPresentation::default()

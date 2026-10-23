@@ -268,6 +268,8 @@ For agent work, choose the entry point explicitly:
 
 - `cargo run -p cyrus -- --skip-startup` skips the splash and prepares the menu behind the title.
 - `cargo run -p cyrus -- --scene START` skips startup and loads that world directly.
+- `cargo run -p cyrus -- --new-game` (`--skip-movies` drops the introduction), `--movie INDEX` and
+  `--load-slot SLOT` start from the open book; `--list-slots` prints the saves.
 - `--headless --scene START` runs preload, export, and control without a window.
 - MCP `skip_startup` skips presentation to the menu; MCP `load_scene {name}`
   bypasses presentation or leaves the menu to enter a world.

@@ -23,7 +23,7 @@ mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
 pub use last_game::LastGameLoader;
-pub use menu::{MenuContext, MenuState};
+pub use menu::{LaunchAction, LaunchRequest, MenuContext, MenuState};
 #[cfg(not(target_arch = "wasm32"))]
 pub use preparation::LoadingPlugin;
 

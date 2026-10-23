@@ -2,7 +2,7 @@
 pub(crate) mod slots;
 
 use anyhow::{Context, Result, ensure};
-use bevy::prelude::{AssetServer, Resource, World};
+use bevy::prelude::{AssetServer, Local, Resource, World};
 use cyrus_assets::{hud::HudAsset, install::GameInstall};
 use cyrus_control::SlotOperation;
 use cyrus_session::{
@@ -83,6 +83,57 @@ impl NativeSessionLoad {
         self.path.clear();
         Ok(())
     }
+}
+
+/// `--load-slot`: restore the newest revision of this slot once the startup book is ready.
+#[derive(Resource)]
+pub(crate) struct LaunchSlot(pub u16);
+
+/// Submits the launch slot through the same host as the control command, then waits for its
+/// commit. A failure is fatal: the player asked for that save, not the book.
+pub(crate) fn launch_slot(world: &mut World, mut requested: Local<bool>) {
+    let Some(&LaunchSlot(slot)) = world.get_resource::<LaunchSlot>() else {
+        return;
+    };
+    if !*requested {
+        if !world
+            .get_resource::<cyrus_startup::MenuState>()
+            .is_some_and(|menu| menu.ready)
+        {
+            return;
+        }
+        *requested = true;
+        let metadata = world.resource::<slots::SlotStore>().metadata(slot, None);
+        let submitted = metadata.and_then(|metadata| {
+            request_slots(
+                world,
+                SlotOperation::Load {
+                    slot,
+                    revision: metadata.revision,
+                },
+            )
+        });
+        if let Err(error) = submitted {
+            fail_launch_slot(world, slot, &error);
+        }
+        return;
+    }
+    match slots_result(world, false) {
+        Ok(value) if value["pending"] == true => {}
+        result => {
+            let _ = slots_result(world, true);
+            world.remove_resource::<LaunchSlot>();
+            if let Err(error) = result {
+                fail_launch_slot(world, slot, &error);
+            }
+        }
+    }
+}
+
+fn fail_launch_slot(world: &mut World, slot: u16, error: &anyhow::Error) {
+    bevy::log::error!("--load-slot {slot}: {error:#}");
+    world.remove_resource::<LaunchSlot>();
+    world.write_message(bevy::app::AppExit::error());
 }
 
 pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Result<()> {

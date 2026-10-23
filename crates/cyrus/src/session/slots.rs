@@ -134,7 +134,7 @@ impl SlotStore {
         .with_context(|| format!("save slot {slot} {}", path.display()))
     }
 
-    pub(super) fn metadata(&self, slot: u16, revision: Option<&str>) -> Result<SlotMetadata> {
+    pub(crate) fn metadata(&self, slot: u16, revision: Option<&str>) -> Result<SlotMetadata> {
         let (_, metadata, _) = self
             .open(slot)?
             .with_context(|| format!("save slot {slot} absent"))?;
@@ -145,7 +145,7 @@ impl SlotStore {
         Ok(metadata)
     }
 
-    pub(super) fn list(&self) -> Result<Vec<SlotMetadata>> {
+    pub(crate) fn list(&self) -> Result<Vec<SlotMetadata>> {
         let mut slots = Vec::new();
         for slot in 0..=299 {
             if let Some((_, metadata, _)) = self.open(slot)? {

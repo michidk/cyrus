@@ -53,6 +53,10 @@ impl Plugin for ControlPlugin {
             .init_resource::<crate::session::slots::SlotStore>()
             .init_resource::<cyrus_startup::LastGameLoader>()
             .add_systems(
+                Update,
+                crate::session::launch_slot.run_if(resource_exists::<crate::session::LaunchSlot>),
+            )
+            .add_systems(
                 PreUpdate,
                 (crate::session::poll, release_taps, handle)
                     .chain()

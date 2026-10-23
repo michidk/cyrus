@@ -21,6 +21,12 @@ select the DOS variant. **Verified:** a side-by-side capture against DOSBox-X
 running the GOG overlay matches the shield, logo, tints and projected shadow.
 Glide edge antialiasing is approximated by supersampling.
 
+## Skipped introduction movie
+
+**Verified:** New Game plays the introduction movie before entering the world. `--skip-movies`
+(browser `?skip-movies=true`) enters the world without it, from the menu entry as well as from
+`--new-game`. The default plays it. The ending movie is not affected.
+
 ## CD data noise at the start of track 2
 
 **Verified:** the GOG image places CD-ROM data-sector bytes at the start of

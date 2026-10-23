@@ -93,13 +93,16 @@ native exporter is required.
 | `?scene=START` | `--scene START` |
 | `?view=x,y,z,qx,qy,qz,qw` | `--view=x,y,z,qx,qy,qz,qw` |
 | `?skip-startup=true` | `--skip-startup` |
+| `?new-game=true` | `--new-game` |
+| `?movie=2` | `--movie 2` |
+| `?skip-movies=true` | `--skip-movies` |
 | `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
 | `?sky=modern` | `--sky modern` |
 
 Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
 WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
-Boolean `skip-startup` accepts an empty value, `true`/`1`, and `false`/`0`.
+Booleans `skip-startup`, `new-game` and `skip-movies` accept an empty value, `true`/`1`, and `false`/`0`.
 `view` supplies a one-shot inspection camera pose in scene coordinates with a
 unit quaternion, including world entry through the menu. It does not move the player.
 In a world, the world picker prepares the destination within the current session

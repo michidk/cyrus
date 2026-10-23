@@ -227,7 +227,11 @@ pub(super) fn drive(
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     #[cfg(target_arch = "wasm32")] mut prepared: ResMut<Assets<Prepared>>,
     mut requests: MessageReader<MovieRequest>,
-    state: (ResMut<MoviePlayback>, ResMut<MenuState>),
+    state: (
+        ResMut<MoviePlayback>,
+        ResMut<MenuState>,
+        Res<super::LaunchRequest>,
+    ),
     input: (Res<Time<Real>>, Res<ButtonInput<KeyCode>>),
     rendering: (
         ResMut<Assets<Image>>,
@@ -241,10 +245,15 @@ pub(super) fn drive(
     let (mut commands, audio_players) = runtime;
     #[cfg(not(target_arch = "wasm32"))]
     let (mut sources, sinks) = audio;
-    let (mut playback, mut menu) = state;
+    let (mut playback, mut menu, launch) = state;
     let (mut images, mut sprite) = rendering;
     for request in requests.read() {
         if playback.load.is_some() || playback.playing.is_some() {
+            continue;
+        }
+        if launch.skip_movies && matches!(request, MovieRequest::NewGame) {
+            menu.enter_world = true;
+            menu.ready = false;
             continue;
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -622,6 +631,30 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
+    fn skip_movies_enters_the_world_without_loading_the_introduction() {
+        let mut world = World::new();
+        world.insert_resource(GameInstall {
+            root: Default::default(),
+        });
+        world.init_resource::<Messages<MovieRequest>>();
+        world.insert_resource(crate::LaunchRequest::new(false, None, true));
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<Assets<StreamingAudio>>();
+        world.init_resource::<MenuState>();
+        world.init_resource::<MoviePlayback>();
+        world
+            .resource_mut::<Messages<MovieRequest>>()
+            .write(MovieRequest::NewGame);
+        world.run_system_cached(drive).unwrap();
+        let menu = world.resource::<MenuState>();
+        assert!(menu.enter_world && menu.movie.is_none());
+        assert!(world.resource::<MoviePlayback>().load.is_none());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
     fn movie_completion_enters_new_game_only_after_success() {
         for (new_game, complete, fail) in [
             (true, false, false),
@@ -634,6 +667,7 @@ mod tests {
                 root: Default::default(),
             });
             world.init_resource::<Messages<MovieRequest>>();
+            world.init_resource::<crate::LaunchRequest>();
             world.init_resource::<Time<Real>>();
             world.init_resource::<ButtonInput<KeyCode>>();
             world.init_resource::<Assets<Image>>();
