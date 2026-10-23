@@ -87,6 +87,13 @@ pub enum Command {
         key: String,
         action: InputAction,
     },
+    /// Turn the inspection flycam on or off; it moves with `KeyW/A/S/D`, `Space`, `ShiftLeft`.
+    /// `position` places it in rendered world units and `look_at` aims it at a point.
+    Flycam {
+        enabled: bool,
+        position: Option<[f32; 3]>,
+        look_at: Option<[f32; 3]>,
+    },
     SetFidelity {
         area: String,
         mode: String,

@@ -146,6 +146,7 @@ module where it is defined and regenerate.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attachment.rs` — Equipped-model geometry follows preservation's engine/attachment.md transform rules.
 - `src/script/attributes.rs` — Immediate attribute services. Runtime writes retain the actor byte; family/model
+- `src/script/bounce.rs` — `BounceObject`: the launch task that throws an actor up and forward and hands the descent to the
 - `src/script/camera.rs` — Retained logical camera records; pose correction and publication share this owner.
 - `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
 - `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
@@ -173,6 +174,7 @@ module where it is defined and regenerate.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/attack_input.rs` — The selected player's armed attack input: per-key tap latches and the combo move start.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
+- `src/script/registry/bounce.rs` — The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/camera.rs` — Live session camera services: first pose establishment and one atomic update.
 - `src/script/registry/camera_drive.rs` — The original follow camera as a per-frame driver of the world's camera session.

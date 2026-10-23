@@ -152,11 +152,11 @@ fn handle(
         clock,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
-    (input, flycam): (
+    (input, mut flycam): (
         Res<cyrus_game::player::input::PlayerInput>,
-        Option<Res<cyrus_render::camera::FlycamSettings>>,
+        Option<ResMut<cyrus_render::camera::FlycamSettings>>,
     ),
-    camera: Query<&Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
+    mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
     mut exit: MessageWriter<AppExit>,
     mut audio: Audio,
@@ -285,6 +285,25 @@ fn handle(
                     Ok(json!({"position": [x, y, z]}))
                 }
                 Err(_) => Err("no player".into()),
+            },
+            Command::Flycam {
+                enabled,
+                position,
+                look_at,
+            } => match flycam.as_deref_mut() {
+                Some(flycam) => {
+                    flycam.enabled = enabled;
+                    if let Ok(mut view) = camera.single_mut() {
+                        if let Some(position) = position {
+                            view.translation = Vec3::from_array(position);
+                        }
+                        if let Some(target) = look_at {
+                            view.look_at(Vec3::from_array(target), Vec3::Y);
+                        }
+                    }
+                    Ok(json!({"enabled": enabled}))
+                }
+                None => Err("no flycam".into()),
             },
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {

@@ -8,7 +8,7 @@ one JSON object per line over TCP, default `127.0.0.1:7117`.
 {"id":1,"ok":true,"result":{"state":"InGame","scene":"START","player":{...},"fidelity":{...},"frame":120}}
 ```
 
-Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`,
+Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`, `flycam {enabled, position?, look_at?}`,
 `input {key, action: press|release|tap}` (Bevy `KeyCode` names),
 `set_fidelity {area, mode}`, `skip_startup`, `load_scene {name}`, `play_sound {effect}`,
 `play_speech {label}`, `stop_sounds`, `quit`.
