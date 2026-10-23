@@ -61,6 +61,10 @@ just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 
+`dev/scripts/start-duel.py --port 7117` drives a running native cyrus (launched with `--skip-startup`
+and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
+pirates are defeated; the story then loads the next world by itself.
+
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
 available. Use a windowed run for flycam and screenshot checks.
