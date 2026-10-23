@@ -434,9 +434,13 @@ impl Channels {
     }
 
     fn reclaim(&mut self, alive: &Query<(), With<PlayingSound>>) {
+        self.reclaim_where(|sound| alive.contains(sound));
+    }
+
+    fn reclaim_where(&mut self, alive: impl Fn(Entity) -> bool) {
         let samples = &mut self.samples;
         self.playing.retain(|_, channel| {
-            if alive.contains(channel.sound) {
+            if alive(channel.sound) {
                 true
             } else {
                 samples.finish(channel.reservation);

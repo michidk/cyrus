@@ -94,20 +94,26 @@ fn execute(world: &mut World) {
         return;
     };
     let result = match request {
-        Request::CaptureLive => world
-            .resource::<crate::SessionSourceCatalog>()
-            .for_capture(world)
-            .and_then(|sources| {
-                let sources = sources
-                    .sources(world)?
-                    .context("session capture sources still loading")?;
-                let hud = cyrus_render::hud::bound_asset(world)
-                    .context("session capture bound HUD asset absent")?;
-                RuntimeSessionSnapshot::capture(world, &sources, hud)
-            })
-            .map(|snapshot| SessionBoundaryResult::Captured(Box::new(snapshot))),
-        Request::Capture(sources, hud) => capture(world, &sources, &hud)
-            .map(|snapshot| SessionBoundaryResult::Captured(Box::new(snapshot))),
+        Request::CaptureLive => {
+            cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
+            world
+                .resource::<crate::SessionSourceCatalog>()
+                .for_capture(world)
+                .and_then(|sources| {
+                    let sources = sources
+                        .sources(world)?
+                        .context("session capture sources still loading")?;
+                    let hud = cyrus_render::hud::bound_asset(world)
+                        .context("session capture bound HUD asset absent")?;
+                    RuntimeSessionSnapshot::capture(world, &sources, hud)
+                })
+                .map(|snapshot| SessionBoundaryResult::Captured(Box::new(snapshot)))
+        }
+        Request::Capture(sources, hud) => {
+            cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
+            capture(world, &sources, &hud)
+                .map(|snapshot| SessionBoundaryResult::Captured(Box::new(snapshot)))
+        }
         Request::Commit(candidate) => candidate
             .commit(world)
             .map(|()| SessionBoundaryResult::Committed),

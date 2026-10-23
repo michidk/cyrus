@@ -45,6 +45,19 @@ pub struct SamplePlaybackCandidate {
 }
 
 impl SamplePlaybackSnapshot {
+    /// Free the channels whose playback entity the backend already despawned (a finished
+    /// effect). The sound systems reclaim at the start of the frame, so a sound that ends
+    /// later in the frame would otherwise still hold a channel when a snapshot is captured.
+    pub fn reclaim_finished(world: &mut World) {
+        let alive: std::collections::HashSet<Entity> = world
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .iter(world)
+            .collect();
+        if let Some(mut channels) = world.get_resource_mut::<Channels>() {
+            channels.reclaim_where(|sound| alive.contains(&sound));
+        }
+    }
+
     /// Capture after channel reclamation and cue dispatch, with deferred commands
     /// applied. The host must stop simulation and establish its backend checkpoint
     /// policy before calling; source cursor capture does not freeze device output.
@@ -105,7 +118,15 @@ impl SamplePlaybackSnapshot {
         }
         ensure!(
             census.len() == channels.playing.len(),
-            "sample snapshot: playback entity census differs"
+            "sample snapshot: playback entity census differs: {} playback entities, {} channels, channels without a sample transport entity {:?}",
+            census.len(),
+            channels.playing.len(),
+            channels
+                .playing
+                .iter()
+                .filter(|(_, channel)| !census.contains_key(&channel.sound))
+                .map(|(token, channel)| (*token, channel.sound))
+                .collect::<Vec<_>>()
         );
         let mut players = Vec::with_capacity(census.len());
         for (&token, channel) in &channels.playing {

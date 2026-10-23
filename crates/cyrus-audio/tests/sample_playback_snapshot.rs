@@ -226,3 +226,21 @@ fn silent_pool_retains_animation_owner_bindings_after_stop_all() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn finished_playback_releases_its_channel_before_capture() -> Result<()> {
+    let (mut app, _) = fixture()?;
+    let before = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world_mut())?)?;
+    // The backend despawns a finished effect after the frame's channel reclamation ran.
+    let finished = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .single(app.world())?;
+    app.world_mut().despawn(finished);
+    assert!(SamplePlaybackSnapshot::capture(app.world_mut()).is_err());
+    SamplePlaybackSnapshot::reclaim_finished(app.world_mut());
+    let after = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world_mut())?)?;
+    assert_ne!(after, before);
+    assert!(after["players"].as_array().is_some_and(Vec::is_empty));
+    Ok(())
+}
