@@ -530,6 +530,10 @@ impl Channels {
                 (sound, Some(gains))
             }
         };
+        debug!(
+            "sound start: effect {:?} slot {} volume {} pan {:?} speed {}",
+            start.effect, reservation.slot, start.volume, start.pan, start.speed
+        );
         self.playing.insert(
             reservation.token,
             Channel {

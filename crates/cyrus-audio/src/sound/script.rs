@@ -342,6 +342,9 @@ impl SoundFrame<'_, '_> {
                         let Some(distance) = settings.sound_distance else {
                             continue;
                         };
+                        debug!(
+                            "sound animation: requested {requested} plays effect {index} (surface {surface:?})"
+                        );
                         let mixed = match position {
                             Some(position) => positional_q8(*position, settings, listener, 0),
                             None => positional(transform.translation(), &listener.0, distance, 0),
