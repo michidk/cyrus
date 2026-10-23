@@ -100,6 +100,7 @@ struct Inspection<'w, 's> {
     binding_nodes: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
     script_sounds: Option<ResMut<'w, Messages<cyrus_world::sound::SoundCue>>>,
     player_poses: Query<'w, 's, &'static cyrus_game::player::placement::PlayerPose, With<Player>>,
+    marker: ResMut<'w, cyrus_game::player::placement::MarkerEntry>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -146,6 +147,7 @@ fn handle(
         binding_nodes,
         mut script_sounds,
         player_poses,
+        mut marker,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, flycam): (
@@ -336,6 +338,8 @@ fn handle(
             }
             Command::LoadScene { name } => {
                 scene_request.0 = name.clone();
+                // A world entered by name starts at its default marker, not a retained one.
+                *marker = Default::default();
                 if *state.get() != cyrus_game::AppState::InGame {
                     next.set(cyrus_game::AppState::InGame);
                 }
