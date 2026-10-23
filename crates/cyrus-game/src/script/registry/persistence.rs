@@ -440,21 +440,19 @@ impl ActorSnapshot {
             self.name
         );
         if let Some(light) = &self.light {
-            let placement = actor
+            // An authored object light (kinds 4 and 6) stays where its placement put it; any
+            // other actor's light is a script-created record with no authored position.
+            if let Some(placement) = actor
                 .placement()
                 .filter(|placement| matches!(placement.object_type, 4 | 6))
-                .with_context(|| {
-                    format!(
-                        "saved actor {}: light allocation on unsupported role",
-                        self.name
-                    )
-                })?;
-            ensure!(
-                light.position == placement.map_position.map(|value| value as i32)
-                    && light.offset == [0; 3],
-                "saved actor {}: moving or offset object light unsupported",
-                self.name
-            );
+            {
+                ensure!(
+                    light.position == placement.map_position.map(|value| value as i32)
+                        && light.offset == [0; 3],
+                    "saved actor {}: moving or offset object light unsupported",
+                    self.name
+                );
+            }
         }
         let animation = self
             .animation
