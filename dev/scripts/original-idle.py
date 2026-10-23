@@ -3,7 +3,7 @@
 
 Sets `start_world` in the run copy's WORLD.INI (reset to 0, START, afterwards), starts the original in the
 retro container as original-duel.py does (same requirements, state reader under
-$CYRUS_MAGIC/tools), sends no input, and prints one JSON line per sample (wall seconds, the engine's
+$CYRUS_MAGIC/tools), sends no input unless --hold names keys, and prints one JSON line per sample (wall seconds, the engine's
 game seconds, engine frame, player health, hit inhibition, current animation group, position, actor count, nearby combat
 actors as [id, health, group, death selector, distance]) for
 --seconds. Compare with the same world's native idle run: a player that dies or loses health in
@@ -32,6 +32,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--world", type=int, required=True, help="WORLD.INI index to start in")
     parser.add_argument("--seconds", type=int, default=90)
+    parser.add_argument("--hold", action="append", default=[], metavar="KEY:START:END",
+                        help="hold an xdotool key from START to END seconds after the world is live (repeatable), e.g. Up:3:9")
     parser.add_argument("--all", action="store_true", help="also list every actor as [id, group, x, z, health, death selector]")
     parser.add_argument("--interval", type=float, default=2.0, help="seconds between samples (each read takes about 0.3)")
     args = parser.parse_args()
@@ -66,7 +68,17 @@ def main():
             time.sleep(2)
         t0 = time.time()
         game = {"s": 0.0, "frame": s["counters"]["mainloop_frame"]}  # frames over the engine's own fps
+        holds = [(key, float(a), float(b)) for key, a, b in (h.split(":") for h in args.hold)]
+        down = set()
         while time.time() - t0 < args.seconds:
+            now = time.time() - t0
+            for key, begin, end in holds:
+                if begin <= now < end and key not in down:
+                    sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", "keydown", key, check=False)
+                    down.add(key)
+                elif now >= end and key in down:
+                    sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", "keyup", key, check=False)
+                    down.discard(key)
             s = state()
             if s:
                 me = next((a for a in s["actors"] if a["selected"]), None)
