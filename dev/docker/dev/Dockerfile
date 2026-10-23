@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify xdotool mesa-vulkan-drivers vulkan-tools \
         libasound2t64 libudev1 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libx11-6 libxcursor1 libxi6 libxrandr2 \
-        ca-certificates zenity pulseaudio libasound2-plugins \
+        ca-certificates zenity pulseaudio pulseaudio-utils libasound2-plugins \
     && rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh paced-audio.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/paced-audio.sh
