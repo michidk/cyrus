@@ -32,6 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--world", type=int, required=True, help="WORLD.INI index to start in")
     parser.add_argument("--seconds", type=int, default=90)
+    parser.add_argument("--all", action="store_true", help="also list every actor as [id, group, x, z, health, death selector]")
     parser.add_argument("--interval", type=float, default=2.0, help="seconds between samples (each read takes about 0.3)")
     args = parser.parse_args()
     run = MAGIC / "retro-run"
@@ -80,7 +81,9 @@ def main():
                                       "near": [[a["id"], a["health"], a["group"], a["death_selector"],
                                                 round(((a["position"][0] - me["position"][0]) ** 2 + (a["position"][2] - me["position"][2]) ** 2) ** 0.5)]
                                                for a in s["actors"] if a["combat"] and not a["selected"]
-                                               and ((a["position"][0] - me["position"][0]) ** 2 + (a["position"][2] - me["position"][2]) ** 2) ** 0.5 < 2500]}), flush=True)
+                                               and ((a["position"][0] - me["position"][0]) ** 2 + (a["position"][2] - me["position"][2]) ** 2) ** 0.5 < 2500],
+                                      **({"all": [[a["id"], a["group"], a["position"][0], a["position"][2], a["health"], a["death_selector"]]
+                                                  for a in s["actors"] if not a["selected"]]} if args.all else {})}), flush=True)
             time.sleep(args.interval)
     finally:
         ini.write_text(original, errors="surrogateescape")
