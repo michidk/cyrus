@@ -148,9 +148,9 @@ jobs:
           retention-days: 7
 
   web:
-    # Keep concurrent compilation and whole-program linking within hosted-runner memory.
+    # Four jobs use the hosted runner's cores while the swap file below absorbs linker peaks.
     env:
-      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_JOBS: 4
     name: Browser bundles
     runs-on: ubuntu-24.04
     timeout-minutes: 90
