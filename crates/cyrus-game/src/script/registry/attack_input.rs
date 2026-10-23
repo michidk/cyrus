@@ -423,7 +423,11 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|lists| lists.retained_selected())
             .context("attack reach: ordinary traversal unavailable")?
-            .to_vec();
+            .iter()
+            .copied()
+            // The inactive player role stays in the list without a pose and takes no part.
+            .filter(|&other| self.spatial(other).is_ok())
+            .collect::<Vec<_>>();
         let in_reach = |world: &Self, other: ScriptActorId, scale: f32| -> Result<bool> {
             let other_position = world.query_position(other)?;
             let distance =
