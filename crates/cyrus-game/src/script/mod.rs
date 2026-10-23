@@ -169,6 +169,8 @@ mod spatial;
 pub use sound::ScriptSound;
 /// Pure player-alignment arithmetic: `PlayerFaceObj`'s facing step and `PlayerLineUp`'s helpers.
 pub mod alignment;
+/// `BounceObject`'s launch state machine.
+pub mod bounce;
 mod group_sync;
 /// The player-alignment movers of `PlayerPickupLineUp` and its fallback.
 pub mod lineup;

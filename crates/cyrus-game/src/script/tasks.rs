@@ -102,6 +102,8 @@ pub(super) struct NativeServices<'a> {
     pub player_face: Option<PlayerFaceCall<'a>>,
     /// The selected player's alignment owner, for the lineup natives.
     pub lineup: Option<&'a mut (dyn super::lineup::LineupHost + 'a)>,
+    /// The receiver's live state, for `BounceObject`.
+    pub bounce: Option<&'a mut (dyn super::bounce::BouncePort + 'a)>,
     /// The receiver's facing and point-walking owner, for the `Face*` and `MoveNode*` tasks.
     pub point: Option<&'a mut (dyn PointHost + 'a)>,
     /// The image `ViewGXA` has the host draw over the world.
@@ -594,6 +596,8 @@ enum Task {
     },
     /// `PlayerParallelLineUp`: the plain mover.
     ParallelLineUp,
+    /// `BounceObject`: the launch state machine and its retained first-invocation flag.
+    Bounce(super::bounce::BounceState),
     /// `PlayerLineUp`: the distance mode chosen on the first invocation, the fallback flag and
     /// the close mode's retained reference actor index.
     LineUp {
@@ -1265,6 +1269,24 @@ impl Task {
                 };
                 input.angles[1] = (heading & 0x7ff) as u16;
                 elapsed >= duration.wrapping_sub(1)
+            }
+            Self::Bounce(state) => {
+                use super::bounce::{BounceArguments, step};
+                let [power, speed, steer] = arguments else {
+                    anyhow::bail!("BounceObject takes three arguments");
+                };
+                let port = services
+                    .bounce
+                    .context("BounceObject receiver state unavailable")?;
+                step(
+                    &mut *port,
+                    state,
+                    BounceArguments {
+                        power: power.integer()?,
+                        speed: speed.integer()?,
+                        steer: steer.integer()?,
+                    },
+                )?
             }
             Self::PickupLineUp { .. } | Self::ParallelLineUp => {
                 use super::lineup::{PickupState, pickup_mover, plain_mover};
@@ -2626,6 +2648,12 @@ impl NativeTasks {
                 fallback: false,
                 reference: None,
             }
+        } else if function.eq_ignore_ascii_case("BounceObject") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "BounceObject requires task encoding"
+            );
+            Task::Bounce(super::bounce::BounceState::default())
         } else if function.eq_ignore_ascii_case("PlayerParallelLineUp") {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -2799,6 +2827,16 @@ impl NativeTasks {
             self.tasks.get(&token),
             Some(Task::PickupLineUp { .. } | Task::ParallelLineUp | Task::LineUp { .. })
         )
+    }
+
+    /// Whether `function` is `BounceObject`, which needs the receiver's live state.
+    pub(super) fn is_bounce_function(function: &str) -> bool {
+        function.eq_ignore_ascii_case("BounceObject")
+    }
+
+    /// Whether `token` is a `BounceObject` continuation.
+    pub(super) fn is_bounce_task(&self, token: u64) -> bool {
+        matches!(self.tasks.get(&token), Some(Task::Bounce(_)))
     }
 
     /// Whether `function` is a facing task, which needs the receiver's facing owner.

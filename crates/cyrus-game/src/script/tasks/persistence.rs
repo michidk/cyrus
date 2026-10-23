@@ -233,6 +233,7 @@ impl Task {
             Self::PlayerFace => ("PlayerFaceObj", 0, Some(CallKind::Task)),
             Self::PickupLineUp { .. } => ("PlayerPickupLineUp", 3, Some(CallKind::Task)),
             Self::ParallelLineUp => ("PlayerParallelLineUp", 3, Some(CallKind::Task)),
+            Self::Bounce(_) => ("BounceObject", 3, Some(CallKind::Task)),
             Self::LineUp { .. } => ("PlayerLineUp", 3, Some(CallKind::Task)),
             Self::FacePlayer => ("FacePlayer", 1, None),
             Self::FacePlayerInertia => ("FacePlayerInertia", 1, None),

@@ -13,6 +13,7 @@ pub use death_exit::WorldLoopOutcome;
 pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
 pub(super) mod body;
+mod bounce;
 pub(super) mod bounds;
 mod combat_decision;
 mod contact;
@@ -3062,6 +3063,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             return self.lineup_call(function, kind, arguments, invocation);
         }
         if matches!(mode, super::tasks::NativeTaskMode::Script(_))
+            && super::tasks::NativeTasks::is_bounce_function(function)
+        {
+            return self.bounce_call(function, kind, arguments, invocation);
+        }
+        if matches!(mode, super::tasks::NativeTaskMode::Script(_))
             && super::tasks::NativeTasks::is_point_function(function)
         {
             return self.point_call(function, kind, arguments, invocation);
@@ -3262,6 +3268,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 outcome: &mut player_face_outcome,
             }),
             lineup: None,
+            bounce: None,
             point: None,
             gxa_overlay: Some(&mut self.registry.gxa_overlay),
         };
@@ -6458,6 +6465,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if self.registry.actors[self.index].tasks.is_lineup_task(token) {
             return self.lineup_poll(token, arguments, invocation);
         }
+        if self.registry.actors[self.index].tasks.is_bounce_task(token) {
+            return self.bounce_poll(token, arguments, invocation);
+        }
         if self.registry.actors[self.index].tasks.is_point_task(token) {
             return self.point_poll(token, arguments, invocation);
         }
@@ -6660,6 +6670,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     outcome: &mut player_face_outcome,
                 }),
                 lineup: None,
+                bounce: None,
                 point: None,
                 gxa_overlay: Some(&mut self.registry.gxa_overlay),
             },

@@ -323,7 +323,11 @@ sword and quick health keys run in the world loop: the sword key draws, sheathes
 first owned of the three swords, and the health key drinks the first owned potion. `CollidePlayerWeapon` and
 attribute 126's weapon-tip contact test read the retained combat weapon endpoints. `AddFlatEffect` builds an environmental effect
 from the installed zero-spread, speed-one form. `GolemSteam` puffs steam at a
-random weapon attachment vertex of the Golem. `shoot` creates an object of an
+random weapon attachment vertex of the Golem. `BounceObject` launches its receiver (NECRTOWR's pit
+pad): the lifecycle states 30 to 32 run the entry request, the rising lift and the hand-off to ordinary
+falling, with the ground response skipped for 30 and 31; **Verified** in a native run (the player falls
+into the pit with the explosion flag set, rises about 440 units, drifts forward and lands outside; living
+states 27 to 29, the actor-bounce family, remain unsupported). `shoot` creates an object of an
 installed script (a projectile) at the receiver's rotated offset; created objects run their script
 every update until `KillMe` and survive saves. `shootPlayer` aims the created object at the selected player.
 A direct-damage combat message (`0xd005`) is answered for every receiver, including the selected

@@ -480,6 +480,11 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .expect("admitted ground control");
+            // The `BounceObject` task owns living states 30 and 31 (entry and rising): the ground
+            // response is skipped for them; state 32 (falling) takes the ordinary response.
+            if matches!(control.living_state, 30 | 31) {
+                return Ok(support_found);
+            }
             if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
                 queued_handled = self.resolve_ordinary_queued_motion(
                     id,
@@ -522,7 +527,7 @@ impl ScriptWorld {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(
-                    !matches!(control.living_state, 27..=32),
+                    !matches!(control.living_state, 27..=29),
                     "state-specific ground response owner unavailable"
                 );
                 if let Some(support) = support.as_ref() {
