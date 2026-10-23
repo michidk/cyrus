@@ -182,9 +182,11 @@ impl ScriptWorld {
             .context("player swap: spatial state not prepared")?
             .actor_mut(to)?;
         spatial.relocate(placement.position, placement.angles[1]);
-        // The orientation setter stores all three angles and both retained angle histories.
+        // The orientation setter stores the angles, the previous-angle history and the triple the
+        // actor was created with (which `ResetRotation` restores from).
         spatial.local.angles = placement.angles.map(|angle| angle & 2047);
         spatial.angle_history = spatial.local.angles;
+        spatial.initial_angles = spatial.local.angles;
         self.actors[to].player_movement = movement;
         if let (Some(source), Some(target)) = (motion, self.actors[to].control.as_mut()) {
             (
