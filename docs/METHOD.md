@@ -37,8 +37,8 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    Put the comparison, the wrong-version check, or what could not be compared,
    in the commit message.
 5. **Verify, then commit small.** Run the checks required by `AGENTS.md`; one
-   logical change per commit. Run `just gates` once for code and build changes,
-   after the final relevant edit. Do not run Cargo for documentation-only
+   logical change per commit. Run `just check` and focused `just verify <crate>` checks
+   after the final relevant edit; use full gates for workspace-wide changes. Do not run Cargo for documentation-only
    changes.
 
 ## Controller parity evidence
@@ -80,7 +80,14 @@ are gated with `in_mode(area, mode)`. Rules:
 
 ## Gates
 
-For code and build changes, `just gates` runs `cargo fmt --check`, `cargo
+For ordinary package changes, run `just check` and `just verify <crate>`
+for each affected package, including callers affected by a public API change.
+The focused verification runs all package tests, including integration tests,
+and clippy for all package targets. Build-script changes run their relevant
+script tests. CI supplies workspace coverage; a full local run is required only
+when the change needs workspace-wide verification.
+
+For that full run, `just gates` runs `cargo fmt --check`, `cargo
 clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
 Install-dependent tests skip without an install and print that they did. CI
 mirrors the same list. `AGENTS.md` defines the smaller checks for documentation

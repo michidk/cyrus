@@ -21,6 +21,21 @@ toolchain:
 gates:
     dev/scripts/gates.sh
 
+# Fast repository checks that do not compile the workspace.
+check:
+    dev/scripts/gates.sh check
+
+# Focused tests and clippy for one crate suffix, for example `just verify game`.
+verify PACKAGE:
+    dev/scripts/gates.sh verify {{PACKAGE}}
+
+# Full lint and test stages, useful when debugging one class of failure.
+gates-lints:
+    dev/scripts/gates.sh lints
+
+gates-test:
+    dev/scripts/gates.sh test
+
 # regenerate docs/MAP.md from the sources
 genmap:
     dev/scripts/genmap.sh

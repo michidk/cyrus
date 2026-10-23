@@ -139,11 +139,21 @@ untracked working memory. Each crate has a `README.md` with its commands.
     `dev/scripts/genmap.sh --check` when module documentation may affect
     `docs/MAP.md`. Do not run Cargo for these changes.
   - Rust, Cargo, build-script and gate changes need the narrowest relevant test
-    during development, then one `just gates` run after the final relevant edit.
+    during development, then `just check` and `just verify <crate>` for each
+    affected package after the final relevant edit. Run relevant script tests
+    directly for build-script and gate changes.
     Tests that need the install skip when it is absent and say so; with an
     install linked, a skip fails the gate. CI verifies the no-install path.
   - Runtime and fidelity changes also need the relevant headless run, replay or
     original-game comparison. Generic workspace tests do not replace it.
+- Use the fastest sufficient gate while iterating. `just check` runs publish,
+  generated-map and formatting checks without compiling. `just verify <crate>`
+  runs that crate's tests and clippy (for example `just verify game`). Use
+  `just gates-lints` or `just gates-test` when debugging one stage. Run the
+  full `just gates` only for changes that need workspace-wide local verification,
+  such as workspace dependency or shared build configuration changes. CI runs
+  the full workspace checks after every push; ordinary package edits do not
+  require duplicating that full run locally.
 - Do not repeat `just gates` when the tested tree and gate inputs are unchanged.
   A commit, wait, or rebase alone is not a reason to rerun it. CI supplies the
   full-workspace check after every push.

@@ -43,7 +43,7 @@ exit 17
                 os.close(slave)
                 os.close(master)
 
-    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail=""):
+    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scripts = root / "dev/scripts"
@@ -78,6 +78,8 @@ exit 17
             args = ["bash", str(scripts / "gates.sh")]
             if stage is not None:
                 args.append(stage)
+            if package is not None:
+                args.append(package)
             return subprocess.run(args, env=env, capture_output=True, text=True)
 
     def test_split_gates_cover_the_full_gate(self):
@@ -92,6 +94,27 @@ exit 17
         self.assertEqual(test, ["cargo test --workspace -- --nocapture"])
         self.assertEqual(cargo_calls(self.run_gate()), lint + test)
         self.assertEqual(cargo_calls(self.run_gate(stage="all")), lint + test)
+
+    def test_check_does_not_compile(self):
+        result = self.run_gate(stage="check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [line for line in result.stdout.splitlines() if line.startswith("cargo ")]
+        self.assertEqual(calls, ["cargo fmt --all -- --check"])
+
+    def test_verify_runs_all_package_tests_and_preserves_failures(self):
+        for package, resolved in (("game", "cyrus-game"), ("cyrus-assets", "cyrus-assets"), ("cyrus", "cyrus")):
+            with self.subTest(package=package):
+                result = self.run_gate(stage="verify", package=package)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                calls = [line for line in result.stdout.splitlines() if line.startswith("cargo ")]
+                self.assertEqual(calls, [
+                    f"cargo clippy -p {resolved} --all-targets -- -D warnings",
+                    f"cargo test -p {resolved} -- --nocapture",
+                ])
+        for command in ("clippy", "test"):
+            self.assertEqual(self.run_gate(stage="verify", package="game", fail=command).returncode, 17)
+        self.assertNotEqual(self.run_gate(stage="verify", package="game", skip=True).returncode, 0)
+        self.assertEqual(self.run_gate(stage="verify").returncode, 2)
 
     def test_split_gate_failures_are_not_hidden(self):
         for stage, command in (("lints", "fmt"), ("lints", "clippy"), ("test", "test")):

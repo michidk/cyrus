@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 stage="${1:-all}"
 case "$stage" in
-    all|lints|test) ;;
-    *) echo "usage: gates.sh [all|lints|test]" >&2; exit 2 ;;
+    all|check|verify|lints|test) ;;
+    *) echo "usage: gates.sh [all|check|verify|lints|test] [package]" >&2; exit 2 ;;
 esac
 source dev/scripts/toolchain.sh
 . dev/scripts/cargo.sh
@@ -12,7 +12,22 @@ source dev/scripts/toolchain.sh
 if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
     export REDGUARD_DIR="$(cd redguard && pwd -P)"
 fi
-if [[ "$stage" != test ]]; then
+if [[ "$stage" == check ]]; then
+    dev/scripts/publish-check.sh
+    dev/scripts/genmap.sh --check
+    cargo fmt --all -- --check
+    exit 0
+fi
+if [[ "$stage" == verify ]]; then
+    package="${2:-}"
+    [[ -n "$package" ]] || { echo "usage: gates.sh verify <package>" >&2; exit 2; }
+    case "$package" in
+        cyrus|cyrus-*) ;;
+        *) package="cyrus-$package" ;;
+    esac
+    cargo clippy -p "$package" --all-targets -- -D warnings
+fi
+if [[ "$stage" != test && "$stage" != verify ]]; then
     dev/scripts/publish-check.sh
     dev/scripts/genmap.sh --check
     python3 dev/scripts/test-build-provenance.py
@@ -24,7 +39,11 @@ fi
 if [[ "$stage" == lints ]]; then exit 0; fi
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
-cargo test --workspace -- --nocapture 2>&1 | tee "$log"
+if [[ "$stage" == verify ]]; then
+    cargo test -p "$package" -- --nocapture 2>&1 | tee "$log"
+else
+    cargo test --workspace -- --nocapture 2>&1 | tee "$log"
+fi
 # Tests that need the install say "skipped: no install". With an install linked,
 # a skip hides a broken loader behind a green run; without one, it is expected.
 skipped=$(grep -c 'skipped: no install' "$log" || true)

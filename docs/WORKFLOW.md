@@ -133,9 +133,11 @@ from such facts), **Unknown**. Unlabelled claims are Unknown. The same labels
 go on anything sent to redguard-preservation.
 
 Before committing, read the diff: remove probe code and debug leftovers, keep
-only tests that guard a contract. Choose the checks from `AGENTS.md`. Run the
-full gate at most once after the final relevant code or build edit, and reuse a
-passing result while the tested tree and gate inputs remain unchanged.
+only tests that guard a contract. Choose the checks from `AGENTS.md`. Run `just check` and `just verify <crate>` for affected packages after the
+final relevant edit. Include affected callers for public API changes and run
+relevant script tests for tooling changes. Reserve the full local gate for
+workspace-wide changes; CI runs full coverage on every push. Reuse passing
+results while the tested tree and gate inputs remain unchanged.
 Documentation-only changes do not run Cargo. `just gates` runs `publish-check`;
 passing it means the forbidden shapes are absent, not that the change is clean.
 
