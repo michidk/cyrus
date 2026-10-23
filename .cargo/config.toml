@@ -1,2 +1,7 @@
 [target.wasm32-unknown-unknown]
 rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
+
+# Development runs and tests keep their state in the checkout (`cyrus-config/`, gitignored),
+# not in the platform directories a player's install uses. See crates/cyrus-config.
+[env]
+CYRUS_CONFIG_DIR = { value = "cyrus-config", relative = true }

@@ -5,7 +5,7 @@ Small presentation and launch helpers shared by the game and viewer.
 - `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
   native default-folder discovery and resolution of GOG library/package folders
   and install subdirectories. It checks explicit/environment paths before
-  `cyrus-config/install.json`, then conventional folders. `select()` inserts the
+  `install.json` in the config directory, then conventional folders. `select()` inserts the
   install or displays the shared path field, Browse and Continue screen in the
   application's existing egui context. Continue validates and saves the resolved
   root, inserts `GameInstall`, and removes the picker. It never opens another
@@ -19,7 +19,7 @@ Small presentation and launch helpers shared by the game and viewer.
   `scene`; the rendering host applies it when the first world is framed.
 - `logging::LogArgs` (native only) defines `--log`, `--log-file` and `--log-dir`.
   `plugin()` returns the Bevy `LogPlugin` with a console layer and a daily rotating
-  file layer under `cyrus-config/logs`, each with its own filter; `announce()` logs
+  file layer in the log directory, each with its own filter; `announce()` logs
   the startup facts and `log_panics()` routes panics into the log. See `docs/SETUP.md`.
 - `browser_source` reads the validated install/cache URLs from the shared bootstrap.
 - `register_cache` registers the shared `cache://` asset source before Bevy's

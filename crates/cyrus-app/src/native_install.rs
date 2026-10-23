@@ -7,17 +7,19 @@ use bevy::prelude::{
 use cyrus_assets::install::GameInstall;
 use std::path::{Path, PathBuf};
 
-pub(super) const LOCATION: &str = "cyrus-config/install.json";
+/// File that remembers the chosen game-files folder, shared by the game and the viewer.
+pub(super) fn location() -> PathBuf {
+    cyrus_config::config_dir().join("install.json")
+}
 
 fn remembered(path: &Path) -> anyhow::Result<Option<PathBuf>> {
-    match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .with_context(|| format!("{}: invalid saved game-files location", path.display()))
-            .map(Some),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error)
-            .with_context(|| format!("{}: reading saved game-files location", path.display())),
-    }
+    cyrus_config::read(path)
+        .with_context(|| format!("{}: reading saved game-files location", path.display()))?
+        .map(|bytes| {
+            serde_json::from_slice(&bytes)
+                .with_context(|| format!("{}: invalid saved game-files location", path.display()))
+        })
+        .transpose()
 }
 
 pub(super) fn locate(explicit: Option<&Path>, preferences: &Path) -> anyhow::Result<GameInstall> {
@@ -33,21 +35,8 @@ pub(super) fn locate(explicit: Option<&Path>, preferences: &Path) -> anyhow::Res
 
 fn remember(install: &GameInstall, preferences: &Path) -> anyhow::Result<()> {
     let path = install.cache_path(preferences)?;
-    let directory = path
-        .parent()
-        .context("saved game-files location has no parent directory")?;
-    std::fs::create_dir_all(directory)
-        .with_context(|| format!("{}: creating preferences directory", directory.display()))?;
-    let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-    let result: anyhow::Result<()> = (|| {
-        std::fs::write(&temporary, serde_json::to_vec_pretty(&install.root)?)?;
-        std::fs::rename(&temporary, &path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temporary);
-    }
-    result.with_context(|| format!("{}: saving game-files location", path.display()))
+    cyrus_config::write(&path, &serde_json::to_vec_pretty(&install.root)?)
+        .with_context(|| format!("{}: saving game-files location", path.display()))
 }
 
 #[derive(Resource)]
@@ -72,7 +61,7 @@ pub(super) fn prompt(app: &mut App, explicit: Option<&Path>, error: anyhow::Erro
     let path = explicit
         .map(Path::to_path_buf)
         .or_else(|| std::env::var_os(cyrus_assets::install::ENV_VAR).map(PathBuf::from))
-        .or_else(|| remembered(Path::new(LOCATION)).ok().flatten());
+        .or_else(|| remembered(&location()).ok().flatten());
     app.insert_resource(Selection {
         path: path
             .map(|path| path.to_string_lossy().into_owned())
@@ -196,7 +185,7 @@ fn screen(
                             }
                         });
                         if confirm && !selection.path.trim().is_empty() {
-                            match selection.confirm(Path::new(LOCATION)) {
+                            match selection.confirm(&location()) {
                                 Ok(install) => {
                                     commands.insert_resource(install);
                                     commands.remove_resource::<Selection>();

@@ -16,8 +16,6 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-/// Local generated files, never the original installation.
-pub const CACHE_DIR: &str = "cyrus-config/cache";
 pub const CATALOG_VERSION: u32 = 26;
 
 /// Content categories, independent of source file extensions.

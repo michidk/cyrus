@@ -23,7 +23,7 @@ pub(crate) struct SlotStore {
 impl Default for SlotStore {
     fn default() -> Self {
         Self {
-            root: PathBuf::from(crate::settings::CONFIG_DIR).join("slots"),
+            root: cyrus_config::config_dir().join("slots"),
         }
     }
 }
@@ -228,7 +228,7 @@ impl SlotStore {
             bytes.extend_from_slice(&(header.len() as u32).to_le_bytes());
             bytes.extend_from_slice(&header);
             bytes.extend_from_slice(document);
-            crate::storage::write(&path, &bytes)?;
+            cyrus_config::write(&path, &bytes)?;
             self.metadata(plan.slot, None)
         })()
         .with_context(|| format!("publishing save slot {} {}", plan.slot, path.display()))

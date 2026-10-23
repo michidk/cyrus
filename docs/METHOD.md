@@ -67,7 +67,7 @@ are gated with `in_mode(area, mode)`. Rules:
 
 - The faithful path is complete on its own; the modern path may reuse it.
 - A modern path never changes shared data layouts or scene content.
-- Defaults are `Faithful`; `cyrus-config/settings.toml` and the control
+- Defaults are `Faithful`; `settings.toml` in the config directory and the control
   command `set_fidelity` flip them at runtime.
 
 ## Where things live

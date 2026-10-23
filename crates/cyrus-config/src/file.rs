@@ -1,4 +1,4 @@
-//! Native byte storage shared by local preferences and cheat persistence.
+//! Atomic reads and writes of local state documents, shared by every native store.
 use anyhow::{Context, Result};
 use std::{
     fs::OpenOptions,
@@ -10,7 +10,7 @@ use std::{
 static NEXT_CANDIDATE: AtomicUsize = AtomicUsize::new(0);
 
 /// Only absence is missing state; unreadable files retain their path in the error.
-pub(crate) fn read(path: &Path) -> Result<Option<Vec<u8>>> {
+pub fn read(path: &Path) -> Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -22,7 +22,7 @@ pub(crate) fn read(path: &Path) -> Result<Option<Vec<u8>>> {
 /// Sync the complete candidate before publication; pre-publication errors retain
 /// the accepted destination. Failed cleanup may leave an unaccepted candidate.
 /// The game thread is the single writer for each destination.
-pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     let result = (|| -> Result<()> {
         let parent = path.parent().context("local state path has no parent")?;
         std::fs::create_dir_all(parent)?;

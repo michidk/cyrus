@@ -122,7 +122,16 @@ on Windows. If no usable install is found, the same window shows the Redguard
 folder picker. The viewer does not require an asset selection; the game waits for
 the folder before preparing installed audio and images.
 
-Settings, caches and screenshots live in `cyrus-config/`.
+Settings, preferences, the remembered game-files folder, saves, exported caches and logs
+live outside the install, in the directories `crates/cyrus-config` selects once per process:
+`CYRUS_CONFIG_DIR` when set, else a `cyrus-config/` directory that already exists in the
+working directory, else the platform directories (on Linux `~/.config/cyrus`, `~/.cache/cyrus`
+and `~/.local/state/cyrus/logs`). This document calls them the config, cache and log
+directory. In a checkout they are `cyrus-config/`, `cyrus-config/cache/` and
+`cyrus-config/logs/`: `cargo run` and `cargo test` pin `CYRUS_CONFIG_DIR` to the checkout's
+`cyrus-config/` (`.cargo/config.toml`), and `just run-native` pins it inside the container.
+A binary started by hand from a directory without `cyrus-config/` uses the platform
+directories. Screenshots are written wherever the `screenshot` command's path says.
 
 `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered
 dev container the renderer, not the game logic, limits the frame rate: an optimized build
@@ -251,7 +260,7 @@ See the crate READMEs for the complete mappings.
 Both native applications discover `./redguard`, `./Redguard`,
 `~/GOG Games/Redguard`, `~/GOG Games/Redguard/app/Redguard`, and on Windows
 `%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
-precedence over the remembered native location in `cyrus-config/install.json`;
+precedence over the remembered native location in `install.json` in the config directory;
 conventional discovery follows when there is no saved location. Windowed game
 and viewer launches open a shared install-selection screen when resolution fails.
 Enter a path or choose Browse, then Continue to validate and remember the resolved
@@ -301,7 +310,7 @@ prepared cache is required by the browser.
 For manual export, prepare startup with `cargo run -p cyrus -- --export-startup`. The exporter
 reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `gui_low_font` from the install; all generated images stay in
-`cyrus-config/cache/startup/`. Native windowed launch generates this cache when
+`startup/` in the cache directory. Native windowed launch generates this cache when
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash; the full DOS overlay contains the older shield logo.
@@ -323,7 +332,7 @@ prompt, rejects reserved keys, and clears the first conflicting binding.
 The existing player-input actions use the edited bindings, including direct
 `--scene` launches. Extra gameplay actions remain pending their handlers.
 
-Changes persist to `cyrus-config/menu.json` on native builds and localStorage
+Changes persist to `menu.json` in the config directory on native builds and localStorage
 under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
@@ -462,7 +471,7 @@ did not open the menu; the book menu appeared once the opening duel played out.
 
 The game and the viewer write to the console (stderr) and to a daily log file,
 each with its own filter in `tracing` syntax. The file is
-`cyrus-config/logs/<application>.<UTC date>.log` (gitignored, never in the
+`<application>.<UTC date>.log` in the log directory (never in the
 install), unbuffered and plain text, and the newest seven are kept. It records
 the version, platform, command line and install path at startup, state changes,
 the fidelity modes, world preparation with timings, control commands at
@@ -473,7 +482,7 @@ contains local paths but no game data.
 | --- | --- | --- | --- |
 | `--log <FILTER>` | `RUST_LOG` | `info` | console filter, for example `warn` or `info,cyrus_game=debug` |
 | `--log-file <FILTER>` | `CYRUS_LOG_FILE` | `info,cyrus=debug` | file filter; `off` disables the file |
-| `--log-dir <DIR>` | `CYRUS_LOG_DIR` | `cyrus-config/logs` | directory of the daily files |
+| `--log-dir <DIR>` | `CYRUS_LOG_DIR` | the log directory | directory of the daily files |
 
 Control polling and script steps are never logged, and no per-frame system logs
 except once per failure. Expected, high-volume dependency messages (empty-mesh
@@ -583,7 +592,7 @@ inspection inputs do not establish production scheduling or gameplay readiness.
 
 Native TCP/MCP `cheat {name, value?}` toggles a named state or assigns a raw
 unsigned integer. Use `oracle` to inspect values and support status and
-`savecheats` to write `cyrus-config/REDGUARD.CHT`. Startup reads that local file
+`savecheats` to write `REDGUARD.CHT` in the config directory. Startup reads that local file
 first, then the installed CHT file, then empty state. Malformed files remain
 errors without being overwritten. The install stays read-only.
 
@@ -599,10 +608,10 @@ wrap at 32 bits. Assignments can also read a named SOUP flag's current value.
 Unknown names report a diagnostic and use one; unavailable or stale world
 metadata blocks symbolic assignments. Short quoted input remains unsupported.
 
-Console preferences load from native `cyrus-config/REDGUARD.CPF` or browser
+Console preferences load from native `REDGUARD.CPF` in the config directory or browser
 localStorage `cyrus-console`, with the read-only installed CPF as fallback when
 local state is absent. `console save` persists preferences; `console write`
-writes native `cyrus-config/CONSOLE.LOG` or downloads it in the browser.
+writes native `CONSOLE.LOG` in the config directory or downloads it in the browser.
 `console show` reports preferences and load errors. Malformed CPF blocks preference
 edits and saving. **Verified:** the original loader clamps hex line counts below
 one and does not enable shadows from a saved nonzero shadow value.

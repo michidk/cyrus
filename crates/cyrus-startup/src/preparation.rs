@@ -56,7 +56,7 @@ fn start(
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             if presentation {
-                let cache = std::path::Path::new("cyrus-config/cache");
+                let cache = cyrus_config::cache_dir();
                 let result = cyrus_assets::startup::export_menu(&install, cache)
                     .and_then(|()| cyrus_assets::hud_export::export_hud(&install, cache));
                 if let Err(error) = result {
@@ -143,9 +143,10 @@ fn teardown(mut commands: Commands, mut progress: ResMut<cyrus_app::loading::Loa
 use cyrus_assets::loading::{Preloaded, Progress, preload};
 
 fn write_report(report: &Preloaded) -> std::io::Result<()> {
-    std::fs::create_dir_all("cyrus-config")?;
+    let directory = cyrus_config::config_dir();
+    std::fs::create_dir_all(directory)?;
     std::fs::write(
-        "cyrus-config/preload-report.json",
+        directory.join("preload-report.json"),
         serde_json::to_string_pretty(report)?,
     )
 }

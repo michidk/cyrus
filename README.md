@@ -49,7 +49,9 @@ Use `just run --scene START` to open a world directly. The
 and all available commands.
 
 The game install remains read-only. cyrus stores settings, caches, and
-screenshots in the gitignored `cyrus-config/` directory.
+logs in your user profile's standard folders (on Linux `~/.config/cyrus`, `~/.cache/cyrus`
+and `~/.local/state/cyrus`), or in `CYRUS_CONFIG_DIR` when that is set. A `cyrus-config/`
+folder in the directory you launch from takes precedence.
 
 ## Web version
 

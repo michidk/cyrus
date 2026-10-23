@@ -1,6 +1,5 @@
 //! Background native scene export; commit cache references only after preparation succeeds.
 
-use crate::settings::Settings;
 use bevy::prelude::*;
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::scene::export_scene_reporting;
@@ -93,12 +92,12 @@ fn load_requested(
             let stages = sender.clone();
             let result = (|| {
                 let world = cyrus_assets::scene::world_index(&install, &requested)?;
-                let glb = Settings::cache_dir().join(format!("{requested}.glb"));
+                let glb = cyrus_config::cache_dir().join(format!("{requested}.glb"));
                 export_scene_reporting(&install, &requested, &glb, &|done, total, stage| {
                     let _ = stages.send(Message::Stage(done, total, stage.into()));
                 })?;
-                cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
-                cyrus_assets::sound_export::export(&install, &Settings::cache_dir())?;
+                cyrus_assets::hud_export::export_hud(&install, cyrus_config::cache_dir())?;
+                cyrus_assets::sound_export::export(&install, cyrus_config::cache_dir())?;
                 Ok(world)
             })();
             let _ = sender.send(Message::Done(result));
@@ -152,7 +151,7 @@ fn finish(
     }
     let result = result.and_then(|world| {
         if let (Some(hud), Some(preferences)) = (script_hud, preferences) {
-            let path = Settings::cache_dir().join("hud/overlay.hud");
+            let path = cyrus_config::cache_dir().join("hud/overlay.hud");
             let data: cyrus_assets::hud::HudAsset = serde_json::from_slice(
                 &std::fs::read(&path)
                     .map_err(|error| anyhow::anyhow!("{}: {error}", path.display()))?,

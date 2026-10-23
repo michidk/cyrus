@@ -101,6 +101,10 @@ module where it is defined and regenerate.
 - `src/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
 - `src/model_admission.rs` — PVO selection for collision-facing model admission, independent of rendering culling.
 
+## `cyrus-config` — Where cyrus keeps its own state (settings, the remembered install, exported caches and logs)
+
+- `src/file.rs` — Atomic reads and writes of local state documents, shared by every native store.
+
 ## `cyrus-console` — Console editing and command dispatch independent of gameplay, rendering and storage.
 
 - `src/catalog.rs` — Original command names and aliases from preservation's developer-console reference.
@@ -379,6 +383,5 @@ module where it is defined and regenerate.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.
 - `src/session/slots.rs` — Native slot envelopes: bounded metadata followed by an opaque session document.
-- `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
-- `src/storage.rs` — Native byte storage shared by local preferences and cheat persistence.
+- `src/settings.rs` — Player settings. Where local state lives is decided by `cyrus_config`, never inside the install.
 - `src/subtitles.rs` — Connect native speech metadata to subtitle presentation without coupling the backends.

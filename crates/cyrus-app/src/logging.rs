@@ -5,7 +5,7 @@
 //! application. The file keeps one file per UTC day, `<name>.<date>.log`, and deletes all but
 //! the newest [`KEPT_FILES`]. Writes are unbuffered, so a crash loses nothing.
 //!
-//! The file lives under `cyrus-config/logs` by default, never in the install. The browser build
+//! The file lives in `cyrus_config::log_dir()` by default, never in the install. The browser build
 //! keeps Bevy's console logging.
 use anyhow::Context;
 use bevy::log::tracing_subscriber::{EnvFilter, Layer, filter::LevelFilter, fmt};
@@ -15,8 +15,6 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
-/// Directory of the log files, relative to the working directory like the other local state.
-pub const DEFAULT_DIR: &str = "cyrus-config/logs";
 pub const DEFAULT_CONSOLE_FILTER: &str = "info";
 /// A debug file keeps what a shared log needs for diagnosis; bare `debug` would add every dependency.
 pub const DEFAULT_FILE_FILTER: &str = "info,cyrus=debug";
@@ -47,9 +45,9 @@ pub struct LogArgs {
     /// Log file filter. `off` disables the file.
     #[arg(id = "log_file", long = "log-file", env = "CYRUS_LOG_FILE", default_value = DEFAULT_FILE_FILTER, value_parser = filter)]
     pub file: String,
-    /// Directory for the daily log files.
-    #[arg(long = "log-dir", env = "CYRUS_LOG_DIR", default_value = DEFAULT_DIR)]
-    pub dir: PathBuf,
+    /// Directory for the daily log files. Defaults to the local state directory.
+    #[arg(long = "log-dir", env = "CYRUS_LOG_DIR")]
+    pub dir: Option<PathBuf>,
 }
 
 /// The settings `LogPlugin`'s function-pointer hooks read from the app.
@@ -90,13 +88,20 @@ fn enabled(filter: &EnvFilter) -> bool {
 }
 
 impl LogArgs {
+    /// The `--log-dir` value, or the local state's log directory.
+    fn directory(&self) -> PathBuf {
+        self.dir
+            .clone()
+            .unwrap_or_else(|| cyrus_config::log_dir().to_path_buf())
+    }
+
     /// Plugin to set on `DefaultPlugins`, or to add beside `MinimalPlugins`. `name` prefixes the
     /// log files, so the game and the viewer do not interleave.
     pub fn plugin(&self, app: &mut App, name: &'static str) -> LogPlugin {
         let sinks = Sinks {
             console: self.console.clone(),
             file: self.file.clone(),
-            dir: self.dir.clone(),
+            dir: self.directory(),
             name,
         };
         // The plugin's own filter applies to both sinks, so it must admit the most verbose one.
@@ -131,11 +136,17 @@ impl LogArgs {
             std::env::current_dir().unwrap_or_default()
         );
         let file = if enabled(&file_filter(&self.file)) {
-            format!("`{}` in {}", self.file, self.dir.display())
+            format!("`{}` in {}", self.file, self.directory().display())
         } else {
             "disabled".into()
         };
         info!("logging: console `{}`, file {file}", self.console);
+        let dirs = cyrus_config::dirs();
+        info!(
+            "local state: config {}, cache {}",
+            dirs.config.display(),
+            dirs.cache.display()
+        );
     }
 }
 

@@ -14,7 +14,6 @@ mod cheats;
 mod console;
 mod debug;
 mod preferences;
-mod storage;
 use bevy::prelude::*;
 use clap::Parser;
 use cyrus_game::GamePlugin;
@@ -99,10 +98,10 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         settings.scene = scene;
     }
     if let Some(install) = &install {
-        install.cache_path(&Settings::cache_dir())?;
+        install.cache_path(cyrus_config::cache_dir())?;
     }
     if args.export_startup || args.export_all_worlds {
-        cyrus_assets::music::export(install.as_ref().unwrap(), &Settings::cache_dir())?;
+        cyrus_assets::music::export(install.as_ref().unwrap(), cyrus_config::cache_dir())?;
     }
     for (area, value) in [
         (cyrus_game::fidelity::Area::Water, args.launch.water),
@@ -125,29 +124,29 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         return cyrus_assets::scene::export_scene(
             install.as_ref().unwrap(),
             &settings.scene,
-            &Settings::cache_dir().join(format!("{}.glb", settings.scene)),
+            &cyrus_config::cache_dir().join(format!("{}.glb", settings.scene)),
         );
     }
     if args.export_startup {
         let install = install.as_ref().unwrap();
-        cyrus_assets::startup::export_movies(install, &Settings::cache_dir())?;
-        cyrus_assets::startup::export_menu(install, &Settings::cache_dir())?;
-        cyrus_assets::hud_export::export_hud(install, &Settings::cache_dir())?;
+        cyrus_assets::startup::export_movies(install, cyrus_config::cache_dir())?;
+        cyrus_assets::startup::export_menu(install, cyrus_config::cache_dir())?;
+        cyrus_assets::hud_export::export_hud(install, cyrus_config::cache_dir())?;
         let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
-            Settings::cache_dir().join("menu/book.menu"),
+            cyrus_config::cache_dir().join("menu/book.menu"),
         )?)?;
         let name = menu.new_game.world.to_string();
         cyrus_assets::scene::export_scene(
             install,
             &name,
-            &Settings::cache_dir().join(format!("{name}.glb")),
+            &cyrus_config::cache_dir().join(format!("{name}.glb")),
         )?;
-        return cyrus_assets::startup::export_startup(install, &Settings::cache_dir());
+        return cyrus_assets::startup::export_startup(install, cyrus_config::cache_dir());
     }
     if args.export_all_worlds {
         return cyrus_assets::scene::export_all_worlds(
             install.as_ref().unwrap(),
-            &Settings::cache_dir(),
+            cyrus_config::cache_dir(),
         );
     }
     let control = ControlAddr(
@@ -285,12 +284,12 @@ fn prepare_install(
     let install = install.clone();
     let startup = startup.is_some();
     *pending = Some(bevy::tasks::IoTaskPool::get().spawn(async move {
-        let cache = Settings::cache_dir();
-        install.cache_path(&cache)?;
+        let cache = cyrus_config::cache_dir();
+        install.cache_path(cache)?;
         if startup {
-            cyrus_assets::startup::export_startup(&install, &cache)
+            cyrus_assets::startup::export_startup(&install, cache)
         } else {
-            cyrus_assets::hud_export::export_hud(&install, &cache)
+            cyrus_assets::hud_export::export_hud(&install, cache)
         }
     }));
 }

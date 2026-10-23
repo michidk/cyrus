@@ -1,10 +1,8 @@
-//! Local state lives in `cyrus-config/` next to the working directory, never in the install.
+//! Player settings. Where local state lives is decided by `cyrus_config`, never inside the install.
 
 use cyrus_game::fidelity::Fidelity;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-
-pub const CONFIG_DIR: &str = "cyrus-config";
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -26,7 +24,7 @@ impl Default for Settings {
 
 impl Settings {
     pub fn path() -> PathBuf {
-        Path::new(CONFIG_DIR).join("settings.toml")
+        cyrus_config::config_dir().join("settings.toml")
     }
 
     /// Missing file means defaults; a broken file is an error, not a silent reset.
@@ -36,10 +34,6 @@ impl Settings {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e.into()),
         }
-    }
-
-    pub fn cache_dir() -> PathBuf {
-        PathBuf::from(cyrus_assets::CACHE_DIR)
     }
 }
 

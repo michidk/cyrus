@@ -65,6 +65,7 @@ impl AssetLoader for MovieLoader {
         let metadata: MovieMetadata = serde_json::from_slice(&bytes)?;
         metadata.validate()?;
         Ok(Prepared {
+            // A URL below the page's origin, where the web server publishes the cache.
             video_url: format!(
                 "cyrus-config/cache/{}",
                 context.path().path().with_extension("smk").display()

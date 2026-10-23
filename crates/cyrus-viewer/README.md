@@ -104,7 +104,7 @@ Movies load their full original bytes and prepare audio before playback. Seeking
 may pause while decoding catches up. Browser audio requires a user gesture.
 
 After a parser update, close the native viewer and remove
-`cyrus-config/cache/viewer/` to regenerate cached previews. For a custom cache
+`viewer/` in the cache directory to regenerate cached previews. For a custom cache
 location, remove its `viewer/` subdirectory. Reload the updated browser app to
 regenerate its in-memory previews.
 

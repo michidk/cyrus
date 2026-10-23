@@ -15,6 +15,7 @@ cyrus-console = { workspace = true, features = ["cpf"] }
 cyrus-audio.workspace = true
 cyrus-app = { path = "../cyrus-app" }
 cyrus-assets = { workspace = true, features = ["native"] }
+cyrus-config.workspace = true
 cyrus-world.workspace = true
 cyrus-render.workspace = true
 cyrus-session.workspace = true

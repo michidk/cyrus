@@ -18,6 +18,7 @@ serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cyrus-assets = { workspace = true, features = ["native"] }
+cyrus-config.workspace = true
 
 [dev-dependencies]
 redguard-preservation.workspace = true

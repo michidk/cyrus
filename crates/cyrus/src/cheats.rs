@@ -17,7 +17,7 @@ impl CheatStore for LocalCheats {
             .join("REDGUARD.CHT");
         let mut state = cyrus_assets::cheats::empty();
         for path in [local, self.install.root.join("REDGUARD.CHT")] {
-            if let Some(bytes) = crate::storage::read(&path)? {
+            if let Some(bytes) = cyrus_config::read(&path)? {
                 state = cyrus_assets::cheats::decode(&bytes)
                     .with_context(|| format!("{}", path.display()))?;
                 break;
@@ -34,7 +34,7 @@ impl CheatStore for LocalCheats {
             .install
             .cache_path(&self.directory)?
             .join("REDGUARD.CHT");
-        crate::storage::write(&local, &cyrus_assets::cheats::encode(state))
+        cyrus_config::write(&local, &cyrus_assets::cheats::encode(state))
     }
 }
 
@@ -42,15 +42,13 @@ pub(crate) fn load(install: Option<Res<GameInstall>>, mut commands: Commands) {
     let Some(install) = install else {
         return;
     };
-    if let Err(error) =
-        cyrus_assets::console::export(&install, &crate::settings::Settings::cache_dir())
-    {
+    if let Err(error) = cyrus_assets::console::export(&install, cyrus_config::cache_dir()) {
         error!("console artwork unavailable: {error:#}");
     }
     commands.insert_resource(crate::console::initial(&install));
     let cheats = Cheats::new(LocalCheats {
         install: install.clone(),
-        directory: crate::settings::CONFIG_DIR.into(),
+        directory: cyrus_config::config_dir().into(),
     });
     if let Err(error) = cheats.state() {
         error!("cheat state unavailable: {error:#}");
@@ -140,7 +138,7 @@ mod tests {
         let fixture = Fixture::new();
         std::fs::write(fixture.0.join("install/REDGUARD.CHT"), [0; 256]).unwrap();
         let path = fixture.0.join("local/REDGUARD.CHT");
-        crate::storage::write(&path, b"bad").unwrap();
+        cyrus_config::write(&path, b"bad").unwrap();
         let mut runtime = Cheats::new(fixture.store());
         assert!(
             runtime

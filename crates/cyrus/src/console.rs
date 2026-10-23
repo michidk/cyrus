@@ -15,7 +15,7 @@ impl Store for LocalConsole {
             .cache_path(&self.directory)?
             .join("REDGUARD.CPF");
         for path in [local, self.install.root.join("REDGUARD.CPF")] {
-            if let Some(bytes) = crate::storage::read(&path)? {
+            if let Some(bytes) = cyrus_config::read(&path)? {
                 return Preferences::decode(&bytes)
                     .with_context(|| format!("{}", path.display()))
                     .map(Some);
@@ -24,7 +24,7 @@ impl Store for LocalConsole {
         Ok(None)
     }
     fn save(&self, preferences: &Preferences) -> Result<()> {
-        crate::storage::write(
+        cyrus_config::write(
             &self
                 .install
                 .cache_path(&self.directory)?
@@ -33,7 +33,7 @@ impl Store for LocalConsole {
         )
     }
     fn write_log(&self, text: &str) -> Result<()> {
-        crate::storage::write(
+        cyrus_config::write(
             &self
                 .install
                 .cache_path(&self.directory)?
@@ -46,7 +46,7 @@ impl Store for LocalConsole {
 pub(crate) fn initial(install: &GameInstall) -> Console {
     Console::with_store(LocalConsole {
         install: install.clone(),
-        directory: crate::settings::CONFIG_DIR.into(),
+        directory: cyrus_config::config_dir().into(),
     })
 }
 

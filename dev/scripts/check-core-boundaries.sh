@@ -54,3 +54,6 @@ check_consumer app '^cyrus-(game|world|collision|audio|render|startup|debug|view
 
 check_consumer render '^cyrus-(audio|startup|app|debug) ' \
     'pub use cyrus_render::WorldRenderPlugin;' cyrus-render
+
+check_consumer paths '^(bevy(_[^ ]+)?|cyrus-(app|assets|audio|collision|console|control|debug|game|media|mcp|render|script|session|startup|text|viewer|web|world)) ' \
+    'pub use cyrus_config::{cache_dir, config_dir, log_dir, read, write};' cyrus-config

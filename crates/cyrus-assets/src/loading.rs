@@ -17,7 +17,7 @@ pub enum Progress {
 }
 
 /// Result of the preload, kept for the rest of the session and written to
-/// `cyrus-config/preload-report.json`: the format-coverage report.
+/// `preload-report.json` in the config directory: the format-coverage report.
 #[derive(Resource, Debug, Clone, Default, serde::Serialize)]
 pub struct Preloaded {
     pub parsed: usize,

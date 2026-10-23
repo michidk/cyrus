@@ -319,7 +319,7 @@ pub(crate) fn poll(world: &mut World) {
 }
 
 fn prepare(path: &Path, install: &GameInstall) -> Result<PreparedLoad> {
-    let bytes = crate::storage::read(path)?.context("session document does not exist")?;
+    let bytes = cyrus_config::read(path)?.context("session document does not exist")?;
     prepare_bytes(&bytes, install)
 }
 
@@ -336,7 +336,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
         cyrus_assets::scene::world_index(install, current_name)? == snapshot.current_world(),
         "session current scene/world identity differs"
     );
-    let cache = crate::settings::Settings::cache_dir();
+    let cache = cyrus_config::cache_dir();
     let mut worlds = BTreeMap::new();
     for id in snapshot.world_ids() {
         let name = if id == snapshot.current_world() {
@@ -351,8 +351,8 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
         cyrus_assets::scene::export_scene(install, &name, &cache.join(format!("{name}.glb")))?;
         worlds.insert(id, name);
     }
-    cyrus_assets::hud_export::export_hud(install, &cache)?;
-    cyrus_assets::sound_export::export(install, &cache)?;
+    cyrus_assets::hud_export::export_hud(install, cache)?;
+    cyrus_assets::sound_export::export(install, cache)?;
     let mut audio_paths = Vec::new();
     let bank: cyrus_assets::sound::SoundBank =
         serde_json::from_slice(&std::fs::read(cache.join("sounds/bank.sounds"))?)?;
@@ -360,7 +360,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
         audio_paths.push(format!("sounds/{index:03}.wav"));
     }
     for label in snapshot.dialogue().required_labels() {
-        cyrus_assets::sound::dialogue::export::export(install, &cache, label)?;
+        cyrus_assets::sound::dialogue::export::export(install, cache, label)?;
         let key = label
             .iter()
             .map(|byte| format!("{byte:02x}"))

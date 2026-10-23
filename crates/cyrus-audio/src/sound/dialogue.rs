@@ -127,7 +127,7 @@ impl DialoguePreparation {
                 let install =
                     anyhow::Context::context(install, "dialogue preparation: install unavailable")?
                         .clone();
-                let cache = install.cache_path(std::path::Path::new(cyrus_assets::CACHE_DIR))?;
+                let cache = install.cache_path(cyrus_config::cache_dir())?;
                 DialogueRequest::Exporting(bevy::tasks::IoTaskPool::get().spawn(async move {
                     cyrus_assets::sound::dialogue::export::export(&install, &cache, label)
                 }))

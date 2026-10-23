@@ -80,7 +80,7 @@ fn compass_frame(heading: u16, world_compass: i32) -> u8 {
     ((-(i32::from(heading) + world_compass)).rem_euclid(2048) >> 6) as u8
 }
 
-/// Player-facing toggles kept outside the install: native `cyrus-config/hud.json`,
+/// Player-facing toggles kept outside the install: native `hud.json` in the config directory,
 /// browser localStorage `cyrus-hud`. The original writes them to SYSTEM.INI.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 struct HudPreferences {

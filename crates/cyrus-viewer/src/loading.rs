@@ -76,7 +76,7 @@ pub fn start(
             async move {
                 cyrus_assets::native::Library::open(
                     install,
-                    cyrus_assets::CACHE_DIR.into(),
+                    cyrus_config::cache_dir().into(),
                     |done, total, name| {
                         if let Ok(mut progress) = scan.0.lock() {
                             *progress = Some((done, total, name.into()));

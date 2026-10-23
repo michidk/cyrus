@@ -25,7 +25,9 @@ acceptance, status and session claims. The maintainer's agents also follow
    `cyrus-config/` (gitignored). `git add -f` is never the answer. If unsure
    whether something counts, it does: leave it in `magic/` and say so.
 2. **The install is read-only.** cyrus never writes into the game directory.
-   Local state is `cyrus-config/` next to the working directory.
+   Local state lives where `crates/cyrus-config` says: `CYRUS_CONFIG_DIR`, else an
+   existing `cyrus-config/` in the working directory (a checkout; `cargo` pins it),
+   else the platform config, cache and state directories.
 3. **Faithful by default.** Every behaviour that may differ from the original
    is registered under a fidelity `Area` and runs only in the configured `Mode`
    (`crates/cyrus-game/src/fidelity.rs`). The default of every area is
@@ -250,7 +252,7 @@ The picker always appears; automate Connect to server for an unattended launch.
 Test local folder selection when the task specifically needs to verify that flow.
 
 Native game and viewer share the install picker in `cyrus-app`. CLI/environment
-paths precede the remembered `cyrus-config/install.json` location and default
+paths precede the remembered `install.json` location in the config directory and default
 folder discovery. Windowed resolution failures show a path field, Browse and
 Continue; a successful selection saves the resolved root outside the install.
 Invalid remembered locations reopen the picker. Cancel leaves saved state alone.
@@ -358,7 +360,7 @@ session flag. Installed `ShowBitmap`,
 `UnShowBitmap` and `AddLog` calls feed shared native/browser HUD state.
 `state.script_hud` reports native dispatch readiness, power-up slots and accepted
 logbook entry count or load error. Log text stays outside the install in native
-`cyrus-config/logbook.json` or browser localStorage `cyrus-logbook`. Malformed
+`logbook.json` in the config directory or browser localStorage `cyrus-logbook`. Malformed
 state and failed writes do not notify or overwrite accepted entries. The installed
 log key opens the shared native/browser reading screen at the newest
 accepted text. Installed up/down and A, Home/End and Page Up/Down scroll it; log,
@@ -373,7 +375,7 @@ F8, Tab and F7 toggle
 candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
-units and persist outside the install in native `cyrus-config/menu.json` or
+units and persist outside the install in native `menu.json` in the config directory or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
 including direct world launches. Subtitle and interlace preferences affect
 cinematics. Native/browser effects and CD music, and native speech, consume the saved Sound
@@ -385,7 +387,7 @@ forward skip points, then returns to the same selected entry.
 
 Native `state.cheats` reports CHT load readiness, raw values and supported effects.
 TCP/MCP `cheat {name, value?}` toggles or assigns state; `oracle` lists it and
-`savecheats` writes `cyrus-config/REDGUARD.CHT`. Local state precedes the installed
+`savecheats` writes `REDGUARD.CHT` in the config directory. Local state precedes the installed
 read-only CHT file; malformed state blocks edits and saves. **Verified:** runtime
 `neversaydie` supplies the documented PlayerDistance override to automatic world
 updates and explicit script steps unless the caller supplies `distance_override`. Other effects, including
@@ -395,7 +397,7 @@ Browser `savecheats` uses localStorage `cyrus-cheats`; F1 Cheat files imports an
 exports CHT. Startup SYSTEM.INI defaults replace task, animation and nodemarker.
 TCP/MCP `console {open?, line?}` and `state.console` expose the shared editor.
 `console save` persists CPF preferences outside the install; `console write` exports
-retained output. Native CPF uses `cyrus-config/REDGUARD.CPF`; browser CPF uses
+retained output. Native CPF uses `REDGUARD.CPF` in the config directory; browser CPF uses
 localStorage `cyrus-console`. Malformed local CPF blocks preference edits and saves.
 The original command catalog lists unavailable handlers explicitly. `show world`
 and sky-plane/wave controls operate on the current environment and retain session edits.

@@ -6,7 +6,7 @@ app from assets, world, game and presentation plugins, and runs it.
 ```sh
 cargo run -p cyrus -- --scene START         # window
 cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control server only
-cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to cyrus-config/cache
+cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to the cache directory
 ```
 
 Without `--scene`, a windowed launch runs startup through the book menu.
@@ -18,14 +18,14 @@ Menu requests start preparation in Loading, after the attempt record is reset.
 
 Windowed launches show the shared install picker when their explicit, remembered,
 or discovered game-files location is unusable. Continue validates and remembers
-the location in `cyrus-config/install.json`, shared with the viewer. Selection,
+the location in `install.json` in the config directory, shared with the viewer. Selection,
 background preparation and gameplay use the same window and process. Headless,
 world-listing and export commands keep contextual command-line errors.
 
 Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
 for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, then the remembered location, then default local/GOG folders), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
-Settings come from `cyrus-config/settings.toml`.
+Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`).
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
 from a writable directory. On Windows the executable is `cyrus.exe`.
 The Linux archive uses Ubuntu 24.04 system libraries.
@@ -65,7 +65,7 @@ starting a game window.
 settings, cinematic playback and world-entry loading. Hosts add it alongside
 cyrus-render and cyrus-audio.
 
-Native cheat state loads after install selection. `cyrus-config/REDGUARD.CHT`
+Native cheat state loads after install selection. `REDGUARD.CHT` in the config directory
 takes precedence over the installed file; absent files start at zero, then
 SYSTEM.INI replaces task, animation and node-marker defaults. Malformed local
 state blocks commands without falling back to the install. `savecheats` writes
@@ -111,9 +111,9 @@ Native `state.scene_ready` reports that the current rendered world has finished 
 
 Native `state.music_track` is the CD track playing or loading, and `state.music_paused` whether its sink is paused (a cinematic is playing, or the Music slider is at 0); it is `null` while no sink exists (no track has started, or the host has no audio device).
 
-Console preferences restore from `cyrus-config/REDGUARD.CPF`, then the installed
+Console preferences restore from `REDGUARD.CPF` in the config directory, then the installed
 file when local state is absent. `console save` writes only the local CPF;
-`console write` exports retained output to `cyrus-config/CONSOLE.LOG`. Malformed
+`console write` exports retained output to `CONSOLE.LOG` in the config directory. Malformed
 preferences remain visible in `state.console.preference_error` and block edits
 and saves. `console show` reports settings and any load error.
 
@@ -141,7 +141,7 @@ acceptance remain unfinished.
 Native diagnostic `session_slots {operation}` supports list, create, overwrite,
 load and delete. Poll `session_slots_result` and acknowledge its terminal result
 with `acknowledge: true`. Create uses the first free manual slot; overwrite,
-load and delete require the listed revision. Files under `cyrus-config/slots`
+load and delete require the listed revision. Files under `slots/` in the config directory
 contain bounded metadata and an opaque cyrus session document, not original SAV
 files. Failed capture, preparation or publication does not replace accepted data.
 Admitted save/load selections retain the last-save slot and description for death

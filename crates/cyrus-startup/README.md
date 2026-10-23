@@ -100,7 +100,7 @@ supplies the entry parser and loading layout. Saves, full story/gameplay
 initialization and progression unlocks remain unavailable.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
-native `cyrus-config/menu.json` or browser localStorage. It validates local state,
+native `menu.json` in the config directory or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
 input uses edited bindings, including direct scene launches. Subtitle and interlace
 settings apply to cinematics; saved Sound preferences apply to shared

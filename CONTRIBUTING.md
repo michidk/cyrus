@@ -15,7 +15,7 @@ not promise. Include:
 - OS and GPU, or the browser build and browser;
 - that the install is the GOG release, and any changes made to it;
 - the world (WORLD.INI entry or scene name) and the position;
-- non-default fidelity modes from `cyrus-config/settings.toml`;
+- non-default fidelity modes from `settings.toml` from the config directory (`cyrus-config/` in a checkout);
 - steps to reproduce and what happened;
 - if you can, what the original game does in the same place.
 

@@ -14,6 +14,7 @@ bevy_egui = { version = "=0.43.0", default-features = false, features = ["defaul
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy_egui = { version = "=0.43.0", default-features = false, features = ["manage_clipboard"] }
 cyrus-assets = { path = "../cyrus-assets", features = ["native"] }
+cyrus-config.workspace = true
 serde_json.workspace = true
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 tracing-appender = "0.2"

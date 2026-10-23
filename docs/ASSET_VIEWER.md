@@ -106,7 +106,7 @@ fetches source files as needed, rather than every decoded asset at startup.
 Switching selections cancels or discards stale results and releases
 the previous preview, including audio. Large lists and media need bounded memory.
 
-Reuse `cyrus-config/cache` and compatible game exports. Cache identity includes
+Reuse the cache directory and compatible game exports. Cache identity includes
 source/dependency fingerprints, palette/world context, and schema/exporter
 version. Different installs must not silently reuse each other's outputs.
 Publish complete exports atomically and detect stale or interrupted exports.
