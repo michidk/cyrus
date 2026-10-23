@@ -7,9 +7,9 @@
 //!
 //! Destination search uses the current enabled map without filtering reservations.
 //! Route claims preserve reservation order. Direct phases share live visibility,
-//! facing and walking services. Initialization,
-//! jump continuation and collision/hit transitions remain explicit unsupported
-//! branches; supported phases do not imply complete automatic combat traversal.
+//! facing and walking services. Explicitly unsupported: a held route without a selected map
+//! outside phase zero, the shared held-target exclusion switch (always off in play) and the
+//! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
@@ -357,7 +357,19 @@ impl ScriptWorld {
             !self.globals.walk_route.target_exclusion,
             "point held-target exclusion admission unsupported"
         );
-        if control.falling_state != 0 || control.queued_motion != 0 {
+        // Motion direction 15 runs a ledge update that only the selected player has; any other
+        // actor takes the falling and queued-motion branch unchanged.
+        let ledge_direction = control.motion_direction == 15;
+        anyhow::ensure!(
+            !(ledge_direction && self.selected_player_index() == Some(index)),
+            "point direction-15 movement unsupported"
+        );
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted point control");
+        let shared = &mut self.globals.native_command;
+        if control.falling_state != 0 || control.queued_motion != 0 || ledge_direction {
             shared.point_phase = u8::from(control.navigation.next != -1);
             let actor = &mut self.actors[index];
             actor.attributes[1] = 13;
@@ -368,10 +380,6 @@ impl ScriptWorld {
                 .death_selector = 7;
             return Ok(1);
         }
-        anyhow::ensure!(
-            control.motion_direction != 15,
-            "point direction-15 movement unsupported"
-        );
         let phase = shared.point_phase;
         if matches!(phase, 11 | 22)
             || !self.point_destination_arrived(index, destination, tolerance, inputs)?

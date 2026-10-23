@@ -24114,12 +24114,25 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
 #[test]
 fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    for (falling, queued, phase, counter, blocked, expected_phase, expected_counter, result) in [
-        (0, 0, 0, 0, false, 0, 0, 0),
-        (0, 0, 8, 8, true, 24, 9, 0),
-        (0, 0, 8, 255, true, 8, 0, 0),
-        (1, 0, 11, 8, true, 1, 9, 1),
-        (0, 1, 22, 255, true, 1, 0, 1),
+    // The last column is the motion direction: 15 (a ledge update only the selected player has)
+    // takes the same pending branch for any other actor.
+    for (
+        falling,
+        queued,
+        phase,
+        counter,
+        blocked,
+        expected_phase,
+        expected_counter,
+        result,
+        direction,
+    ) in [
+        (0, 0, 0, 0, false, 0, 0, 0, 0),
+        (0, 0, 8, 8, true, 24, 9, 0, 0),
+        (0, 0, 8, 255, true, 8, 0, 0, 0),
+        (1, 0, 11, 8, true, 1, 9, 1, 0),
+        (0, 1, 22, 255, true, 1, 0, 1, 0),
+        (0, 0, 11, 8, true, 1, 9, 1, 15),
     ] {
         let (world, scripts, data) = point_wrapper_fixture(0);
         let mut saved = movement_snapshot(&world, &scripts, &data);
@@ -24131,6 +24144,7 @@ fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
         control["death_selector"] = 7.into();
         control["falling_state"] = falling.into();
         control["queued_motion"] = queued.into();
+        control["motion_direction"] = direction.into();
         control["collision_response_auxiliary"] =
             serde_json::json!([if blocked { 128 } else { 0 }, 0]);
         saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([100, 200, 300]);
@@ -24283,14 +24297,11 @@ fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed(
 #[test]
 fn point_entry_rejects_unavailable_branches_before_pending_motion() {
     use cyrus_game::script::ScriptInputs;
-    for (field, value, error) in [
-        (
-            "body_response_flags",
-            4,
-            "hit reaction requires the shared engine random stream",
-        ),
-        ("motion_direction", 15, "direction-15"),
-    ] {
+    for (field, value, error) in [(
+        "body_response_flags",
+        4,
+        "hit reaction requires the shared engine random stream",
+    )] {
         let mut world = point_movement_fixture(
             0,
             false,
