@@ -687,7 +687,7 @@ impl ScriptWorld {
                 volume: 0,
                 rate_offset_hz,
                 position: self.sight_position(id.index)?,
-                start_index: Some(4),
+                start_index: None,
             },
         )?;
         if self.actors[defender.index].attributes[3] == 0 {
