@@ -210,8 +210,10 @@ impl RuntimeSessionCandidate {
                 "session publication conflicts with a pending application transition"
             );
         }
+        // The menu has no HUD of its own; a saved HUD is published with the load.
         ensure!(
-            self.hud.is_some() == world.contains_resource::<HudState>(),
+            self.hud.is_some() == world.contains_resource::<HudState>()
+                || (state == &AppState::Menu && self.hud.is_some()),
             "session publication HUD host census differs"
         );
         ensure!(
