@@ -253,17 +253,15 @@ impl ScriptWorld {
                 .expect("validated health control")
                 .death_selector = 8;
         } else if health == 0 {
-            if self.updates.animation_system {
+            // The force-request boundary rejects an actor without animation state.
+            if self.updates.animation_system && self.actors[index].animation.is_some() {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
                 let event_context = super::effects::ActorEventContext::capture(self, id);
                 let event_camera = &mut self.camera;
                 let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
-                let animation = actor
-                    .animation
-                    .as_mut()
-                    .context("ordinary health death animation unavailable")?;
+                let animation = actor.animation.as_mut().expect("checked animation state");
                 match animation.playback.force_request_with_sounds(
                     death_group,
                     0,
@@ -387,17 +385,17 @@ impl ScriptWorld {
             OrdinaryLandingDecision::Ordinary => return Ok(decision),
         };
         if let Some((group, change)) = effect {
-            if let (Some(group), true) = (group, self.updates.animation_system) {
+            // The request boundary rejects an actor without animation state (a script-only or
+            // static-model object): the health change below still applies.
+            let animated = self.actors[index].animation.is_some();
+            if let (Some(group), true, true) = (group, self.updates.animation_system, animated) {
                 let position = super::animation_sound_position(self.spatial.as_ref(), index);
                 let event_context = super::effects::ActorEventContext::capture(self, id);
                 let event_camera = &mut self.camera;
                 let event_effects = &mut self.effects;
                 let actor = &mut self.actors[index];
                 let surface = actor.surface;
-                let animation = actor
-                    .animation
-                    .as_mut()
-                    .context("ordinary landing damage animation unavailable")?;
+                let animation = actor.animation.as_mut().expect("checked animation state");
                 match animation.playback.request_with_sounds(
                     group,
                     0,

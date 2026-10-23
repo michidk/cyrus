@@ -7001,7 +7001,7 @@ fn ordinary_initial_overlap_shape_preserves_fractional_rotated_centers() {
             .ordinary_overlap_spheres(id, &data)
             .unwrap_err()
             .to_string()
-            .contains("vertex-bound")
+            .contains("RAVC records unavailable")
     );
 }
 
@@ -7533,7 +7533,7 @@ fn ordinary_static_overlap_keeps_reverse_placement_order_and_tiny_response() {
 }
 
 #[test]
-fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unsupported_later_shape() {
+fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unavailable_later_shape() {
     use cyrus_assets::{
         animation::{AnimationModel, Animations},
         collision::ActorCollisionModels,
@@ -7636,7 +7636,7 @@ fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unsupported_later_shape
             .resolve_ordinary_overlaps(ids[0], &scene, &data, &reversed)
             .unwrap_err()
             .to_string()
-            .contains("vertex-bound")
+            .contains("RAVC records unavailable")
     );
 }
 

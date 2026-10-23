@@ -34,8 +34,8 @@ impl ScriptWorld {
 
     /// Prepare selected overlap spheres at the current local runtime origin and
     /// retained actor matrix. Static-model actors use one loaded-model radius.
-    /// Vertex-bound RAVC shapes need their animated vertex owner and remain
-    /// explicitly unsupported here, rather than falling back to initial bounds.
+    /// An actor with vertex-bound RAVC records uses one sphere per record, centered on the
+    /// record's animated model vertex; the initial shape is not a fallback for it.
     pub fn ordinary_overlap_spheres(
         &self,
         id: ScriptActorId,
@@ -70,29 +70,61 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        ensure!(
-            count == 0,
-            "world {} instance {index}: vertex-bound overlap shape unsupported",
-            self.world
-        );
+        let transform = |local: [f32; 3], radius: f32| -> Result<OverlapSphere> {
+            let local = pose.matrix.transform_stored(local)?;
+            let center = std::array::from_fn(|axis| origin[axis] + local[axis]);
+            ensure!(
+                center.iter().all(|value| value.is_finite()),
+                "world {} instance {index}: nonfinite overlap sphere center",
+                self.world
+            );
+            Ok(OverlapSphere { center, radius })
+        };
+        if count != 0 {
+            // Vertex-bound records replace the initial shape: one sphere each, centered on the
+            // record's model vertex (Q8, truncated to map units) plus its signed offset.
+            let volumes = definition["collision_volumes"]
+                .as_array()
+                .filter(|volumes| i64::try_from(volumes.len()) == Ok(count))
+                .with_context(|| {
+                    format!(
+                        "world {} instance {index}: overlap RAVC records unavailable; re-export",
+                        self.world
+                    )
+                })?;
+            return volumes
+                .iter()
+                .map(|volume| {
+                    let field = |name: &str| {
+                        volume[name].as_i64().with_context(|| {
+                            format!(
+                                "world {} instance {index}: RAVC record field {name} absent",
+                                self.world
+                            )
+                        })
+                    };
+                    let vertex = self.actor_animation_source_vertex(
+                        id,
+                        data,
+                        i32::try_from(field("vertex")?)?,
+                    )?;
+                    let offsets = [field("offset_x")?, field("offset_y")?, field("offset_z")?];
+                    let local = std::array::from_fn(|axis| {
+                        (vertex[axis] / 256 + offsets[axis] as i32) as f32
+                    });
+                    transform(local, field("radius")? as f32)
+                })
+                .collect();
+        }
         self.ordinary_collision_shape(id)?
             .body
             .iter()
             .take(32)
             .map(|sphere| {
-                let local = pose
-                    .matrix
-                    .transform_stored(sphere.center.map(|value| value as f32))?;
-                let center = std::array::from_fn(|axis| origin[axis] + local[axis]);
-                ensure!(
-                    center.iter().all(|value| value.is_finite()),
-                    "world {} instance {index}: nonfinite overlap sphere center",
-                    self.world
-                );
-                Ok(OverlapSphere {
-                    center,
-                    radius: sphere.radius as f32,
-                })
+                transform(
+                    sphere.center.map(|value| value as f32),
+                    sphere.radius as f32,
+                )
             })
             .collect()
     }
