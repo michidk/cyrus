@@ -31000,7 +31000,7 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
     );
     let control = world.actors()[receiver.index].control_state().unwrap();
     assert_eq!(control.death_selector, 8);
-    assert!(control.combat.as_ref().unwrap().target.is_none());
+    assert_eq!(control.combat.as_ref().unwrap().action, -1);
 }
 
 #[test]
@@ -31061,6 +31061,51 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
         assert_eq!(flags, 3, "intent bits are not cleared");
     }
     assert!(sounds.iter().any(|(_, text)| text.contains("Positional")));
+}
+
+#[test]
+fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer() {
+    use cyrus_game::script::ScriptInputs;
+    let (mut world, _, _) = coordination_message_fixture(|saved| {
+        saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 1.into();
+        saved["actors"][0]["control"]["combat"]["close_distance_passes"] = 7.into();
+        saved["actors"][0]["control"]["combat"]["action"] = 3.into();
+        saved["actors"][0]["control"]["combat"]["flags"] = 7.into();
+        saved["actors"][1]["attributes"][96] = 12.into();
+        saved["actors"][0]["attributes"][3] = 5.into();
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let receiver = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    let hud = cyrus_game::script::ScriptHud::default();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::default()),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let control = world.actors()[receiver.index].control_state().unwrap();
+    let combat = control.combat.as_ref().unwrap();
+    assert_eq!(world.actors()[receiver.index].attributes()[3], 0);
+    assert_eq!(control.death_selector, 8);
+    assert_eq!(combat.action, -1);
+    assert_eq!(combat.flags & 4, 0, "combat flag 0x04 cleared");
+    assert_eq!(
+        (
+            combat.close_distance_passes,
+            combat.attacker_selection_state
+        ),
+        (0, 0)
+    );
 }
 
 #[test]

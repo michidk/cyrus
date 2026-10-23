@@ -885,7 +885,7 @@ impl ScriptWorld {
                         .as_mut()
                         .and_then(|control| control.combat.as_mut())
                         .context("selected armed death combat record unavailable")?
-                        .target = None;
+                        .action = -1;
                 }
             } else {
                 self.globals.set_player_death_override_group(0)?;

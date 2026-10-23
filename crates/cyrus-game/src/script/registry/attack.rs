@@ -788,38 +788,8 @@ impl ScriptWorld {
         });
         if let Some(group) = group {
             let ticks = ticks.context("contact death nominal ticks unavailable")?;
-            let position = super::animation_sound_position(self.spatial.as_ref(), index);
-            let event_context = super::effects::ActorEventContext::capture(self, id);
-            let event_camera = &mut self.camera;
-            let event_effects = &mut self.effects;
-            let actor = &mut self.actors[index];
-            let surface = actor.surface;
-            let animation = actor
-                .animation
-                .as_mut()
-                .expect("validated contact death animation");
-            let frame =
-                animation
-                    .playback
-                    .force_request_with_sounds(group, 0, ticks, &mut |sound| {
-                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                            return event_context.dispatch(
-                                flags,
-                                event_camera.as_mut(),
-                                event_effects,
-                            );
-                        }
-                        sounds(
-                            id,
-                            crate::script::ScriptSound::Animation {
-                                sound,
-                                surface,
-                                position,
-                            },
-                        )
-                    })?;
-            animation.frame = frame.or(animation.frame);
-            if actor
+            self.force_death_group(id, index, group, ticks, sounds)?;
+            if self.actors[index]
                 .control
                 .as_ref()
                 .is_some_and(|control| control.combat.is_some())
@@ -840,14 +810,57 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Force-start a death group on `index`, dispatching its animation sounds and events.
+    fn force_death_group(
+        &mut self,
+        id: ScriptActorId,
+        index: usize,
+        group: u16,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
+        let actor = &mut self.actors[index];
+        let surface = actor.surface;
+        let animation = actor
+            .animation
+            .as_mut()
+            .expect("validated contact death animation");
+        let frame =
+            animation
+                .playback
+                .force_request_with_sounds(group, 0, ticks, &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                    }
+                    sounds(
+                        id,
+                        crate::script::ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    )
+                })?;
+        animation.frame = frame.or(animation.frame);
+        Ok(())
+    }
+
     /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
-    /// response). The selected player stores group 122 (selector zero with the group present) or
-    /// 121 as the death override when none is set, drops its combat target, runs the combat reset
-    /// (a receiver already at selector eight only releases its walk nodes), takes selector eight
-    /// and applies health -256 through the death-owning service with no source, which enables
-    /// hit inhibition for the world loop's death exit. A selected player under death suppression
-    /// or hit inhibition is left alone. Nonplayer receivers use the contact-death dispatch; the
-    /// service's attribute-69 gate, coordination message and animation start are not modelled.
+    /// response); the weapon-contact caller uses [`Self::dispatch_contact_death`] instead.
+    /// Selector zero prefers group 122 when present, otherwise group 121. With attribute 69
+    /// clear, the selected player stores the group as the death override when none is set (its
+    /// death controller starts the animation); a nonplayer force-starts it, stores death default
+    /// 124/123 (releasing its walk nodes), sends `0xd002` to the first coordinator sharing its
+    /// target and clears its close-distance and coordination state. Every receiver then resets its
+    /// action selector to -1 and runs the combat reset (selector eight only releases walk nodes),
+    /// takes selector eight and clears combat flag 0x04 and the coordination state. The selected
+    /// player finishes with health -256 through the death-owning service, enabling hit
+    /// inhibition for the world loop's death exit; it is left alone while death suppression or
+    /// hit inhibition is active. Follows preservation's combat death service rules.
     pub(super) fn dispatch_combat_death(
         &mut self,
         id: ScriptActorId,
@@ -857,47 +870,81 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        if self.selected_player_index() != Some(index) {
-            return self.dispatch_contact_death(id, selector, inputs.nominal_ticks, sounds);
-        }
-        let state = self
-            .globals
-            .selected_health
-            .as_ref()
-            .context("selected combat death health owner unavailable")?;
-        if state.hit_inhibited()
-            || inputs
-                .death_suppressed
-                .context("selected combat death suppression state unavailable")?
-        {
-            return Ok(());
-        }
-        if self.actors[index].attributes[69] == 0
-            && self
+        let selected = self.selected_player_index() == Some(index);
+        if selected {
+            let state = self
                 .globals
-                .player_death_override_group()
-                .context("selected combat death override unavailable")?
-                == 0
-        {
-            let has_122 = self.actors[index]
-                .animation
+                .selected_health
                 .as_ref()
-                .context("selected combat death animation unavailable")?
-                .playback
-                .has_group(122);
-            let group = if selector == 0 && has_122 { 122 } else { 121 };
-            self.globals.set_player_death_override_group(group)?;
+                .context("combat death health owner unavailable")?;
+            if state.hit_inhibited()
+                || inputs
+                    .death_suppressed
+                    .context("combat death suppression state unavailable")?
+            {
+                return Ok(());
+            }
+        }
+        if self.actors[index].attributes[69] == 0 {
+            let animation = self.actors[index].animation.as_ref();
+            let group = if selector == 0 && animation.is_some_and(|a| a.playback.has_group(122)) {
+                122
+            } else {
+                121
+            };
+            if selected {
+                if self
+                    .globals
+                    .player_death_override_group()
+                    .context("combat death override unavailable")?
+                    == 0
+                {
+                    self.globals
+                        .set_player_death_override_group(i32::from(group))?;
+                }
+            } else {
+                if animation.is_some() {
+                    let ticks = inputs
+                        .nominal_ticks
+                        .context("combat death nominal ticks unavailable")?;
+                    self.force_death_group(id, index, group, ticks, sounds)?;
+                }
+                self.release_held_walk_nodes(id)?;
+                let control = self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("combat death control unavailable")?;
+                anyhow::ensure!(control.combat.is_some(), "combat death record unavailable");
+                control.combat_death_default = Some(if group == 122 { 124 } else { 123 });
+                // Without a selected player nothing is excluded; the search skips the receiver
+                // itself, so passing it excludes no other candidate.
+                let player = self
+                    .selected_player_index()
+                    .map(|player| self.id(player))
+                    .transpose()?
+                    .unwrap_or(id);
+                if let Some(candidate) = self.ordinary_active_coordinator(id, player, inputs)? {
+                    self.send_combat_message(id, candidate, 0xd002)?;
+                }
+                let combat = self.actors[index]
+                    .control
+                    .as_mut()
+                    .and_then(|control| control.combat.as_mut())
+                    .expect("validated combat record");
+                combat.close_distance_passes = 0;
+                combat.attacker_selection_state = 0;
+            }
         }
         let was_dead = {
             let control = self.actors[index]
                 .control
                 .as_mut()
-                .context("selected combat death control unavailable")?;
+                .context("combat death control unavailable")?;
             control
                 .combat
                 .as_mut()
-                .context("selected combat death record unavailable")?
-                .target = None;
+                .context("combat death record unavailable")?
+                .action = -1;
             control.death_selector == 8
         };
         if was_dead {
@@ -908,14 +955,23 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated combat death control");
         if !was_dead {
-            super::super::combat::end_combat_reset(control);
+            if control.death_selector != 1 {
+                control.death_selector = 1;
+                control.death_response = 0;
+            }
+            if control.killed {
+                control.script_control &= !2;
+            }
         }
         control.death_selector = 8;
         let combat = control.combat.as_mut().expect("validated combat record");
         combat.flags &= !4;
         combat.close_distance_passes = 0;
         combat.attacker_selection_state = 0;
-        self.apply_selected_death_health(id, -256, None, inputs, Some(random), sounds)
+        if selected {
+            self.apply_selected_death_health(id, -256, None, inputs, Some(random), sounds)?;
+        }
+        Ok(())
     }
 
     /// Execute a caller-selected attack move synchronously, without allocating a VM task.
