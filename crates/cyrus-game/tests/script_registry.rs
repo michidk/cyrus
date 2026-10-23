@@ -23403,6 +23403,43 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
 }
 
 #[test]
+fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts("Resurrect", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, mut data) = navigation_owner_fixture();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["attributes"][14] = 1.into();
+    saved["actors"][0]["control"]["combat"] =
+        serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+    saved["actors"][0]["control"]["killed"] = true.into();
+    saved["actors"][0]["control"]["death_selector"] = 6.into();
+    saved["actors"][0]["control"]["death_response"] = 3.into();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            100,
+        )
+        .unwrap();
+    let control = world.actors()[0].control_state().unwrap();
+    assert!(!control.killed);
+    assert_eq!((control.death_selector, control.death_response), (1, 0));
+}
+
+#[test]
 fn actor_navigation_kill_me_releases_held_nodes_before_owned_sound_cleanup() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
     let mut scripts = random_scripts("KillMe", vec![], Object::Me);

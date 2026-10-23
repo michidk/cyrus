@@ -5198,6 +5198,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .context("Resurrect: receiver lifecycle unavailable")?;
                 if control.killed || control.death_selector == 8 {
                     control.killed = false;
+                    // A selector-6 receiver with combat state first runs the unconditional part
+                    // of the end-of-combat reset; the script-control bit stays (it is only
+                    // cleared there while the killed flag is still set).
+                    if control.death_selector == 6 {
+                        let script_control = control.script_control;
+                        super::combat::end_combat_reset(control);
+                        control.script_control = script_control;
+                    }
                     if let Some(profile) =
                         control.combat.as_ref().map(|record| record.contact_profile)
                     {
