@@ -14488,6 +14488,27 @@ fn type_three_placement_starts_with_an_enabled_flat_record_of_its_texture() {
 }
 
 #[test]
+fn actor_flat_draws_place_enabled_records_at_the_pose_plus_the_rotated_offset() {
+    let mut scripts = random_scripts("FlatThree", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(2);
+    scripts.instances[0].object_type = 3;
+    scripts.instances[0].texture = -20351;
+    scripts.instances[0].map_position = [100, -200, 300];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let pose = world.spatial(world.id(0).unwrap()).unwrap().local;
+    let draws = world.actor_flat_draws().unwrap();
+    assert_eq!(draws.len(), 1);
+    // The placement record starts static (frame word zero, no offset): explicit frame zero.
+    assert_eq!(draws[0].descriptor, 0xb081 | 0x20000);
+    assert_eq!(draws[0].frame, 0);
+    assert_eq!(draws[0].position, pose.position.map(|axis| axis >> 8));
+    assert!(world.actors()[1].flat_state().is_none());
+}
+
+#[test]
 fn type_four_object_light_survives_world_replacement() {
     use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = random_scripts("LightFour", vec![], Object::Me);

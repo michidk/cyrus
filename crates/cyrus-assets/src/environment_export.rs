@@ -400,26 +400,30 @@ pub(crate) fn prepare(
             })
         })
         .transpose()?;
-    let environment = Environment {
-        effects: Some(crate::effects::prepare(
-            source,
-            &system_settings.system,
-            map,
-            palette,
-            rgpre::import::world_ini::effect_brightness(&ini, entry.index)?,
-        )?),
-        terrain_heights,
-        texture_scale,
-        prelighting,
-        object_lights,
-        model_lighting,
-        terrain_lighting,
-        sky,
-        background,
-        clipping,
-        fog_table,
-        water,
-    };
+    let environment =
+        Environment {
+            effects: Some(crate::effects::prepare(
+                source,
+                &system_settings.system,
+                map,
+                palette,
+                rgpre::import::world_ini::effect_brightness(&ini, entry.index)?,
+                &crate::script_export::flat_texture_identities(
+                    &crate::script_export::prepare_source(map, source, entry.index, None)?,
+                ),
+            )?),
+            terrain_heights,
+            texture_scale,
+            prelighting,
+            object_lights,
+            model_lighting,
+            terrain_lighting,
+            sky,
+            background,
+            clipping,
+            fog_table,
+            water,
+        };
     environment.validate()?;
     output.publish(
         &out.with_extension("environment"),

@@ -76,6 +76,7 @@ pub(crate) fn prepare(
     map: &rgpre::import::rgm::RgmFile,
     palette: &rgpre::import::palette::Palette,
     ambient_brightness: i16,
+    script_flat_textures: &std::collections::BTreeSet<u16>,
 ) -> Result<Effects> {
     use rgpre::import::bsi::BsiIndex;
     use std::io::Cursor;
@@ -93,7 +94,23 @@ pub(crate) fn prepare(
     if !effects.disabled && effects.capacity > 0 {
         // Fixed engine identities from preservation's selected-death effect contract, then the
         // identities installed scripts pass to `AddFlatEffect` (0x2380, the Catacombs braziers).
-        for identity in [0xb081u16, 0x2480, 0x2580, 0x2500, 0x2380] {
+        // Type-three placements and the textures the world's scripts give the `Flat*` natives are
+        // drawn through actor flat records.
+        let mut identities = vec![0xb081u16, 0x2480, 0x2580, 0x2500, 0x2380];
+        for section in &map.sections {
+            if let rgpre::import::rgm::RgmSection::MpobParsed(_, records) = section {
+                identities.extend(
+                    records
+                        .iter()
+                        .filter(|record| record.object_type == 3)
+                        .map(|record| record.texture_data_raw as u16),
+                );
+            }
+        }
+        identities.extend(script_flat_textures);
+        identities.sort_unstable();
+        identities.dedup();
+        for identity in identities {
             let archive = identity >> 7;
             let image_id = identity & 127;
             let path = format!("fxart/TEXBSI.{archive:03}");

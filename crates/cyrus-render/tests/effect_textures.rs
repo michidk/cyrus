@@ -138,10 +138,15 @@ fn installed_effect_images_join_the_exact_render_source_census() -> anyhow::Resu
     let mut world = World::new();
     let (mut live, root) = prepared(&mut world);
     live.prepare_effects(source, &mut world.resource_mut::<Assets<Image>>())?;
-    // 38 frames of the four death effects plus the 5 frames of 0x2380, the `AddFlatEffect` image.
-    assert_eq!(world.resource::<Assets<Image>>().len(), 43);
+    // The fixed engine identities (38 frames of the four death effects plus the 5 frames of 0x2380,
+    // the `AddFlatEffect` image) and the textures START's scripts give the flat natives.
+    for fixed in [0xb081u16, 0x2480, 0x2580, 0x2500, 0x2380] {
+        assert!(source.images.contains_key(&fixed), "{fixed:#x}");
+    }
+    let expected: usize = source.images.values().map(|image| image.frames.len()).sum();
+    assert_eq!(world.resource::<Assets<Image>>().len(), expected);
     let frames = live.snapshot();
-    assert_eq!(frames.len(), 5);
+    assert_eq!(frames.len(), source.images.len());
     assert!(
         frames
             .iter()
@@ -235,6 +240,63 @@ fn bound_admitted_effect_requests_share_explicit_frames_and_preserve_deadlines()
             .unwrap()
             .frame,
         0
+    );
+    Ok(())
+}
+
+#[test]
+fn actor_flat_draws_use_the_texture_flags_alpha_ambient_brightness_and_chosen_frame()
+-> anyhow::Result<()> {
+    use cyrus_render::fog::EffectDrawView;
+    let mut world = World::new();
+    let (mut owner, _) = prepared(&mut world);
+    let mut source = source();
+    {
+        let image = source.images.get_mut(&0x2500).unwrap();
+        image.size = [9, 26];
+        image.frames = (0..3).map(|value| vec![value; 9 * 26 * 4]).collect();
+    }
+    owner.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+    let view = EffectDrawView {
+        center: [0.0, 0.0, 100.0],
+        projection_scale: Vec2::ONE,
+        clipping: [1.0, 1000.0],
+    };
+    assert!(owner.effect_image_prepared(0x2500));
+    assert!(!owner.effect_image_prepared(0x2501));
+    let explicit = owner
+        .request_actor_flat_draw(environment, 0x2500, Some(2), &view, 100)?
+        .unwrap();
+    // Ordinary geometry and the texture's own flags and alpha, with the world's ambient brightness.
+    assert_eq!(explicit.frame, 2);
+    assert_eq!(explicit.half_extents, Vec2::new(4.5, 13.0));
+    assert_eq!(explicit.radius, 13.6875);
+    assert_eq!(
+        (explicit.brightness, explicit.alpha, explicit.flags),
+        (78, 151, 1)
+    );
+    // An automatic request continues from the shared current frame.
+    let automatic = owner
+        .request_actor_flat_draw(environment, 0x2500, None, &view, 100)?
+        .unwrap();
+    assert!(automatic.frame < 3);
+    assert!(
+        owner
+            .request_actor_flat_draw(environment, 0x2500, Some(3), &view, 101)
+            .is_err()
+    );
+    assert!(
+        owner
+            .request_actor_flat_draw(environment, 0x2501, None, &view, 101)
+            .is_err()
+    );
+    let mut far = view;
+    far.center[0] = 10000.0;
+    assert!(
+        owner
+            .request_actor_flat_draw(environment, 0x2500, None, &far, 101)?
+            .is_none()
     );
     Ok(())
 }

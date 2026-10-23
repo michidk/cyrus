@@ -185,6 +185,60 @@ pub(super) fn call(
     Ok(())
 }
 
+/// One actor flat record ready for the shared effect-image drawing path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActorFlatDraw {
+    /// Lower sixteen bits select the image; `0x20000` selects the explicit frame below.
+    pub descriptor: u32,
+    /// Whole original map units, Y downward, like an environmental effect's position.
+    pub position: [i32; 3],
+    /// Explicit frame, meaningful when `descriptor & 0x20000` is set.
+    pub frame: i32,
+}
+
+impl super::ScriptWorld {
+    /// The flats the original's ordinary actor drawing traversal submits this frame: enabled
+    /// records with a nonzero texture on actors that are neither hidden nor killed, at the actor's
+    /// pose plus the record's offset rotated by the actor's orientation (the effective pose of an
+    /// attached actor), shifted right by eight. A frame word of `0xffff` selects the image's
+    /// automatic playback; any other word is an explicit frame.
+    pub fn actor_flat_draws(&self) -> Result<Vec<ActorFlatDraw>> {
+        let mut draws = Vec::new();
+        for (index, actor) in self.actors.iter().enumerate() {
+            let Some(flat) = actor.flat.as_ref().filter(|flat| flat.enabled) else {
+                continue;
+            };
+            if flat.texture == 0 || flat.texture == 0xffff {
+                continue;
+            }
+            if actor
+                .control
+                .as_ref()
+                .is_some_and(|control| control.hidden || control.killed)
+            {
+                continue;
+            }
+            let id = self.id(index)?;
+            let spatial = self.spatial(id)?;
+            let pose = match (spatial.parent, spatial.effective) {
+                (Some(_), Some(effective)) => effective,
+                _ => spatial.local,
+            };
+            let rotated = cyrus_world::transform::Matrix::orientation(pose.angles)
+                .transform(flat.offset.map(|word| i32::from(word as i16)))?;
+            let position =
+                std::array::from_fn(|axis| rotated[axis].wrapping_add(pose.position[axis]) >> 8);
+            let explicit = flat.frame != 0xffff;
+            draws.push(ActorFlatDraw {
+                descriptor: u32::from(flat.texture) | if explicit { 0x20000 } else { 0 },
+                position,
+                frame: i32::from(flat.frame),
+            });
+        }
+        Ok(draws)
+    }
+}
+
 impl super::ScriptActor {
     /// The per-update flat step, run beside light maintenance for an actor that is not hidden.
     pub(super) fn maintain_flat(&mut self, ticks: u32) {

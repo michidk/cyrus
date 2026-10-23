@@ -294,6 +294,97 @@ impl TextureAnimations {
         Ok(Some(packet))
     }
 
+    /// Whether the prepared effect images include `texture`.
+    pub fn effect_image_prepared(&self, texture: u16) -> bool {
+        self.effects
+            .as_ref()
+            .is_some_and(|effects| effects.bindings.contains_key(&texture))
+    }
+
+    /// Request an actor flat record's image after its source bound is admitted. The sprite uses the
+    /// texture's own flags and alpha, the world's `world_ambientfx` brightness and either an explicit
+    /// frame (replacing the shared current frame, as for effects) or the automatic playback frame.
+    /// Verified: preservation SOUP 'Actor flat drawing'.
+    pub fn request_actor_flat_draw(
+        &mut self,
+        environment: AssetId<cyrus_assets::environment::Environment>,
+        texture: u16,
+        explicit: Option<usize>,
+        view: &EffectDrawView,
+        now: u32,
+    ) -> Result<Option<EffectDraw>> {
+        ensure!(
+            self.is_bound_to(environment),
+            "actor flat draw environment differs from prepared images"
+        );
+        ensure!(
+            self.effects_error.is_none(),
+            "effect image preparation failed: {:?}",
+            self.effects_error
+        );
+        ensure!(
+            view.center.into_iter().all(f32::is_finite)
+                && view.projection_scale.is_finite()
+                && view.projection_scale.min_element() > 0.0
+                && view.clipping.into_iter().all(f32::is_finite)
+                && view.clipping[0] >= 0.0
+                && view.clipping[1] > view.clipping[0],
+            "actor flat draw has invalid camera-space admission inputs"
+        );
+        let prepared = self
+            .effects
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("effect images are not prepared"))?;
+        let binding = prepared.bindings.get(&texture).ok_or_else(|| {
+            anyhow::anyhow!("actor flat texture {texture}: prepared image absent")
+        })?;
+        let metadata = &prepared.metadata[&texture];
+        let (half_extents, radius) = metadata.shape(0);
+        let [x, y, z] = view.center;
+        if super::admission::classify(
+            [x * view.projection_scale.x, y * view.projection_scale.y, z],
+            radius,
+            view.projection_scale,
+            view.clipping,
+        )
+        .is_none()
+        {
+            return Ok(None);
+        }
+        if let Some(frame) = explicit {
+            ensure!(
+                frame < binding.frames.len(),
+                "actor flat texture {texture}: explicit frame {frame} outside 0..{}",
+                binding.frames.len()
+            );
+        }
+        let brightness = prepared.ambient.ok_or_else(|| {
+            anyhow::anyhow!("actor flat texture {texture}: world ambient brightness absent")
+        })? as u8;
+        let alpha = metadata.alpha;
+        let flags = metadata.flags;
+        let state = self.states.get_mut(&binding.key).ok_or_else(|| {
+            anyhow::anyhow!("actor flat texture {texture}: shared timeline absent")
+        })?;
+        if !state.held {
+            if let Some(frame) = explicit {
+                state.playback.frame = Some(frame);
+            } else {
+                state.request(now);
+            }
+        }
+        let frame = state.playback.frame.unwrap_or(0);
+        Ok(Some(EffectDraw {
+            texture: binding.frames[frame].clone(),
+            frame,
+            half_extents,
+            radius,
+            brightness,
+            alpha,
+            flags,
+        }))
+    }
+
     pub(in crate::fog) fn retained_effect_draw(
         &self,
         descriptor: u32,

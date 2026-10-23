@@ -101,8 +101,8 @@ mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
 pub use registry::{
-    ActorEvent, CameraDrive, CameraFrameState, EnvironmentalEffect, EnvironmentalEffects,
-    PublishedCamera, SelectedDeathState, SelectedHealthState,
+    ActorEvent, ActorFlatDraw, CameraDrive, CameraFrameState, EnvironmentalEffect,
+    EnvironmentalEffects, PublishedCamera, SelectedDeathState, SelectedHealthState,
 };
 mod inventory;
 mod journal;

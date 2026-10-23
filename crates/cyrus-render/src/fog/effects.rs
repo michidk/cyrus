@@ -42,6 +42,12 @@ struct LiveEffects {
     repaint: bool,
     pending: Option<Vec<(usize, cyrus_game::script::EnvironmentalEffect)>>,
     slots: Vec<Slot>,
+    /// Presentation slots for actor flat records, grown on demand and ordered after the pool.
+    flat_slots: Vec<Slot>,
+    pending_flats: Option<Vec<cyrus_game::script::ActorFlatDraw>>,
+    flat_packets: Vec<(Vec3, super::EffectDraw)>,
+    /// Flat textures already reported as missing from the prepared images.
+    reported_flats: std::collections::BTreeSet<u16>,
     lights: crate::lighting::runtime::RuntimeLights,
 }
 
@@ -100,13 +106,18 @@ fn bind(
             textures.effect_draws.clear();
             textures.effect_clock = Default::default();
         }
-        for slot in live.slots.drain(..) {
+        let live = &mut *live;
+        let released = live.slots.drain(..).chain(live.flat_slots.drain(..));
+        for slot in released {
             commands.entity(slot.entity).despawn();
             meshes.remove(slot.mesh.id());
             materials.remove(slot.material.id());
         }
         live.owner = None;
         live.pending = None;
+        live.pending_flats = None;
+        live.flat_packets.clear();
+        live.reported_flats.clear();
     }
     let (Some(owner), Some(world), Some(environment), Some(clipping)) = (
         owner,
@@ -245,6 +256,15 @@ fn capture(
                         .map(|(slot, effect)| (slot, effect.clone()))
                         .collect(),
                 );
+                match world.actor_flat_draws() {
+                    Ok(flats) => live.pending_flats = Some(flats),
+                    Err(error) => {
+                        textures.effects_error = Some(format!(
+                            "world {} actor flat submission: {error:#}",
+                            world.world
+                        ))
+                    }
+                }
             }
         }
         Err(error) => {
@@ -351,8 +371,52 @@ fn draw(
             live.repaint = true;
         }
         live.repaint |= std::mem::take(&mut textures.effects_repaint);
+        if let Some(flats) = live.pending_flats.take() {
+            let now = cyrus_game::clock::bios_tick(elapsed);
+            let mut packets = Vec::new();
+            for flat in flats {
+                let texture = flat.descriptor as u16;
+                if !textures.effect_image_prepared(texture) {
+                    if live.reported_flats.insert(texture) {
+                        error!(
+                            "world {}: actor flat texture {texture:#06x} has no prepared image; its flats are not drawn (re-export the world)",
+                            owner.1
+                        );
+                    }
+                    continue;
+                }
+                let position = exported_position(flat.position);
+                let center = camera.affine().inverse().transform_point3(position) * 20.0;
+                let view = EffectDrawView {
+                    center: [center.x, center.y, -center.z],
+                    projection_scale: scale,
+                    clipping,
+                };
+                let explicit = if flat.descriptor & 0x20000 != 0 {
+                    Some(usize::try_from(flat.frame).map_err(|_| {
+                        anyhow::anyhow!(
+                            "actor flat texture {texture}: negative frame {}",
+                            flat.frame
+                        )
+                    })?)
+                } else {
+                    None
+                };
+                if let Some(packet) = textures.request_actor_flat_draw(
+                    request.0.id(),
+                    texture,
+                    explicit,
+                    &view,
+                    now,
+                )? {
+                    packets.push((position, packet));
+                }
+            }
+            live.flat_packets = packets;
+            live.repaint = true;
+        }
         if !live.repaint {
-            for slot in &live.slots {
+            for slot in live.slots.iter().chain(&live.flat_slots) {
                 let transform =
                     Transform::from_translation(slot.position).with_rotation(camera.rotation());
                 commands
@@ -360,11 +424,13 @@ fn draw(
                     .insert((transform, GlobalTransform::from(transform)));
             }
             if let Some(mut transmission) = transmission {
-                transmission.steps = (flats.iter().len() + textures.effect_draws.len()).max(1);
+                transmission.steps =
+                    (flats.iter().len() + textures.effect_draws.len() + live.flat_packets.len())
+                        .max(1);
             }
             return Ok(());
         }
-        for (index, slot) in live.slots.iter().enumerate() {
+        for (index, slot) in live.slots.iter().chain(&live.flat_slots).enumerate() {
             commands.entity(slot.entity).insert(EffectBillboard {
                 slot: index,
                 alpha: 255,
@@ -409,8 +475,70 @@ fn draw(
             ));
             admitted += 1;
         }
+        let pool = live.slots.len();
+        let packets = std::mem::take(&mut live.flat_packets);
+        while live.flat_slots.len() < packets.len() {
+            let placeholder = EffectDraw {
+                texture: Handle::default(),
+                frame: 0,
+                half_extents: Vec2::ZERO,
+                radius: 0.0,
+                brightness: 255,
+                alpha: 255,
+                flags: 1,
+            };
+            let mesh = meshes.add(geometry::mesh(&placeholder)?);
+            let material =
+                materials.add(geometry::material(&placeholder, &fog, &Handle::default()));
+            let entity = commands
+                .spawn((
+                    Mesh3d(mesh.clone()),
+                    MeshMaterial3d(material.clone()),
+                    Transform::default(),
+                    GlobalTransform::default(),
+                    Visibility::Visible,
+                    NoFrustumCulling,
+                    EffectBillboard {
+                        slot: pool + live.flat_slots.len(),
+                        alpha: 255,
+                        admitted: false,
+                    },
+                ))
+                .id();
+            live.flat_slots.push(Slot {
+                entity,
+                mesh,
+                material,
+                shape: None,
+                position: Vec3::ZERO,
+            });
+        }
+        for (index, (position, packet)) in packets.iter().enumerate() {
+            let slot = &mut live.flat_slots[index];
+            let shape = (packet.half_extents, packet.brightness, packet.flags);
+            if slot.shape != Some(shape) {
+                meshes.insert(slot.mesh.id(), geometry::mesh(packet)?)?;
+                slot.shape = Some(shape);
+            }
+            materials.insert(
+                slot.material.id(),
+                geometry::material(packet, &fog, &lights),
+            )?;
+            slot.position = *position;
+            let transform = Transform::from_translation(*position).with_rotation(camera.rotation());
+            commands.entity(slot.entity).insert((
+                transform,
+                GlobalTransform::from(transform),
+                EffectBillboard {
+                    slot: pool + index,
+                    alpha: packet.alpha,
+                    admitted: true,
+                },
+            ));
+        }
+        live.flat_packets = packets;
         if let Some(mut transmission) = transmission {
-            transmission.steps = (flats.iter().len() + admitted).max(1);
+            transmission.steps = (flats.iter().len() + admitted + live.flat_packets.len()).max(1);
         }
         live.repaint = false;
         Ok(())

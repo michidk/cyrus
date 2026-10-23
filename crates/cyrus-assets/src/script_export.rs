@@ -23,6 +23,34 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
     )
 }
 
+/// Texture identities (bank in the upper nine bits, image in the low seven) that the world's
+/// scripts give the `Flat*` natives as literals, so their images can be prepared for drawing.
+/// An identity computed at run time cannot be found here.
+pub fn flat_texture_identities(scripts: &Scripts) -> std::collections::BTreeSet<u16> {
+    let mut identities = std::collections::BTreeSet::new();
+    for actor in scripts.actors.values() {
+        for step in actor.program.steps.values() {
+            let (Operation::Call { call } | Operation::ObjectCall { call }) = &step.operation
+            else {
+                continue;
+            };
+            let literal = |index: usize| match call.arguments.get(index) {
+                Some(cyrus_script::program::Value::Integer { value }) => Some(*value),
+                _ => None,
+            };
+            let identity = match call.function.to_ascii_lowercase().as_str() {
+                "flat" | "flatlikestatic" | "flatanimate" => literal(0).map(|id| id as u16),
+                "flatsettexture" => literal(0)
+                    .zip(literal(1))
+                    .map(|(bank, image)| (((bank << 7) & 0xff80) | (image & 7)) as u16),
+                _ => None,
+            };
+            identities.extend(identity.filter(|id| *id != 0 && *id != u16::MAX));
+        }
+    }
+    identities
+}
+
 /// Decode the same actor programs and installed defaults on either target.
 /// A loaded world registry supplies weapon bytes without another source read.
 pub fn prepare_source(

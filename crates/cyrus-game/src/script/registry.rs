@@ -24,6 +24,7 @@ mod direct_point;
 mod dragon;
 pub(super) mod falling;
 mod flat;
+pub use flat::ActorFlatDraw;
 mod follow;
 pub(super) mod ground;
 pub(super) mod hazard;
