@@ -5238,6 +5238,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             control.killed = true;
             control.death_selector = 8;
             self.registry.actors[self.index].model.current = None;
+            // The original frees the receiver's light record, so a later light call starts a new one.
+            self.registry.actors[self.index].light = None;
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(
