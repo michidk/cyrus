@@ -65,6 +65,11 @@ just run-native          # in dev/docker/dev with a virtual display, no preview:
 and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
 pirates are defeated; the story then loads the next world by itself.
 
+In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
+`window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
+data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
+events (a software-rendered tab runs at about 2 frames per second, so its key holds are long).
+
 Headless mode creates no camera or audio backend. Control state reports a null
 flycam position; player input, preload, world export and protocol commands remain
 available. Use a windowed run for flycam and screenshot checks.
