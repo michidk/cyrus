@@ -34,10 +34,12 @@ sync-marked data sectors and keeps the track's length and timing.
 
 ## Credits scroll pace
 
-**Inferred:** the original scrolls the credits one pixel per buffer swap with swap
-interval one, which waits for one display refresh. cyrus scrolls one pixel per 1/60 s
-on any display. The original's refresh rate setting was not recovered, so its visible
-pace is not verified.
+**Verified:** the original scrolls the credits one pixel per buffer swap with swap interval one, and opens
+its Glide window with the 60 Hz refresh setting
+([credits facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md#credits-scroll)).
+cyrus scrolls one pixel per 1/60 s on any display, which is the pace of a display that honours that
+setting. **Inferred:** other displays and emulated Glide swaps pace differently (a DOSBox-X run scrolled
+faster); the original's pace there is not a target.
 
 ## Rope attachment shortcuts
 
