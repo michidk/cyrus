@@ -257,6 +257,24 @@ fn subroutines_share_locals_and_resume_the_actor_return_continuation() {
     assert_eq!(host.calls, ["Observe"]);
 }
 #[test]
+fn return_without_gosub_restarts_the_script_and_yields() {
+    let mut vm = runtime(vec![
+        assign(Place::Flag { index: 0 }, 1),
+        Operation::End { target: 2 },
+        assign(Place::Flag { index: 1 }, 2),
+        Operation::Return,
+    ]);
+    let mut flags = [0, 0];
+    vm.invoke(Thread::Main, &mut Service::default(), &mut flags, 20)
+        .unwrap();
+    assert_eq!(vm.program_counter(Thread::Main), Some(2));
+    vm.invoke(Thread::Main, &mut Service::default(), &mut flags, 20)
+        .unwrap();
+    assert_eq!(flags, [1, 2]);
+    assert_eq!(vm.program_counter(Thread::Main), Some(0));
+    assert_eq!(vm.failure(), None);
+}
+#[test]
 fn interrupt_and_main_have_independent_continuations_and_shared_locals() {
     let p = program(
         2,

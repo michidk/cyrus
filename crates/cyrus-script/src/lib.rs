@@ -458,10 +458,21 @@ impl Runtime {
                     self.state.return_to = Some(next);
                     next = *target;
                 }
-                Operation::Return => {
-                    next = self.state.return_to.context("Return without Gosub")?;
-                    self.state.script_return = self.state.saved_return;
-                }
+                Operation::Return => match self.state.return_to {
+                    Some(target) => {
+                        next = target;
+                        self.state.script_return = self.state.saved_return;
+                    }
+                    // No Gosub has stored a continuation: the run ends at the script base and
+                    // the main continuation restarts there, from either continuation.
+                    None => {
+                        next = 0;
+                        yield_now = true;
+                        if let Some(main) = self.state.threads[Thread::Main.index()].as_mut() {
+                            main.cursor = 0;
+                        }
+                    }
+                },
                 Operation::End { target } => {
                     host.end(thread)?;
                     next = *target;
