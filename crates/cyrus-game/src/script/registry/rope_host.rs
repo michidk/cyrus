@@ -427,19 +427,18 @@ impl ScriptWorld {
         self.request_ordinary_group(id, group, false, ticks, sounds)
     }
 
-    /// The jump-key release: the removal's detach motion, then the ordinary jump entry with the
-    /// 24-tick countdown running, which queues motion 24 and forces the rope-jump group.
-    #[allow(clippy::too_many_arguments)] // The release reads the keys, clock, installed values and sound sink.
-    fn release_player(
+    /// The original's detach routine: removes the actor's attachment from the rope, applies the
+    /// detach motion (speed from the node motion, amplitude, the rope direction and the held
+    /// vertical keys), clears the actor's attachment flag and pitch and starts its 24-tick rope
+    /// countdown.
+    fn detach_attachment(
         &mut self,
         id: ScriptActorId,
         rope_index: usize,
         up: bool,
         down: bool,
         frame_scale: i32,
-        ticks: u32,
         settings: cyrus_assets::script::RopeSettings,
-        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
@@ -472,20 +471,68 @@ impl ScriptWorld {
                 -settings.jump_add.saturating_sub(extra)
             }
         };
-        let origin_y = self.spatial(id)?.local.position[1];
         self.spatial
             .as_mut()
-            .context("rope release spatial state unavailable")?
+            .context("rope detach spatial state unavailable")?
             .actor_mut(index)?
             .local
             .angles[0] = 0;
         let control = self.actors[index]
             .control
             .as_mut()
-            .context("rope release control unavailable")?;
+            .context("rope detach control unavailable")?;
         control.rope_attached = false;
         control.rope_speed = speed;
         control.jump_selector = 24;
+        Ok(())
+    }
+
+    /// The health services' rope detach: the selected player lets go with no vertical key held.
+    /// Unknown: whether the original reads the held keys here; neutral keys are assumed.
+    pub(super) fn detach_selected_from_rope(
+        &mut self,
+        id: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let settings = self
+            .updates
+            .rope
+            .context("rope detach settings unavailable")?;
+        let frame_scale = i32::try_from(
+            inputs
+                .frame_scale
+                .context("rope detach frame scale unavailable")?,
+        )?;
+        let rope_index = self
+            .ropes
+            .iter()
+            .position(|rope| rope.attachments.iter().any(|a| a.actor == index))
+            .context("rope detach: attachment unavailable")?;
+        self.detach_attachment(id, rope_index, false, false, frame_scale, settings)
+    }
+
+    /// The jump-key release: the removal's detach motion, then the ordinary jump entry with the
+    /// 24-tick countdown running, which queues motion 24 and forces the rope-jump group.
+    #[allow(clippy::too_many_arguments)] // The release reads the keys, clock, installed values and sound sink.
+    fn release_player(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        up: bool,
+        down: bool,
+        frame_scale: i32,
+        ticks: u32,
+        settings: cyrus_assets::script::RopeSettings,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let origin_y = self.spatial(id)?.local.position[1];
+        self.detach_attachment(id, rope_index, up, down, frame_scale, settings)?;
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("rope release control unavailable")?;
         control.stable_position_valid = false;
         control.fall_origin_y = origin_y;
         control.fall_timer = 0;

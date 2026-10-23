@@ -24297,6 +24297,7 @@ fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed(
 #[test]
 fn point_entry_rejects_unavailable_branches_before_pending_motion() {
     use cyrus_game::script::ScriptInputs;
+<<<<<<< Updated upstream
     let mut world = point_movement_fixture(
         0,
         false,
@@ -24330,6 +24331,45 @@ fn point_entry_rejects_unavailable_branches_before_pending_motion() {
         message.contains("hit reaction requires the shared engine random stream"),
         "{message}"
     );
+=======
+    {
+        let (field, value, error) = (
+            "body_response_flags",
+            4,
+            "hit reaction requires the shared engine random stream",
+        );
+        let mut world = point_movement_fixture(
+            0,
+            false,
+            false,
+            |_| {},
+            |saved| {
+                saved["actors"][0]["control"][field] = value.into();
+            },
+        )
+        .0;
+        let id = world.id(0).unwrap();
+        let position = world.spatial(id).unwrap().local.position;
+        let message = format!(
+            "{:#}",
+            world
+                .move_ordinary_point(
+                    id,
+                    position,
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None
+                )
+                .unwrap_err()
+        );
+        assert!(message.contains(error), "{message}");
+    }
+>>>>>>> Stashed changes
 }
 
 fn point_movement_fixture(
@@ -27691,8 +27731,19 @@ fn player_health_fixture() -> (
     cyrus_assets::animation::Animations,
     cyrus_game::player::data::PlayerScene,
 ) {
+    player_health_fixture_with(|_| {})
+}
+
+fn player_health_fixture_with(
+    prepare: impl FnOnce(&mut Scripts),
+) -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
-    let (scripts, mut world, data, scene) = player_walking_fixture();
+    let (scripts, mut world, data, scene) = player_walking_fixture_with(prepare);
     let index = world
         .actors()
         .iter()
@@ -28160,12 +28211,73 @@ fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or
 }
 
 #[test]
-fn selected_health_keeps_attached_rope_cleanup_explicit() {
+fn selected_health_damage_lets_an_attached_player_go_of_its_rope() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (scripts, world, mut data, _) = player_health_fixture_with(|scripts| {
+        scripts.updates.rope = Some(cyrus_assets::script::RopeSettings {
+            jump_add: 64,
+            attach_angle: 0,
+        });
+    });
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    data.metadata["ropes"] = serde_json::json!([{
+        "position": [0.0, 0.0, 0.0],
+        "angle_y": 0,
+        "rope_type": 0,
+        "swing": 0,
+        "speed": 0,
+        "length": 8,
+        "static_model": "",
+        "rope_model": "ROPELINK",
+        "unknown1": [0, 0, 0],
+    }]);
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+        saved["actors"][index]["control"]["rope_attached"] = true.into();
+        saved["ropes"] = serde_json::json!([{
+            "amplitude": 0,
+            "phase": 0,
+            "step": 0,
+            "push": 0,
+            "direction": 0,
+            "previous_sum": 0,
+            "attachments": [[index, 3, 0]],
+        }]);
+    });
+    assert_eq!(world.ropes()[0].attachments.len(), 1);
+    let id = world.id(index).unwrap();
+    let hud = ScriptHud::default();
+    world
+        .apply_selected_contact_health(
+            id,
+            -7,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::from_state(1),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let control = world.actors()[index].control_state().unwrap();
+    assert!(!control.rope_attached);
+    assert_eq!(control.jump_selector, 24);
+    assert!(world.ropes()[0].attachments.is_empty());
+    assert_eq!(world.actors()[index].attributes()[3], 43);
+}
+
+#[test]
+fn selected_health_refuses_an_attached_rope_without_rope_state() {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
     let (field, value, boundary) = (
         "rope_attached",
         serde_json::json!(true),
-        "attached-rope destruction unavailable",
+        "rope detach settings unavailable",
     );
     let (scripts, world, mut data, _) = player_health_fixture();
     let index = world

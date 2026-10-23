@@ -250,8 +250,8 @@ impl ScriptWorld {
     /// Apply selected-player additive health in service order. Inhibition precedes
     /// HUD access. Timer and actor health writes survive later feedback errors;
     /// displayed health publishes only after taunt and reaction return.
-    /// Ledge reset retains its own support and inhibition state. Attached-rope
-    /// destruction remains unavailable. Death is
+    /// Ledge reset retains its own support and inhibition state. An attached rope
+    /// is let go through the rope detach. Death is
     /// dispatched by the contact caller, never by this additive service.
     pub fn apply_selected_contact_health(
         &mut self,
@@ -386,14 +386,14 @@ impl ScriptWorld {
                     })?;
             animation.frame = frame.or(animation.frame);
             self.reset_selected_reaction_action(id, inputs, sounds)?;
-            let control = self.actors[index]
+            let attached = self.actors[index]
                 .control
                 .as_ref()
-                .context("selected reaction control unavailable")?;
-            ensure!(
-                !control.rope_attached,
-                "selected reaction attached-rope destruction unavailable"
-            );
+                .context("selected reaction control unavailable")?
+                .rope_attached;
+            if attached {
+                self.detach_selected_from_rope(id, inputs)?;
+            }
         }
         Ok(())
     }
@@ -703,14 +703,14 @@ impl ScriptWorld {
                 .clamp(0, maximum);
             if change < 0 {
                 self.reset_selected_reaction_action(id, inputs, sounds)?;
-                ensure!(
-                    !self.actors[index]
-                        .control
-                        .as_ref()
-                        .context("selected death control unavailable")?
-                        .rope_attached,
-                    "selected death attached-rope detach unavailable"
-                );
+                if self.actors[index]
+                    .control
+                    .as_ref()
+                    .context("selected death control unavailable")?
+                    .rope_attached
+                {
+                    self.detach_selected_from_rope(id, inputs)?;
+                }
             }
             self.actors[index].attributes[3] = health as u8;
             self.globals

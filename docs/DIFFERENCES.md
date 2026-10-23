@@ -45,7 +45,9 @@ pace is not verified.
 **Inferred or simplified:** the hand-height link choice (grab and downward climb) skips its clamp against
 the floor probe near the ground, the climb helpers do not read the
 animation record's progress bytes, and the swing sound plays without its channel start index (owned by the
-first attached actor; not heard in a running world).
+first attached actor; not heard in a running world). A hit on the hanging selected player lets go through
+the same detach routine as the jump release, with no vertical key held; **Unknown:** whether the original reads
+the held keys there.
 
 ## Ground prevalidation with one missing surface
 
