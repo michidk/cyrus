@@ -285,7 +285,21 @@ fn model_collection_preserves_eligible_order_and_excludes_only_requested_identit
             .len(),
         64
     );
-    assert!(collect_segment_models([0; 3], [i32::MAX; 3], 0, None, &[first]).is_err());
+    // The squared displacement wraps at 32 bits as in the original: each of the three
+    // 8388607-unit components squares to -16777215 after wrapping, its absolute values sum to
+    // 50331645 and the added radius is 2 * 7094.
+    let near = ModelBounds {
+        position: [14_000.0, 0.0, 0.0],
+        ..first
+    };
+    let far = ModelBounds {
+        position: [14_400.0, 0.0, 0.0],
+        ..first
+    };
+    assert_eq!(
+        collect_segment_models([0; 3], [i32::MAX; 3], 0, None, &[first, near, far]).unwrap(),
+        [first.instance, near.instance]
+    );
 }
 
 #[test]

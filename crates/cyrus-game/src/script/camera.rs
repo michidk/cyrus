@@ -1773,15 +1773,14 @@ impl CameraState {
 }
 
 /// Segment collector origin and added model radius in map units.
-/// The admitted range excludes the original signed squared-length overflow path.
-fn segment_bounds(start: [i32; 3], end: [i32; 3]) -> Result<([i32; 3], u32)> {
-    let delta = std::array::from_fn::<_, 3, _>(|axis| end[axis].wrapping_sub(start[axis]) >> 8);
-    let squared: i64 = delta.into_iter().map(|value| i64::from(value).pow(2)).sum();
-    anyhow::ensure!(
-        squared <= i64::from(i32::MAX),
-        "camera segment squared length {squared}: signed overflow path unsupported"
-    );
-    Ok((start.map(|value| value >> 8), 2 * (squared as u32).isqrt()))
+/// The displacement squares wrap at 32 bits, are made non-negative with a wrapping absolute
+/// value, and are summed with wrap into an unsigned root argument, as the original does.
+fn segment_bounds(start: [i32; 3], end: [i32; 3]) -> ([i32; 3], u32) {
+    let squared = (0..3).fold(0u32, |sum, axis| {
+        let delta = end[axis].wrapping_sub(start[axis]) >> 8;
+        sum.wrapping_add(delta.wrapping_mul(delta).wrapping_abs() as u32)
+    });
+    (start.map(|value| value >> 8), 2 * squared.isqrt())
 }
 
 /// Test a segment collector's model bound with stored single-precision intermediates.
@@ -1822,7 +1821,7 @@ pub fn collect_segment_models(
     excluded: Option<cyrus_collision::candidates::ModelInstance>,
     models: &[cyrus_collision::candidates::ModelBounds],
 ) -> Result<Vec<cyrus_collision::candidates::ModelInstance>> {
-    let (origin, radius) = segment_bounds(start, end)?;
+    let (origin, radius) = segment_bounds(start, end);
     let mut result = Vec::new();
     for model in models {
         if Some(model.instance) == excluded {
