@@ -104,6 +104,27 @@ impl<'a> CombatReceiver<'a> {
         self.events = Some(events);
         self
     }
+    /// An actor that always holds its weapon (attribute 110) keeps it drawn while attribute 23
+    /// names a weapon item, and drawing or sheathing never runs; without such an item the
+    /// holding attributes are cleared. Without combat state the weapon is not drawn.
+    fn hold_intrinsic_weapon(&mut self, hud: &crate::script::ScriptHud) {
+        let actor = &mut *self.actor;
+        let weapon = actor.attributes[23];
+        let valid = weapon != 0 && hud.validate_weapon(weapon).is_ok();
+        if !valid {
+            actor.attributes[110] = 0;
+            actor.attributes[23] = 0;
+        }
+        let control = actor
+            .control
+            .as_mut()
+            .expect("validated weapon transition control");
+        control.weapon_drawn = valid && control.combat.is_some();
+        if valid && matches!(control.living_state, 20 | 21) {
+            control.living_state = 0;
+        }
+    }
+
     fn update_weapon_transition(
         &mut self,
         inputs: WeaponInputs,
@@ -122,10 +143,11 @@ impl<'a> CombatReceiver<'a> {
         if control.combat.is_none() && actor.attributes[110] == 0 {
             return Ok(());
         }
-        anyhow::ensure!(
-            actor.attributes[110] == 0,
-            "weapon transition intrinsic weapon attachment unsupported"
-        );
+        if actor.attributes[110] != 0 {
+            self.hold_intrinsic_weapon(hud);
+        }
+        let actor = &*self.actor;
+        let control = actor.control.as_ref().expect("validated weapon control");
         let weapon = actor.attributes[23];
         hud.validate_weapon(weapon)?;
         let state = control.living_state;
@@ -833,6 +855,70 @@ mod tests {
                 control.motion_companion
             ),
             (0, false, 7)
+        );
+    }
+
+    #[test]
+    fn an_actor_that_always_holds_its_weapon_keeps_it_drawn() {
+        let hud = weapon_hud();
+        let id = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let inputs = WeaponInputs {
+            selected_player: id,
+            item_system_ready: true,
+            shell_execution: false,
+        };
+        // (attribute 23, combat state, living state) -> (drawn, living state, attribute 110, attribute 23)
+        for (weapon, combat, living, expected) in [
+            (1, true, 0, (true, 0, 1, 1)),
+            (1, true, 20, (true, 0, 1, 1)),
+            (1, true, 21, (true, 0, 1, 1)),
+            (1, false, 0, (false, 0, 1, 1)),
+        ] {
+            let mut actor = actor();
+            actor.attributes[110] = 1;
+            actor.attributes[23] = weapon;
+            let control = actor.control.as_mut().unwrap();
+            control.living_state = living;
+            if !combat {
+                control.combat = None;
+            }
+            let mut globals = Default::default();
+            let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
+            receiver
+                .update_weapon_transition(inputs, &hud, 0, &mut |_, _| Ok(()))
+                .unwrap();
+            let actor = &*receiver.actor;
+            let control = actor.control.as_ref().unwrap();
+            assert_eq!(
+                (
+                    control.weapon_drawn,
+                    control.living_state,
+                    actor.attributes[110],
+                    actor.attributes[23]
+                ),
+                expected
+            );
+        }
+        // A missing weapon item clears the holding attributes and the transition then fails.
+        let mut actor = actor();
+        actor.attributes[110] = 1;
+        actor.attributes[23] = 0;
+        let mut globals = Default::default();
+        let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
+        assert!(
+            receiver
+                .update_weapon_transition(inputs, &hud, 0, &mut |_, _| Ok(()))
+                .is_err()
+        );
+        assert_eq!(
+            (
+                receiver.actor.attributes[110],
+                receiver.actor.attributes[23]
+            ),
+            (0, 0)
         );
     }
 

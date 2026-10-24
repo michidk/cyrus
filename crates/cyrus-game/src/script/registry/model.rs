@@ -1080,10 +1080,6 @@ impl ScriptWorld {
         if control.combat.is_none() && actor.attributes[110] == 0 {
             return Ok(());
         }
-        ensure!(
-            actor.attributes[110] == 0,
-            "intrinsic weapon attachment unsupported"
-        );
         let item = u16::from(actor.attributes[23]);
         let definition = self
             .weapons
