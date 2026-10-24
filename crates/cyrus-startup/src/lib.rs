@@ -95,6 +95,17 @@ pub struct StartGame {
 #[derive(Message)]
 pub struct QuitRequest;
 
+/// A player-facing save/load action emitted by the authored book menu.
+///
+/// Hosts own slot storage and restoration. Keeping this message in the startup
+/// crate lets native and browser hosts consume the same installed action
+/// without making the presentation layer depend on either storage adapter.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveLoadRequest {
+    /// Open the host's saved-game selection flow.
+    Load,
+}
+
 #[derive(Resource)]
 struct Playback {
     frames: Vec<Handle<Image>>,
@@ -112,6 +123,7 @@ impl Plugin for StartupPlugin {
             .init_resource::<cyrus_game::script::DeathDispatch>()
             .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
             .add_message::<QuitRequest>()
+            .add_message::<SaveLoadRequest>()
             .insert_resource(ClearColor(Color::BLACK))
             .add_systems(OnEnter(AppState::Loading), setup)
             .add_systems(

@@ -316,6 +316,7 @@ pub(super) fn drive(
         ResMut<cyrus_game::player::input::PlayerBindings>,
         Commands,
         ResMut<NextState<AppState>>,
+        MessageWriter<super::SaveLoadRequest>,
     ),
 ) {
     if menu.last_game.is_some() {
@@ -323,7 +324,7 @@ pub(super) fn drive(
     }
     let (assets, definitions) = assets;
     let (mut images, mut sprite) = rendering;
-    let (mut preferences_state, mut bindings, mut commands, mut next) = runtime;
+    let (mut preferences_state, mut bindings, mut commands, mut next, mut save_load) = runtime;
     if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(menu.asset.id()) {
         if menu.unavailable.is_none() {
             let text = format!("Menu assets unavailable: {error}");
@@ -535,6 +536,7 @@ pub(super) fn drive(
                     // New Game starts a fresh world. Load must never silently
                     // substitute a fresh world for a missing or unsupported save.
                     2 => {
+                        save_load.write(super::SaveLoadRequest::Load);
                         menu.unavailable = Some("Saved-game selection is unavailable.".into());
                     }
                     10 => {
@@ -912,6 +914,7 @@ mod tests {
         .init_resource::<cyrus_game::player::input::PlayerBindings>()
         .add_message::<AppExit>()
         .add_message::<SoundCue>()
+        .add_message::<super::SaveLoadRequest>()
         .insert_resource(clock)
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(60),
