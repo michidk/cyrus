@@ -6,7 +6,7 @@ ordinary updates run for `--seconds`, and prints every actor whose script report
 (once per distinct message). An optional `--flag WORLD:NAME=VALUE` first sets a global flag
 through the console, which starts the story scene that polls it (for example
 `CATACOMB:scene2=1`, `JAILINT:scene5=1`, `MGUILD:gremlin_scene=1`, `START:deadpirates=2`).
-Exits 0 when no world failed to load and no actor failed, 1 otherwise. Needs a running native
+Exits 0 when no world failed to load, no script world failed or stalled and no actor failed, 1 otherwise. Needs a running native
 cyrus with CYRUS_CONTROL_ADDR set (a real-time audio sink, see docs/SETUP.md, lets voiced lines finish at their own pace), for example
 
     dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT
@@ -85,6 +85,7 @@ def main():
             call({"type": "console", "open": True})
             call({"type": "console", "line": f"setflag {assignment}"})
             call({"type": "console", "open": False})
+        game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
         seen, end = {}, time.time() + args.seconds
         while True:
             seen.update(failures())
@@ -93,8 +94,17 @@ def main():
             time.sleep(min(15, max(1, end - time.time())))
         for (name, message) in seen:
             print(f"{world}: {name}: {message[:300]}")
+        # A failed script world stops ticking without any actor reporting it, so check the world itself.
+        final = call({"type": "state"})
+        world_error = (final.get("scripts") or {}).get("error")
+        ticked = (final.get("clock") or {}).get("game_seconds", 0) - game0
+        stalled = ticked < min(args.seconds, 30) / 4
+        if world_error:
+            print(f"{world}: script world failed: {world_error[:300]}")
+        if stalled:
+            print(f"{world}: game clock advanced only {ticked:.1f} s in {args.seconds} s")
         print(f"{world}: {len(seen)} failing actors")
-        bad += bool(seen)
+        bad += bool(seen) or bool(world_error) or stalled
     return 1 if bad else 0
 
 

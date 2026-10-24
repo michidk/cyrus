@@ -141,7 +141,9 @@ fn sync_audio(
     mut readiness: ResMut<cyrus_audio::AudioReadiness>,
     settings: Option<ResMut<cyrus_audio::sound::SoundSettings>>,
 ) {
-    readiness.prepare = startup.title_visible;
+    // A skipped startup shows no title to wait for, and a world entered before the title would
+    // otherwise run without audio settings (the torch sound then fails the script world).
+    readiness.prepare = startup.skip || startup.title_visible;
     if let (Some(preferences), Some(mut settings)) = (
         menu.as_ref().and_then(|menu| menu.preferences.as_ref()),
         settings,
@@ -296,6 +298,16 @@ fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupCon
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_skipped_startup_prepares_audio_without_waiting_for_the_title() {
+        use cyrus_audio::AudioReadiness;
+        let mut app = App::new();
+        app.insert_resource(StartupPresentation::without_splash())
+            .insert_resource(AudioReadiness { prepare: false })
+            .add_systems(Update, sync_audio);
+        app.update();
+        assert!(app.world().resource::<AudioReadiness>().prepare);
+    }
     #[test]
     fn audio_host_copies_committed_preferences_before_cues() {
         use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
