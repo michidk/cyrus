@@ -1727,3 +1727,22 @@ fn a_barred_turn_animation_still_turns_the_heading() {
     assert_eq!((barred.heading, barred.roll), (free.heading, free.roll));
     assert_eq!(barred.heading, 148);
 }
+
+#[test]
+fn the_fight_turn_attributes_apply_to_a_weapon_holder_outside_the_running_groups_or_a_hand_item_51()
+{
+    use cyrus_game::player::turn::fight_values_selected as fight;
+    assert!(!fight(false, Some(8), None), "sheathed, empty hand");
+    assert!(fight(true, Some(8), None), "weapon held, standing");
+    assert!(
+        fight(true, None, Some(0)),
+        "weapon held, no animation group"
+    );
+    assert!(!fight(true, Some(18), None), "weapon held, group 18");
+    assert!(!fight(true, Some(31), Some(3)), "weapon held, group 31");
+    assert!(fight(false, Some(8), Some(51)), "hand item 51");
+    assert!(
+        fight(true, Some(18), Some(51)),
+        "hand item 51 overrides the running groups"
+    );
+}

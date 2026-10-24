@@ -47,6 +47,13 @@ impl GroundTurn {
     }
 }
 
+/// Whether a direction's accumulator adds the player's fight-turn attributes (accel up to
+/// speed) instead of SYSTEM.INI's `turn_speed` up to `turn_max_speed`: the player holds a weapon
+/// (the shared weapon predicate) and plays a group other than 18 or 31, or its hand item is 51.
+pub fn fight_values_selected(holding: bool, group: Option<u16>, hand_item: Option<u8>) -> bool {
+    (holding && !matches!(group, Some(18 | 31))) || hand_item == Some(51)
+}
+
 /// Heading after subtracting a signed turn amount, wrapped to 2048.
 pub fn turned(heading: u16, delta: i64) -> u16 {
     (i64::from(heading) - delta).rem_euclid(2048) as u16

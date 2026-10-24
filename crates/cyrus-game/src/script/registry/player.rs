@@ -538,6 +538,47 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Whether the turn accumulators of the selected player add the fight-turn attributes
+    /// (`attr_fight_turn_accel` up to `attr_fight_turn_speed`) instead of SYSTEM.INI's
+    /// `turn_speed` up to `turn_max_speed`: the player holds a weapon and plays a group other
+    /// than 18 or 31, or its hand item is 51. Decoded from the original's input update
+    /// (recorded in the redguard-decomp supplement 2026-10-24-fight-turn-accumulators).
+    pub(super) fn player_turn_uses_fight_values(
+        &self,
+        id: super::ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+    ) -> Result<bool> {
+        let actor = &self.actors[id.index];
+        let Some(control) = actor.control.as_ref() else {
+            return Ok(false);
+        };
+        let group = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let (holding, _, _) = super::super::activation::weapon_predicates(
+            control.living_state,
+            actor
+                .animation
+                .as_ref()
+                .map(|_| super::super::ActivationAnimation { group }),
+            control.combat_death_default.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            inputs
+                .hud
+                .map(|hud| hud.inventory_ready())
+                .transpose()?
+                .unwrap_or(false),
+            inputs.shell_execution.unwrap_or(false),
+        );
+        Ok(turn::fight_values_selected(
+            holding,
+            group,
+            control.held_item,
+        ))
+    }
+
     /// Ordinary keyboard ground turn of the selected player, with its
     /// turn animation (not requested while a weapon is held or on surface 2 or 4) and roll, following preservation's
     /// [ground-turn rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-turn-eligibility-and-animation).

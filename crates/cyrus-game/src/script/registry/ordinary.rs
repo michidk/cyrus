@@ -363,10 +363,16 @@ impl ScriptWorld {
                 // The input update runs every frame, including while a script task owns the player.
                 if let (Some(query), Some(controller)) = (&player_query, inputs.player_controller) {
                     let settings = &query.scene.settings;
+                    let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
+                        let attributes = &self.actors[id.index].attributes;
+                        (u32::from(attributes[22]), u32::from(attributes[21]))
+                    } else {
+                        (settings.turn_speed, settings.turn_max_speed)
+                    };
                     self.globals.turn.update(
                         [controller.held.left, controller.held.right],
-                        settings.turn_speed,
-                        settings.turn_max_speed,
+                        increment,
+                        limit,
                     );
                 }
                 if let Some(query) = player_query {
