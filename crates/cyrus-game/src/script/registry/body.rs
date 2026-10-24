@@ -24,6 +24,9 @@ pub struct OrdinaryResidualQuery<'a> {
     pub scene: &'a crate::player::data::PlayerScene,
     pub animations: &'a cyrus_assets::animation::Animations,
     pub prepared: &'a super::model::OrdinaryCollisionQuery,
+    /// The engine's polygon-sidedness flag; enabled except inside the ledge scan and the
+    /// state-fifteen bounds query.
+    pub sidedness: bool,
 }
 
 impl ScriptWorld {
@@ -85,7 +88,7 @@ impl ScriptWorld {
                     position: self.spatial(id)?.query_pose()?.position.map(i64::from),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
-                    sidedness: false,
+                    sidedness: query.sidedness,
                 },
                 excluded_candidate_type: (control.queued_motion == 24).then_some(128),
             },

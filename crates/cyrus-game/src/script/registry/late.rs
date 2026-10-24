@@ -701,7 +701,7 @@ impl ScriptWorld {
                     scene: query.scene,
                     animations: query.animations,
                     prepared: query.prepared,
-                    sidedness: false,
+                    sidedness: true,
                     excluded_candidate_type: sliding.then_some(64),
                     terrain: None,
                 },
@@ -735,6 +735,7 @@ impl ScriptWorld {
                     scene: query.scene,
                     animations: query.animations,
                     prepared: query.prepared,
+                    sidedness: true,
                 },
             )?;
             self.resolve_ordinary_residual_contacts(id, &contacts, &query.scene.settings)?;

@@ -6282,10 +6282,26 @@ fn ordinary_ground_retains_live_owner_excludes_self_and_has_no_player_fallback()
                 scene: &scene,
                 animations: &data,
                 prepared: &prepared,
+                sidedness: false,
             },
         )
         .unwrap();
     assert!(!residual.is_empty());
+    // With the engine's sidedness flag enabled, this fixture's face is seen from behind and rejected.
+    assert!(
+        world
+            .query_ordinary_residual_body(
+                id,
+                cyrus_game::script::OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: true,
+                },
+            )
+            .unwrap()
+            .is_empty()
+    );
     assert!(
         residual
             .iter()
