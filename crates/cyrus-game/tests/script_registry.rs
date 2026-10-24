@@ -9179,10 +9179,12 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
             .queued_motion,
         0
     );
-    assert!(world.actors()[id.index]
-        .control_state()
-        .unwrap()
-        .stable_position_valid);
+    assert!(
+        world.actors()[id.index]
+            .control_state()
+            .unwrap()
+            .stable_position_valid
+    );
     assert!(
         world
             .begin_ordinary_jump(id, &data, 0, false, environment, &mut |_, _| Ok(()))
