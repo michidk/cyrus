@@ -1,7 +1,8 @@
 //! `projectileAI`: one flight step of a created projectile, following preservation's
 //! engine/SOUP.md "projectileAI". Returns whether the projectile keeps flying.
 use super::GameHost;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
+use cyrus_collision::actor_overlap::OverlapSphere;
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
 
@@ -151,26 +152,26 @@ impl GameHost<'_, '_, '_, '_> {
         Ok(())
     }
 
-    /// The target's collision spheres in map units: its ordinary collision shape, each center
-    /// rotated by the target's orientation and added to its position. Vertex-bound RAVC spheres
-    /// are not modelled and refuse explicitly.
+    /// The target's collision spheres in map units. This shares ordinary overlap admission so
+    /// vertex-bound RAVC records replace the initial body shape, as they do for actor overlaps.
     fn projectile_spheres(
         &self,
         target: super::ScriptActorId,
         data: &cyrus_assets::animation::Animations,
     ) -> Result<Vec<([i32; 3], i32)>> {
         let actor = &self.registry.actors[target.index];
-        let ravc = data.actor(actor.name())?["ravc_count"]
-            .as_i64()
-            .unwrap_or(0);
-        ensure!(
-            ravc == 0,
-            "world {} instance {}: projectileAI hit test with RAVC spheres unsupported",
-            self.registry.world,
-            target.index
-        );
         if actor.attributes[56] != 0 {
             return Ok(Vec::new());
+        }
+        let ravc = data.actor(actor.name())?["ravc_count"].as_i64().unwrap_or(0);
+        if ravc != 0 {
+            return Ok(self
+                .registry
+                .ordinary_overlap_spheres(target, data)?
+                .into_iter()
+                .take(MAXIMUM_SPHERES)
+                .map(projectile_sphere)
+                .collect());
         }
         let pose = self.registry.spatial(target)?.query_pose()?;
         // Centers are rotated at Q8 and offset by the Q8 position, then shifted back to map units.
@@ -192,4 +193,8 @@ impl GameHost<'_, '_, '_, '_> {
             })
             .collect()
     }
+}
+
+fn projectile_sphere(sphere: OverlapSphere) -> ([i32; 3], i32) {
+    (sphere.center.map(|value| value.round() as i32), sphere.radius.round() as i32)
 }
