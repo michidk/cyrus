@@ -192,7 +192,7 @@ impl ScriptWorld {
             let selected_player = selected_role && inputs.player_controller.is_some();
             let actor = &mut self.actors[id.index];
             actor.sync_falling_motion();
-            if actor.placement().is_none() && !selected_player {
+            if actor.placement().is_none() && !selected_role {
                 continue;
             }
             if actor.failure().is_some() || actor.unavailable().is_some() {
