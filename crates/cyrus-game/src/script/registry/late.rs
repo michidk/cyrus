@@ -790,7 +790,7 @@ impl ScriptWorld {
         } else if recover {
             self.recover_ordinary_stable(id, recovery, rollback, sounds)?;
         }
-        self.rollback_ordinary_water(id, None, rollback, sounds)?;
+        self.rollback_ordinary_water(id, environment.selected_player, rollback, sounds)?;
         Ok(())
     }
 }
