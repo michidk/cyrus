@@ -32337,6 +32337,7 @@ fn surface_transition(
             returned,
             1,
             &mut EngineRandom::default(),
+            None,
             &mut |_, sound| {
                 sounds.push(sound);
                 Ok(())

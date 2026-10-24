@@ -63,8 +63,10 @@ impl ScriptWorld {
     }
 
     /// The selected player's water and lava transition effects (preservation player.md): the
-    /// swim entry and walk exit group requests and the splash sound. The dry/lava and water effect
-    /// objects (identifiers 0x2580 and 0x2500) are not created: their placement is not decoded.
+    /// swim entry and walk exit group requests, the splash effect object (identifiers 0x2500 water,
+    /// 0x2580 lava) and the splash sound. `effect_height` is the effect's Q8 Y from the support
+    /// query (`None` without support); a host without effect or camera services creates no effect.
+    #[allow(clippy::too_many_arguments)] // the handler's inputs: surfaces, clock, random, support, sink
     pub fn selected_surface_transition(
         &mut self,
         id: ScriptActorId,
@@ -72,6 +74,7 @@ impl ScriptWorld {
         returned: u8,
         ticks: u32,
         random: &mut crate::random::EngineRandom,
+        effect_height: Option<i32>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         if returned == previous {
@@ -81,6 +84,9 @@ impl ScriptWorld {
         let in_water = |surface: u8| (1..=4).contains(&surface);
         let deep = |surface: u8| matches!(surface, 2 | 4);
         if !in_water(stored) && !in_water(previous) {
+            if stored == 5 || previous == 5 {
+                self.spawn_transition_effect(id, 0x2580, effect_height)?;
+            }
             return Ok(());
         }
         let control = self.actors[id.index]
@@ -102,6 +108,7 @@ impl ScriptWorld {
             };
             self.request_ordinary_group(id, group, false, ticks, sounds)?;
         }
+        self.spawn_transition_effect(id, 0x2500, effect_height)?;
         let effect = if !in_water(stored) || (in_water(previous) && !deep(stored)) {
             70
         } else {
@@ -119,6 +126,53 @@ impl ScriptWorld {
                 start_index: None,
             },
         )
+    }
+
+    /// The transition's effect object: the actor's X/Z moved eight map units toward the camera,
+    /// at the support height plus the standing height and six units (preservation player.md).
+    fn spawn_transition_effect(
+        &mut self,
+        id: ScriptActorId,
+        descriptor: u32,
+        height: Option<i32>,
+    ) -> Result<()> {
+        let (Some(height), Some(camera)) = (height, self.camera.as_ref()) else {
+            return Ok(());
+        };
+        if self.effects.is_none() {
+            return Ok(());
+        }
+        let position = self.spatial(id)?.local.position;
+        let bearing = crate::script::spatial::query_bearing(
+            position[0].wrapping_sub(camera.current.position[0]),
+            position[2].wrapping_sub(camera.current.position[2]),
+        );
+        let heading = ((1024 + i32::from(bearing)) & 2047) as u16;
+        let [x, _, z] = cyrus_world::transform::translate_forward(position, heading, 0x800)?;
+        self.spawn_environment_effect(descriptor, [x, height, z])
+    }
+
+    /// Q8 Y of a transition effect for the selected support: the support height plus standing
+    /// height, plus six units (a fallback support keeps its actor origin, so its extent is added).
+    fn transition_effect_height(
+        &self,
+        id: ScriptActorId,
+        support: Option<&SelectedSupport>,
+        standing_height: i32,
+    ) -> Result<Option<i32>> {
+        let origin = match support {
+            None => return Ok(None),
+            Some(support @ SelectedSupport::Primary { .. }) => {
+                support.actor_height(0, standing_height)
+            }
+            Some(support) => {
+                let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
+                support.actor_height(0, standing_height) + i64::from(extent) * 256
+            }
+        };
+        Ok(Some(
+            i32::try_from(origin + 0x600).context("transition effect height outside Q8 range")?,
+        ))
     }
 
     fn query_ordinary_point_support(
@@ -553,7 +607,20 @@ impl ScriptWorld {
         if let Some((previous, returned)) = updated
             && environment.selected_player == Some(id)
         {
-            self.selected_surface_transition(id, previous, returned, ticks, random, sounds)?;
+            let effect_height = self.transition_effect_height(
+                id,
+                support.as_ref(),
+                query.scene.settings.standing_height,
+            )?;
+            self.selected_surface_transition(
+                id,
+                previous,
+                returned,
+                ticks,
+                random,
+                effect_height,
+                sounds,
+            )?;
         }
         let support_found = support.is_some();
         let mut queued_handled = false;
