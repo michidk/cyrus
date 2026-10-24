@@ -18,6 +18,24 @@ impl Runtime {
     pub fn active_tasks(&self) -> usize {
         self.state.tasks.iter().flatten().count()
     }
+    /// One entry per active slot, for inspection: the task's instruction, whether it was issued by
+    /// an object call, whether it blocks the thread, whether it is paused, and its pass counter.
+    pub fn task_slots(&self) -> Vec<(u32, bool, bool, bool, u16)> {
+        self.state
+            .tasks
+            .iter()
+            .flatten()
+            .map(|task| {
+                (
+                    task.source.instruction,
+                    task.source.object_call,
+                    task.blocking,
+                    task.paused,
+                    task.counter,
+                )
+            })
+            .collect()
+    }
     /// Ordinary native hooks are gated by every unpaused slot, including multitasks.
     pub fn has_unpaused_task(&self) -> bool {
         self.state.tasks.iter().flatten().any(|task| !task.paused)

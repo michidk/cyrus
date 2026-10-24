@@ -2709,6 +2709,21 @@ impl ScriptWorld {
                     "retained_angles": weapon.geometry.retained_angles, "endpoints": weapon.endpoints,
                 })),
                 "tasks": actor.runtime.as_ref().map(|runtime| runtime.active_tasks()),
+                "task_slots": actor.runtime.as_ref().map(|runtime| {
+                    runtime
+                        .task_slots()
+                        .into_iter()
+                        .map(|(instruction, object_call, blocking, paused, counter)| {
+                            serde_json::json!({
+                                "instruction": instruction,
+                                "object_call": object_call,
+                                "blocking": blocking,
+                                "paused": paused,
+                                "counter": counter,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }),
                 "failure": actor.failure(),
             })).collect::<Vec<_>>()
         })
