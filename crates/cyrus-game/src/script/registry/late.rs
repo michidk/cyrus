@@ -3,6 +3,13 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 
+/// Prevalidation, selected support and the surface updater's (previous, returned) surfaces when it ran.
+type PointSupport = (
+    super::super::OrdinaryGroundPrevalidation,
+    Option<SelectedSupport>,
+    Option<(u8, u8)>,
+);
+
 #[derive(Clone, Copy)]
 pub(super) struct OrdinaryLateInputs<'a> {
     pub script: super::ScriptInputs<'a>,
@@ -13,12 +20,16 @@ pub(super) struct OrdinaryLateInputs<'a> {
 }
 
 impl ScriptWorld {
+    /// The ordinary surface updater. Returns its result: zero for an excluded update, the resolved
+    /// surface for an update that stores it or (falling, sliding, living states 27 to 29) returns
+    /// it without storing.
     fn assign_ordinary_support_surface(
         &mut self,
         id: ScriptActorId,
         scene: &crate::player::data::PlayerScene,
         support: Option<&SelectedSupport>,
-    ) -> Result<()> {
+        selected: bool,
+    ) -> Result<u8> {
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -26,13 +37,14 @@ impl ScriptWorld {
         if control.queued_motion != 0
             || control.directional_state.iter().any(|flags| flags & 3 != 0)
         {
-            return Ok(());
+            return Ok(0);
         }
-        if control.falling_state != 0
+        let keep_stored = control.falling_state != 0
             || control.sliding_state != 0
-            || (27..=29).contains(&control.living_state)
-        {
-            return Ok(());
+            || (27..=29).contains(&control.living_state);
+        if keep_stored && !selected {
+            // Only the selected player's transition handler reads the returned value.
+            return Ok(self.actors[id.index].surface.unwrap_or(0));
         }
         let surface = support
             .map(|support| {
@@ -43,9 +55,70 @@ impl ScriptWorld {
             })
             .transpose()?
             .unwrap_or(0);
-        self.set_actor_surface(id, surface)?;
-        self.surface_veto = Some(matches!(surface, 5 | 11));
-        Ok(())
+        if !keep_stored {
+            self.set_actor_surface(id, surface)?;
+            self.surface_veto = Some(matches!(surface, 5 | 11));
+        }
+        Ok(surface)
+    }
+
+    /// The selected player's water and lava transition effects (preservation player.md): the
+    /// swim entry and walk exit group requests and the splash sound. The dry/lava and water effect
+    /// objects (identifiers 0x2580 and 0x2500) are not created: their placement is not decoded.
+    pub fn selected_surface_transition(
+        &mut self,
+        id: ScriptActorId,
+        previous: u8,
+        returned: u8,
+        ticks: u32,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if returned == previous {
+            return Ok(());
+        }
+        let stored = self.actors[id.index].surface.unwrap_or(0);
+        let in_water = |surface: u8| (1..=4).contains(&surface);
+        let deep = |surface: u8| matches!(surface, 2 | 4);
+        if !in_water(stored) && !in_water(previous) {
+            return Ok(());
+        }
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("surface transition control unavailable")?;
+        // shortcut: the retained direction is normalised, so the raw forward motion bytes 8, 9 and
+        // 24 read as forward here; upgrade when the raw motion byte is retained.
+        let forward = control.motion_direction == 2;
+        let torch = control.torch_burning != 0;
+        if deep(stored) {
+            self.request_ordinary_group(id, if forward { 142 } else { 143 }, false, ticks, sounds)?;
+        } else if deep(previous) {
+            let group = match (forward, torch) {
+                (true, false) => 18,
+                (true, true) => 30,
+                (false, false) => 19,
+                (false, true) => 23,
+            };
+            self.request_ordinary_group(id, group, false, ticks, sounds)?;
+        }
+        let effect = if !in_water(stored) || (in_water(previous) && !deep(stored)) {
+            70
+        } else {
+            71
+        };
+        let rate_offset_hz = random.rnd(64)? - 32;
+        let position = self.sight_position(id.index)?;
+        sounds(
+            id,
+            super::super::ScriptSound::Positional {
+                effect,
+                volume: 0,
+                rate_offset_hz,
+                position,
+                start_index: None,
+            },
+        )
     }
 
     fn query_ordinary_point_support(
@@ -54,10 +127,7 @@ impl ScriptWorld {
         query: super::ground::OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
-    ) -> Result<(
-        super::super::OrdinaryGroundPrevalidation,
-        Option<SelectedSupport>,
-    )> {
+    ) -> Result<PointSupport> {
         let prevalidation = self.query_ordinary_ground_prevalidation(id, query, false)?;
         self.apply_ordinary_ground_prevalidation(
             id,
@@ -66,11 +136,18 @@ impl ScriptWorld {
             environment,
             sounds,
         )?;
+        // An allocator-zeroed actor has surface zero before its first update.
+        let previous = self.actors[id.index].surface.unwrap_or(0);
         let support = self.query_ordinary_ground(id, query)?;
-        if self.actors[id.index].attributes[1] & 4 != 0 {
-            self.assign_ordinary_support_surface(id, query.scene, support.as_ref())?;
-        }
-        Ok((prevalidation, support))
+        let updated = if self.actors[id.index].attributes[1] & 4 != 0 {
+            let selected = environment.selected_player == Some(id);
+            let returned =
+                self.assign_ordinary_support_surface(id, query.scene, support.as_ref(), selected)?;
+            Some((previous, returned))
+        } else {
+            None
+        };
+        Ok((prevalidation, support, updated))
     }
 
     /// Check nonplayer support at a proposed local Q8 position, restoring XYZ
@@ -110,7 +187,7 @@ impl ScriptWorld {
             .actor_mut(index)?
             .local
             .position = saved;
-        let (_, support) = result?;
+        let (_, support, _) = result?;
         let Some(support) = support else {
             return Ok(false);
         };
@@ -471,8 +548,13 @@ impl ScriptWorld {
         } else {
             query
         };
-        let (prevalidation, support) =
+        let (prevalidation, support, updated) =
             self.query_ordinary_point_support(id, support_query, environment, sounds)?;
+        if let Some((previous, returned)) = updated
+            && environment.selected_player == Some(id)
+        {
+            self.selected_surface_transition(id, previous, returned, ticks, random, sounds)?;
+        }
         let support_found = support.is_some();
         let mut queued_handled = false;
         if mask & 4 != 0 && !special {

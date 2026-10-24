@@ -32290,3 +32290,102 @@ fn the_world_owns_its_exported_ropes() {
         "{error}"
     );
 }
+
+/// Run one surface transition on a fresh selected-player fixture: the group the actor ends up
+/// requesting (or `None` when no group changed) and the sounds played.
+fn surface_transition(
+    (previous, stored, returned): (u8, u8, u8),
+    forward: bool,
+) -> (Option<u64>, Vec<cyrus_game::script::ScriptSound>) {
+    use cyrus_game::random::EngineRandom;
+    let mut scripts = cache();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_6".into(), 7);
+    let (mut world, mut data, _) = static_model_fixture(scripts);
+    let id = world.id(0).unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    definition["model_load_path"] = serde_json::json!("animation_table");
+    let group = |index: u32| {
+        serde_json::json!({
+            "group_index": index, "anim_id": 1, "anim_type": 0,
+            "commands": [{"opcode": 0, "frame_reference": 10}, {"opcode": 1}]
+        })
+    };
+    definition["animation_groups"] =
+        serde_json::json!([group(0), group(18), group(19), group(142), group(143)]);
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    if forward {
+        world.apply_ordinary_directional_motion(id, 2, 512).unwrap();
+    }
+    world.set_actor_surface(id, stored).unwrap();
+    let mut sounds = Vec::new();
+    world
+        .selected_surface_transition(
+            id,
+            previous,
+            returned,
+            1,
+            &mut EngineRandom::default(),
+            &mut |_, sound| {
+                sounds.push(sound);
+                Ok(())
+            },
+        )
+        .unwrap();
+    let animation = &world.inspect(0, 1)["actors"][0]["animation"];
+    let group = animation["pending_group"]
+        .as_u64()
+        .or_else(|| animation["current_group"].as_u64())
+        .filter(|group| *group != 0);
+    (group, sounds)
+}
+
+#[test]
+fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound() {
+    use cyrus_game::script::ScriptSound;
+    // An unchanged returned surface does nothing, and neither does dry to dry.
+    assert_eq!(surface_transition((4, 4, 4), false), (None, vec![]));
+    assert_eq!(surface_transition((0, 10, 10), true), (None, vec![]));
+    // Dry land to deep water: group 143, or 142 moving forward, and the entry sound 71.
+    for (forward, expected) in [(false, 143), (true, 142)] {
+        let (group, sounds) = surface_transition((0, 4, 4), forward);
+        assert_eq!(group, Some(expected));
+        assert!(matches!(
+            sounds[..],
+            [ScriptSound::Positional {
+                effect: 71,
+                volume: 0,
+                rate_offset_hz: -32..=31,
+                ..
+            }]
+        ));
+    }
+    // Deep water to dry land: the exit sound 70 and group 19, or 18 moving forward.
+    for (forward, expected) in [(false, 19), (true, 18)] {
+        let (group, sounds) = surface_transition((4, 10, 10), forward);
+        assert_eq!(group, Some(expected));
+        assert!(matches!(
+            sounds[..],
+            [ScriptSound::Positional { effect: 70, .. }]
+        ));
+    }
+    // Shallow to shallow water requests no group but plays the sound; the transition fires on
+    // the returned value differing from the previous surface.
+    let (group, sounds) = surface_transition((1, 3, 3), true);
+    assert_eq!(group, None);
+    assert!(matches!(
+        sounds[..],
+        [ScriptSound::Positional { effect: 70, .. }]
+    ));
+}
