@@ -2922,6 +2922,14 @@ impl ScriptActors {
     fn release_world(&mut self) {
         self.restored_generation = None;
         if let Some(mut world) = self.current.take() {
+            let teardown_error = if self.discard_current_on_release {
+                world
+                    .cancel_native_tasks()
+                    .err()
+                    .map(|error| format!("world {} native task teardown: {error:#}", world.world))
+            } else {
+                None
+            };
             self.globals = std::mem::take(&mut world.globals);
             // The original's world teardown clears every dialogue record, so a line active at the
             // switch must not keep a speaker from the released world.
@@ -2939,7 +2947,24 @@ impl ScriptActors {
                 self.visited.entry(world.world).or_insert(world);
             }
             self.discard_current_on_release = false;
+            if let Some(error) = teardown_error {
+                self.error.get_or_insert(error);
+            }
         }
+    }
+
+    /// Cancel native VM continuations and their actor-owned task records before a world is
+    /// discarded. Retained worlds keep their slots for revisit restoration.
+    fn cancel_native_tasks(&mut self) -> Result<()> {
+        let world = self.world;
+        for (index, actor) in self.actors.iter_mut().enumerate() {
+            if let Some(runtime) = actor.runtime.as_mut() {
+                runtime
+                    .cancel_tasks_with(|token| actor.tasks.cancel(token))
+                    .with_context(|| format!("world {world} actor {index}"))?;
+            }
+        }
+        Ok(())
     }
     /// Record a host failure without replacing the first failure in this world.
     /// World preparation clears it alongside the logical registry.
@@ -2982,8 +3007,8 @@ pub(super) fn prepare(
         return;
     }
     if prepared.is_changed() {
-        actors.release_world();
         actors.error = None;
+        actors.release_world();
         actors.requested = Some(prepared.scripts.clone());
         let Some(generation) = actors.generation.checked_add(1) else {
             actors.error = Some("script world generation exhausted".into());
@@ -6800,9 +6825,9 @@ pub(super) fn clear_unprepared(
     if prepared.is_some() {
         return;
     }
+    actors.error = None;
     actors.release_world();
     actors.requested = None;
-    actors.error = None;
     *status = super::ScriptStatus::NotRequested;
 }
 
