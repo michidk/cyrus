@@ -532,22 +532,16 @@ pub(super) fn drive(
                     2 if menu.context == MenuContext::Death => {
                         menu.unavailable = Some("Saved-game selection is unavailable.".into());
                     }
-                    // shortcut: Startup Load starts fresh until the save-slot system is implemented.
-                    2 | 10 => {
+                    // New Game starts a fresh world. Load must never silently
+                    // substitute a fresh world for a missing or unsupported save.
+                    2 => {
+                        menu.unavailable = Some("Saved-game selection is unavailable.".into());
+                    }
+                    10 => {
                         if entry.action == 10 {
                             reset_for_new_game(&mut commands);
                         }
-                        if entry.action == 10 {
-                            commands.write_message(MovieRequest::NewGame);
-                        } else {
-                            begin_world_entry(
-                                &mut commands,
-                                &mut images,
-                                &mut next,
-                                book,
-                                input.0.elapsed_secs_f64(),
-                            );
-                        }
+                        commands.write_message(MovieRequest::NewGame);
                         menu.ready = false;
                         return;
                     }
