@@ -77,3 +77,17 @@ contract, so they are outside the SOUP completion scope, which asks for what an 
 requires. cyrus does not implement them: a script that reaches one stops with a contextual native error
 naming the function, never a panic or a silent default. A modified or added script that needs one first
 needs its behaviour recovered in redguard-preservation.
+
+## Killed created objects keep their record
+
+**Verified:** objects created after world loading (`shoot`, `shootPlayer`, `DragonBreath`) are standalone
+records with runtime identifier zero, outside the reusable actor pool, so no pool capacity limits them
+([allocation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md)). Each
+world-loop iteration the original removes every created object whose killed flag is set from its lists and
+frees the record. cyrus keeps a killed object's record in the actor table for the rest of the session: it
+has no runtime, runs no script, draws no model and holds no light, sound or task, and updates skip it. The
+actor table, spatial state and snapshots are index-parallel, so removing a record would shift every later
+identity for no player-visible gain. **Inferred:** the observable result (no update, no model, no light, no
+sound) is the same; only memory and one skipped table entry per update remain, a technical limit the
+faithful mode does not reproduce. A script holding a reference to a killed created object reaches a dead
+record, where the original reaches freed memory, which has no defined behaviour to match.
