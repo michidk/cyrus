@@ -572,7 +572,7 @@ fn unsupported_animation_group_is_not_narrowed_into_a_valid_request() {
         )
         .unwrap_err()
         .to_string();
-    assert!(error.contains("PushAnimation group outside supported range"));
+    assert!(error.contains("PushAnimation group outside supported signed range"));
     assert_eq!(world.animation_frame(id).unwrap(), None);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
@@ -5060,22 +5060,23 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
     let data = play_animation_scripts([-1, 0]);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     let id = world.id(0).unwrap();
-    assert!(
-        world
-            .advance(
-                id,
-                BODY,
-                cyrus_game::script::ScriptInputs {
-                    nominal_ticks: Some(1),
-                    frame_scale: Some(256),
-                    ..Default::default()
-                },
-                None,
-                None,
-                30,
-            )
-            .is_err()
-    );
+    // Signed sixteen-bit operands are admitted. Without an animation host the
+    // native is explicitly a no-op and the script continues.
+    world
+        .advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.flags(), [9]);
 }
 
 #[test]
