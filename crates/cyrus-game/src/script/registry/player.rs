@@ -371,6 +371,9 @@ impl ScriptWorld {
             control.jump_window = 0;
             return Ok(());
         }
+        if jump_key_refused(self.actor_surface(id)?, group) {
+            return Ok(());
+        }
         let environment = super::transition::ObstacleEnvironment {
             selected_player: Some(id),
             auto_grab: false,
@@ -1358,6 +1361,12 @@ impl PlayerMovement {
     }
 }
 
+/// The jump entry the key arbitration starts refuses while the player is in deep water (surface 2
+/// or 4) or in group 114, 116, 130 or 131 (preservation player.md "Jump-key arbitration").
+fn jump_key_refused(surface: u8, group: Option<u16>) -> bool {
+    matches!(surface, 2 | 4) || matches!(group, Some(114 | 116 | 130 | 131))
+}
+
 /// The airborne controller's writes: forward steering of queued motion 1 in groups 32 and 33,
 /// the falling jump key's clearing of the companion motion byte, and the jump-key arbitration.
 fn steer_airborne(
@@ -1401,6 +1410,15 @@ mod airborne_tests {
         assert_eq!(control.queued_motion, 0x81);
         steer_airborne(&mut control, Some(32), &held);
         assert_eq!(control.queued_motion, 2);
+    }
+
+    #[test]
+    fn the_jump_key_entry_is_refused_in_deep_water_and_landing_groups() {
+        assert!(super::jump_key_refused(4, Some(141)));
+        assert!(super::jump_key_refused(2, None));
+        assert!(super::jump_key_refused(0, Some(130)));
+        assert!(!super::jump_key_refused(1, Some(141)));
+        assert!(!super::jump_key_refused(0, Some(18)));
     }
 
     #[test]
