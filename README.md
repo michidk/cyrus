@@ -50,7 +50,7 @@ and all available commands.
 
 The game install remains read-only. cyrus stores settings, caches, and
 logs in your user profile's standard folders (on Linux `~/.config/cyrus`, `~/.cache/cyrus`
-and `~/.local/state/cyrus`), or in `CYRUS_CONFIG_DIR` when that is set. A `cyrus-config/`
+and `~/.local/state/cyrus`), or in `CYRUS_CONFIG_DIR` when that is set. A `game-config/`
 folder in the directory you launch from takes precedence.
 
 ## Web version

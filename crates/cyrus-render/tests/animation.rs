@@ -225,7 +225,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         }
     };
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("animation-export-test-{}", std::process::id()));
     let path = directory.join("ISLAND.glb");
     cyrus_assets::scene::export_scene(&install, "ISLAND", &path).unwrap();

@@ -45,7 +45,7 @@ struct Args {
     /// Export splash, title, book-menu, cinematics and HUD assets to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
-    /// Restore the newest save in this slot of cyrus-config/slots through the book. Implies
+    /// Restore the newest save in this slot of game-config/slots through the book. Implies
     /// --skip-startup.
     #[arg(
         long,

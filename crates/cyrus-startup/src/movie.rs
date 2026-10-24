@@ -803,7 +803,7 @@ mod tests {
         reader.read_exact(&mut bytes[size..]).unwrap();
         drop(reader);
         let directory =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cyrus-config/movie-tests");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../game-config/movie-tests");
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join(format!("first-packet-{}.smk", std::process::id()));
         std::fs::write(&path, &bytes).unwrap();

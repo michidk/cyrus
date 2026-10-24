@@ -45,7 +45,7 @@ Prefer the MCP tools (`cyrus` server: `ping`, `state`, `screenshot`,
 control port speaks one JSON object per line:
 
 ```sh
-printf '{"id":1,"cmd":{"type":"screenshot","path":"cyrus-config/screenshots/a.png"}}\n' | nc 127.0.0.1 7117
+printf '{"id":1,"cmd":{"type":"screenshot","path":"game-config/screenshots/a.png"}}\n' | nc 127.0.0.1 7117
 printf '{"id":2,"cmd":{"type":"input","key":"ArrowUp","action":"press"}}\n' | nc 127.0.0.1 7117
 ```
 
@@ -74,5 +74,5 @@ and commands whose behavior differs from their help text.
 ## Compare
 
 Same scene, same position, same inputs. Save both screenshots under
-`cyrus-config/screenshots/` (never commit them) and describe the difference
+`game-config/screenshots/` (never commit them) and describe the difference
 in the commit message: what matches, what does not, what was not checked.

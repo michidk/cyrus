@@ -23,10 +23,10 @@ self.addEventListener("fetch", event => {
   const scope = new URL("./", self.location.href).pathname;
   const relative = url.pathname.slice(scope.length);
   const original = /^[a-f0-9]{64}$/i.test(url.searchParams.get("v") || "");
-  if (/\/cyrus-config\/cache\/(?:[a-f0-9]{64}\/)?movies\/.*\.(smk|wav)$/.test(url.pathname) ||
+  if (/\/game-config\/cache\/(?:[a-f0-9]{64}\/)?movies\/.*\.(smk|wav)$/.test(url.pathname) ||
       event.request.headers.has("Range")) return;
   if (event.request.method !== "GET" ||
-      !(url.pathname.includes("/cyrus-config/cache/") ||
+      !(url.pathname.includes("/game-config/cache/") ||
         (url.origin === self.location.origin && relative.endsWith(".wasm")) || original)) return;
   event.respondWith((async () => {
     const cache = await caches.open(FILE_CACHE);
@@ -34,7 +34,7 @@ self.addEventListener("fetch", event => {
     const cached = await cache.match(key);
     // Viewer generation paths are immutable; the catalog and game exports are revalidated.
     if (cached && original) return cached;
-    if (cached && /^cyrus-config\/cache\/viewer\/[a-f0-9]{64}\//.test(relative)) return cached;
+    if (cached && /^game-config\/cache\/viewer\/[a-f0-9]{64}\//.test(relative)) return cached;
     if (cached) {
       try {
         const head = await fetch(event.request.url, { method: "HEAD", cache: "no-store" });
@@ -43,7 +43,7 @@ self.addEventListener("fetch", event => {
             size === cached.headers.get("content-length")) return cached;
       } catch { return cached; }
     }
-    const response = url.pathname.includes("/cyrus-config/cache/")
+    const response = url.pathname.includes("/game-config/cache/")
       ? await downloadAsset(event.request)
       : await fetch(event.request, { cache: "no-store" });
     const range = original && url.searchParams.get("range");

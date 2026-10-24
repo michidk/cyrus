@@ -2,7 +2,7 @@
 # Link to the player's own install.
 /redguard
 # Local state: settings, caches, screenshots.
-/cyrus-config/
+/game-config/
 /target/
 # Agent-tool local state.
 /.claude/settings.local.json

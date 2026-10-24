@@ -63,7 +63,7 @@ class OriginalServerTest(unittest.TestCase):
                 response = client.getresponse()
                 self.assertEqual(response.status, 416)
                 response.read()
-                for route in ("/original/../game.gog", "/cyrus-config/cache/START.glb"):
+                for route in ("/original/../game.gog", "/game-config/cache/START.glb"):
                     client.request("GET", route)
                     response = client.getresponse()
                     self.assertEqual(response.status, 404)

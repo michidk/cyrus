@@ -175,7 +175,7 @@ control port on `127.0.0.1:7117`, compare with the original under `just retro`
 A comparison is evidence when it reruns: `just replay <fixture> <label>` plays
 a `dev/fixtures/*.jsonl` fixture (scene, inputs, waits) over the control port
 and captures both games. A capture copied to
-`cyrus-config/compare/baseline/<label>-cyrus.png` makes the next replay a
+`game-config/compare/baseline/<label>-cyrus.png` makes the next replay a
 regression check with a tolerance. `just smoke-mcp` fails when a run modified
 the install.
 

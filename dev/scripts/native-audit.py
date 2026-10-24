@@ -2,7 +2,7 @@
 """Map the native catalogue to the installed scripts and to cyrus's sources.
 
 Reads exported `*.scripts` files (what `cyrus --export` and the scene cache write for each
-world, by default `cyrus-config/cache`). Each export lists the whole native catalogue
+world, by default `game-config/cache`). Each export lists the whole native catalogue
 (`definition.functions`) and the calls of every installed actor. The audit reports
 
 * natives an installed script calls that no Rust source mentions (a forgotten handler: exit 1),
@@ -14,7 +14,7 @@ world, by default `cyrus-config/cache`). Each export lists the whole native cata
 
 Run it after exporting every world:
 
-    dev/scripts/native-audit.py [--scripts cyrus-config/cache] [--sources crates] [--list-unused]
+    dev/scripts/native-audit.py [--scripts game-config/cache] [--sources crates] [--list-unused]
 """
 import argparse
 import collections
@@ -74,7 +74,7 @@ def sources(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--scripts", default="cyrus-config/cache")
+    parser.add_argument("--scripts", default="game-config/cache")
     parser.add_argument("--sources", default="crates")
     parser.add_argument("--pattern", default="*.scripts", help="export file name pattern")
     parser.add_argument("--list-unused", action="store_true")

@@ -22,11 +22,11 @@ acceptance, status and session claims. The maintainer's agents also follow
 1. **Nothing from the install, and nothing from `magic/`, enters a tracked file in cyrus.**
    Game assets, extracted archives, screenshots of copyrighted art, save games,
    working notes and research journals live under `magic/` (gitignored) or
-   `cyrus-config/` (gitignored). `git add -f` is never the answer. If unsure
+   `game-config/` (gitignored). `git add -f` is never the answer. If unsure
    whether something counts, it does: leave it in `magic/` and say so.
 2. **The install is read-only.** cyrus never writes into the game directory.
    Local state lives where `crates/cyrus-config` says: `CYRUS_CONFIG_DIR`, else an
-   existing `cyrus-config/` in the working directory (a checkout; `cargo` pins it),
+   existing `game-config/` in the working directory (a checkout; `cargo` pins it),
    else the platform config, cache and state directories.
 3. **Faithful by default.** Every behaviour that may differ from the original
    is registered under a fidelity `Area` and runs only in the configured `Mode`

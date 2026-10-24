@@ -28,7 +28,7 @@ if [ -f "$install/../game.gog" ]; then
     movie_mount=(-v "$install/../game.gog:/game.gog:ro")
 fi
 docker run -d --rm --name cyrus-dev -p 127.0.0.1:7117:7117 \
-    "${startup_mount[@]}" "${movie_mount[@]}" -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e CYRUS_CONFIG_DIR=/repo/cyrus-config -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
+    "${startup_mount[@]}" "${movie_mount[@]}" -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e CYRUS_CONFIG_DIR=/repo/game-config -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
     cyrus-dev:dev /repo/target/debug/cyrus "$@" >/dev/null
 echo "cyrus-dev running; control port 127.0.0.1:7117; logs: docker logs -f cyrus-dev; stop: docker rm -f cyrus-dev"
 if [ "${#viewport[@]}" -eq 2 ]; then

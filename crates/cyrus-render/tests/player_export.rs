@@ -15,7 +15,7 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         }
     };
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("player-export-test-{}", std::process::id()));
     let path = directory.join("ISLAND.glb");
     cyrus_assets::scene::export_scene(&install, "ISLAND", &path).unwrap();
@@ -131,7 +131,7 @@ fn installed_embedded_actor_model_exports_matching_frame_geometry() {
         }
     };
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("actor-archive-export-test-{}", std::process::id()));
     let path = directory.join("CATACOMB.glb");
     cyrus_assets::scene::export_scene(&install, "CATACOMB", &path).unwrap();

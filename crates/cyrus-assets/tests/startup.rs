@@ -24,7 +24,7 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
         return;
     };
     let cache = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("startup-test-{}", std::process::id()));
     let output = cache.join("startup");
     std::fs::create_dir_all(&output).unwrap();

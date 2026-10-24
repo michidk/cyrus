@@ -3238,7 +3238,7 @@ fn inventory_installed_startup_exports_seed_counts_and_acquires_through_shared_o
     }
     let install = cyrus_assets::install::GameInstall::locate(Some(&root)).unwrap();
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("inventory-startup-test-{}", std::process::id()));
     cyrus_assets::hud_export::export_hud(&install, &output).unwrap();
     let asset: cyrus_assets::hud::HudAsset =

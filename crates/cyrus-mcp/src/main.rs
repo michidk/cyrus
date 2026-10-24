@@ -94,7 +94,7 @@ struct SceneParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ScreenshotParams {
     #[schemars(
-        description = "Optional PNG path; defaults to cyrus-config/screenshots/<timestamp>.png"
+        description = "Optional PNG path; defaults to game-config/screenshots/<timestamp>.png"
     )]
     path: Option<String>,
 }
@@ -206,7 +206,7 @@ impl Cyrus {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis();
-            format!("cyrus-config/screenshots/{ts}.png")
+            format!("game-config/screenshots/{ts}.png")
         });
         call(Command::Screenshot { path: path.clone() })?;
         // The capture lands one or two frames later; poll for the file.

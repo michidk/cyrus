@@ -85,7 +85,7 @@ shortens every voiced line (**Verified:** the START story from the last kill to 
 30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
 prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
 
-`dev/scripts/native-audit.py --scripts cyrus-config/cache` lists the natives that the exported
+`dev/scripts/native-audit.py --scripts game-config/cache` lists the natives that the exported
 installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
 up there, though a mention does not prove the handler works.
 
@@ -136,13 +136,13 @@ the folder before preparing installed audio and images.
 
 Settings, preferences, the remembered game-files folder, saves, exported caches and logs
 live outside the install, in the directories `crates/cyrus-config` selects once per process:
-`CYRUS_CONFIG_DIR` when set, else a `cyrus-config/` directory that already exists in the
+`CYRUS_CONFIG_DIR` when set, else a `game-config/` directory that already exists in the
 working directory, else the platform directories (on Linux `~/.config/cyrus`, `~/.cache/cyrus`
 and `~/.local/state/cyrus/logs`). This document calls them the config, cache and log
-directory. In a checkout they are `cyrus-config/`, `cyrus-config/cache/` and
-`cyrus-config/logs/`: `cargo run` and `cargo test` pin `CYRUS_CONFIG_DIR` to the checkout's
-`cyrus-config/` (`.cargo/config.toml`), and `just run-native` pins it inside the container.
-A binary started by hand from a directory without `cyrus-config/` uses the platform
+directory. In a checkout they are `game-config/`, `game-config/cache/` and
+`game-config/logs/`: `cargo run` and `cargo test` pin `CYRUS_CONFIG_DIR` to the checkout's
+`game-config/` (`.cargo/config.toml`), and `just run-native` pins it inside the container.
+A binary started by hand from a directory without `game-config/` uses the platform
 directories. Screenshots are written wherever the `screenshot` command's path says.
 
 `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered

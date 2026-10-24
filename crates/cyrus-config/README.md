@@ -6,7 +6,7 @@ ever written to the install.
 
 A leaf crate: no workspace dependencies; `directories` and `anyhow` on native targets only. Every
 crate that keeps local state asks it for a directory and goes through `read` and `write`, instead
-of spelling `cyrus-config/...` or replacing files itself.
+of spelling `game-config/...` or replacing files itself.
 
 ```rust
 let settings = cyrus_config::config_dir().join("settings.toml");
@@ -24,7 +24,7 @@ cyrus_config::write(&settings, b"scene = \"START\"")?;
 Chosen once per process, first match wins:
 
 1. `CYRUS_CONFIG_DIR`, used as given (`cache/` and `logs/` below it).
-2. A `cyrus-config/` directory that already exists in the working directory. This is the
+2. A `game-config/` directory that already exists in the working directory. This is the
    layout of a development checkout, the web server and earlier releases, so existing state keeps
    working; `cache/` and `logs/` below it.
 3. The platform directories for an application named `cyrus`:

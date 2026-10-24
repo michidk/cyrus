@@ -58,11 +58,11 @@ done
 set -euo pipefail
 echo "$*" >> web-calls.txt
 for app in "$@"; do
-mkdir -p target/web/pkg cyrus-config/cache
+mkdir -p target/web/pkg game-config/cache
 mkdir -p target/web/pkg/snippets/module
 echo helper > target/web/pkg/snippets/module/helper.js
-echo private > cyrus-config/cache/private.glb
-ln -sfn "$PWD/cyrus-config" target/web/cyrus-config
+echo private > game-config/cache/private.glb
+ln -sfn "$PWD/game-config" target/web/game-config
 echo page > target/web/index.html
 echo service > target/web/sw.js
 for file in loader.js install.js local-install.js loading.css game-assets.js asset-worker.js pkg/cyrus-assets-worker.js pkg/cyrus-assets-worker_bg.wasm; do echo code > "target/web/$file"; done

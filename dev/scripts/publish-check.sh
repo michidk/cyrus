@@ -10,13 +10,13 @@ cd "$(dirname "$0")/../.."
 
 fail=0
 
-paths=$(git ls-files | grep -E '^(magic|cyrus-config|redguard)(/|$)' || true)
+paths=$(git ls-files | grep -E '^(magic|game-config|redguard)(/|$)' || true)
 game_files=$(git ls-files | grep -iE '\.(rgm|rob|wld|pvo|col|gxa|rtx|sfx|fnt|bsi|3dc|cht|sav|gog|ins)$' || true)
 traces=$(git grep --cached -nIE '\b(FUN|DAT|LAB|PTR|SUB)_[0-9a-fA-F]{4,}\b|\b0x[0-9a-fA-F]{6,}\b' \
     -- ':!dev/scripts/publish-check.sh' | grep -v 'publish-check: allow' || true)
 
 if [ -n "$paths" ]; then
-    echo "publish-check: local-only paths are tracked (magic/, cyrus-config/, redguard):"
+    echo "publish-check: local-only paths are tracked (magic/, game-config/, redguard):"
     echo "$paths"
     fail=1
 fi

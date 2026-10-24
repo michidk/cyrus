@@ -21,7 +21,7 @@ fn installed_island_flags_advance_through_ordinary_updates() {
     }
     let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("script-ordinary-island-{}", std::process::id()));
     let path = directory.join("ISLAND.glb");
     cyrus_assets::scene::export_scene(&install, "ISLAND", &path).unwrap();
@@ -444,7 +444,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     }
     let install = cyrus_assets::install::GameInstall::locate(Some(&root)).unwrap();
     let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../cyrus-config/soup-lever-test-{}",
+        "../../game-config/soup-lever-test-{}",
         std::process::id()
     ));
     std::fs::create_dir_all(&output).unwrap();
@@ -1109,7 +1109,7 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
         return;
     };
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config/tests")
+        .join("../../game-config/tests")
         .join(format!("start-combat-spacing-{}", std::process::id()));
     let path = directory.join("START.glb");
     cyrus_assets::scene::export_scene(&install, "START", &path).unwrap();
@@ -1184,7 +1184,7 @@ fn installed_world_collision_shapes_prepare_for_every_ordinary_actor() {
     }
     let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("script-collision-shapes-{}", std::process::id()));
     let path = directory.join("SILVER2.glb");
     cyrus_assets::scene::export_scene(&install, "SILVER2", &path).unwrap();

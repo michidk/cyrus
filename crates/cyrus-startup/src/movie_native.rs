@@ -285,7 +285,7 @@ mod tests {
         }
         // A packet truncated after a valid header must report a contextual error.
         let directory =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cyrus-config/movie-tests");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../game-config/movie-tests");
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join(format!("truncated-{}.smk", std::process::id()));
         std::fs::write(&path, &data[..data.len() / 2]).unwrap();

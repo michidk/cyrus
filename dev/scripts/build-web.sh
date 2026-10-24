@@ -45,8 +45,8 @@ fi
 python3 dev/scripts/build-provenance.py seal "$provenance" "${artifacts[@]}"
 mv "$provenance" "$out/build-provenance.json"
 # Browser code has no implicit link to installed files or exported caches.
-if [ -L "$out/cyrus-config" ]; then
-    rm "$out/cyrus-config"
-elif [ -L "$out/cyrus-config/cache" ]; then
-    rm "$out/cyrus-config/cache"
+if [ -L "$out/game-config" ]; then
+    rm "$out/game-config"
+elif [ -L "$out/game-config/cache" ]; then
+    rm "$out/game-config/cache"
 fi

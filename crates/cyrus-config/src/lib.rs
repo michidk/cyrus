@@ -7,7 +7,7 @@
 //! The root is chosen once per process, in this order:
 //!
 //! 1. `CYRUS_CONFIG_DIR`, used as given. Tests, containers and scripts pin the location with it.
-//! 2. A `cyrus-config/` directory that already exists in the working directory. This is the
+//! 2. A `game-config/` directory that already exists in the working directory. This is the
 //!    checkout-local layout the development workflows, the web server and earlier releases use.
 //! 3. The platform directories for an application named `cyrus` (XDG on Linux, Application
 //!    Support on macOS, AppData on Windows), so a player's state does not depend on where the
@@ -29,7 +29,7 @@ use std::sync::OnceLock;
 /// Environment variable that pins the root, for tests, containers and scripts.
 pub const ENV_VAR: &str = "CYRUS_CONFIG_DIR";
 /// Checkout-local state directory, relative to the working directory.
-pub const LOCAL_DIR: &str = "cyrus-config";
+pub const LOCAL_DIR: &str = "game-config";
 
 /// The directories cyrus writes to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,9 +139,9 @@ mod tests {
     #[test]
     fn an_existing_local_directory_beats_the_platform() {
         let dirs = Dirs::choose(None, true, Some(platform_dirs()));
-        assert_eq!(dirs.config, Path::new("cyrus-config"));
-        assert_eq!(dirs.cache, Path::new("cyrus-config/cache"));
-        assert_eq!(dirs.logs, Path::new("cyrus-config/logs"));
+        assert_eq!(dirs.config, Path::new("game-config"));
+        assert_eq!(dirs.cache, Path::new("game-config/cache"));
+        assert_eq!(dirs.logs, Path::new("game-config/logs"));
     }
 
     #[test]
@@ -155,6 +155,6 @@ mod tests {
     #[test]
     fn without_a_home_directory_the_local_layout_is_used() {
         let dirs = Dirs::choose(None, false, None);
-        assert_eq!(dirs.config, Path::new("cyrus-config"));
+        assert_eq!(dirs.config, Path::new("game-config"));
     }
 }

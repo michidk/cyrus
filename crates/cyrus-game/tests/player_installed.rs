@@ -31,7 +31,7 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         return Ok(());
     };
     let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config/tests/player-installed");
+        .join("../../game-config/tests/player-installed");
     std::fs::create_dir_all(&cache)?;
     let path = cache.join("ISLAND.glb");
     cyrus_assets::scene::export_scene(&install, "ISLAND", &path)?;

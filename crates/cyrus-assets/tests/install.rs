@@ -85,7 +85,7 @@ fn every_world_exports_valid_animation_geometry() {
     let worlds = rgpre::import::world_ini::WorldIni::parse(&std::fs::read_to_string(ini).unwrap());
     assert!(!worlds.entries.is_empty());
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("all-world-animations-test-{}", std::process::id()));
     let mut failures = Vec::new();
     for world in worlds.entries {
@@ -187,7 +187,7 @@ fn every_world_exports_valid_animation_geometry() {
 fn world_exports_include_declared_terrain_and_textures() {
     let Some(install) = install() else { return };
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("world-export-test-{}", std::process::id()));
     for (name, terrain) in [
         ("START", true),
@@ -436,7 +436,7 @@ fn world_exports_include_declared_terrain_and_textures() {
 fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
     let Some(install) = install() else { return };
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("sky-export-test-{}", std::process::id()));
     let mut skies = Vec::new();
     // Verified installed WORLD.INI and matching sky COL samples; no game bytes are fixtures.
@@ -513,7 +513,7 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
 fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
     let Some(install) = install() else { return };
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("water-export-test-{}", std::process::id()));
     // Verified installed WLD corner selections and WORLD.INI values.
     for (world, parameters, selected) in [
@@ -564,7 +564,7 @@ fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
 fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
     let Some(install) = install() else { return };
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("startup-export-test-{}", std::process::id()));
     cyrus_assets::startup::export_startup(&install, &output).unwrap();
     let splash = output.join("startup");
@@ -645,7 +645,7 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
 fn hud_export_uses_installed_positions_items_and_artwork() {
     let Some(install) = install() else { return };
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cyrus-config")
+        .join("../../game-config")
         .join(format!("hud-export-test-{}", std::process::id()));
     cyrus_assets::hud_export::export_hud(&install, &output).unwrap();
     let hud = output.join("hud");
