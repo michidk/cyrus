@@ -241,7 +241,11 @@ pub(super) fn drive(
                         let dispatch = dispatch.as_deref_mut().ok_or_else(|| {
                             anyhow::anyhow!("last-game confirmation: book dispatcher unavailable")
                         })?;
-                        dispatch.book_context = Some(3);
+                        // Returning to the death book keeps the context that was active
+                        // when the confirmation was opened. Context three is the
+                        // standalone death page; a retained save may have been opened
+                        // from another book context.
+                        dispatch.book_context = Some(presentation.retained_context);
                         commands.insert_resource(DeathBookEntry {
                             override_group: presentation.override_group,
                         });
@@ -535,7 +539,7 @@ mod tests {
         .insert_resource(LastGameEntry {
             save,
             override_group: 74,
-            retained_book_context: 1,
+            retained_book_context: 2,
         });
         app.world_mut().spawn((
             Window {
@@ -629,7 +633,7 @@ mod tests {
         );
         assert_eq!(
             app.world().resource::<DeathDispatch>().book_context,
-            Some(3)
+            Some(2)
         );
         assert_eq!(app.world().resource::<DeathBookEntry>().override_group, 74);
         assert!(!app.world().contains_resource::<LastGameEntry>());
