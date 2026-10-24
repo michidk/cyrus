@@ -5930,12 +5930,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [group, modifier] = arguments else {
                 anyhow::bail!("PlayAnimation requires two arguments")
             };
-            let group = u16::try_from(group.integer()?)
-                .context("PlayAnimation group outside supported range")?;
-            anyhow::ensure!(
-                group <= i16::MAX as u16,
-                "PlayAnimation signed group unsupported"
-            );
+            let group = group.integer()?;
+            let group_bits = i16::try_from(group)
+                .map(|value| value as u16)
+                .context("PlayAnimation group outside supported signed range")?;
             // The modifier is stored as one byte.
             let modifier = modifier.integer()? as u8;
             let excluded = self.registry.actors[self.index]
@@ -5981,7 +5979,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .expect("checked animation");
             let frame = animation
                 .playback
-                .request_with_sounds(group, modifier, ticks, &mut emit)?;
+                .request_with_sounds(group_bits, modifier, ticks, &mut emit)?;
             animation.frame = frame.or(animation.frame);
             return Ok(CallResult::Complete(0));
         }

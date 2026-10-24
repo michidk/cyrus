@@ -405,6 +405,12 @@ fn request_talk_group(input: &mut AnimationCall<'_, '_>, group: i32) -> Result<(
     Ok(())
 }
 
+/// Preserve the engine's signed sixteen-bit animation-group representation while
+/// retaining the script's full integer operand for later comparisons.
+fn animation_group_bits(group: i32) -> Option<u16> {
+    i16::try_from(group).ok().map(|value| value as u16)
+}
+
 /// Animation half of `rtxAnim`/`RTXpAnim`; returns whether the task completes. The first group is
 /// requested when the line is created, then each invocation advances the cycle while the line is active
 /// and the group last requested is not current.
@@ -569,12 +575,14 @@ enum Task {
     Tasks,
     Blocking,
     Animation {
-        group: u16,
+        /// Full script operand; comparisons use the current group's signed 16-bit value.
+        group: i32,
         started: bool,
     },
     /// `PushControlAnimation`: `PushAnimation` that also applies the held ground turn.
     ControlAnimation {
-        group: u16,
+        /// Full script operand; comparisons use the current group's signed 16-bit value.
+        group: i32,
         started: bool,
     },
     /// `WanderToLocation`: walks to a location at the speed fixed on the first call.
@@ -2354,19 +2362,20 @@ impl Task {
                 let [requested, count] = arguments else {
                     anyhow::bail!("{name} requires two arguments")
                 };
-                let requested = u16::try_from(requested.integer()?)
-                    .with_context(|| format!("{name} group outside supported range"))?;
-                anyhow::ensure!(
-                    requested <= i16::MAX as u16,
-                    "{name} signed group unsupported"
-                );
+                let requested = requested.integer()?;
+                let requested_bits = animation_group_bits(requested)
+                    .with_context(|| format!("{name} group outside supported signed range"))?;
                 let count = count.integer()? as u8;
                 let input = animation.as_mut().with_context(|| {
                     format!("{name} requires prepared animation and explicit nominal ticks")
                 })?;
                 *group = requested;
                 if *started {
-                    let running = input.animation.current_group() == Some(requested);
+                    let running = input
+                        .animation
+                        .current_group()
+                        .map(|group| i32::from(group as i16))
+                        == Some(requested);
                     if turning && running {
                         let pose = spatial
                             .as_mut()
@@ -2375,18 +2384,23 @@ impl Task {
                     }
                     !running
                 } else {
-                    if input.animation.current_group() == Some(requested) {
+                    if input
+                        .animation
+                        .current_group()
+                        .map(|group| i32::from(group as i16))
+                        == Some(requested)
+                    {
                         input.animation.set_loop_count(count)?;
                         *started = true;
                     } else {
                         let frame = match &mut input.sounds {
                             Some(sounds) => input.animation.request_with_sounds(
-                                requested,
+                                requested_bits,
                                 0,
                                 input.ticks,
                                 *sounds,
                             )?,
-                            None => input.animation.request(requested, 0, input.ticks)?,
+                            None => input.animation.request(requested_bits, 0, input.ticks)?,
                         };
                         *input.frame = frame.or(*input.frame);
                     }
@@ -2913,9 +2927,22 @@ impl NativeTasks {
     }
     pub(super) fn animation_group(&self) -> Option<u16> {
         self.tasks.values().find_map(|task| match task {
-            Task::Animation { group, .. } => Some(*group),
+            Task::Animation { group, .. } => animation_group_bits(*group),
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod animation_group_tests {
+    use super::animation_group_bits;
+
+    #[test]
+    fn signed_group_operands_keep_their_bit_pattern() {
+        assert_eq!(animation_group_bits(-1), Some(u16::MAX));
+        assert_eq!(animation_group_bits(-32768), Some(0x8000));
+        assert_eq!(animation_group_bits(32767), Some(0x7fff));
+        assert_eq!(animation_group_bits(32768), None);
     }
 }
 

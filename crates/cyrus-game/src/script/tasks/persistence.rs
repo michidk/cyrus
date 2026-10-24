@@ -180,7 +180,7 @@ impl NativeTasks {
                     }
                     Task::Animation { group, .. } | Task::ControlAnimation { group, .. } => {
                         ensure!(
-                            *group <= i16::MAX as u16,
+                            i16::try_from(*group).is_ok(),
                             "animation group {group} exceeds supported signed range"
                         );
                         ensure!(
