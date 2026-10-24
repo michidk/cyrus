@@ -163,7 +163,9 @@ impl GameHost<'_, '_, '_, '_> {
         if actor.attributes[56] != 0 {
             return Ok(Vec::new());
         }
-        let ravc = data.actor(actor.name())?["ravc_count"].as_i64().unwrap_or(0);
+        let ravc = data.actor(actor.name())?["ravc_count"]
+            .as_i64()
+            .unwrap_or(0);
         if ravc != 0 {
             return Ok(self
                 .registry
@@ -196,5 +198,8 @@ impl GameHost<'_, '_, '_, '_> {
 }
 
 fn projectile_sphere(sphere: OverlapSphere) -> ([i32; 3], i32) {
-    (sphere.center.map(|value| value.round() as i32), sphere.radius.round() as i32)
+    (
+        sphere.center.map(|value| value.round() as i32),
+        sphere.radius.round() as i32,
+    )
 }
