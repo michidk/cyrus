@@ -343,7 +343,11 @@ impl SoundFrame<'_, '_> {
                             continue;
                         };
                         debug!(
-                            "sound animation: requested {requested} plays effect {index} (surface {surface:?})"
+                            "sound animation: requested {requested} plays effect {index} (surface {surface:?}, script actor {:?})",
+                            bindings
+                                .get(*actor)
+                                .ok()
+                                .map(|(_, binding)| binding.actor.index)
                         );
                         let mixed = match position {
                             Some(position) => positional_q8(*position, settings, listener, 0),
