@@ -97,7 +97,8 @@ impl super::ScriptWorld {
                 if placement.object_type != 6 {
                     return None;
                 }
-                actor.light.as_ref()?.rendered_at(self.spatial(self.id(index)).ok()?)
+                let id = self.id(index).ok()?;
+                actor.light.as_ref()?.rendered_at(self.spatial(id).ok()?)
             })
             .collect()
     }
@@ -105,23 +106,24 @@ impl super::ScriptWorld {
 
 impl LightState {
     pub(super) fn rendered(&self) -> Option<cyrus_assets::environment::LocalLight> {
-        self.enabled.then_some(cyrus_assets::environment::LocalLight {
-            position: self.position,
-            radius: self.radius,
-            rgb: self.rgb,
-        })
+        self.enabled
+            .then_some(cyrus_assets::environment::LocalLight {
+                position: self.position,
+                radius: self.radius,
+                rgb: self.rgb,
+            })
     }
 
     pub(super) fn rendered_at(
         &self,
-        spatial: &super::ActorSpatial,
+        spatial: &crate::script::spatial::ActorSpatial,
     ) -> Option<cyrus_assets::environment::LocalLight> {
         if !self.enabled {
             return None;
         }
         let pose = spatial.effective.or(Some(spatial.local))?;
         let rotated = cyrus_world::transform::Matrix::orientation(pose.angles)
-            .transform(self.offset.map(|word| i32::from(word)))
+            .transform(self.offset.map(i32::from))
             .ok()?;
         Some(cyrus_assets::environment::LocalLight {
             // Authored positions retain their exported units; offsets are Q8 pose deltas.
