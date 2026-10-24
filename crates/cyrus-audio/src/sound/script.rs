@@ -426,12 +426,13 @@ fn play_cues(
     // transports at the generation boundary as well.  This is the host-side
     // equivalent of the original teardown's channel stop and prevents a voice
     // from the released world leaking into its replacement.
-    if previous_generation.initialized && previous_generation.value != ownership.flatten() {
-        if let Some(generation) = previous_generation.value {
-            frame
-                .channels
-                .stop_script_generation(&mut frame.commands, generation);
-        }
+    if previous_generation.initialized
+        && previous_generation.value != ownership.flatten()
+        && let Some(generation) = previous_generation.value
+    {
+        frame
+            .channels
+            .stop_script_generation(&mut frame.commands, generation);
     }
     previous_generation.initialized = true;
     previous_generation.value = ownership.flatten();
