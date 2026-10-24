@@ -11,6 +11,7 @@ test = false
 
 [dependencies]
 cyrus-control.workspace = true
+cyrus-config.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
