@@ -1611,7 +1611,7 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
     );
     let mut invalid_group = tasks.snapshot();
     invalid_group.tasks[0].state = Task::Animation {
-        group: u16::MAX,
+        group: 32_768,
         started: true,
     };
     assert!(
