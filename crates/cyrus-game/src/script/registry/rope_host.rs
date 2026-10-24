@@ -31,7 +31,8 @@ pub(super) struct RopeProbe<'a> {
     pub actors: &'a [ScriptActorId],
 }
 
-/// Retained state of the selected player's rope handling. Not saved: ropes are rebuilt with the world.
+/// Retained state of the selected player's rope handling. The rope model itself is saved with the
+/// world snapshot; these transient input latches are rebuilt when the selected player is rebound.
 #[derive(Clone, Debug, Default)]
 pub(super) struct PlayerRope {
     /// The rope the player last held; skipped while the 24-tick countdown (the runtime jump

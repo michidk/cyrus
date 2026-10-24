@@ -609,7 +609,8 @@ pub struct ScriptWorld {
     /// frame loop.
     pending_player_placement: Option<([i32; 3], u16)>,
     effects: Option<EnvironmentalEffects>,
-    /// Retained ropes of the installed `MPRP` records; rebuilt on preparation, not saved.
+    /// Retained ropes of the installed `MPRP` records; rebuilt on preparation and restored from
+    /// the world's [`WorldSnapshot`] when a session replacement is loaded.
     ropes: Vec<crate::rope::Rope>,
     /// The selected player's rope handling state; not saved.
     player_rope: rope_host::PlayerRope,
