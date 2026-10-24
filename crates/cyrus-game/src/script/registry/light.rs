@@ -91,25 +91,37 @@ impl super::ScriptWorld {
     pub fn object_lights(&self) -> Vec<cyrus_assets::environment::LocalLight> {
         self.actors
             .iter()
-            .filter_map(|actor| {
+            .enumerate()
+            .filter_map(|(index, actor)| {
                 let placement = actor.placement()?;
                 if placement.object_type != 6 {
                     return None;
                 }
-                let light = actor.light.as_ref()?;
-                light.rendered()
+                actor.light.as_ref()?.rendered_at(self.spatial(self.id(index)).ok()?)
             })
             .collect()
     }
 }
 
 impl LightState {
-    pub(super) fn rendered(&self) -> Option<cyrus_assets::environment::LocalLight> {
-        self.enabled
-            .then_some(cyrus_assets::environment::LocalLight {
-                position: self.position,
+    pub(super) fn rendered_at(
+        &self,
+        spatial: &super::ActorSpatial,
+    ) -> Option<cyrus_assets::environment::LocalLight> {
+        if !self.enabled {
+            return None;
+        }
+        let pose = spatial.effective.or(Some(spatial.local))?;
+        let rotated = cyrus_world::transform::Matrix::orientation(pose.angles)
+            .transform(self.offset.map(|word| i32::from(word)))
+            .ok()?;
+        Some(cyrus_assets::environment::LocalLight {
+                // Authored positions retain their exported units; offsets are Q8 pose deltas.
+                position: std::array::from_fn(|axis| {
+                    self.position[axis].wrapping_add(rotated[axis] >> 8)
+                }),
                 radius: self.radius,
                 rgb: self.rgb,
-            })
+        })
     }
 }
