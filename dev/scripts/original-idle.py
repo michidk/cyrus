@@ -89,7 +89,7 @@ def main():
                         game["s"] += frames / s["counters"]["fps"]
                     print(json.dumps({"t": round(time.time() - t0, 1), "game_s": round(game["s"], 2), "frame": s["counters"]["mainloop_frame"], "player": me["health"],
                                       "hit_inhibited": s["hit_inhibited"], "group": me["group"], "position": me["position"],
-                                      "actors": len(s["actors"]),
+                                      "actors": len(s["actors"]), "attrs": me.get("attrs"),
                                       "near": [[a["id"], a["health"], a["group"], a["death_selector"],
                                                 round(((a["position"][0] - me["position"][0]) ** 2 + (a["position"][2] - me["position"][2]) ** 2) ** 0.5)]
                                                for a in s["actors"] if a["combat"] and not a["selected"]

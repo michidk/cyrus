@@ -198,7 +198,7 @@ impl super::ScriptWorld {
 
     /// The stage between the ordinary animation and script stages: queued (else falling) motion 8
     /// or 9 carries a jump forward, and motion 2 a forward-steered jump, at a rate set by
-    /// attribute 31 and the frame scale until the accumulated distance reaches its cap. Other
+    /// attribute 31 and the frame scale until the accumulated distance reaches its cap; deep water changes neither. Other
     /// motion values add no displacement here. It reads no actor kind, so every actor takes it.
     pub(super) fn run_pre_script_displacement(
         &mut self,
@@ -229,11 +229,6 @@ impl super::ScriptWorld {
         if control.rope_attached {
             return Ok(());
         }
-        anyhow::ensure!(
-            !matches!(actor.surface, Some(2 | 4)),
-            "world {} instance {index}: deep-water jump displacement unsupported",
-            self.world
-        );
         let divisor = i32::from(actor.attributes[31]);
         anyhow::ensure!(
             divisor != 0,
