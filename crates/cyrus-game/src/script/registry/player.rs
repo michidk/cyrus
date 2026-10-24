@@ -249,7 +249,7 @@ impl ScriptWorld {
             if matches!(group, Some(129 | 91)) {
                 return Ok(());
             }
-            world.turn_player(id, input.held, timing, sounds)?;
+            world.turn_player(id, input.held, holding, timing, sounds)?;
             if airborne {
                 world.control_airborne_player(id, input.held)?;
                 return Ok(());
@@ -538,8 +538,8 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Ordinary keyboard ground turn of the sheathed selected player, with its
-    /// turn animation and roll, following preservation's
+    /// Ordinary keyboard ground turn of the selected player, with its
+    /// turn animation (not requested while a weapon is held or on surface 2 or 4) and roll, following preservation's
     /// [ground-turn rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-turn-eligibility-and-animation).
     /// The installed `mouse_turn` is 0; a SYSTEM.INI edited to enable mouse
     /// turning is not detected (the setting is not exported) and is ignored.
@@ -547,10 +547,12 @@ impl ScriptWorld {
         &mut self,
         id: super::ScriptActorId,
         held: &crate::player::input::PlayerInput,
+        holding_weapon: bool,
         timing: crate::clock::ClockStep,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        let animation_barred = holding_weapon || matches!(self.actor_surface(id)?, 2 | 4);
         let control = self.actors[index]
             .control
             .as_ref()
@@ -578,6 +580,7 @@ impl ScriptWorld {
                 walk_key: held.walk,
                 forward_or_backward: held.forward || held.backward,
                 eligible,
+                animation_barred,
             },
         );
         let (heading, roll) = (result.heading, result.roll);

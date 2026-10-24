@@ -103,6 +103,9 @@ pub struct GroundTurnInput {
     pub forward_or_backward: bool,
     /// Living state 0 or 27 with the falling and queued-motion bytes zero.
     pub eligible: bool,
+    /// The player holds a drawn weapon with a combat record, or stands on surface 2 or 4: the
+    /// heading still turns but no turn animation is requested.
+    pub animation_barred: bool,
 }
 
 /// Heading, roll and turn animation group chosen by one keyboard turn update.
@@ -142,7 +145,7 @@ pub fn ground_turn(heading: u16, roll: u16, input: GroundTurnInput) -> GroundTur
             heading
         },
         roll,
-        group: (turns && animates && input.delta != 0)
+        group: (turns && animates && !input.animation_barred && input.delta != 0)
             .then(|| 14 + u16::from(input.delta > 0) + 2 * u16::from(input.torch)),
     }
 }

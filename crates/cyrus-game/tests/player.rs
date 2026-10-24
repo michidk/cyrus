@@ -1693,6 +1693,7 @@ fn the_keyboard_turn_matches_the_original_controller() {
                 walk_key: walk != 0,
                 forward_or_backward: forward != 0,
                 eligible: true,
+                animation_barred: false,
             },
         );
         assert_eq!(
@@ -1705,4 +1706,24 @@ fn the_keyboard_turn_matches_the_original_controller() {
             "walk {walk} forward {forward} left {left} right {right} heading {heading} roll {roll} group {group} torch {torch} scale {scale}"
         );
     }
+}
+
+#[test]
+fn a_barred_turn_animation_still_turns_the_heading() {
+    // Drawn weapon with a combat record, or surface 2 or 4: preservation's player.md ground-turn rules.
+    let input = |animation_barred| GroundTurnInput {
+        delta: -48,
+        running: false,
+        torch: false,
+        walk_key: false,
+        forward_or_backward: false,
+        eligible: true,
+        animation_barred,
+    };
+    let free = ground_turn(100, 0, input(false));
+    let barred = ground_turn(100, 0, input(true));
+    assert_eq!(free.group, Some(14));
+    assert_eq!(barred.group, None);
+    assert_eq!((barred.heading, barred.roll), (free.heading, free.roll));
+    assert_eq!(barred.heading, 148);
 }
