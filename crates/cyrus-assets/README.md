@@ -118,7 +118,9 @@ models. The `.player` sidecar retains only CYRUS's authored model-header radii i
 units for collision candidate selection. Frame tables and replacement geometry use
 the same placed, standalone or embedded ROB source selection. Missing or conflicting
 sources report contextual export errors. Re-export worlds before using newly supported frame-source models.
-Ordinary actor model replacement and its session staging are still being integrated.
+Ordinary actor model replacement and session staging are assembled by the runtime
+session replacement path; this export layer supplies the validated frame-source
+geometry and metadata consumed by that path.
 
 **Verified:** the pinned preservation [texture export](https://github.com/michidk/redguard-preservation/commit/d0eec6c98e6917f942e643204fc155f53b34b649)
 retains every authored TEXBSI frame in world and model GLBs, with shared image
