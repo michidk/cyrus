@@ -418,9 +418,10 @@ program descriptors plus the independent version-4 `.scripts` sidecar with actor
 executes authored PushAnimation tasks, and applies their mesh frames. End stores
 its target for a later eligible stage through the shared `cyrus-script` core.
 Control `state.scripts` reports cache readiness, program and unsupported counts,
-and bounded unsupported examples. Loaded scripts do not imply live execution.
-Automatic world activation, host timing,
-interrupts, synchronization channels and other script operations remain unsupported. Missing animation models
+and bounded unsupported examples. Loaded scripts do not imply live execution in
+the inspection host. Production world activation and host scheduling run through
+the native game path; the inspection host does not infer those stages, and
+interrupts, synchronization channels and other script operations remain unsupported there. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
 ### Model lighting
