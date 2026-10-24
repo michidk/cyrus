@@ -391,7 +391,9 @@ or activation timers. Missing inputs retain pending text without displaying it;
 stale world inputs are ignored. Control `hud.prompt` reports the last drawn text,
 while script inspection reports pending text and ownership. Lockout retains 16 bits.
 Re-export HUD caches for the installed RTX label catalog, including text-only entries.
-Automatic actor eligibility and production interaction scheduling remain unsupported.
+Automatic actor eligibility is owned by `cyrus-game`'s ordinary dispatcher rather
+than this render crate. Production interaction scheduling and matched presentation
+parity remain outside this crate's coverage.
 
 The F12 console renders installed `SYSTEM/PAPER.GXA` and the configured bitmap
 font through the shared game editor. **Verified:** presentation inputs, palette
