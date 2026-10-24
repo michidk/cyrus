@@ -98,7 +98,7 @@ def main():
         final = call({"type": "state"})
         world_error = (final.get("scripts") or {}).get("error")
         ticked = (final.get("clock") or {}).get("game_seconds", 0) - game0
-        stalled = ticked < min(args.seconds, 30) / 4
+        stalled = ticked < min(args.seconds, 30) / 10  # ISLAND runs at the 2-tick frame clamp (about 0.15 game s per wall s) in the container
         if world_error:
             print(f"{world}: script world failed: {world_error[:300]}")
         if stalled:
