@@ -181,11 +181,6 @@ impl super::ScriptWorld {
             return Ok(false);
         }
         let state = control.living_state;
-        self.actors[index]
-            .control
-            .as_mut()
-            .expect("validated jump control")
-            .stable_position_valid = false;
         if state == 15 {
             self.ledge_hang_release(id, query, environment, timing, sounds)?;
             return Ok(false);
