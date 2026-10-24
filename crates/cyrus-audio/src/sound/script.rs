@@ -427,7 +427,11 @@ fn play_cues(
     // equivalent of the original teardown's channel stop and prevents a voice
     // from the released world leaking into its replacement.
     if previous_generation.initialized && previous_generation.value != ownership.flatten() {
-        frame.channels.stop_all(&mut frame.commands);
+        if let Some(generation) = previous_generation.value {
+            frame
+                .channels
+                .stop_script_generation(&mut frame.commands, generation);
+        }
     }
     previous_generation.initialized = true;
     previous_generation.value = ownership.flatten();

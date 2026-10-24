@@ -600,6 +600,11 @@ impl Channels {
         self.stop_matching(commands, None, None);
     }
 
+    fn stop_script_generation(&mut self, commands: &mut Commands, generation: u64) {
+        let stopped = self.samples.stop_script_generation(generation);
+        self.retire(commands, stopped);
+    }
+
     fn update_slot(&self, slot: u8, volume: u8, master: i32, pan: u8) -> Result<(), String> {
         let reservation = self
             .samples
