@@ -236,7 +236,12 @@ impl ScriptWorld {
                     .expect("admitted ordinary control")
                     .advance_action_transition_counter(ticks);
                 self.finish_ledge_climb(id, ticks, sounds)?;
-                if self.actors[id.index].animation.is_some() {
+                // A selected role admitted for a timer/inspection pass has no input-owned
+                // movement sample. Keep its ordinary script stages eligible, but do not advance
+                // the authored animation state as though a live player update occurred.
+                if self.actors[id.index].animation.is_some()
+                    && (!selected_role || inputs.player_controller.is_some())
+                {
                     if !self.select_selected_death_animation_default(id, ticks, sounds)? {
                         let items_ready = inputs
                             .hud
