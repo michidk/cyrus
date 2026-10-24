@@ -69,6 +69,14 @@ just run-native          # in dev/docker/dev with a virtual display, no preview:
 and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
 pirates are defeated; the story then loads the next world by itself.
 
+Compare movement and collision against the original at an equal update rate. Both builds step by the
+frame scale the clock measures (the original shows 16 to 23 frames a second in its overlay; the dev
+container renders about 6, which the clock clamps at `min_frame_rate`), and contact sequences depend on it:
+on the HIDEINT boat walk the original itself ended in two different places in two runs, and cyrus
+reproduced the second at frame scale 192. Run cyrus on a scratch copy of the install (under
+`/home/vibepod/workspaces`, so Docker can mount it) whose `SYSTEM.INI` sets `min_frame_rate=16`: the clock then
+steps at 192 even when the host is slower, and game time runs slower than wall time.
+
 `dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
 through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
 any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
