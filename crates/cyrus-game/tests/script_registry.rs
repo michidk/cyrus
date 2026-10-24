@@ -32328,6 +32328,7 @@ fn the_world_owns_its_exported_ropes() {
     assert_eq!(world.ropes()[0].chain().len(), 3);
     let mut disabled_scripts = scripts.clone();
     disabled_scripts.updates.ropes_load = Some(false);
+    disabled_scripts.content_id = disabled_scripts.content_identity().unwrap();
     let mut disabled = ScriptWorld::prepare(&disabled_scripts, 1).unwrap();
     disabled
         .prepare_ropes(&animations(serde_json::json!([rope("ROPELINK")])))
@@ -32338,6 +32339,7 @@ fn the_world_owns_its_exported_ropes() {
     );
     let mut missing_scripts = scripts.clone();
     missing_scripts.updates.ropes_load = None;
+    missing_scripts.content_id = missing_scripts.content_identity().unwrap();
     let mut missing = ScriptWorld::prepare(&missing_scripts, 1).unwrap();
     let error = missing
         .prepare_ropes(&animations(serde_json::json!([rope("ROPELINK")])))
