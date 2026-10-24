@@ -188,7 +188,10 @@ impl ScriptWorld {
             return Ok(None);
         };
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
-        for (rope_index, rope) in self.ropes.iter().enumerate().rev() {
+        // The engine tests the retained rope list head first.  Keep that order here: when
+        // several ropes overlap the player's contact spheres, the first authored rope owns the
+        // grab (the selected link is resolved below).
+        for (rope_index, rope) in self.ropes.iter().enumerate() {
             if rope.links <= 1 || skipped == Some(rope_index) {
                 continue;
             }
