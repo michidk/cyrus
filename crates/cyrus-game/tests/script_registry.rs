@@ -99,6 +99,7 @@ fn cache() -> Scripts {
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             rope: None,
+            ropes_load: Some(true),
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,
@@ -32325,6 +32326,24 @@ fn the_world_owns_its_exported_ropes() {
     assert_eq!(world.ropes().len(), 1);
     assert_eq!(world.ropes()[0].links, 3);
     assert_eq!(world.ropes()[0].chain().len(), 3);
+    let mut disabled_scripts = scripts.clone();
+    disabled_scripts.updates.ropes_load = Some(false);
+    let mut disabled = ScriptWorld::prepare(&disabled_scripts, 1).unwrap();
+    disabled
+        .prepare_ropes(&animations(serde_json::json!([rope("ROPELINK")])))
+        .unwrap();
+    assert!(
+        disabled.ropes().is_empty(),
+        "ropes_load=no suppresses construction"
+    );
+    let mut missing_scripts = scripts.clone();
+    missing_scripts.updates.ropes_load = None;
+    let mut missing = ScriptWorld::prepare(&missing_scripts, 1).unwrap();
+    let error = missing
+        .prepare_ropes(&animations(serde_json::json!([rope("ROPELINK")])))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("ropes_load"), "{error}");
     let mut none = ScriptWorld::prepare(&scripts, 1).unwrap();
     none.prepare_ropes(&animations(serde_json::Value::Null))
         .unwrap();

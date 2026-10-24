@@ -29,6 +29,7 @@ fn cache() -> Scripts {
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             rope: None,
+            ropes_load: None,
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,
@@ -676,6 +677,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                 jump_add: 4608,
                 attach_angle: 512,
             }),
+            ropes_load: None,
             fall_death_ticks: 144,
             fall_landing: Some(cyrus_assets::script::FallLanding {
                 death_height: 568,
@@ -876,7 +878,7 @@ fn update_switches_are_required_and_part_of_cache_identity() {
 #[cfg(feature = "parsers")]
 #[test]
 fn installed_update_switch_conversion_rejects_missing_inputs() {
-    let text = "[system]\ntask_system=no\nanimation_system=yes\n[debug]\nconvert_static_angles=no\ndisable_slaves=no\ndisable_master_slaves=yes\n[game]\nplayer_fall_dead_time=12\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n[3dmanager]\ndummy_manager=no\n";
+    let text = "[system]\ntask_system=no\nanimation_system=yes\nropes_load=yes\n[debug]\nconvert_static_angles=no\ndisable_slaves=no\ndisable_master_slaves=yes\n[game]\nplayer_fall_dead_time=12\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n[3dmanager]\ndummy_manager=no\n";
     let parse = |text: &str| {
         UpdateSettings::from_system(&rgpre::import::system_ini::SystemIni::parse(text).unwrap())
     };
@@ -887,6 +889,7 @@ fn installed_update_switch_conversion_rejects_missing_inputs() {
                 jump_add: 4608,
                 attach_angle: 512,
             }),
+            ropes_load: Some(true),
             fall_death_ticks: 144,
             fall_landing: Some(cyrus_assets::script::FallLanding {
                 death_height: 568,
@@ -929,6 +932,7 @@ fn installed_update_switch_conversion_rejects_missing_inputs() {
     for line in [
         "task_system=no\n",
         "animation_system=yes\n",
+        "ropes_load=yes\n",
         "disable_slaves=no\n",
         "disable_master_slaves=yes\n",
         "dummy_manager=no\n",

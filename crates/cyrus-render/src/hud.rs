@@ -1544,6 +1544,7 @@ mod tests {
             player_distance_override: false,
             updates: cyrus_assets::script::UpdateSettings {
                 rope: None,
+                ropes_load: None,
                 fall_death_ticks: 144,
                 fall_landing: None,
                 dummy_model_manager: false,

@@ -1293,6 +1293,13 @@ impl ScriptWorld {
         let Some(records) = data.metadata["ropes"].as_array() else {
             return Ok(());
         };
+        let load = self
+            .updates
+            .ropes_load
+            .context("world rope preparation requires SYSTEM.INI [system] ropes_load")?;
+        if !load {
+            return Ok(());
+        }
         anyhow::ensure!(
             records.len() <= crate::rope::MAX_ROPES,
             "world {}: {} ropes exceed the engine's {}",
@@ -6942,6 +6949,7 @@ mod fighting_tests {
             flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
             updates: cyrus_assets::script::UpdateSettings {
                 rope: None,
+                ropes_load: None,
                 fall_death_ticks: 144,
                 fall_landing: None,
                 dummy_model_manager: false,

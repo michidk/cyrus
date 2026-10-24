@@ -84,6 +84,9 @@ pub struct UpdateSettings {
     /// attachment had a consumer (re-export).
     #[serde(default)]
     pub rope: Option<RopeSettings>,
+    /// `[system] ropes_load`; absent in caches exported before rope loading was wired.
+    #[serde(default)]
+    pub ropes_load: Option<bool>,
     /// Falling-death limit in nominal ticks, with original signed clamp and wrapping conversion.
     pub fall_death_ticks: i32,
     /// `[game] fall_death_height`, `fall_hurt_height` and `fall_hurt_zap` in map units; absent in
@@ -132,6 +135,12 @@ impl UpdateSettings {
                     .context("SYSTEM.INI [game] rope_attach_angle missing")?
                     & 0x3ff,
             }),
+            ropes_load: Some(
+                settings
+                    .system
+                    .ropes_load
+                    .context("SYSTEM.INI [system] ropes_load missing")?,
+            ),
             fall_death_ticks: settings
                 .game
                 .player_fall_dead_time

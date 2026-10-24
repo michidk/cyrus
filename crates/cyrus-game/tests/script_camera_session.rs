@@ -98,6 +98,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         player_distance_override: false,
         updates: UpdateSettings {
             rope: None,
+            ropes_load: None,
             fall_death_ticks: 144,
             fall_landing: None,
             dummy_model_manager: false,
