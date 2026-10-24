@@ -6,7 +6,7 @@ exclude = ["dev/vendor/smk", "dev/vendor/rodio"]
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-config", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
-version = "0.1.25"
+version = "0.1.26"
 edition = "2024"
 repository = "https://github.com/michidk/cyrus"
 
