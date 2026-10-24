@@ -615,6 +615,18 @@ pub struct ScriptWorld {
     player_rope: rope_host::PlayerRope,
 }
 impl ScriptWorld {
+    /// Cancel native VM continuations and actor-owned task records before disposal.
+    fn cancel_native_tasks(&mut self) -> Result<()> {
+        for (index, actor) in self.actors.iter_mut().enumerate() {
+            if let Some(runtime) = actor.runtime.as_mut() {
+                runtime
+                    .cancel_tasks_with(|token| actor.tasks.cancel(token))
+                    .with_context(|| format!("world {} actor {index}", self.world))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
     pub(super) fn selected_player_index(&self) -> Option<usize> {
         selected_player_index(&self.actors, &self.globals)
@@ -2953,19 +2965,6 @@ impl ScriptActors {
         }
     }
 
-    /// Cancel native VM continuations and their actor-owned task records before a world is
-    /// discarded. Retained worlds keep their slots for revisit restoration.
-    fn cancel_native_tasks(&mut self) -> Result<()> {
-        let world = self.world;
-        for (index, actor) in self.actors.iter_mut().enumerate() {
-            if let Some(runtime) = actor.runtime.as_mut() {
-                runtime
-                    .cancel_tasks_with(|token| actor.tasks.cancel(token))
-                    .with_context(|| format!("world {world} actor {index}"))?;
-            }
-        }
-        Ok(())
-    }
     /// Record a host failure without replacing the first failure in this world.
     /// World preparation clears it alongside the logical registry.
     pub fn report_runtime_error(&mut self, error: String) {
