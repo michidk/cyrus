@@ -15,10 +15,11 @@
 //! Native builds read the install; the browser plays the exported bank.
 //!
 //! Script `Sound` supports positional starts without animation surface remapping.
-//! AmbientSound has a synchronous shared-channel adapter; automatic maintenance
-//! reset ownership remains unsupported. AmbientRTX starts its clip through the dialogue
-//! source and then follows it with positional volume and pan. The player torch effect uses a
-//! dedicated one-channel lifecycle; rope and combat starts remain unsupported. The decoder supports live gain updates.
+//! AmbientSound has a synchronous shared-channel adapter; maintenance reset ownership is
+//! generation-scoped. AmbientRTX starts its clip through the dialogue source and then follows
+//! it with positional volume and pan. The player torch effect uses a dedicated one-channel
+//! lifecycle, and rope/combat starts use the same shared channel allocator. The decoder supports
+//! live gain updates.
 //! Animation sounds play only for actors
 //! whose [`SoundSurface`] is known, remapped through the installed SURFACE.INI tables.
 
