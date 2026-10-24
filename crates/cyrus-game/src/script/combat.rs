@@ -166,7 +166,11 @@ impl CombatControlState {
                 format!("combat spacing slot {slot}: attack{index:02} first motion unavailable")
             })?;
             populated += 1;
-            if motion.kind != 1 {
+            // The constructor tests the runtime motion record's first word, which is 1 for every
+            // attack motion read from the original (COMBAT.INI types 0 and 3, alone or as a combo's
+            // first move), not the INI type. The word for the other types is not observed, so those
+            // slots stay counted but contribute no range (Unknown).
+            if !matches!(motion.kind, 0 | 3) {
                 continue;
             }
             matched = true;
@@ -753,20 +757,45 @@ mod constructor_tests {
     #[test]
     fn constructor_spacing_matches_original_slot_aggregation() {
         use cyrus_assets::script::combat::{Attack, Motion};
+        // Slots are [INI type, attack min, attack max, first-motion max]. Types 0 and 3 contribute
+        // (the original's records for START's pirates and NECRTOWR's Vermai); type 4 is unobserved.
         let cases: &[(&[[i32; 4]], [i32; 3])] = &[
             (&[], [10000, 30000, 20000]),
-            (&[[2, 10, 90, 90]], [10000, 30000, 20000]),
-            (&[[1, 10, 90, 90]], [10, 90, 50]),
-            (&[[1, 10, 90, 90], [2, 100, 200, 200]], [10, 90, 25]),
-            (&[[1, 10, 90, 100], [1, 20, 200, 95]], [10, 200, 80]),
-            (&[[1, -9, -2, 10]], [-9, -2, -6]),
+            (&[[4, 10, 90, 90]], [10000, 30000, 20000]),
+            (&[[0, 10, 90, 90]], [10, 90, 50]),
+            (&[[3, 10, 90, 90]], [10, 90, 50]),
+            (&[[0, 10, 90, 90], [4, 100, 200, 200]], [10, 90, 25]),
+            (&[[0, 10, 90, 100], [0, 20, 200, 95]], [10, 200, 80]),
+            (&[[0, -9, -2, 10]], [-9, -2, -6]),
             (
-                &[[1, 2147483640, -2147483640, 2147483647]],
+                &[[0, 2147483640, -2147483640, 2147483647]],
                 [2147483640, -2147483640, i32::MIN],
             ),
             (
-                &[[1, 2147483640, 2147483646, 2147483647]; 2],
+                &[[0, 2147483640, 2147483646, 2147483647]; 2],
                 [2147483640, 2147483646, -5],
+            ),
+            // NECRTOWR's VERMAI01: attacks 75 (stab), 76 (stab) and 77 (melee), read back from the
+            // original as [0, 55000, 27500].
+            (
+                &[
+                    [3, 0, 55000, 55000],
+                    [3, 0, 55000, 55000],
+                    [0, 0, 55000, 55000],
+                ],
+                [0, 55000, 27500],
+            ),
+            // START's pirates: a combo of range 45000 whose first move reaches 35000, three single
+            // attacks of 35000 and a second combo; the original holds [0, 45000, 19500].
+            (
+                &[
+                    [0, 0, 45000, 35000],
+                    [3, 0, 35000, 35000],
+                    [0, 0, 35000, 35000],
+                    [0, 0, 35000, 35000],
+                    [0, 0, 45000, 35000],
+                ],
+                [0, 45000, 19500],
             ),
         ];
         for &(slots, expected) in cases {

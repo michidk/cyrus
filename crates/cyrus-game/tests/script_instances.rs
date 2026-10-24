@@ -1139,13 +1139,26 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
         }
         let actor = &world.actors()[index];
         let combat = actor.control_state().unwrap().combat.as_ref().unwrap();
-        // Original constructor execution with the installed START attack definitions.
-        assert_eq!(
-            combat.spacing_ranges,
-            [10000, 30000, 20000],
-            "{}",
-            actor.name()
-        );
+        // Read from the running original in START: the pirates' five attack slots all contribute
+        // (near 0, far 45000, midpoint sum 97500 over 5); every other nonplayer combat actor has
+        // none. The original's player record holds no attack slots at all (default ranges), while
+        // the player cache populates them here; fight spacing never reads a player's ranges, so
+        // the player is not compared.
+        if !matches!(
+            actor.source,
+            ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+        ) {
+            assert_eq!(
+                combat.spacing_ranges,
+                if matches!(actor.name(), "SPIRATE1" | "SPIRATE2") {
+                    [0, 45000, 19500]
+                } else {
+                    [10000, 30000, 20000]
+                },
+                "{}",
+                actor.name()
+            );
+        }
         assert_eq!(
             combat.spacing_period,
             if matches!(actor.name(), "SPIRATE1" | "SPIRATE2") {

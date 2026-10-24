@@ -17906,7 +17906,7 @@ fn live_paced_pick_uses_receiver_geometry_and_branch_specific_damage() {
             .enumerate()
             .map(|(index, damage)| {
                 serde_json::from_value(serde_json::json!({
-                    "section":index,"kind":1,"animation_group":97,
+                    "section":index,"kind":0,"animation_group":97,
                     "min_range":if index == 0 {10} else {-999},
                     "max_range":if index == 0 {100} else {9999},
                     "first_collide_frame":7,"collide_duration":3,
@@ -18435,7 +18435,8 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         .unwrap();
     assert_eq!(constructed.contact_profile.vertex, -7);
     assert_eq!(constructed.contact_profile.radius, 25600);
-    assert_eq!(constructed.spacing_ranges, [10000, 30000, 20000]);
+    // The fixture's one melee attack contributes: near 0, far 100, midpoint 50.
+    assert_eq!(constructed.spacing_ranges, [0, 100, 50]);
     assert_eq!(constructed.spacing_period, 129);
     let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     for field in ["spacing_ranges", "spacing_period", "contact_profile"] {
