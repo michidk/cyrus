@@ -2110,6 +2110,17 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         let selected = self.selected_player_index() == Some(index);
+        // The selected player's deep-water default also runs the weapon cleanup first.
+        if selected
+            && self.actors[index].failure().is_none()
+            && self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.death_selector != 8)
+            && matches!(self.actors[index].surface, Some(2 | 4))
+        {
+            self.cleanup_actor_weapon(id, id, ticks, sounds)?;
+        }
         let events = effects::ActorEventContext::capture(self, id);
         let camera = &mut self.camera;
         let effects = &mut self.effects;
@@ -2138,8 +2149,7 @@ impl ScriptWorld {
                 124
             }
         } else if selected && matches!(actor.surface, Some(2 | 4)) {
-            // The selected player in deep water treads water; the branch's weapon-state cleanup
-            // is not modelled.
+            // The selected player in deep water treads water after the weapon cleanup above.
             141
         } else if control.rope_attached {
             79

@@ -4,7 +4,7 @@
 Sets `start_world` in the run copy's WORLD.INI (reset to 0, START, afterwards), starts the original in the
 retro container as original-duel.py does (same requirements, state reader under
 $CYRUS_MAGIC/tools), sends no input unless --hold names keys, and prints one JSON line per sample (wall seconds, the engine's
-game seconds, engine frame, player health, hit inhibition, current and pending animation group, [sliding, falling, queued, living, motion byte, surface], position, actor count, nearby combat
+game seconds, engine frame, player health, hit inhibition, current and pending animation group, drawn-weapon byte, [sliding, falling, queued, living, motion byte, surface], position, actor count, nearby combat
 actors as [id, health, group, death selector, distance]) for
 --seconds. Compare with the same world's native idle run: a player that dies or loses health in
 one and not the other is a behavioural difference.
@@ -88,7 +88,7 @@ def main():
                     if frames > 0 and s["counters"]["fps"] > 0:
                         game["s"] += frames / s["counters"]["fps"]
                     print(json.dumps({"t": round(time.time() - t0, 1), "game_s": round(game["s"], 2), "frame": s["counters"]["mainloop_frame"], "player": me["health"],
-                                      "hit_inhibited": s["hit_inhibited"], "group": me["group"], "pending": me.get("pending"),
+                                      "hit_inhibited": s["hit_inhibited"], "group": me["group"], "pending": me.get("pending"), "drawn": me.get("drawn"),
                                       "motion": [me.get(k) for k in ("sliding", "falling", "queued", "living", "motion", "surface")], "position": me["position"],
                                       "actors": len(s["actors"]), "attrs": me.get("attrs"),
                                       "near": [[a["id"], a["health"], a["group"], a["death_selector"],
