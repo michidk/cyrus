@@ -36,6 +36,8 @@ pub struct BackwardState {
     pub walk_backward_combat_step_attribute: u8,
     /// A combat move is already selected (the action selector is not -1).
     pub move_selected: bool,
+    /// Selected-player mode byte (attribute 105) blocks WalkBackward while set.
+    pub selected_player_mode_one: bool,
     /// Attribute 11 selects the initial distance ramp, independently of animation suppression.
     pub step_adjustment: u8,
 }
@@ -86,10 +88,10 @@ pub fn backward_admission(
     }
 }
 
-/// `WalkBackward`'s admission before its step check: the idle admission with lifecycle byte 0
-/// only. The original's extra refusal for the selected player is not modelled.
+/// `WalkBackward`'s admission before its step check: the idle admission with lifecycle byte 0,
+/// plus the selected player's retained mode-one refusal.
 pub fn walk_backward_admitted(state: &BackwardState) -> bool {
-    idle_admitted(state) && state.living_state == 0
+    idle_admitted(state) && state.living_state == 0 && !state.selected_player_mode_one
 }
 
 /// The admission shared by every nonplayer stepper: no rope, sliding, falling or queued motion,
@@ -449,6 +451,15 @@ mod tests {
                 "living state {living_state}"
             );
         }
+    }
+
+    #[test]
+    fn selected_player_mode_blocks_walk_backward() {
+        assert!(!walk_backward_admitted(&BackwardState {
+            selected_player_mode_one: true,
+            ..ready()
+        }));
+        assert!(walk_backward_admitted(&ready()));
     }
 
     #[test]

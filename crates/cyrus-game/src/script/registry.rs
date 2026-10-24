@@ -3789,6 +3789,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.action != -1),
+            selected_player_mode_one: self.registry.selected_player_index() == Some(self.index)
+                && actor.attributes[105] == 1,
         })
     }
 
