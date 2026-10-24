@@ -348,8 +348,8 @@ installed Activate/Attack binding once per hold, with supplied actor
 gates. Ordinary use derives them from the logical player; missing actor state
 rejects use. Script acquisition, selection, item cycling, counts and compass
 ownership share game-owned session inventory. The display flag and inventory
-survive HUD/world replacement. Save restore and journal/torch/rope reset semantics
-remain unsupported.
+survive HUD/world replacement. Rope simulation and attachments are included in the
+session snapshot and restore; journal and torch reset semantics remain unsupported.
 Matched original/native/browser weapon-draw acceptance and gameplay walk-mode/auto-defend parity remain open. Native
 health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
 
