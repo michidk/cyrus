@@ -31165,6 +31165,53 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
 }
 
 #[test]
+fn a_created_object_snapshot_rejects_an_out_of_range_creator_reference() {
+    use cyrus_game::script::{ScriptActorSource, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    let mut projectile = scripts.actors["LOGIC"].clone();
+    projectile.code_origin += 1000;
+    projectile.header_index += 100;
+    scripts.actors.insert("BALL".into(), projectile);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, _) = static_model_fixture(scripts.clone());
+    let creator = world.id(0).unwrap();
+    let created = world
+        .create_object(creator, "ball", [0, 0, 256], [0, 0, 0])
+        .unwrap();
+    assert!(matches!(
+        &world.actors()[created.index].source,
+        ScriptActorSource::Created(name) if name == "BALL"
+    ));
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    saved["actors"][created.index]["control"]["creator"] = serde_json::json!(9999);
+    let result = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 9,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    );
+    let error = match result {
+        Ok(_) => panic!("restore accepted an out-of-range creator"),
+        Err(error) => error,
+    };
+    assert!(
+        format!("{error:#}").contains("saved creator actor 9999 is stale or absent"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn shoot_creates_the_named_object_at_the_creator_with_the_given_orientation() {
     use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
     let shoot = |name_known: bool| {

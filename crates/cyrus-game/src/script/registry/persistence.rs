@@ -137,7 +137,19 @@ impl ControlSnapshot {
     fn restore(
         self,
         rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
+        saved_generation: u64,
     ) -> Result<ActorControlState> {
+        // Created-object parents are stored as indices because they are only used inside
+        // the enclosing world. Validate that cross-actor reference against the saved
+        // generation before restoring it, just like combat targets.
+        let creator = self
+            .creator
+            .map(|index| {
+                rebind(saved_generation, index)
+                    .map(|_| index)
+                    .with_context(|| format!("saved creator actor {index} is stale or absent"))
+            })
+            .transpose()?;
         Ok(ActorControlState {
             navigation: self.navigation,
             point_command: self.point_command,
@@ -178,7 +190,7 @@ impl ControlSnapshot {
             hidden: self.hidden,
             scabbard_override: self.scabbard_override,
             killed: self.killed,
-            creator: self.creator,
+            creator,
             combat_death_default: self.combat_death_default,
             combat: self.combat.map(|saved| saved.restore(rebind)).transpose()?,
         })
@@ -383,6 +395,7 @@ impl ActorSnapshot {
 
 struct ActorRestoreContext<'a, F> {
     index: usize,
+    saved_generation: u64,
     scripts: &'a Scripts,
     animations: &'a Animations,
     sources: &'a BTreeMap<CodeOrigin, Arc<cyrus_script::program::Program>>,
@@ -523,7 +536,7 @@ impl ActorSnapshot {
         actor.attributes = self.attributes;
         actor.control = self
             .control
-            .map(|saved| saved.restore(context.rebind))
+            .map(|saved| saved.restore(context.rebind, context.saved_generation))
             .transpose()?;
         actor.surface = self.surface;
         actor.light = self.light;
@@ -845,6 +858,7 @@ impl WorldSnapshot {
                         actor,
                         &ActorRestoreContext {
                             index,
+                            saved_generation: self.generation,
                             scripts: sources.scripts,
                             animations: sources.animations,
                             sources: &programs,
