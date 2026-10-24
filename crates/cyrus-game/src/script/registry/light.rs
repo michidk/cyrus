@@ -104,6 +104,14 @@ impl super::ScriptWorld {
 }
 
 impl LightState {
+    pub(super) fn rendered(&self) -> Option<cyrus_assets::environment::LocalLight> {
+        self.enabled.then_some(cyrus_assets::environment::LocalLight {
+            position: self.position,
+            radius: self.radius,
+            rgb: self.rgb,
+        })
+    }
+
     pub(super) fn rendered_at(
         &self,
         spatial: &super::ActorSpatial,
@@ -116,12 +124,12 @@ impl LightState {
             .transform(self.offset.map(|word| i32::from(word)))
             .ok()?;
         Some(cyrus_assets::environment::LocalLight {
-                // Authored positions retain their exported units; offsets are Q8 pose deltas.
-                position: std::array::from_fn(|axis| {
-                    self.position[axis].wrapping_add(rotated[axis] >> 8)
-                }),
-                radius: self.radius,
-                rgb: self.rgb,
+            // Authored positions retain their exported units; offsets are Q8 pose deltas.
+            position: std::array::from_fn(|axis| {
+                self.position[axis].wrapping_add(rotated[axis] >> 8)
+            }),
+            radius: self.radius,
+            rgb: self.rgb,
         })
     }
 }
