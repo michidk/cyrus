@@ -643,6 +643,20 @@ impl ScriptWorld {
         self.id(self.selected_player_index()?).ok()
     }
 
+    /// Console `item add`: one acquisition through the session inventory, as `AddItem` does. An
+    /// empty-selection repair assigns the selected player's weapon attribute.
+    pub fn add_player_item(&mut self, hud: &super::ScriptHud, item: u16) -> Result<()> {
+        anyhow::ensure!(hud.inventory_ready()?, "item add: inventory unavailable");
+        let player = self
+            .selected_player()
+            .context("item add: no selected player")?;
+        let actors = &mut self.actors;
+        hud.add_item(item, 1, &mut |weapon| {
+            actors[player.index].attributes[23] = weapon;
+            Ok(())
+        })
+    }
+
     /// Return the selected player's state for the engine-owned torch sound.
     /// The sound host supplies the positional mixer and remembers its channel;
     /// this method only exposes the authoritative logical actor state.

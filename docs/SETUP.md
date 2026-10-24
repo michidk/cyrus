@@ -637,7 +637,10 @@ flag type; rejection leaves every flag unchanged. `load world[,marker][,angle]` 
 load through the same path as the script `LoadWorld` native: the world must be a WORLD.INI entry from 0
 through 99, the marker supplies the start position and the angle (masked to 0 through 2047) the heading,
 and omitted values are zero. It accepts numeric literals only, not symbols; a missing marker reports a
-placement error and keeps the player where it was. Other catalog entries report unavailable owners.
+placement error and keeps the player where it was. `item add,id` gives the selected player one item through
+the session inventory, the same acquisition path as the `AddItem` native (**Inferred** from the console reference;
+the original handler was not compared). The other `item` operations (`player`, `show`, `sub`, `drop`) report
+that they are unsupported. Other catalog entries report unavailable owners.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can

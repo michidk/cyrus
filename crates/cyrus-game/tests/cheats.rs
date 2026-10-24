@@ -254,6 +254,23 @@ fn console_load_requests_a_world_like_the_load_world_native() {
 }
 
 #[test]
+fn console_item_only_adds_and_reports_why_it_cannot() {
+    use cyrus_console::{Source, submit};
+    let mut app = console_app();
+    app.insert_resource(cyrus_game::script::ScriptHud::default())
+        .insert_resource(cyrus_game::script::ScriptActors::default());
+    for (line, reason) in [
+        ("item sub,1", "unsupported"),
+        ("item add", "missing"),
+        ("item add,70000", "out of range"),
+        ("item add,1", "loaded script world"),
+    ] {
+        let error = submit(app.world_mut(), line, Source::Interactive).unwrap_err();
+        assert!(format!("{error:#}").contains(reason), "{line}: {error:#}");
+    }
+}
+
+#[test]
 fn every_preservation_cheat_has_a_registered_handler() {
     let mut app = console_app();
     for entry in cyrus_assets::cheats::empty().entries() {

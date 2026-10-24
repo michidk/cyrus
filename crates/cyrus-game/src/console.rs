@@ -39,6 +39,15 @@ impl Plugin for GameConsolePlugin {
             },
             load,
         );
+        app.console_command(
+            Command {
+                name: "item".into(),
+                alias: Some("i".into()),
+                usage: "item add,id".into(),
+                cheat: false,
+            },
+            item,
+        );
         for (name, alias) in [("getflag", "gf"), ("setflag", "sf")] {
             app.console_command(
                 Command {
@@ -105,6 +114,33 @@ fn load(In(command): In<Invocation>, mut commands: Commands) -> anyhow::Result<V
         request[1],
         request[2] & 2047
     )])
+}
+/// `item add,id` gives the selected player one item through the session inventory. The other
+/// original operations (`player`, `show`, `sub`, `drop`) are not implemented.
+fn item(In(command): In<Invocation>, world: &mut World) -> anyhow::Result<Vec<String>> {
+    let (operation, argument) = command
+        .args
+        .split_once(',')
+        .map_or((command.args.as_str(), ""), |(a, b)| (a.trim(), b.trim()));
+    ensure!(
+        operation == "add",
+        "item {operation:?} is unsupported: only item add,id is implemented"
+    );
+    let id = cyrus_console::number(argument, |name| {
+        anyhow::bail!("item add accepts numeric literals, not the symbol {name:?}")
+    })?;
+    let id = u16::try_from(id).context("item add: item ID out of range")?;
+    world.resource_scope(|world, mut actors: bevy::prelude::Mut<ScriptActors>| {
+        let hud = world
+            .get_resource::<crate::script::ScriptHud>()
+            .context("item add: inventory unavailable")?;
+        actors
+            .current
+            .as_mut()
+            .context("item add requires a loaded script world")?
+            .add_player_item(hud, id)
+    })?;
+    Ok(vec![format!("item add: {id}")])
 }
 fn availability(
     state: Res<State<crate::AppState>>,
