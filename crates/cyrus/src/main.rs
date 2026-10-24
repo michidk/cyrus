@@ -186,6 +186,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     {
         app.insert_resource(cyrus_render::camera::InitialView(view));
     }
+    if !args.headless {
+        app.add_systems(Last, exit_when_primary_window_closes);
+    }
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
     ));
@@ -274,6 +277,15 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     subtitles::register(&mut app);
     app.run();
     Ok(())
+}
+
+fn exit_when_primary_window_closes(
+    mut close_requests: MessageReader<bevy::window::WindowCloseRequested>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    if close_requests.read().next().is_some() {
+        exit.write(AppExit::Success);
+    }
 }
 
 /// Prepare the first visible assets without blocking the window's event loop.
