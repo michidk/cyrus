@@ -2909,6 +2909,7 @@ version = "0.1.25"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "cyrus-config",
  "cyrus-control",
  "rmcp",
  "schemars",
