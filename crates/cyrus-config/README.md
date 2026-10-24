@@ -1,7 +1,7 @@
 # cyrus-config
 
 Where cyrus keeps its own state on the player's machine (settings, the remembered game-files
-folder, preferences, saves, exported caches and logs) and how it reads and writes it. Nothing is
+folder, preferences, saves, screenshots, exported caches and logs) and how it reads and writes it. Nothing is
 ever written to the install.
 
 A leaf crate: no workspace dependencies; `directories` and `anyhow` on native targets only. Every
@@ -26,7 +26,7 @@ Chosen once per process, first match wins:
 1. `CYRUS_CONFIG_DIR`, used as given (`cache/` and `logs/` below it).
 2. A `game-config/` directory that already exists in the working directory. This is the
    layout of a development checkout, the web server and earlier releases, so existing state keeps
-   working; `cache/` and `logs/` below it.
+   working; `cache/`, `logs/` and `screenshots/` below it.
 3. The platform directories for an application named `cyrus`:
 
    | | config | cache | logs |

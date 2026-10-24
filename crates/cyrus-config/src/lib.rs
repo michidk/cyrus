@@ -40,6 +40,8 @@ pub struct Dirs {
     pub cache: PathBuf,
     /// Daily log files.
     pub logs: PathBuf,
+    /// User-captured screenshots.
+    pub screenshots: PathBuf,
 }
 
 impl Dirs {
@@ -48,6 +50,7 @@ impl Dirs {
         Self {
             cache: root.join("cache"),
             logs: root.join("logs"),
+            screenshots: root.join("screenshots"),
             config: root,
         }
     }
@@ -74,6 +77,7 @@ fn platform() -> Option<Dirs> {
             .state_dir()
             .unwrap_or_else(|| dirs.data_local_dir())
             .join("logs"),
+        screenshots: dirs.config_dir().join("screenshots"),
     })
 }
 
@@ -110,6 +114,11 @@ pub fn log_dir() -> &'static Path {
     &dirs().logs
 }
 
+/// User-captured screenshots.
+pub fn screenshots_dir() -> &'static Path {
+    &dirs().screenshots
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +128,7 @@ mod tests {
             config: "/home/p/.config/cyrus".into(),
             cache: "/home/p/.cache/cyrus".into(),
             logs: "/home/p/.local/state/cyrus/logs".into(),
+            screenshots: "/home/p/.config/cyrus/screenshots".into(),
         }
     }
 
@@ -128,6 +138,7 @@ mod tests {
         assert_eq!(dirs.config, Path::new("/pinned"));
         assert_eq!(dirs.cache, Path::new("/pinned/cache"));
         assert_eq!(dirs.logs, Path::new("/pinned/logs"));
+        assert_eq!(dirs.screenshots, Path::new("/pinned/screenshots"));
     }
 
     #[test]
