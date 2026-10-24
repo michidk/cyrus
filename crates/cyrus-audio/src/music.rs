@@ -27,7 +27,11 @@
 //! places at the start of track 2 (preservation `docs/engine/music.md`);
 //! Faithful plays every installed byte.
 //!
-//! Unsupported: credits and won-game music (those screens do not exist yet).
+//! During the ending, `CreditsPlaying` requests track 2 (the book track) and
+//! stops it when the credits finish or are escaped. `EndingEntry` suppresses
+//! the normal menu-track restart while the ending movie and credits are being
+//! presented. This follows the installed MENU.INI/music contract; the host
+//! owns the movie and credits state transitions.
 
 use bevy::audio::{AudioPlayer, AudioSource};
 use bevy::prelude::*;
