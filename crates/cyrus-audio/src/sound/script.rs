@@ -405,14 +405,32 @@ impl SoundFrame<'_, '_> {
     }
 }
 
+#[derive(Default)]
+struct ScriptGeneration {
+    initialized: bool,
+    value: Option<u64>,
+}
+
 fn play_cues(
     mut frame: SoundFrame,
     mut cues: MessageReader<SoundCue>,
     script_actors: Option<Res<cyrus_game::script::ScriptActors>>,
+    mut previous_generation: Local<ScriptGeneration>,
 ) {
     let ownership = script_actors
         .as_ref()
         .map(|actors| actors.current.as_ref().map(|world| world.generation()));
+    // Dialogue voices are deliberately unowned by an actor: the cache owns the
+    // record, while the shared channel owns the transport.  A world teardown
+    // clears the records before the next world is prepared, so stop those
+    // transports at the generation boundary as well.  This is the host-side
+    // equivalent of the original teardown's channel stop and prevents a voice
+    // from the released world leaking into its replacement.
+    if previous_generation.initialized && previous_generation.value != ownership.flatten() {
+        frame.channels.stop_all(&mut frame.commands);
+    }
+    previous_generation.initialized = true;
+    previous_generation.value = ownership.flatten();
     frame.prepare(ownership);
     for cue in cues.read() {
         frame.emit(cue, ownership);
