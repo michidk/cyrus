@@ -98,7 +98,11 @@ impl super::ScriptWorld {
                     return None;
                 }
                 let id = self.id(index).ok()?;
-                actor.light.as_ref()?.rendered_at(self.spatial(id).ok()?)
+                let light = actor.light.as_ref()?;
+                match self.spatial(id) {
+                    Ok(spatial) => light.rendered_at(spatial),
+                    Err(_) => light.rendered(),
+                }
             })
             .collect()
     }

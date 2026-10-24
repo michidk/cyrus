@@ -14544,7 +14544,6 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
         collision: &collision,
     };
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-    world.prepare_spatial().unwrap();
     let lights = world.object_lights();
     assert_eq!(lights.len(), 1);
     assert_eq!(lights[0].position, [100, -200, 300]);
@@ -31175,6 +31174,7 @@ fn a_created_object_snapshot_rejects_an_out_of_range_creator_reference() {
     scripts.actors.insert("BALL".into(), projectile);
     for placement in &mut scripts.instances {
         placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let (mut world, data, _) = static_model_fixture(scripts.clone());
