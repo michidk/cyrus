@@ -596,7 +596,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
-        let system = format!("[system]\nmax_active_objects=10\nitem_ini=ITEMS.INI\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[game]\nplayer_fall_dead_time=12\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nitem_ini=ITEMS.INI\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nropes_load=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[game]\nplayer_fall_dead_time=12\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
         let mut source = Source {
             manifest: Manifest {
                 files: vec![
@@ -677,7 +677,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                 jump_add: 4608,
                 attach_angle: 512,
             }),
-            ropes_load: None,
+            ropes_load: Some(true),
             fall_death_ticks: 144,
             fall_landing: Some(cyrus_assets::script::FallLanding {
                 death_height: 568,
@@ -704,7 +704,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
 #[cfg(feature = "parsers")]
 #[test]
 fn falling_death_timeout_uses_installed_signed_clamp_and_wrapping_tick_units() {
-    let base = "[system]\ntask_system=yes\nanimation_system=yes\n[debug]\nconvert_static_angles=no\ndisable_slaves=no\ndisable_master_slaves=no\n[3dmanager]\ndummy_manager=no\n[game]\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n";
+    let base = "[system]\ntask_system=yes\nanimation_system=yes\nropes_load=yes\n[debug]\nconvert_static_angles=no\ndisable_slaves=no\ndisable_master_slaves=no\n[3dmanager]\ndummy_manager=no\n[game]\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n";
     for (value, ticks) in [
         (-1, 36),
         (0, 36),
