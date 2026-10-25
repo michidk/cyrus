@@ -14,9 +14,10 @@ spec.loader.exec_module(sweep)
 
 
 class WorldSweepTests(unittest.TestCase):
-    def run_sweep(self, frames):
+    def run_sweep(self, frames, generations=None, actors=False):
         now = [0]
         frames = iter(frames)
+        generations = iter(generations) if generations else None
 
         class Connection:
             def __enter__(self):
@@ -32,7 +33,13 @@ class WorldSweepTests(unittest.TestCase):
                     # Readiness does not sample game_seconds.
                     result["clock"] = {"game_seconds": now[0]}
                 elif cmd["type"] == "scripts":
-                    result = {"actors": []}
+                    result = {
+                        "actors": [], "world": 1,
+                        "generation": next(generations) if generations else 7,
+                        "content_id": "synthetic",
+                    }
+                    if actors and cmd["limit"] == 64 and cmd["offset"] == 0:
+                        result["actors"] = [{"name": "actor", "failure": None}]
                     if cmd["limit"] == 1:
                         result["globals"] = {"world_loop_frame": next(frames)}
                 else:
@@ -58,6 +65,16 @@ class WorldSweepTests(unittest.TestCase):
     def test_missing_script_loop_counter_cannot_pass(self):
         result, output = self.run_sweep([None, None])
         self.assertEqual(result, 1, output)
+
+    def test_world_replacement_cannot_look_like_loop_progress(self):
+        result, output = self.run_sweep([3, 4], generations=[7, 7, 7, 8])
+        self.assertEqual(result, 1, output)
+        self.assertIn("script world identity changed", output)
+
+    def test_actor_pages_cannot_mix_generations(self):
+        result, output = self.run_sweep([3, 4], generations=[7, 7, 8, 7, 7, 7], actors=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("world identity changed during actor pagination", output)
 
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])

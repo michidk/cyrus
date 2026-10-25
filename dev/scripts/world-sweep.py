@@ -62,15 +62,21 @@ def main():
             time.sleep(3)
         return False
 
-    def script_loop_frame():
+    def script_identity(page):
+        return tuple(page.get(key) for key in ("world", "generation", "content_id"))
+
+    def script_loop_sample():
         page = call({"type": "scripts", "offset": 0, "limit": 1})
         globals_ = page.get("globals") or {}
-        return globals_.get("world_loop_frame")
+        return script_identity(page), globals_.get("world_loop_frame")
 
-    def failures():
+    def failures(identity):
         found, offset = {}, 0
         while True:
             page = call({"type": "scripts", "offset": offset, "limit": 64})
+            if script_identity(page) != identity:
+                found[("script inspection", "world identity changed during actor pagination")] = True
+                return found
             if not page.get("actors"):
                 return found
             for actor in page["actors"]:
@@ -91,10 +97,10 @@ def main():
             call({"type": "console", "line": f"setflag {assignment}"})
             call({"type": "console", "open": False})
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
-        loop0 = script_loop_frame()
+        identity0, loop0 = script_loop_sample()
         seen, end = {}, time.time() + args.seconds
         while True:
-            seen.update(failures())
+            seen.update(failures(identity0))
             if time.time() >= end:
                 break
             time.sleep(min(15, max(1, end - time.time())))
@@ -104,14 +110,18 @@ def main():
         final = call({"type": "state"})
         world_error = (final.get("scripts") or {}).get("error")
         ticked = (final.get("clock") or {}).get("game_seconds", 0) - game0
-        loop1 = script_loop_frame()
+        identity1, loop1 = script_loop_sample()
+        identity_changed = identity0 != identity1 or None in identity0
         loop_stalled = loop0 is None or loop1 is None or loop1 == loop0
-        stalled = ticked < min(args.seconds, 30) / 10 or loop_stalled
+        clock_stalled = ticked < min(args.seconds, 30) / 10
+        stalled = clock_stalled or loop_stalled or identity_changed
+        if identity_changed:
+            print(f"{world}: script world identity changed or unavailable during soak")
         if loop_stalled:
             print(f"{world}: script world_loop_frame did not advance ({loop0})")
         if world_error:
             print(f"{world}: script world failed: {world_error[:300]}")
-        if stalled:
+        if clock_stalled:
             print(f"{world}: game clock advanced only {ticked:.1f} s in {args.seconds} s")
         print(f"{world}: {len(seen)} failing actors")
         bad += bool(seen) or bool(world_error) or stalled
