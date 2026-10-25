@@ -26,6 +26,7 @@ pub struct EnvironmentalEffect {
     /// Lifetime frame, independent of the image's automatic playback frame.
     pub frame: i32,
     target: i32,
+    speed: i32,
     active: bool,
 }
 
@@ -42,6 +43,12 @@ struct EffectSnapshot {
     descriptor: u32,
     position: [i32; 3],
     frame: i32,
+    #[serde(default = "default_speed")]
+    speed: i32,
+}
+
+fn default_speed() -> i32 {
+    1
 }
 
 fn active_by_default() -> bool {
@@ -109,6 +116,7 @@ impl EnvironmentalEffects {
                         descriptor: effect.descriptor,
                         position: effect.position,
                         frame: effect.frame,
+                        speed: effect.speed,
                     })
                 })
                 .collect(),
@@ -151,6 +159,7 @@ impl EnvironmentalEffects {
                 position: saved.position,
                 frame: saved.frame,
                 target,
+                speed: saved.speed,
                 active: saved.active,
             });
         }
@@ -169,6 +178,10 @@ impl EnvironmentalEffects {
         self.active().next().is_none()
     }
     fn spawn(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
+        self.spawn_with_speed(descriptor, point, 1)
+    }
+
+    fn spawn_with_speed(&mut self, descriptor: u32, point: [i32; 3], speed: i32) -> Result<()> {
         if self.disabled {
             return Ok(());
         }
@@ -192,6 +205,7 @@ impl EnvironmentalEffects {
             position: position.map(|v| v >> 8),
             frame: 0,
             target,
+            speed,
             active: true,
         });
         Ok(())
@@ -215,9 +229,11 @@ impl EnvironmentalEffects {
             if let Some(effect) = slot
                 && effect.active
             {
-                // The selected-death constructor always has reference zero and speed one.
-                if effect.frame != -1 && effect.target != 0 {
-                    effect.frame = effect.frame.wrapping_add(ticks as i32);
+                // Effect frames advance by nominal ticks multiplied by the retained animation speed.
+                if effect.descriptor as u16 != 0 && effect.frame != -1 && effect.target != 0 {
+                    effect.frame = effect
+                        .frame
+                        .wrapping_add((ticks as i32).wrapping_mul(effect.speed));
                     if effect.frame > effect.target {
                         effect.active = false;
                     }
@@ -429,10 +445,19 @@ impl ScriptWorld {
         descriptor: u32,
         point: [i32; 3],
     ) -> Result<()> {
+        self.spawn_environment_effect_with_speed(descriptor, point, 1)
+    }
+
+    pub(super) fn spawn_environment_effect_with_speed(
+        &mut self,
+        descriptor: u32,
+        point: [i32; 3],
+        speed: i32,
+    ) -> Result<()> {
         self.effects
             .as_mut()
             .context("environmental effect spawning unavailable")?
-            .spawn(descriptor, point)
+            .spawn_with_speed(descriptor, point, speed)
     }
     /// Apply explicitly supplied inspection events in order. Automatic animation
     /// dispatch uses the borrowed command handler and never queues these records.
@@ -619,6 +644,41 @@ mod tests {
         assert_eq!(effects.active().count(), 0);
         assert_eq!(packet.frame, 1);
         assert_eq!(packet.position, [10, -7, 30]);
+        Ok(())
+    }
+
+    #[test]
+    fn effect_speed_scales_frame_advance_and_survives_snapshot() -> Result<()> {
+        let source = source(12);
+        let mut effects = EnvironmentalEffects::prepare(&source)?;
+        effects.spawn_with_speed(0x2500, [0; 3], 3)?;
+        effects.advance(2);
+        assert_eq!(effects.active().next().unwrap().1.frame, 6);
+        let saved = effects.snapshot(&source)?;
+        let mut restored = EnvironmentalEffects::from_snapshot(saved, &source)?;
+        restored.advance(1);
+        assert_eq!(restored.active().next().unwrap().1.frame, 9);
+        restored.advance(1);
+        assert_eq!(restored.active().count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn zero_texture_effects_keep_their_frame_even_with_drawing_flags() -> Result<()> {
+        let mut source = source(4);
+        let image = source.images.remove(&0x2500).unwrap();
+        source.images.insert(0, image);
+        for descriptor in [0, 0x20000] {
+            let mut effects = EnvironmentalEffects::prepare(&source)?;
+            effects.spawn_with_speed(descriptor, [0; 3], 3)?;
+            effects.advance(2);
+            let effect = effects.active().next().unwrap().1;
+            assert_eq!(effect.frame, 0);
+            let saved = effects.snapshot(&source)?;
+            let mut restored = EnvironmentalEffects::from_snapshot(saved, &source)?;
+            restored.advance(2);
+            assert_eq!(restored.active().next().unwrap().1.frame, 0);
+        }
         Ok(())
     }
 

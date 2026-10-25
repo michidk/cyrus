@@ -670,8 +670,10 @@ impl Task {
                 let input = services
                     .group_sync
                     .context("SyncWithGroup channel state unavailable")?;
-                // Without a channel the actor never waits.
-                input.channel == 0
+                // An actor without a member entry in its current channel never waits.
+                !input
+                    .state
+                    .contains_member(input.actor_index, input.channel)
                     || input
                         .state
                         .post(input.actor_index, input.channel, group.integer()?)

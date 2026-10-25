@@ -15805,6 +15805,11 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
         )
         .unwrap();
     for index in 0..2 {
+        assert_eq!(
+            world.actors()[index].runtime().unwrap().active_tasks(),
+            1,
+            "each member must be waiting before the next family refresh"
+        );
         let id = world.id(index).unwrap();
         assert!(
             world.actors()[index].failure().is_none(),
@@ -17838,6 +17843,55 @@ fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channel
     world.step(id, Thread::Main, 20).unwrap();
     world.step_tasks(id, Some(256)).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn group_sync_completes_when_attribute_writes_select_an_unregistered_channel() {
+    for initial_channel in [0, 5] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                4,
+                "SetMyAttr",
+                CallKind::Function,
+                vec![Value::Integer { value: 29 }, Value::Integer { value: 6 }],
+            ),
+            wait(
+                5,
+                "SyncWithGroup",
+                CallKind::Task,
+                vec![Value::Integer { value: 3 }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.extend([
+            Function {
+                name: "SetMyAttr".into(),
+                param_count: 2,
+                kind: CallKind::Function,
+            },
+            Function {
+                name: "SyncWithGroup".into(),
+                param_count: 1,
+                kind: CallKind::Task,
+            },
+        ]);
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_29".into(), initial_channel);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(world.actors()[0].attributes()[29], 6);
+        world.step_tasks(id, Some(256)).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags()[0], 7);
+    }
 }
 
 #[test]
@@ -30808,9 +30862,9 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
 }
 
 #[test]
-fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
+fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
     use cyrus_assets::effects::{EffectImage, Effects};
-    let effects = Effects {
+    let mut effects = Effects {
         ambient_brightness: Some(128),
         capacity: 2,
         disabled: false,
@@ -30827,6 +30881,7 @@ fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
             },
         )]),
     };
+    effects.images.insert(0, effects.images[&0x2380].clone());
     let spawn = |spread: i32, speed: i32, descriptor: i32| {
         let mut world = {
             let mut scripts = random_scripts("Rnd", vec![], Object::Me);
@@ -30881,19 +30936,30 @@ fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
                 let count = world
                     .environmental_effects()
                     .map_or(0, |effects| effects.active().count());
-                (failure, count)
+                world.advance_environment_effects(1);
+                let frame = world
+                    .environmental_effects()
+                    .unwrap()
+                    .active()
+                    .next()
+                    .map(|(_, effect)| effect.frame);
+                (failure, count, frame)
             })
     };
-    let (failure, count) = spawn(0, 1, 0x2380).unwrap();
-    assert!(failure.is_none(), "{failure:?}");
-    assert_eq!(count, 1);
-    for (spread, speed, what) in [(5, 1, "spread"), (0, 2, "speed")] {
-        let error = spawn(spread, speed, 0x2380).unwrap_err();
-        assert!(
-            format!("{error:#}").contains("unsupported"),
-            "{what}: {error:#}"
-        );
+    for speed in [1, 2] {
+        let (failure, count, frame) = spawn(0, speed, 0x2380).unwrap();
+        assert!(failure.is_none(), "{failure:?}");
+        assert_eq!(count, 1);
+        assert_eq!(frame, Some(speed));
     }
+    for descriptor in [0, 0x20000] {
+        let (failure, count, frame) = spawn(0, 3, descriptor).unwrap();
+        assert!(failure.is_none(), "{failure:?}");
+        assert_eq!(count, 1);
+        assert_eq!(frame, Some(0));
+    }
+    let error = spawn(5, 1, 0x2380).unwrap_err();
+    assert!(format!("{error:#}").contains("nonzero spread unsupported"));
 }
 
 /// A living receiver with a combat record, running `DragonBreath` once with the given combat flags.

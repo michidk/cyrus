@@ -27,6 +27,11 @@ pub struct GroupSync {
 }
 
 impl GroupSync {
+    /// Membership stays in the channel recorded at actor creation.
+    pub(super) fn contains_member(&self, actor: usize, channel: u8) -> bool {
+        channel != 0 && self.channels.get(&actor) == Some(&channel)
+    }
+
     /// Register an actor's channel at creation time.  Re-registration is intentionally ignored so
     /// an attribute write cannot silently move an existing actor to another channel.
     pub(super) fn register(&mut self, actor: usize, channel: u8) {

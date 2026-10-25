@@ -4969,18 +4969,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(self.breathe()?)));
         }
         // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect
-        // at a Q8 point. Only the installed form is supported: zero spread and speed one.
+        // at a Q8 point. The installed spread is zero; the animation speed is retained.
         if kind == CallKind::Function && function.eq_ignore_ascii_case("AddFlatEffect") {
             let [x, y, z, spread, descriptor, speed] = arguments else {
                 anyhow::bail!("AddFlatEffect requires six arguments")
             };
             anyhow::ensure!(
-                spread.integer()? == 0 && speed.integer()? == 1,
-                "AddFlatEffect: nonzero spread or a speed other than one unsupported"
+                spread.integer()? == 0,
+                "AddFlatEffect: nonzero spread unsupported"
             );
-            self.registry.spawn_environment_effect(
+            self.registry.spawn_environment_effect_with_speed(
                 descriptor.integer()? as u32,
                 [x.integer()?, y.integer()?, z.integer()?],
+                speed.integer()?,
             )?;
             return Ok(CallResult::Complete(0));
         }
