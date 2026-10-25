@@ -308,6 +308,12 @@ mod tests {
                 )
                 .unwrap()
         }
+
+        fn reopen(&self) -> SlotStore {
+            SlotStore {
+                root: self.0.root.clone(),
+            }
+        }
     }
     impl Drop for Store {
         fn drop(&mut self) {
@@ -421,6 +427,20 @@ mod tests {
         assert_eq!(
             store.0.read(0, Some(&second.revision)).unwrap().0,
             b"second"
+        );
+    }
+
+    #[test]
+    fn accepted_slot_survives_store_reopen() {
+        let store = Store::new();
+        let saved = store.create("RESTART", b"persisted document");
+        let reopened = store.reopen();
+        let listed = reopened.list().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].revision, saved.revision);
+        assert_eq!(
+            reopened.read(2, Some(&saved.revision)).unwrap().0,
+            b"persisted document"
         );
     }
 
