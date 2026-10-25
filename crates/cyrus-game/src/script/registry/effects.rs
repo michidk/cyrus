@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn effect_speed_scales_frame_advance_and_survives_snapshot() -> Result<()> {
-        let source = source(8);
+        let source = source(12);
         let mut effects = EnvironmentalEffects::prepare(&source)?;
         effects.spawn_with_speed(0x2500, [0; 3], 3)?;
         effects.advance(2);
@@ -658,6 +658,8 @@ mod tests {
         let mut restored = EnvironmentalEffects::from_snapshot(saved, &source)?;
         restored.advance(1);
         assert_eq!(restored.active().next().unwrap().1.frame, 9);
+        restored.advance(1);
+        assert_eq!(restored.active().count(), 0);
         Ok(())
     }
 
