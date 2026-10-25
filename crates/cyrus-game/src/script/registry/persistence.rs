@@ -19,6 +19,12 @@ struct ControlSnapshot {
     motion_direction: u8,
     motion_classification: u8,
     directional_state: [u8; 2],
+    #[serde(default)]
+    action_pending: u8,
+    #[serde(default)]
+    action_accepted: u8,
+    #[serde(default)]
+    action_timer: u8,
     action_transition_counter: u8,
     #[serde(default)]
     jump_window: u8,
@@ -103,6 +109,9 @@ impl ControlSnapshot {
             motion_direction: control.motion_direction,
             motion_classification: control.motion_classification,
             directional_state: control.directional_state,
+            action_pending: control.action_pending,
+            action_accepted: control.action_accepted,
+            action_timer: control.action_timer,
             action_transition_counter: control.action_transition_counter,
             jump_window: control.jump_window,
             movement_flags: control.movement_flags,
@@ -164,6 +173,9 @@ impl ControlSnapshot {
             motion_direction: self.motion_direction,
             motion_classification: self.motion_classification,
             directional_state: self.directional_state,
+            action_pending: self.action_pending,
+            action_accepted: self.action_accepted,
+            action_timer: self.action_timer,
             action_transition_counter: self.action_transition_counter,
             jump_window: self.jump_window,
             movement_flags: self.movement_flags,
