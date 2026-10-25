@@ -430,26 +430,7 @@ impl super::ScriptWorld {
         let Some(control) = actor.control.as_mut() else {
             return Ok(());
         };
-        control.jump_window = control.jump_window.wrapping_add(environment.ticks as u8);
-        if control.jump_window > 0x24 {
-            control.directional_state[1] |= control.directional_state[0];
-            control.directional_state[0] = 0;
-            control.jump_window = 0;
-        }
-        if control.queued_motion != 0 || !matches!(group, Some(18 | 30)) {
-            control
-                .directional_state
-                .iter_mut()
-                .for_each(|byte| *byte &= !3);
-        }
-        for (bit, motion) in [(1, 8), (2, 9)] {
-            if control.directional_state[1] & bit == 0 {
-                continue;
-            }
-            control
-                .directional_state
-                .iter_mut()
-                .for_each(|byte| *byte &= !3);
+        if let Some(motion) = control.advance_action_words(environment.ticks, group) {
             if environment.selected_player == Some(id) {
                 let timing = super::ledge_states::LedgeTiming {
                     fine_ticks: fine_ticks
@@ -467,7 +448,6 @@ impl super::ScriptWorld {
                     sounds,
                 )?;
             }
-            break;
         }
         Ok(())
     }
@@ -800,5 +780,72 @@ impl super::ScriptWorld {
             }
         }
         Ok(true)
+    }
+}
+
+impl super::ActorControlState {
+    fn advance_action_words(&mut self, ticks: u32, group: Option<u16>) -> Option<u8> {
+        self.jump_window = self.jump_window.wrapping_add(ticks as u8);
+        if self.jump_window > 36 {
+            self.directional_state[1] |= self.directional_state[0];
+            self.directional_state[0] = 0;
+            self.jump_window = 0;
+        }
+        if self.queued_motion != 0 || !matches!(group, Some(18 | 30)) {
+            self.directional_state
+                .iter_mut()
+                .for_each(|word| *word &= !3);
+        }
+        let motion = if self.directional_state[1] & 1 != 0 {
+            8
+        } else if self.directional_state[1] & 2 != 0 {
+            9
+        } else {
+            return None;
+        };
+        self.directional_state
+            .iter_mut()
+            .for_each(|word| *word &= !3);
+        Some(motion)
+    }
+}
+
+#[cfg(test)]
+mod action_word_tests {
+    use super::super::ActorControlState;
+
+    #[test]
+    fn action_promotion_uses_wrapping_byte_and_strict_threshold() {
+        let mut control = ActorControlState {
+            directional_state: [2147483907, 1073741824],
+            jump_window: 35,
+            ..Default::default()
+        };
+        assert_eq!(control.advance_action_words(1, Some(18)), None);
+        assert_eq!(control.directional_state, [2147483907, 1073741824]);
+        assert_eq!(control.advance_action_words(1, Some(18)), Some(8));
+        assert_eq!(control.directional_state, [0, 3221225728]);
+        assert_eq!(control.jump_window, 0);
+        control.jump_window = 255;
+        control.directional_state = [0x102, 0];
+        assert_eq!(control.advance_action_words(1, Some(30)), None);
+        assert_eq!(control.jump_window, 0);
+        assert_eq!(control.directional_state, [0x102, 0]);
+        assert_eq!(control.advance_action_words(37, Some(30)), Some(9));
+        assert_eq!(control.directional_state, [0, 0x100]);
+    }
+
+    #[test]
+    fn queued_or_other_group_clears_only_low_bits_after_promotion() {
+        for (queued, group) in [(1, 18), (0, 19)] {
+            let mut control = ActorControlState {
+                directional_state: [0x123, 0x202],
+                queued_motion: queued,
+                jump_window: 36,
+                ..Default::default()
+            };
+            assert_eq!(control.advance_action_words(1, Some(group)), None);
+            assert_eq!(control.directional_state, [0, 0x320]);
+        }
     }
 }

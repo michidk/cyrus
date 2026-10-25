@@ -4168,9 +4168,34 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let events = effects::ActorEventContext::capture(self.registry, id);
         let camera = &mut self.registry.camera;
         let effects = &mut self.registry.effects;
+        let actor = &mut self.registry.actors[self.index];
+        let control = &mut actor.control;
+        let animation = actor
+            .animation
+            .as_mut()
+            .context("actor animation not prepared")?;
         let mut emit = |sound| {
             if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                return events.dispatch(flags, camera.as_mut(), effects);
+                events.dispatch(flags, camera.as_mut(), effects)?;
+                return Ok(cyrus_world::animation::TransitionDecision::Continue);
+            }
+            if let cyrus_world::animation::AnimationSound::Transition {
+                mask: mask @ (1 | 2),
+                ..
+            } = sound
+            {
+                if let Some(control) = control.as_mut()
+                    && control.directional_state[0] & 3 != 0
+                {
+                    let clear = if mask == 1 { 2 } else { 1 };
+                    control
+                        .directional_state
+                        .iter_mut()
+                        .for_each(|word| *word &= !clear);
+                    control.directional_state[1] |= control.directional_state[0];
+                    return Ok(cyrus_world::animation::TransitionDecision::Take);
+                }
+                return Ok(cyrus_world::animation::TransitionDecision::Continue);
             }
             match &mut self.sounds {
                 Some(sounds) => sounds(
@@ -4183,14 +4208,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 ),
                 None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
             }
+            .map(|_| cyrus_world::animation::TransitionDecision::Continue)
         };
-        let animation = self.registry.actors[self.index]
-            .animation
-            .as_mut()
-            .context("actor animation not prepared")?;
-        let frame = animation.playback.advance_with_sounds(ticks, &mut emit)?;
+        let frame = animation
+            .playback
+            .advance_with_decisions(ticks, &mut emit)?;
         animation.frame = frame.or(animation.frame);
-        let frame = animation.playback.request_with_sounds(
+        let frame = animation.playback.request_with_decisions(
             animation.playback.default_group(),
             0,
             ticks,
