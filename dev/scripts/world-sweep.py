@@ -6,7 +6,9 @@ ordinary updates run for `--seconds`, and prints every actor whose script report
 (once per distinct message). An optional `--flag WORLD:NAME=VALUE` first sets a global flag
 through the console, which starts the story scene that polls it (for example
 `CATACOMB:scene2=1`, `JAILINT:scene5=1`, `MGUILD:gremlin_scene=1`, `START:deadpirates=2`).
-Exits 0 when no world failed to load, no script world failed or stalled and no actor failed, 1 otherwise. Needs a running native
+If the script inspection endpoint is unavailable during readiness or actor
+pagination, the sweep reports a contextual inspection failure and exits 1;
+it never treats an unavailable page as a passing world. Exits 0 when no world failed to load, no script world failed or stalled and no actor failed, 1 otherwise. Needs a running native
 cyrus with CYRUS_CONTROL_ADDR set (a real-time audio sink, see docs/SETUP.md, lets voiced lines finish at their own pace), for example
 
     dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT
