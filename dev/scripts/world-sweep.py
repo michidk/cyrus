@@ -62,6 +62,11 @@ def main():
             time.sleep(3)
         return False
 
+    def script_loop_frame():
+        page = call({"type": "scripts", "offset": 0, "limit": 1})
+        globals_ = page.get("globals") or {}
+        return globals_.get("world_loop_frame")
+
     def failures():
         found, offset = {}, 0
         while True:
@@ -86,6 +91,7 @@ def main():
             call({"type": "console", "line": f"setflag {assignment}"})
             call({"type": "console", "open": False})
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
+        loop0 = script_loop_frame()
         seen, end = {}, time.time() + args.seconds
         while True:
             seen.update(failures())
@@ -98,7 +104,11 @@ def main():
         final = call({"type": "state"})
         world_error = (final.get("scripts") or {}).get("error")
         ticked = (final.get("clock") or {}).get("game_seconds", 0) - game0
-        stalled = ticked < min(args.seconds, 30) / 10  # ISLAND runs at the 2-tick frame clamp (about 0.15 game s per wall s) in the container
+        loop1 = script_loop_frame()
+        loop_stalled = loop0 is not None and loop1 == loop0
+        stalled = ticked < min(args.seconds, 30) / 10 or loop_stalled
+        if loop_stalled:
+            print(f"{world}: script world_loop_frame did not advance ({loop0})")
         if world_error:
             print(f"{world}: script world failed: {world_error[:300]}")
         if stalled:
