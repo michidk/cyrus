@@ -388,6 +388,25 @@ mod tests {
     }
 
     #[test]
+    fn quick_save_creates_and_revision_checks_reserved_slot() {
+        let store = Store::new();
+        let first = store
+            .0
+            .publish(store.0.plan(SlotOperation::QuickSave).unwrap(), b"first")
+            .unwrap();
+        assert_eq!(first.slot, 0);
+        assert_eq!(first.description, "Quick Save Game");
+        let plan = store.0.plan(SlotOperation::QuickSave).unwrap();
+        assert_eq!(plan.revision.as_deref(), Some(first.revision.as_str()));
+        let second = store.0.publish(plan, b"second").unwrap();
+        assert_ne!(first.revision, second.revision);
+        assert_eq!(
+            store.0.read(0, Some(&second.revision)).unwrap().0,
+            b"second"
+        );
+    }
+
+    #[test]
     fn malformed_or_truncated_slots_are_contextual_and_never_overwritten() {
         let store = Store::new();
         let path = store.0.path(2).unwrap();
