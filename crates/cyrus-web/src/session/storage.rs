@@ -54,6 +54,7 @@ pub async fn plan(request: &SlotRequest) -> Result<serde_json::Value> {
 pub async fn publish(
     request: &SlotRequest,
     slot: u16,
+    plan: &serde_json::Value,
     document: &str,
 ) -> Result<serde_json::Value> {
     let mut encoded = serde_json::to_value(request)?;
@@ -62,6 +63,9 @@ pub async fn publish(
         SlotRequest::Create { .. } | SlotRequest::QuickSave | SlotRequest::AutoSave
     ) {
         encoded["expected_slot"] = slot.into();
+    }
+    if matches!(request, SlotRequest::QuickSave | SlotRequest::AutoSave) {
+        encoded["expected_revision"] = plan["revision"].clone();
     }
     operate(encoded, document).await
 }

@@ -144,7 +144,9 @@ export async function testSessionSlots(operate = operateSlots) {
     ]) {
       const planned = await operation({ type, prepare: true });
       assert(planned.slot.slot === slot, 'reserved save preparation moved its slot');
-      const replacement = await operation({ type, expected_slot: slot }, 'replacement reserved payload');
+      const replacement = await operation({ type, expected_slot: slot, expected_revision: planned.revision }, 'replacement reserved payload');
+      await rejected({ type, expected_slot: slot, expected_revision: planned.revision }, 'stale reserved payload');
+      await rejected({ type, expected_slot: slot, expected_revision: null }, 'unexpected occupied reserved payload');
       assert(replacement.slot.slot === slot && replacement.slot.description === description,
         'repeated reserved save moved its slot or changed its description');
       assert((await operation({ type: 'load', ...replacement.slot })).document === 'replacement reserved payload',

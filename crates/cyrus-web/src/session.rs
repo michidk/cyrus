@@ -53,7 +53,7 @@ enum IoResult {
 }
 enum SaveTarget {
     Named(String),
-    Slot(SlotRequest, u16),
+    Slot(SlotRequest, u16, Value),
 }
 type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
 enum Phase {
@@ -179,10 +179,10 @@ impl Host {
                                 session_storage::write(DATABASE, &key, &snapshot).await?;
                                 Ok(IoResult::Written)
                             }
-                            SaveTarget::Slot(operation, slot) => {
+                            SaveTarget::Slot(operation, slot, plan) => {
                                 let document = String::from_utf8(snapshot.encode_document()?)?;
                                 Ok(IoResult::Response(
-                                    storage::publish(&operation, slot, &document).await?,
+                                    storage::publish(&operation, slot, &plan, &document).await?,
                                 ))
                             }
                         }
@@ -206,7 +206,7 @@ impl Host {
                             let slot = retain_selection(world, &value)?;
                             world.resource_mut::<SessionBoundary>().capture_live()?;
                             Ok(Some(Phase::Capture(Some(SaveTarget::Slot(
-                                operation, slot,
+                                operation, slot, value,
                             )))))
                         }
                         IoResult::SlotRead(value) => {

@@ -46,7 +46,7 @@ export const write = (name, key, document) => transact(name, key, 'readwrite', s
 // Slot metadata and opaque payloads share a transaction, but listing reads metadata only.
 export async function operateSlots(name, encodedRequest, document) {
   const request = JSON.parse(encodedRequest);
-  const { type, slot, revision, description, prepare = false, expected_slot } = request;
+  const { type, slot, revision, description, prepare = false, expected_slot, expected_revision } = request;
   const context = `${name}/${type}/${slot ?? 'new'}`;
   const reserved = type === 'quick_save' || type === 'auto_save';
   const reservedSlot = type === 'quick_save' ? 0 : 1;
@@ -56,6 +56,7 @@ export async function operateSlots(name, encodedRequest, document) {
   check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'quick_save' || type === 'auto_save' || type === 'overwrite'), 'invalid slot preparation');
   check(expected_slot === undefined || ((type === 'create' && Number.isInteger(expected_slot)
     && expected_slot >= 2 && expected_slot <= 299) || ((type === 'quick_save' && expected_slot === 0) || (type === 'auto_save' && expected_slot === 1))), 'invalid planned slot');
+  check(expected_revision === undefined || (reserved && (expected_revision === null || (typeof expected_revision === 'string' && expected_revision.length > 0))), 'invalid planned revision');
   if (type !== 'list' && type !== 'create' && type !== 'quick_save' && type !== 'auto_save') {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
@@ -129,10 +130,12 @@ export async function operateSlots(name, encodedRequest, document) {
               consume(store.get(metadataKey(reservedSlot)), metadata => {
                 const current = validateMetadata(metadata);
                 check(current.slot === reservedSlot, 'slot metadata key mismatch');
+                check(expected_revision === undefined || current.revision === expected_revision, 'reserved slot changed; prepare the save again');
                 if (prepare) { result = { slot: { slot: reservedSlot, description: reservedDescription }, revision: current.revision }; return; }
                 publish(reservedSlot);
               });
             } else {
+              check(!reserved || expected_revision === undefined || expected_revision === null, 'reserved slot disappeared; prepare the save again');
               publish(number);
             }
           });
