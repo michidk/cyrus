@@ -15,6 +15,7 @@ pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SlotOperation {
     List,
+    QuickSave,
     Create {
         description: String,
     },

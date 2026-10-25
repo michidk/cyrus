@@ -158,6 +158,11 @@ impl SlotStore {
 
     pub(super) fn plan(&self, operation: SlotOperation) -> Result<SavePlan> {
         match operation {
+            SlotOperation::QuickSave => Ok(SavePlan {
+                slot: 0,
+                description: "Quick Save Game".into(),
+                revision: self.open(0)?.map(|(_, metadata, _)| metadata.revision),
+            }),
             SlotOperation::Create { description: value } => {
                 description(&value)?;
                 let slot = (2..=299)

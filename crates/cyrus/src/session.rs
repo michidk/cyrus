@@ -28,6 +28,7 @@ pub(crate) struct NativeSessionLoad {
     slot_load: bool,
     last_game: bool,
     book: bool,
+    quick: bool,
 }
 
 struct PreparedLoad {
@@ -155,7 +156,9 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
         );
         let store = world.resource::<slots::SlotStore>().clone();
         match operation {
-            SlotOperation::Create { .. } | SlotOperation::Overwrite { .. } => {
+            SlotOperation::Create { .. }
+            | SlotOperation::Overwrite { .. }
+            | SlotOperation::QuickSave => {
                 let plan = store.plan(operation)?;
                 retain_selection(world, plan.slot, plan.description.clone())?;
                 world.resource_mut::<SessionBoundary>().capture_live()?;
@@ -262,19 +265,9 @@ pub(crate) fn poll(world: &mut World) {
             .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
             .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
     {
-        let revision = world
-            .resource::<slots::SlotStore>()
-            .metadata(0, None)
-            .map(|metadata| metadata.revision);
-        if let Ok(revision) = revision {
-            let _ = request_slots(
-                world,
-                SlotOperation::Overwrite {
-                    slot: 0,
-                    revision,
-                    description: "Quick Save Game".into(),
-                },
-            );
+        match request_slots(world, SlotOperation::QuickSave) {
+            Ok(()) => world.resource_mut::<NativeSessionLoad>().quick = true,
+            Err(error) => bevy::log::error!("Quick Save Game: {error:#}"),
         }
     }
     let request = world
@@ -423,6 +416,14 @@ pub(crate) fn poll(world: &mut World) {
         } else {
             state.result = Some(result);
         }
+    }
+    if state.quick
+        && let Some(result) = state.slot_result.take()
+    {
+        if let Err(error) = result {
+            bevy::log::error!("Quick Save Game: {error:#}");
+        }
+        state.quick = false;
     }
     if state.book
         && let Some(result) = state.slot_result.take()

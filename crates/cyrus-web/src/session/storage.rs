@@ -21,6 +21,7 @@ extern "C" {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SlotRequest {
     List,
+    QuickSave,
     Create {
         description: String,
     },
@@ -55,7 +56,7 @@ pub async fn publish(
     document: &str,
 ) -> Result<serde_json::Value> {
     let mut encoded = serde_json::to_value(request)?;
-    if matches!(request, SlotRequest::Create { .. }) {
+    if matches!(request, SlotRequest::Create { .. } | SlotRequest::QuickSave) {
         encoded["expected_slot"] = slot.into();
     }
     operate(encoded, document).await

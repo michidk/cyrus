@@ -49,17 +49,20 @@ export async function operateSlots(name, encodedRequest, document) {
   const { type, slot, revision, description, prepare = false, expected_slot } = request;
   const context = `${name}/${type}/${slot ?? 'new'}`;
   const check = (condition, message) => { if (!condition) throw new Error(`${context}: ${message}`); };
-  check(['list', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
-  check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'overwrite'), 'invalid slot preparation');
-  check(expected_slot === undefined || (type === 'create' && Number.isInteger(expected_slot)
-    && expected_slot >= 2 && expected_slot <= 299), 'invalid planned slot');
-  if (type !== 'list' && type !== 'create') {
+  check(['list', 'quick_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
+  check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'quick_save' || type === 'overwrite'), 'invalid slot preparation');
+  check(expected_slot === undefined || ((type === 'create' && Number.isInteger(expected_slot)
+    && expected_slot >= 2 && expected_slot <= 299) || (type === 'quick_save' && expected_slot === 0)), 'invalid planned slot');
+  if (type !== 'list' && type !== 'create' && type !== 'quick_save') {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
   }
-  if (type === 'create' || type === 'overwrite') {
-    check(typeof description === 'string' && description.length > 0 && description.length <= 64
-      && !/[^\x0b\x0d\x20-\x7e]/.test(description), 'description must contain 1..64 original input characters');
+  if (type === 'create' || type === 'quick_save' || type === 'overwrite') {
+    const quick = type === 'quick_save';
+    const quickDescription = 'Quick Save Game';
+    const effectiveDescription = quick ? quickDescription : description;
+    check(typeof effectiveDescription === 'string' && effectiveDescription.length > 0 && effectiveDescription.length <= 64
+      && !/[^\x0b\x0d\x20-\x7e]/.test(effectiveDescription), 'description must contain 1..64 original input characters');
     check(prepare || (typeof document === 'string' && document.length > 0), 'empty session document');
     check(type !== 'overwrite' || slot !== 0, 'quick-save slot cannot be manually overwritten');
   }
@@ -93,8 +96,8 @@ export async function operateSlots(name, encodedRequest, document) {
         };
       };
       const publish = number => {
-        if (prepare) { result = { slot: { slot: number, description } }; return; }
-        const metadata = { slot: number, description, modified_ms: Date.now(), revision: crypto.randomUUID() };
+        if (prepare) { result = { slot: { slot: number, description: effectiveDescription } }; return; }
+        const metadata = { slot: number, description: effectiveDescription, modified_ms: Date.now(), revision: crypto.randomUUID() };
         store.put(document, payloadKey(number));
         store.put(metadata, metadataKey(number));
         result = { stored: true, slot: metadata };
@@ -112,16 +115,25 @@ export async function operateSlots(name, encodedRequest, document) {
             result = { slots: entries };
           }
         });
-      } else if (type === 'create') {
+      } else if (type === 'create' || type === 'quick_save') {
         // Both scans and publication hold the same write transaction across tabs.
         consume(store.getAllKeys(range('metadata')), metadataKeys => {
           consume(store.getAllKeys(range('payload')), payloadKeys => {
             const occupied = new Set([...metadataKeys, ...payloadKeys].map(key => key[1]));
-            let number = 2;
+            let number = type === 'quick_save' ? 0 : 2;
             while (number <= 299 && occupied.has(number)) number++;
-            check(number <= 299, 'no free manual save slots');
+            check(type === 'quick_save' || number <= 299, 'no free manual save slots');
             check(expected_slot === undefined || number === expected_slot, 'planned slot changed; prepare the save again');
-            publish(number);
+            if (type === 'quick_save' && occupied.has(0)) {
+              consume(store.get(metadataKey(0)), metadata => {
+                const current = validateMetadata(metadata);
+                check(current.slot === 0, 'slot metadata key mismatch');
+                if (prepare) { result = { slot: { slot: 0, description: quickDescription }, revision: current.revision }; return; }
+                publish(0);
+              });
+            } else {
+              publish(number);
+            }
           });
         });
       } else {
