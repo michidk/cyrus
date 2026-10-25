@@ -30808,7 +30808,7 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
 }
 
 #[test]
-fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
+fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
     use cyrus_assets::effects::{EffectImage, Effects};
     let effects = Effects {
         ambient_brightness: Some(128),
@@ -30881,19 +30881,24 @@ fn add_flat_effect_spawns_a_type_one_effect_and_rejects_uninstalled_forms() {
                 let count = world
                     .environmental_effects()
                     .map_or(0, |effects| effects.active().count());
-                (failure, count)
+                world.advance_environment_effects(1);
+                let frame = world
+                    .environmental_effects()
+                    .unwrap()
+                    .active()
+                    .next()
+                    .map(|(_, effect)| effect.frame);
+                (failure, count, frame)
             })
     };
-    let (failure, count) = spawn(0, 1, 0x2380).unwrap();
-    assert!(failure.is_none(), "{failure:?}");
-    assert_eq!(count, 1);
-    for (spread, speed, what) in [(5, 1, "spread"), (0, 2, "speed")] {
-        let error = spawn(spread, speed, 0x2380).unwrap_err();
-        assert!(
-            format!("{error:#}").contains("unsupported"),
-            "{what}: {error:#}"
-        );
+    for speed in [1, 2] {
+        let (failure, count, frame) = spawn(0, speed, 0x2380).unwrap();
+        assert!(failure.is_none(), "{failure:?}");
+        assert_eq!(count, 1);
+        assert_eq!(frame, Some(speed));
     }
+    let error = spawn(5, 1, 0x2380).unwrap_err();
+    assert!(format!("{error:#}").contains("nonzero spread unsupported"));
 }
 
 /// A living receiver with a combat record, running `DragonBreath` once with the given combat flags.
