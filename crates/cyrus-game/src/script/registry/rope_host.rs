@@ -264,11 +264,14 @@ impl ScriptWorld {
         // The engine links a newly attached node at the rope-list head.  Chain
         // updates and owner scans are list-order sensitive, so appending here
         // would make a second attachment run after older nodes.
-        rope.attachments.insert(0, Attachment {
-            actor: index,
-            node: link,
-            motion: 0,
-        });
+        rope.attachments.insert(
+            0,
+            Attachment {
+                actor: index,
+                node: link,
+                motion: 0,
+            },
+        );
         if rope.kind & 1 == 0 {
             rope.heading = heading;
         } else {
