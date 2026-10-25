@@ -263,6 +263,9 @@ pub(crate) fn poll(world: &mut World) {
             cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
                 SlotOperation::Load { slot, revision }
             }
+            cyrus_startup::SaveLoadRequest::Delete { slot, revision } => {
+                SlotOperation::Delete { slot, revision }
+            }
         };
         match request_slots(world, operation) {
             Ok(()) => world.resource_mut::<NativeSessionLoad>().book = true,

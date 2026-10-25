@@ -41,7 +41,8 @@ save selection before capture and a load selection before document decoding.
 Save preparation reads metadata without writing; publication rejects a changed
 planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists the
 first nine saves and restores the selected revision. Save dialogs, additional
-list pages, deletion and thumbnails remain unavailable.
+list pages and thumbnails remain unavailable. Delete on an existing Load row asks
+for confirmation, removes the selected revision and refreshes the list.
 Run `testSessionStorage()` and `testSessionSlots()` from
 `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify
 atomic publication, concurrent allocation, stale revisions and failed-write protection.

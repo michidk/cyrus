@@ -72,6 +72,22 @@ struct MenuTiming {
     last_tick: u32,
 }
 
+pub(super) struct DeleteConfirmation {
+    slot: super::SaveSlot,
+    pub dialog: super::confirmation::LastGameConfirmation,
+    pub background: image::RgbaImage,
+}
+
+impl DeleteConfirmation {
+    pub fn paint(&self, book: &MenuAsset) -> anyhow::Result<image::RgbaImage> {
+        self.dialog.paint(
+            &book.confirmation,
+            &self.background,
+            &format!("DELETE GAME?\n{}", self.slot.description),
+        )
+    }
+}
+
 /// Original caller context selects motion and the main-page restrictions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -102,6 +118,8 @@ pub struct MenuState {
     pub slots: Vec<super::SaveSlot>,
     #[serde(skip)]
     slot_rows: BTreeMap<usize, usize>,
+    #[serde(skip)]
+    pub(super) delete_confirmation: Option<DeleteConfirmation>,
     pub unavailable: Option<String>,
     #[serde(skip)]
     pub(super) image: Handle<Image>,
@@ -435,11 +453,17 @@ pub(super) fn drive(
                 match serde_json::from_value::<Vec<super::SaveSlot>>(value["slots"].clone()) {
                     Ok(slots) => {
                         menu.slots = slots;
+                        menu.unavailable = menu.persistence_error.clone();
                         if menu.page == 2 {
                             menu.fill_load_rows();
                         }
                     }
                     Err(error) => menu.unavailable = Some(format!("Save list: {error}")),
+                }
+            }
+            Ok(value) if value.get("deleted").is_some() => {
+                if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
+                    menu.unavailable = Some(error);
                 }
             }
             Ok(_) => {}
@@ -480,7 +504,53 @@ pub(super) fn drive(
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
     if !moving && !menu.closing && !save_load.busy() {
-        if menu.capturing.is_some() {
+        if let Some(mut confirmation) = menu.delete_confirmation.take() {
+            let logical = bindings.sample_with_mouse(keys, input.3.as_deref());
+            let result = confirmation.dialog.update(
+                sample,
+                super::confirmation::ConfirmationInput {
+                    up: logical.forward,
+                    down: logical.backward,
+                    enter: keys.pressed(KeyCode::Enter),
+                    action_d: logical.action,
+                },
+            );
+            match result {
+                Some(super::confirmation::ConfirmationChoice::Yes) => {
+                    if let Err(error) = save_load.start(super::SaveLoadRequest::Delete {
+                        slot: confirmation.slot.slot,
+                        revision: confirmation.slot.revision,
+                    }) {
+                        menu.unavailable = Some(error);
+                    }
+                }
+                Some(super::confirmation::ConfirmationChoice::No) => {}
+                None => menu.delete_confirmation = Some(confirmation),
+            }
+            menu.dirty = true;
+        } else if menu.page == 2 && keys.just_pressed(KeyCode::Delete) {
+            let slot = menu
+                .selected
+                .and_then(|index| menu.slot_rows.get(&index))
+                .and_then(|row| menu.slots.get(*row))
+                .cloned();
+            if let Some(slot) = slot {
+                menu.unavailable = menu.persistence_error.clone();
+                match super::menu_raster::paint(book, &menu) {
+                    Ok(background) => {
+                        menu.delete_confirmation = Some(DeleteConfirmation {
+                            slot,
+                            dialog: super::confirmation::LastGameConfirmation::displayed(0, sample),
+                            background,
+                        })
+                    }
+                    Err(error) => {
+                        menu.unavailable = Some(format!("Delete confirmation: {error:#}"))
+                    }
+                }
+                menu.dirty = true;
+            }
+        } else if menu.capturing.is_some() {
             menu.blink_seconds += input.0.delta_secs();
             // Blink cadence is presentation policy; the original toggles on menu updates.
             if menu.blink_seconds >= 0.25 {
@@ -1077,6 +1147,109 @@ mod tests {
         assert_eq!(
             app.world().resource::<MenuState>().unavailable.as_deref(),
             Some("save slot 17 changed; refresh the save list")
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Delete);
+        app.update();
+        assert!(
+            app.world()
+                .resource::<MenuState>()
+                .delete_confirmation
+                .is_some()
+        );
+        assert!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request()
+                .is_none()
+        );
+        let down = app
+            .world()
+            .resource::<MenuState>()
+            .preferences
+            .as_ref()
+            .unwrap()
+            .bindings[1];
+        let down = cyrus_game::player::input::scan_key(down).unwrap();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(down);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert!(
+            app.world()
+                .resource::<MenuState>()
+                .delete_confirmation
+                .is_none()
+        );
+        assert!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request()
+                .is_none()
+        );
+        assert_eq!(app.world().resource::<MenuState>().slots.len(), 1);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Delete);
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        // The dialog keeps ownership until the confirmation key is released.
+        assert!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request()
+                .is_none()
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert!(matches!(
+            app.world_mut().resource_mut::<crate::SaveLoadHost>().take_request(),
+            Some(crate::SaveLoadRequest::Delete { slot: 17, revision }) if revision == "harbour-r1"
+        ));
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"deleted":17})));
+        app.update();
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::List)
+        ));
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"slots":[]})));
+        app.update();
+        assert!(
+            app.world()
+                .resource::<MenuState>()
+                .entries
+                .iter()
+                .filter(|entry| entry.action == 202)
+                .all(|entry| !entry.eligible() && entry.text.is_empty())
         );
         app.world_mut()
             .resource_scope(|world, mut menu: Mut<MenuState>| {

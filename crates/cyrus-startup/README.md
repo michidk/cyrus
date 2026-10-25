@@ -6,7 +6,9 @@ Book motion includes the documented Save camera movement and reversible Load
 page turn. Load opens the installed page and requests slot metadata from the native/browser
 host. Its first nine rows use stored descriptions, retain slot revisions and load
 through the atomic session boundary. Empty rows are disabled. Additional list
-pages, Save dialogs, deletion and thumbnails remain unavailable.
+pages, Save dialogs and thumbnails remain unavailable. Delete on an existing Load row
+opens the installed mini-confirmation artwork; confirming deletes only the listed
+revision and refreshes the rows.
 The crate depends on assets/game/world/text/audio/media/app and Bevy; it does not
 depend on cyrus-render. Preservation owns installed parsing and rendering facts.
 

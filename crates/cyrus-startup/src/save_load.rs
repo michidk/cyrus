@@ -9,6 +9,7 @@ use serde_json::Value;
 pub enum SaveLoadRequest {
     List,
     Load { slot: u16, revision: String },
+    Delete { slot: u16, revision: String },
 }
 
 /// Slot metadata supplied by native files or browser IndexedDB.

@@ -277,6 +277,9 @@ fn update(world: &mut World) {
                 cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
                     SlotRequest::Load { slot, revision }
                 }
+                cyrus_startup::SaveLoadRequest::Delete { slot, revision } => {
+                    SlotRequest::Delete { slot, revision }
+                }
             };
             match host.request(Request::Slots { id: 0, operation }, world) {
                 Ok(_) => host.book = true,

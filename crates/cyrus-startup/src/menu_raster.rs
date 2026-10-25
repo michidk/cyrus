@@ -142,6 +142,9 @@ fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
 }
 
 pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaImage> {
+    if let Some(confirmation) = &state.delete_confirmation {
+        return confirmation.paint(book);
+    }
     let preferences = state
         .preferences
         .as_ref()
