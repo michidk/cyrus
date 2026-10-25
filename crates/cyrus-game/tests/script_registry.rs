@@ -10184,63 +10184,65 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
 fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     use cyrus_world::transform::Matrix;
-    let mut scripts = cache();
-    for (name, kind) in [
-        ("RotateByAxis", CallKind::Multitask),
-        ("ResetRotation", CallKind::Function),
-    ] {
-        scripts.definition.functions.push(Function {
-            name: name.into(),
-            param_count: 3,
-            kind,
-        });
+    for kind in [CallKind::Function, CallKind::Task, CallKind::Multitask] {
+        let mut scripts = cache();
+        for (name, kind) in [
+            ("RotateByAxis", CallKind::Multitask),
+            ("ResetRotation", CallKind::Function),
+        ] {
+            scripts.definition.functions.push(Function {
+                name: name.into(),
+                param_count: 3,
+                kind,
+            });
+        }
+        let reset = [1, 0, 1].map(|value| Value::Integer { value });
+        let rotate = [1, 512, 1].map(|value| Value::Integer { value });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            wait(1, "RotateByAxis", CallKind::Multitask, rotate.to_vec()),
+            Operation::Yield,
+            wait(2, "ResetRotation", kind, reset.to_vec()),
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.instances[0].angles = [128, 2000, 64];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(0),
+            frame_scale: Some(256),
+            ..Default::default()
+        };
+        let run = |world: &mut ScriptWorld, stage| {
+            world.advance(id, stage, inputs, None, None, 20).unwrap();
+        };
+        run(&mut world, ScriptStage::Body(Thread::Main));
+        run(&mut world, ScriptStage::Tasks);
+        let rotated = world.spatial(id).unwrap().local.angles;
+        assert_ne!(rotated[1], 2000, "the rotation task must have changed yaw");
+        run(&mut world, ScriptStage::Body(Thread::Main));
+        let state = world.spatial(id).unwrap();
+        let expected = [128, rotated[1], 64];
+        assert_eq!(state.local.angles, expected, "axis one keeps its rotation");
+        assert_eq!(state.angle_history, expected);
+        assert_eq!(state.local.matrix, Matrix::orientation(expected));
     }
-    let reset = [1, 0, 1].map(|value| Value::Integer { value });
-    let rotate = [1, 512, 1].map(|value| Value::Integer { value });
-    scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-        wait(1, "RotateByAxis", CallKind::Multitask, rotate.to_vec()),
-        Operation::Yield,
-        wait(2, "ResetRotation", CallKind::Function, reset.to_vec()),
-        Operation::End { target: 0 },
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, operation)| {
-        (
-            index as u32,
-            Step {
-                next: index as u32 + 1,
-                operation,
-            },
-        )
-    })
-    .collect();
-    for instance in &mut scripts.instances {
-        instance.object_type = 1;
-    }
-    scripts.instances[0].angles = [128, 2000, 64];
-    scripts.content_id = scripts.content_identity().unwrap();
-    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-    world.prepare_spatial().unwrap();
-    let id = world.id(0).unwrap();
-    let inputs = ScriptInputs {
-        nominal_ticks: Some(0),
-        frame_scale: Some(256),
-        ..Default::default()
-    };
-    let run = |world: &mut ScriptWorld, stage| {
-        world.advance(id, stage, inputs, None, None, 20).unwrap();
-    };
-    run(&mut world, ScriptStage::Body(Thread::Main));
-    run(&mut world, ScriptStage::Tasks);
-    let rotated = world.spatial(id).unwrap().local.angles;
-    assert_ne!(rotated[1], 2000, "the rotation task must have changed yaw");
-    run(&mut world, ScriptStage::Body(Thread::Main));
-    let state = world.spatial(id).unwrap();
-    let expected = [128, rotated[1], 64];
-    assert_eq!(state.local.angles, expected, "axis one keeps its rotation");
-    assert_eq!(state.angle_history, expected);
-    assert_eq!(state.local.matrix, Matrix::orientation(expected));
 }
 
 #[test]
@@ -15919,7 +15921,12 @@ fn position_property_rejects_unavailable_owner_and_unknown_reference() {
 fn current_animation_property_reads_signed_group_without_advancing_playback() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    for (group, start, expected) in [(7, false, -1), (7, true, 7), (32768, true, -32768)] {
+    for (group, start, expected) in [
+        (None, false, 0),
+        (Some(7), false, -1),
+        (Some(7), true, 7),
+        (Some(32768), true, -32768),
+    ] {
         for (object, selected) in [
             (Object::Me, false),
             (Object::Player, true),
@@ -15943,7 +15950,9 @@ fn current_animation_property_reads_signed_group_without_advancing_playback() {
                 models: Default::default(),
                 unsupported: Default::default(),
             };
-            world.bind_animation(receiver, &data, group).unwrap();
+            if let Some(group) = group {
+                world.bind_animation(receiver, &data, group).unwrap();
+            }
             if start {
                 world
                     .advance(
@@ -16219,9 +16228,34 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
 }
 
 #[test]
+fn current_animation_property_without_an_association_returns_zero() {
+    for object in [Object::Me, Object::Player, Object::Named { string: 0 }] {
+        let mut scripts = heading_property_scripts(294, object);
+        scripts.definition.references[294] = "anim.current".into();
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    }
+}
+
+#[test]
 fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
     for (name, write, separate, expected) in [
-        ("anim.current", false, false, "animation owner unavailable"),
         ("anim.current", true, false, "write unsupported"),
         ("torch_timer", false, true, "control owner unavailable"),
         ("torch_timer", true, true, "control owner unavailable"),
@@ -17778,7 +17812,7 @@ fn kill_me_clears_receiver_tasks_before_marking_the_actor_dead() {
 }
 
 #[test]
-fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channels_unsupported() {
+fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
     let build = |channel: u8, user: u8, task: bool| {
         let mut ops = vec![];
         if task {
@@ -17813,9 +17847,9 @@ fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channel
     let (result, flag, tasks) = build(5, 0, false);
     result.unwrap();
     assert_eq!((flag, tasks), (7, 0));
-    // A user channel remains explicitly unsupported.
-    let error = build(0, 5, false).0.unwrap_err();
-    assert!(format!("{error:#}").contains("user synchronization channels unsupported"));
+    let (result, flag, tasks) = build(0, 5, false);
+    result.unwrap();
+    assert_eq!((flag, tasks), (7, 0));
     // The barrier wait registers a task that keeps waiting while the channel has not released group 3
     // (nothing has run the channel update), and the thread does not reach its flag write.
     let (result, flag, tasks) = build(5, 0, true);
@@ -17935,6 +17969,54 @@ fn live_world_entry_and_reload_register_group_members_before_task_polling() {
         );
         assert_eq!(world.flags()[0], 12);
     }
+}
+
+#[test]
+fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
+    for (channel, ignored, value, expected_tasks, expected_flag) in [
+        (0, 0, 3, 0, 7),
+        (5, 0, 0, 1, 12),
+        (5, 1, 0, 0, 7),
+        (5, 1, 256, 1, 12),
+        (5, 1, -256, 1, 12),
+    ] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                4,
+                "SyncWithUser",
+                CallKind::Task,
+                vec![Value::Integer { value }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "SyncWithUser".into(),
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.attributes.insert("attr_30".into(), channel);
+        logic.attributes.insert("attr_43".into(), ignored);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        world.step_tasks(id, Some(256)).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            expected_tasks
+        );
+        assert_eq!(world.flags()[0], expected_flag);
+    }
+}
+
+#[test]
+fn reset_user_sync_native_validates_arguments() {
+    run_native_world(&[("ResetUserSync", &[])]).unwrap();
+    let error = run_native_world(&[("ResetUserSync", &[1])]).err().unwrap();
+    assert!(format!("{error:#}").contains("ResetUserSync requires no arguments"));
 }
 
 #[test]
@@ -20141,7 +20223,7 @@ fn movement_fixture(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","animation_groups":([0,14,15,16,17,18,19,20,21,22,23,24,25,26,27,30,31,92,93,94,95,96,97,106,142,143].into_iter().map(|group| {
+            "actors":[{"script_name":"LOGIC","animation_groups":([0,14,15,16,17,18,19,20,21,22,23,24,25,26,27,30,31,32,33,34,35,49,50,85,92,93,94,95,96,97,106,111,114,116,130,131,142,143].into_iter().map(|group| {
                 let mut commands = vec![];
                 if suppressed {commands.push(serde_json::json!({"opcode":5}));}
                 commands.push(serde_json::json!({"opcode":0,"frame_reference":group}));
@@ -32577,4 +32659,212 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
         sounds[..],
         [ScriptSound::Positional { effect: 70, .. }]
     ));
+}
+
+fn script_jump_fixture(
+    group: u16,
+    edit_saved: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    movement_fixture(
+        group,
+        false,
+        true,
+        |scripts| {
+            scripts.definition.functions.push(Function {
+                name: "Jump".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let function_id = scripts.definition.functions.len() as u16 - 1;
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+                (0, assign_call(1, function_id, "Jump", &[])),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Increment {
+                            destination: Place::Local { index: 0 },
+                            delta: 1,
+                        },
+                    },
+                ),
+                (
+                    2,
+                    Step {
+                        next: 3,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        },
+        |saved| {
+            let control = &mut saved["actors"][0]["control"];
+            control["stable_position_valid"] = true.into();
+            control["fall_timer"] = 17.into();
+            control["sliding_distance"] = 99.into();
+            control["motion_vector"] = serde_json::json!([11, 22, 33]);
+            edit_saved(saved);
+        },
+    )
+}
+
+#[test]
+fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
+    use cyrus_game::script::{ScriptInputs, WorldSnapshotSources};
+    for (group, torch, holding, selector, queued, request, heading_write) in [
+        (0, 0, 0, 0, 1, 32, false),
+        (0, 1, 0, 0, 1, 33, false),
+        (0, 1, 1, 0, 1, 111, false),
+        (18, 0, 0, 0, 8, 34, false),
+        (30, 0, 0, 0, 8, 35, false),
+        (19, 0, 0, 0, 3, 49, true),
+        (23, 0, 0, 0, 3, 50, true),
+        (31, 0, 0, 0, 8, 34, true),
+        (19, 1, 1, 1, 24, 85, false),
+    ] {
+        let (mut world, scripts, data) = script_jump_fixture(group, |saved| {
+            saved["actors"][0]["control"]["torch_burning"] = torch.into();
+            saved["actors"][0]["control"]["jump_selector"] = selector.into();
+            saved["actors"][0]["attributes"][110] = holding.into();
+        });
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local;
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().variables()[0],
+            1,
+            "Jump returns zero and the next instruction runs without waiting"
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion, control.motion_direction),
+            (queued, 2)
+        );
+        assert!(!control.stable_position_valid);
+        assert_eq!(
+            (
+                control.fall_timer,
+                control.sliding_distance,
+                control.fall_origin_y
+            ),
+            (0, 0, origin.position[1])
+        );
+        assert_eq!(
+            control.motion_vector,
+            [
+                11,
+                if heading_write {
+                    i32::from(origin.angles[1])
+                } else {
+                    22
+                },
+                33
+            ]
+        );
+        let collision = Default::default();
+        let saved = serde_json::to_value(
+            world
+                .snapshot(&WorldSnapshotSources {
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &data,
+                    collision: &collision,
+                })
+                .unwrap(),
+        )
+        .unwrap();
+        let playback = &saved["actors"][0]["animation"]["playback"];
+        assert_eq!(
+            playback["pending"][0]
+                .as_u64()
+                .or_else(|| playback["current"][0].as_u64()),
+            Some(request),
+            "{playback}",
+        );
+    }
+}
+
+#[test]
+fn script_jump_refusals_return_zero_without_changing_jump_state() {
+    use cyrus_game::script::ScriptInputs;
+    for (group, field, value) in [
+        (114, "queued_motion", 0),
+        (116, "queued_motion", 0),
+        (130, "queued_motion", 0),
+        (131, "queued_motion", 0),
+        (0, "queued_motion", 1),
+        (0, "falling_state", 1),
+        (0, "sliding_state", 1),
+        (0, "living_state", 1),
+    ] {
+        let (mut world, _, _) = script_jump_fixture(group, |saved| {
+            saved["actors"][0]["control"][field] = value.into();
+        });
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+        let control = world.actors()[0].control_state().unwrap();
+        assert!(control.stable_position_valid);
+        assert_eq!(
+            (
+                control.fall_timer,
+                control.sliding_distance,
+                control.motion_direction
+            ),
+            (17, 99, 0)
+        );
+    }
+    for surface in [2, 4] {
+        let (mut world, _, _) = script_jump_fixture(0, |_| {});
+        let id = world.id(0).unwrap();
+        world.set_actor_surface(id, surface).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .stable_position_valid
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+    }
 }

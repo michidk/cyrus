@@ -376,6 +376,14 @@ impl GameplayGlobals {
             .conditional_ticks)
     }
 
+    pub(super) fn set_conditional_ticks(&mut self, ticks: u32) -> Result<()> {
+        self.controller_prelude
+            .as_mut()
+            .context("player controller: explicit initialization unavailable")?
+            .conditional_ticks = ticks;
+        Ok(())
+    }
+
     pub fn begin_player_controller(
         &mut self,
         nominal_ticks: u32,

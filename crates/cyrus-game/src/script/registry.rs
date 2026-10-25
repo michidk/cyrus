@@ -3245,6 +3245,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
+        let user_channel =
+            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_has_active = self
+            .registry
+            .globals
+            .group_sync
+            .user_has_active(&self.registry.actors, user_channel);
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
                 .actors
@@ -3318,6 +3325,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 state: &mut self.registry.globals.group_sync,
                 actor_index: self.index,
                 channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                user_channel,
+                user_has_active,
             }),
             frame_wait: Some(frame_wait),
             locomotion: Some(super::tasks::LocomotionCall {
@@ -4386,14 +4395,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let name = self.property_name(target, reference)?;
         if name.eq_ignore_ascii_case("anim.current") {
             let index = self.property_receiver(target)?;
-            let animation = self.registry.actors[index]
+            return Ok(self.registry.actors[index]
                 .animation
                 .as_ref()
-                .context("anim.current animation owner unavailable")?;
-            return Ok(animation
-                .playback
-                .current_group()
-                .map_or(-1, |group| i32::from(group as i16)));
+                .map_or(0, |animation| {
+                    animation
+                        .playback
+                        .current_group()
+                        .map_or(-1, |group| i32::from(group as i16))
+                }));
         }
         if name.eq_ignore_ascii_case("torch_timer") {
             let index = self.property_receiver(target)?;
@@ -4542,7 +4552,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // or multitask call of a function native runs the handler once and a zero return completes
         // the task at once. Only natives whose handler is shown to return zero take this form.
         if kind != CallKind::Function
-            && ["FlatAnimate", "FlatSound"]
+            && ["FlatAnimate", "FlatSound", "ResetRotation", "Jump"]
                 .iter()
                 .any(|name| function.eq_ignore_ascii_case(name))
         {
@@ -4559,6 +4569,75 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     other => other,
                 },
             );
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("Jump") {
+            anyhow::ensure!(arguments.is_empty(), "Jump requires no arguments");
+            if !self
+                .registry
+                .script_jump_admitted(id, self.selected_player())?
+            {
+                return Ok(CallResult::Complete(0));
+            }
+            let environment = transition::ObstacleEnvironment {
+                selected_player: self.selected_player(),
+                auto_grab: false,
+                item_system_ready: self
+                    .inputs
+                    .hud
+                    .map(super::ScriptHud::inventory_ready)
+                    .transpose()?
+                    .unwrap_or(false),
+                shell_execution: self.inputs.shell_execution.unwrap_or(false),
+                ticks: self
+                    .inputs
+                    .nominal_ticks
+                    .context("Jump needs nominal ticks")?,
+            };
+            let prepared;
+            let geometry = if let Some(geometry) = self.inputs.locomotion_geometry {
+                Some(geometry)
+            } else if environment.selected_player == Some(id)
+                && let Some(source) = self.inputs.player_collision
+            {
+                prepared = self.registry.prepare_ordinary_collision_query(
+                    id,
+                    source.scene,
+                    source.animations,
+                    source.view,
+                    source.actors,
+                )?;
+                Some(LocomotionGeometry {
+                    ground: ground::OrdinaryGroundQuery {
+                        scene: source.scene,
+                        animations: source.animations,
+                        prepared: &prepared,
+                        distance: source.scene.settings.post_collide_height,
+                        sidedness: false,
+                    },
+                    environment,
+                })
+            } else {
+                None
+            };
+            let timing = ledge_states::LedgeTiming {
+                fine_ticks: if environment.selected_player == Some(id) {
+                    self.inputs
+                        .fine_ticks
+                        .context("Jump needs fine ticks for selected-player edges")?
+                } else {
+                    0
+                },
+                frame_scale: self.inputs.frame_scale,
+            };
+            let mut missing_sound = |_, _| anyhow::bail!("Jump sound handler unavailable");
+            self.registry.begin_script_jump(
+                id,
+                geometry,
+                environment,
+                timing,
+                self.sounds.as_deref_mut().unwrap_or(&mut missing_sound),
+            )?;
+            return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("PlayerLineUp") {
             // Unknown until the native stores this invocation's return value.
@@ -4715,11 +4794,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetUserSync") {
+            anyhow::ensure!(arguments.is_empty(), "ResetUserSync requires no arguments");
+            let channel = self.registry.actors[self.index].attributes
+                [super::group_sync::USER_CHANNEL_ATTRIBUTE];
+            self.registry
+                .globals
+                .group_sync
+                .reset_user(self.index, channel);
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetGroupSync") {
             anyhow::ensure!(arguments.is_empty(), "ResetGroupSync requires no arguments");
             // The native clears this actor's posted value.  The channel update retains the
             // released byte; the next world-loop update observes this member as unposted.
-            self.registry.globals.group_sync.reset(self.index);
+            self.registry.globals.group_sync.reset_current(
+                self.index,
+                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+            );
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
@@ -6642,6 +6734,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
+        let user_channel =
+            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_has_active = self
+            .registry
+            .globals
+            .group_sync
+            .user_has_active(&self.registry.actors, user_channel);
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
                 .actors
@@ -6721,6 +6820,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     state: &mut self.registry.globals.group_sync,
                     actor_index: self.index,
                     channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                    user_channel,
+                    user_has_active,
                 }),
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
@@ -6814,13 +6915,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
     }
     fn end(&mut self, _: Thread) -> Result<()> {
         let attributes = &self.registry.actors[self.index].attributes;
-        anyhow::ensure!(
-            attributes[30] == 0,
-            "user synchronization channels unsupported"
+        self.registry.globals.group_sync.reset_user(
+            self.index,
+            attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE],
         );
         // End clears the actor's pending group synchronization state.
         if attributes[super::group_sync::CHANNEL_ATTRIBUTE] != 0 {
-            self.registry.globals.group_sync.reset(self.index);
+            self.registry.globals.group_sync.reset_current(
+                self.index,
+                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+            );
         }
         Ok(())
     }

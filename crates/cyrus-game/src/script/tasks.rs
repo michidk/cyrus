@@ -273,6 +273,8 @@ pub(super) struct GroupSyncCall<'a> {
     pub state: &'a mut super::GroupSync,
     pub actor_index: usize,
     pub channel: u8,
+    pub user_channel: u8,
+    pub user_has_active: bool,
 }
 
 /// Inputs shared by the `RTXp` and `RTX` dialogue tasks.
@@ -452,6 +454,7 @@ enum Task {
     },
     /// `SyncWithGroup`.
     GroupSync,
+    UserSync,
     /// `RTX`.
     SpeakerDialogue(Speech),
     /// `rtxAnim` and `RTXpAnim`: `RTX` plus a cycle through three animation groups while the line
@@ -677,6 +680,20 @@ impl Task {
                     || input
                         .state
                         .post(input.actor_index, input.channel, group.integer()?)
+            }
+            Self::UserSync => {
+                let [value] = arguments else {
+                    anyhow::bail!("SyncWithUser requires one argument");
+                };
+                let input = services
+                    .group_sync
+                    .context("SyncWithUser channel state unavailable")?;
+                input.state.post_user(
+                    input.actor_index,
+                    input.user_channel,
+                    value.integer()?,
+                    input.user_has_active,
+                )
             }
             Self::SpeakerDialogue(speech) => {
                 let [label] = arguments else {
@@ -2551,6 +2568,12 @@ impl NativeTasks {
                 "RTXp requires task or multitask encoding"
             );
             Task::PlayerDialogue { started: false }
+        } else if function.eq_ignore_ascii_case("SyncWithUser") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "SyncWithUser requires task encoding"
+            );
+            Task::UserSync
         } else if function.eq_ignore_ascii_case("SyncWithGroup") {
             anyhow::ensure!(
                 kind == CallKind::Task,

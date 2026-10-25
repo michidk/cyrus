@@ -20,6 +20,10 @@ impl ScriptWorld {
         let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
+        self.globals.group_sync.register_user(
+            index,
+            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
+        );
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
         }
@@ -72,6 +76,10 @@ impl ScriptWorld {
             .creator = Some(creator_index);
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
+        self.globals.group_sync.register_user(
+            index,
+            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
+        );
         self.spatial
             .as_mut()
             .expect("created-object spatial state validated above")
@@ -100,6 +108,10 @@ impl ScriptWorld {
         let has_namespace = actor.namespace.is_some();
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
+        self.globals.group_sync.register_user(
+            index,
+            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
+        );
         // Created records retain runtime identifier zero and the first namespace
         // registration, just like post-load creation. Restore must rebuild this
         // identity before ActorSnapshot validation and name-target resolution.

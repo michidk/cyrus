@@ -41,7 +41,10 @@ The [script module documentation](src/script/mod.rs) describes SOUP state
 ownership, host services and internal responsibilities. Hosts integrate through
 `ScriptPlugin`, `ScriptInputs` and `run_ordinary`; unavailable services return
 contextual errors. Explicit script operations do not establish automatic
-scheduler admission or complete gameplay support.
+scheduler admission or complete gameplay support. The zero-argument `Jump` native
+completes immediately after admission and its state writes; selected-player
+edge and hang services use the caller's receiver-bound collision geometry.
+Its contract follows preservation's `player.md#script-jump`.
 
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
@@ -56,7 +59,9 @@ cargo test -p cyrus-game --test script_registry
 
 Installed tests use `REDGUARD_DIR` or the workspace `redguard` link. They report
 a skip when the install is absent; the repository gate rejects such skips when
-an install is available. Code changes require `just gates` after the final
-relevant edit. Runtime changes also require the applicable headless, replay or
-original-game comparison. See [METHOD](../../docs/METHOD.md) and
+an install is available. Code changes require `just check` and `just verify game` after the final
+relevant edit. Workspace dependency or shared build-configuration changes also
+require `just gates`. Preserve successful checks when their inputs are unchanged.
+Runtime changes also require the applicable headless, replay or original-game
+comparison. See [METHOD](../../docs/METHOD.md) and
 [SETUP](../../docs/SETUP.md) for the verification and launch workflows.
