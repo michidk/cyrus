@@ -15921,7 +15921,12 @@ fn position_property_rejects_unavailable_owner_and_unknown_reference() {
 fn current_animation_property_reads_signed_group_without_advancing_playback() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    for (group, start, expected) in [(7, false, -1), (7, true, 7), (32768, true, -32768)] {
+    for (group, start, expected) in [
+        (None, false, 0),
+        (Some(7), false, -1),
+        (Some(7), true, 7),
+        (Some(32768), true, -32768),
+    ] {
         for (object, selected) in [
             (Object::Me, false),
             (Object::Player, true),
@@ -15945,7 +15950,9 @@ fn current_animation_property_reads_signed_group_without_advancing_playback() {
                 models: Default::default(),
                 unsupported: Default::default(),
             };
-            world.bind_animation(receiver, &data, group).unwrap();
+            if let Some(group) = group {
+                world.bind_animation(receiver, &data, group).unwrap();
+            }
             if start {
                 world
                     .advance(
