@@ -15805,6 +15805,11 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
         )
         .unwrap();
     for index in 0..2 {
+        assert_eq!(
+            world.actors()[index].runtime().unwrap().active_tasks(),
+            1,
+            "each member must be waiting before the next family refresh"
+        );
         let id = world.id(index).unwrap();
         assert!(
             world.actors()[index].failure().is_none(),

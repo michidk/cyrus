@@ -606,9 +606,6 @@ impl ScriptWorld {
             ..inputs
         };
         self.update_separate(view, separate_inputs, random, sounds, budget)?;
-        // Group channels are released once after the family update, before the next loop's
-        // task pass observes the posted values.
-        self.globals.group_sync.update(&self.actors);
         // The item-use latch clears after the actors ran and before the key handler, so a key
         // press arms it for the next iteration's scripts.
         self.globals.end_item_use_attempt();
