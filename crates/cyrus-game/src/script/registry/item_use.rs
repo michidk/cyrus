@@ -15,8 +15,8 @@ impl GameHost<'_, '_, '_, '_> {
     /// compass toggles; a torch item lights the torch and is held, and any use while a torch burns
     /// puts it out; a general item starts its use script unless the item's instance limit is
     /// reached, then consumes its drop list and flags. A weapon item becomes the weapon attribute
-    /// and is drawn, and is consumed only when the draw began. The flagged item is explicitly
-    /// unsupported.
+    /// and is drawn, and is consumed only when the draw began. The island-map item is explicitly
+    /// unsupported until a presentation host is available.
     pub(super) fn use_item(&mut self, item: u16) -> Result<()> {
         let hud = self
             .inputs
