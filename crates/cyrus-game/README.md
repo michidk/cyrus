@@ -56,7 +56,9 @@ cargo test -p cyrus-game --test script_registry
 
 Installed tests use `REDGUARD_DIR` or the workspace `redguard` link. They report
 a skip when the install is absent; the repository gate rejects such skips when
-an install is available. Code changes require `just gates` after the final
-relevant edit. Runtime changes also require the applicable headless, replay or
-original-game comparison. See [METHOD](../../docs/METHOD.md) and
+an install is available. Code changes require `just check` and `just verify game` after the final
+relevant edit. Workspace dependency or shared build-configuration changes also
+require `just gates`. Preserve successful checks when their inputs are unchanged.
+Runtime changes also require the applicable headless, replay or original-game
+comparison. See [METHOD](../../docs/METHOD.md) and
 [SETUP](../../docs/SETUP.md) for the verification and launch workflows.
