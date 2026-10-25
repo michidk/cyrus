@@ -106,7 +106,29 @@ def main():
             continue
         for assignment in flags.get(world, []):
             call({"type": "console", "open": True})
-            call({"type": "console", "line": f"setflag {assignment}"})
+            console = call({"type": "console", "line": f"setflag {assignment}"})
+            lines = console.get("console", {}).get("lines", [])
+            # Console errors are printed as ordinary report lines, despite an ok control reply.
+            command = f"setflag {assignment}"
+            reports = []
+            command_seen = False
+            for line in reversed(lines):
+                if not line.get("report") and line.get("text") == command:
+                    command_seen = True
+                    break
+                if line.get("report"):
+                    reports.append(line.get("text", ""))
+            name, _, value = assignment.partition(",")
+            confirmed = command_seen and any(
+                len(parts := report.split()) == 4
+                and parts[0].casefold() == name.casefold()
+                and parts[2] == value
+                and parts[3].startswith("set=")
+                for report in reports
+            )
+            if not confirmed:
+                print(f"{world}: setflag {assignment}: assignment not confirmed: {reports!r}")
+                bad += 1
             call({"type": "console", "open": False})
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
         identity0, loop0 = script_loop_sample()

@@ -14,7 +14,7 @@ spec.loader.exec_module(sweep)
 
 
 class WorldSweepTests(unittest.TestCase):
-    def run_sweep(self, frames, generations=None, actors=False, script_error=False):
+    def run_sweep(self, frames, generations=None, actors=False, script_error=False, console_error=False, flag=False):
         now = [0]
         frames = iter(frames)
         generations = iter(generations) if generations else None
@@ -45,6 +45,16 @@ class WorldSweepTests(unittest.TestCase):
                         result["actors"] = [{"name": "actor", "failure": None}]
                     if cmd["limit"] == 1:
                         result["globals"] = {"world_loop_frame": next(frames)}
+                elif cmd["type"] == "console":
+                    result = {
+                        "console": {
+                            "lines": [
+                                {"text": cmd["line"], "report": False},
+                                {"text": "setflag failed" if console_error else "scene2 Number 1 set=false", "report": True},
+                                {"text": "", "report": False},
+                            ] if cmd.get("line") else []
+                        }
+                    }
                 else:
                     result = {}
                 self.reply = (json.dumps({"ok": True, "result": result}) + "\n").encode()
@@ -53,10 +63,14 @@ class WorldSweepTests(unittest.TestCase):
                 return self.reply
 
         output = io.StringIO()
+        argv = ["world-sweep.py", "--seconds", "1"]
+        if flag:
+            argv += ["--flag", "START:scene2=1"]
+        argv += ["START"]
         with patch.object(sweep.socket, "create_connection", side_effect=lambda *a, **k: Connection()), \
              patch.object(sweep.time, "time", side_effect=lambda: now[0]), \
              patch.object(sweep.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
-             patch.object(sweep.sys, "argv", ["world-sweep.py", "--seconds", "1", "START"]), \
+             patch.object(sweep.sys, "argv", argv), \
              contextlib.redirect_stdout(output):
             return sweep.main(), output.getvalue()
 
@@ -92,6 +106,15 @@ class WorldSweepTests(unittest.TestCase):
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])
         self.assertEqual(result, 0, output)
+
+    def test_confirmed_setflag_with_running_loop_passes(self):
+        result, output = self.run_sweep([3, 4], flag=True)
+        self.assertEqual(result, 0, output)
+
+    def test_setflag_error_cannot_be_hidden_by_a_running_loop(self):
+        result, output = self.run_sweep([3, 4], console_error=True, flag=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("setflag failed", output)
 
 
 if __name__ == "__main__":
