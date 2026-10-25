@@ -30864,7 +30864,7 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
 #[test]
 fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
     use cyrus_assets::effects::{EffectImage, Effects};
-    let effects = Effects {
+    let mut effects = Effects {
         ambient_brightness: Some(128),
         capacity: 2,
         disabled: false,
@@ -30881,6 +30881,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
             },
         )]),
     };
+    effects.images.insert(0, effects.images[&0x2380].clone());
     let spawn = |spread: i32, speed: i32, descriptor: i32| {
         let mut world = {
             let mut scripts = random_scripts("Rnd", vec![], Object::Me);
@@ -30950,6 +30951,12 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
         assert!(failure.is_none(), "{failure:?}");
         assert_eq!(count, 1);
         assert_eq!(frame, Some(speed));
+    }
+    for descriptor in [0, 0x20000] {
+        let (failure, count, frame) = spawn(0, 3, descriptor).unwrap();
+        assert!(failure.is_none(), "{failure:?}");
+        assert_eq!(count, 1);
+        assert_eq!(frame, Some(0));
     }
     let error = spawn(5, 1, 0x2380).unwrap_err();
     assert!(format!("{error:#}").contains("nonzero spread unsupported"));

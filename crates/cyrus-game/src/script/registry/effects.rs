@@ -230,7 +230,7 @@ impl EnvironmentalEffects {
                 && effect.active
             {
                 // Effect frames advance by nominal ticks multiplied by the retained animation speed.
-                if effect.frame != -1 && effect.target != 0 {
+                if effect.descriptor as u16 != 0 && effect.frame != -1 && effect.target != 0 {
                     effect.frame = effect
                         .frame
                         .wrapping_add((ticks as i32).wrapping_mul(effect.speed));
@@ -660,6 +660,25 @@ mod tests {
         assert_eq!(restored.active().next().unwrap().1.frame, 9);
         restored.advance(1);
         assert_eq!(restored.active().count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn zero_texture_effects_keep_their_frame_even_with_drawing_flags() -> Result<()> {
+        let mut source = source(4);
+        let image = source.images.remove(&0x2500).unwrap();
+        source.images.insert(0, image);
+        for descriptor in [0, 0x20000] {
+            let mut effects = EnvironmentalEffects::prepare(&source)?;
+            effects.spawn_with_speed(descriptor, [0; 3], 3)?;
+            effects.advance(2);
+            let effect = effects.active().next().unwrap().1;
+            assert_eq!(effect.frame, 0);
+            let saved = effects.snapshot(&source)?;
+            let mut restored = EnvironmentalEffects::from_snapshot(saved, &source)?;
+            restored.advance(2);
+            assert_eq!(restored.active().next().unwrap().1.frame, 0);
+        }
         Ok(())
     }
 
