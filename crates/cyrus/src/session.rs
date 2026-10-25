@@ -200,6 +200,10 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
 }
 
 fn retain_selection(world: &mut World, slot: u16, description: String) -> Result<()> {
+    // The save host owns the retained selection even when a diagnostic or
+    // scene-started session did not install the death-book presentation.
+    // The dispatcher is inert until the startup book registers its entry.
+    world.init_resource::<cyrus_game::script::DeathDispatch>();
     world
         .get_resource_mut::<cyrus_game::script::DeathDispatch>()
         .context("native save selection: last-save dispatcher unavailable")?
