@@ -4552,7 +4552,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // or multitask call of a function native runs the handler once and a zero return completes
         // the task at once. Only natives whose handler is shown to return zero take this form.
         if kind != CallKind::Function
-            && ["FlatAnimate", "FlatSound", "ResetRotation"]
+            && ["FlatAnimate", "FlatSound", "ResetRotation", "Jump"]
                 .iter()
                 .any(|name| function.eq_ignore_ascii_case(name))
         {
@@ -4569,6 +4569,75 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     other => other,
                 },
             );
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("Jump") {
+            anyhow::ensure!(arguments.is_empty(), "Jump requires no arguments");
+            if !self
+                .registry
+                .script_jump_admitted(id, self.selected_player())?
+            {
+                return Ok(CallResult::Complete(0));
+            }
+            let environment = transition::ObstacleEnvironment {
+                selected_player: self.selected_player(),
+                auto_grab: false,
+                item_system_ready: self
+                    .inputs
+                    .hud
+                    .map(super::ScriptHud::inventory_ready)
+                    .transpose()?
+                    .unwrap_or(false),
+                shell_execution: self.inputs.shell_execution.unwrap_or(false),
+                ticks: self
+                    .inputs
+                    .nominal_ticks
+                    .context("Jump needs nominal ticks")?,
+            };
+            let prepared;
+            let geometry = if let Some(geometry) = self.inputs.locomotion_geometry {
+                Some(geometry)
+            } else if environment.selected_player == Some(id)
+                && let Some(source) = self.inputs.player_collision
+            {
+                prepared = self.registry.prepare_ordinary_collision_query(
+                    id,
+                    source.scene,
+                    source.animations,
+                    source.view,
+                    source.actors,
+                )?;
+                Some(LocomotionGeometry {
+                    ground: ground::OrdinaryGroundQuery {
+                        scene: source.scene,
+                        animations: source.animations,
+                        prepared: &prepared,
+                        distance: source.scene.settings.post_collide_height,
+                        sidedness: false,
+                    },
+                    environment,
+                })
+            } else {
+                None
+            };
+            let timing = ledge_states::LedgeTiming {
+                fine_ticks: if environment.selected_player == Some(id) {
+                    self.inputs
+                        .fine_ticks
+                        .context("Jump needs fine ticks for selected-player edges")?
+                } else {
+                    0
+                },
+                frame_scale: self.inputs.frame_scale,
+            };
+            let mut missing_sound = |_, _| anyhow::bail!("Jump sound handler unavailable");
+            self.registry.begin_script_jump(
+                id,
+                geometry,
+                environment,
+                timing,
+                self.sounds.as_deref_mut().unwrap_or(&mut missing_sound),
+            )?;
+            return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("PlayerLineUp") {
             // Unknown until the native stores this invocation's return value.

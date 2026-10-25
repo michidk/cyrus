@@ -20223,7 +20223,7 @@ fn movement_fixture(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","animation_groups":([0,14,15,16,17,18,19,20,21,22,23,24,25,26,27,30,31,92,93,94,95,96,97,106,142,143].into_iter().map(|group| {
+            "actors":[{"script_name":"LOGIC","animation_groups":([0,14,15,16,17,18,19,20,21,22,23,24,25,26,27,30,31,32,33,34,35,49,50,85,92,93,94,95,96,97,106,111,114,116,130,131,142,143].into_iter().map(|group| {
                 let mut commands = vec![];
                 if suppressed {commands.push(serde_json::json!({"opcode":5}));}
                 commands.push(serde_json::json!({"opcode":0,"frame_reference":group}));
@@ -32659,4 +32659,212 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
         sounds[..],
         [ScriptSound::Positional { effect: 70, .. }]
     ));
+}
+
+fn script_jump_fixture(
+    group: u16,
+    edit_saved: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    movement_fixture(
+        group,
+        false,
+        true,
+        |scripts| {
+            scripts.definition.functions.push(Function {
+                name: "Jump".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let function_id = scripts.definition.functions.len() as u16 - 1;
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+                (0, assign_call(1, function_id, "Jump", &[])),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Increment {
+                            destination: Place::Local { index: 0 },
+                            delta: 1,
+                        },
+                    },
+                ),
+                (
+                    2,
+                    Step {
+                        next: 3,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        },
+        |saved| {
+            let control = &mut saved["actors"][0]["control"];
+            control["stable_position_valid"] = true.into();
+            control["fall_timer"] = 17.into();
+            control["sliding_distance"] = 99.into();
+            control["motion_vector"] = serde_json::json!([11, 22, 33]);
+            edit_saved(saved);
+        },
+    )
+}
+
+#[test]
+fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
+    use cyrus_game::script::{ScriptInputs, WorldSnapshotSources};
+    for (group, torch, holding, selector, queued, request, heading_write) in [
+        (0, 0, 0, 0, 1, 32, false),
+        (0, 1, 0, 0, 1, 33, false),
+        (0, 1, 1, 0, 1, 111, false),
+        (18, 0, 0, 0, 8, 34, false),
+        (30, 0, 0, 0, 8, 35, false),
+        (19, 0, 0, 0, 3, 49, true),
+        (23, 0, 0, 0, 3, 50, true),
+        (31, 0, 0, 0, 8, 34, true),
+        (19, 1, 1, 1, 24, 85, false),
+    ] {
+        let (mut world, scripts, data) = script_jump_fixture(group, |saved| {
+            saved["actors"][0]["control"]["torch_burning"] = torch.into();
+            saved["actors"][0]["control"]["jump_selector"] = selector.into();
+            saved["actors"][0]["attributes"][110] = holding.into();
+        });
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local;
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().variables()[0],
+            1,
+            "Jump returns zero and the next instruction runs without waiting"
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion, control.motion_direction),
+            (queued, 2)
+        );
+        assert!(!control.stable_position_valid);
+        assert_eq!(
+            (
+                control.fall_timer,
+                control.sliding_distance,
+                control.fall_origin_y
+            ),
+            (0, 0, origin.position[1])
+        );
+        assert_eq!(
+            control.motion_vector,
+            [
+                11,
+                if heading_write {
+                    i32::from(origin.angles[1])
+                } else {
+                    22
+                },
+                33
+            ]
+        );
+        let collision = Default::default();
+        let saved = serde_json::to_value(
+            world
+                .snapshot(&WorldSnapshotSources {
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &data,
+                    collision: &collision,
+                })
+                .unwrap(),
+        )
+        .unwrap();
+        let playback = &saved["actors"][0]["animation"]["playback"];
+        assert_eq!(
+            playback["pending"][0]
+                .as_u64()
+                .or_else(|| playback["current"][0].as_u64()),
+            Some(request),
+            "{playback}",
+        );
+    }
+}
+
+#[test]
+fn script_jump_refusals_return_zero_without_changing_jump_state() {
+    use cyrus_game::script::ScriptInputs;
+    for (group, field, value) in [
+        (114, "queued_motion", 0),
+        (116, "queued_motion", 0),
+        (130, "queued_motion", 0),
+        (131, "queued_motion", 0),
+        (0, "queued_motion", 1),
+        (0, "falling_state", 1),
+        (0, "sliding_state", 1),
+        (0, "living_state", 1),
+    ] {
+        let (mut world, _, _) = script_jump_fixture(group, |saved| {
+            saved["actors"][0]["control"][field] = value.into();
+        });
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+        let control = world.actors()[0].control_state().unwrap();
+        assert!(control.stable_position_valid);
+        assert_eq!(
+            (
+                control.fall_timer,
+                control.sliding_distance,
+                control.motion_direction
+            ),
+            (17, 99, 0)
+        );
+    }
+    for surface in [2, 4] {
+        let (mut world, _, _) = script_jump_fixture(0, |_| {});
+        let id = world.id(0).unwrap();
+        world.set_actor_surface(id, surface).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .stable_position_valid
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+    }
 }

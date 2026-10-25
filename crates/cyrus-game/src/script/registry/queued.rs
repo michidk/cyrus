@@ -141,7 +141,7 @@ impl super::ScriptWorld {
             "world {} instance {index} jump state-15 exit service unsupported",
             self.world
         );
-        self.initialize_ordinary_jump(id, requested_motion, environment, sounds)
+        self.initialize_ordinary_jump(id, requested_motion, false, environment, sounds)
     }
 
     /// The selected player's jump entry: the gates of the ordinary entry for the selected player
@@ -188,7 +188,91 @@ impl super::ScriptWorld {
         if self.selected_edge_entry(id, query, environment, timing, sounds)? {
             return Ok(false);
         }
-        self.initialize_ordinary_jump(id, requested_motion, environment, sounds)
+        self.initialize_ordinary_jump(id, requested_motion, false, environment, sounds)
+    }
+
+    pub(super) fn script_jump_admitted(
+        &self,
+        id: super::ScriptActorId,
+        selected_player: Option<super::ScriptActorId>,
+    ) -> anyhow::Result<bool> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let control = actor.control.as_ref().context("Jump control unavailable")?;
+        let surface = self.actor_surface(id)?;
+        let selected = selected_player == Some(id);
+        let group = actor
+            .animation
+            .as_ref()
+            .context("Jump animation receiver unavailable")?
+            .playback
+            .current_group()
+            .context("Jump current group unavailable")?;
+        if (selected && self.globals.conditional_ticks()? != 0)
+            || matches!(surface, 2 | 4)
+            || actor.tasks.is_active()
+            || control.queued_motion != 0
+            || control.falling_state != 0
+            || control.sliding_state != 0
+            || !matches!(control.living_state, 0 | 15)
+            || matches!(group, 114 | 116 | 130 | 131)
+            || (selected && actor.attributes[105] == 1 && (1..=4).contains(&surface))
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// Zero-argument SOUP Jump, from preservation's player.md#script-jump.
+    /// Admission refusal and handled edge services still complete the native immediately.
+    pub(super) fn begin_script_jump(
+        &mut self,
+        id: super::ScriptActorId,
+        geometry: Option<super::LocomotionGeometry<'_>>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: super::ledge_states::LedgeTiming,
+        sounds: &mut dyn FnMut(
+            super::ScriptActorId,
+            super::super::ScriptSound,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        if !self.script_jump_admitted(id, environment.selected_player)? {
+            return Ok(());
+        }
+        let index = self.resolve(id)?;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted Jump control");
+        let selected = environment.selected_player == Some(id);
+        let hanging = control.living_state == 15;
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated Jump control")
+            .stable_position_valid = false;
+        if hanging && !selected {
+            anyhow::bail!(
+                "world {} instance {index} Jump state-15 release requires selected player",
+                self.world
+            );
+        }
+        if selected {
+            let query = geometry
+                .context("Jump selected-player edge geometry unavailable")?
+                .ground;
+            if hanging {
+                self.ledge_hang_release(id, query, environment, timing, sounds)?;
+                return Ok(());
+            }
+            if self.selected_edge_entry(id, query, environment, timing, sounds)? {
+                return Ok(());
+            }
+        }
+        self.initialize_ordinary_jump(id, 8, true, environment, sounds)?;
+        Ok(())
     }
 
     /// The stage between the ordinary animation and script stages: queued (else falling) motion 8
@@ -393,6 +477,7 @@ impl super::ScriptWorld {
         &mut self,
         id: super::ScriptActorId,
         requested_motion: u8,
+        script_native: bool,
         environment: super::transition::ObstacleEnvironment,
         sounds: &mut dyn FnMut(
             super::ScriptActorId,
@@ -432,9 +517,49 @@ impl super::ScriptWorld {
                         (8, 35)
                     }
                 }
+                19 | 23 if script_native => (3, if group == 19 { 49 } else { 50 }),
+                31 if script_native => (8, 34),
+                _ if script_native => {
+                    let holding = super::super::activation::weapon_predicates(
+                        control.living_state,
+                        Some(super::super::ActivationAnimation { group: Some(group) }),
+                        control.combat_death_default.is_some(),
+                        control.weapon_drawn,
+                        actor.attributes[110],
+                        environment.item_system_ready,
+                        environment.shell_execution,
+                    )
+                    .0;
+                    (
+                        1,
+                        if script_native
+                            && (holding
+                                || control
+                                    .combat
+                                    .as_ref()
+                                    .is_some_and(|combat| combat.flags & 4 != 0))
+                        {
+                            111
+                        } else if control.torch_burning == 0 {
+                            32
+                        } else {
+                            33
+                        },
+                    )
+                }
                 _ => (1, if control.torch_burning == 0 { 32 } else { 33 }),
             }
         };
+        let heading = script_native
+            .then(|| self.spatial(id).map(|pose| pose.local.angles[1]))
+            .transpose()?;
+        if script_native
+            && !force
+            && matches!(group, 19 | 23)
+            && environment.selected_player == Some(id)
+        {
+            self.globals.set_conditional_ticks(6)?;
+        }
         let origin = self.spatial(id)?.local.position[1];
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
         let event_context = super::effects::ActorEventContext::capture(self, id);
@@ -447,6 +572,9 @@ impl super::ScriptWorld {
         control.fall_timer = 0;
         control.sliding_distance = 0;
         control.queued_motion = queued;
+        if script_native && !force && matches!(group, 19 | 23 | 31) {
+            control.motion_vector[1] = i32::from(heading.expect("script Jump heading"));
+        }
         if self.updates.animation_system {
             let surface = actor.surface;
             let animation = actor

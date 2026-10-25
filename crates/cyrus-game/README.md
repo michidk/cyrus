@@ -41,7 +41,10 @@ The [script module documentation](src/script/mod.rs) describes SOUP state
 ownership, host services and internal responsibilities. Hosts integrate through
 `ScriptPlugin`, `ScriptInputs` and `run_ordinary`; unavailable services return
 contextual errors. Explicit script operations do not establish automatic
-scheduler admission or complete gameplay support.
+scheduler admission or complete gameplay support. The zero-argument `Jump` native
+completes immediately after admission and its state writes; selected-player
+edge and hang services use the caller's receiver-bound collision geometry.
+Its contract follows preservation's `player.md#script-jump`.
 
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
