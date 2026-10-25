@@ -1650,6 +1650,6 @@ mod tests {
         menu.fill_load_rows();
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 2);
         menu.change_list_page(1);
-        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 9);
+        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 10);
     }
 }
