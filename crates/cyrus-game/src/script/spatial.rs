@@ -762,6 +762,25 @@ pub(super) struct SpatialSnapshot {
     refreshes: u32,
 }
 
+impl SpatialSnapshot {
+    /// Pose used by off-live light preparation, without refreshing families.
+    pub(super) fn actor_pose(&self, index: usize) -> Result<Option<Pose>> {
+        self.actors
+            .get(index)
+            .context("saved light spatial actor absent")?
+            .as_ref()
+            .map(|actor| {
+                actor
+                    .effective
+                    .as_ref()
+                    .unwrap_or(&actor.local)
+                    .clone()
+                    .restore()
+            })
+            .transpose()
+    }
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SavedPose {
     position: [i32; 3],

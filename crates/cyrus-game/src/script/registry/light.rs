@@ -122,17 +122,20 @@ impl LightState {
         &self,
         spatial: &crate::script::spatial::ActorSpatial,
     ) -> Option<cyrus_assets::environment::LocalLight> {
+        self.rendered_pose(spatial.effective.unwrap_or(spatial.local))
+    }
+
+    pub(super) fn rendered_pose(
+        &self,
+        pose: crate::script::spatial::Pose,
+    ) -> Option<cyrus_assets::environment::LocalLight> {
         if !self.enabled {
             return None;
         }
-        let pose = spatial.effective.or(Some(spatial.local))?;
-        let rotated = cyrus_world::transform::Matrix::orientation(pose.angles)
-            .transform(self.offset.map(i32::from))
-            .ok()?;
+        let rotated = pose.matrix.transform(self.offset.map(i32::from)).ok()?;
         Some(cyrus_assets::environment::LocalLight {
-            // Authored positions retain their exported units; offsets are Q8 pose deltas.
             position: std::array::from_fn(|axis| {
-                self.position[axis].wrapping_add(rotated[axis] >> 8)
+                pose.position[axis].wrapping_add(rotated[axis]) >> 8
             }),
             radius: self.radius,
             rgb: self.rgb,

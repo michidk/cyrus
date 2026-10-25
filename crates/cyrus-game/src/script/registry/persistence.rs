@@ -459,16 +459,15 @@ impl ActorSnapshot {
             self.name
         );
         if let Some(light) = &self.light {
-            // An authored object light (kinds 4 and 6) stays where its placement put it; any
-            // other actor's light is a script-created record with no authored position.
+            // Retained source coordinates identify the authored record; drawing uses the
+            // current spatial pose and offset.
             if let Some(placement) = actor
                 .placement()
                 .filter(|placement| matches!(placement.object_type, 4 | 6))
             {
                 ensure!(
-                    light.position == placement.map_position.map(|value| value as i32)
-                        && light.offset == [0; 3],
-                    "saved actor {}: moving or offset object light unsupported",
+                    light.position == placement.map_position.map(|value| value as i32),
+                    "saved actor {}: object light source position differs",
                     self.name
                 );
             }
@@ -1199,16 +1198,25 @@ impl LogicalSessionSnapshot {
             .iter()
             .find(|world| world.world == self.registry.current)
             .context("saved light world absent")?;
-        Ok(current
-            .actors
-            .iter()
-            .filter_map(|actor| {
-                actor
-                    .light
-                    .as_ref()
-                    .and_then(super::light::LightState::rendered)
-            })
-            .collect())
+        let mut lights = Vec::new();
+        for (index, actor) in current.actors.iter().enumerate() {
+            let Some(light) = &actor.light else {
+                continue;
+            };
+            let pose = current
+                .spatial
+                .as_ref()
+                .map(|spatial| spatial.actor_pose(index))
+                .transpose()?
+                .flatten();
+            if let Some(rendered) = match pose {
+                Some(pose) => light.rendered_pose(pose),
+                None => light.rendered(),
+            } {
+                lights.push(rendered);
+            }
+        }
+        Ok(lights)
     }
 
     /// World assets the host must prepare before validating a replacement.

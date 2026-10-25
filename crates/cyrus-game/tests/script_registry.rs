@@ -32980,3 +32980,105 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
         6
     );
 }
+
+#[test]
+fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
+    use cyrus_game::script::{
+        GameplayGlobals, ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "MoveObjectAxis".into(),
+        param_count: 3,
+        kind: CallKind::Task,
+    });
+    scripts.definition.functions.push(Function {
+        name: "LightOffset".into(),
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    scripts.instances.truncate(1);
+    scripts.instances[0].object_type = 6;
+    scripts.instances[0].map_position = [100, -200, 300];
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&1)
+        .unwrap()
+        .operation = wait(
+        1,
+        "MoveObjectAxis",
+        CallKind::Task,
+        vec![
+            Value::Integer { value: 0 },
+            Value::Integer { value: 512 },
+            Value::Integer { value: 2 },
+        ],
+    );
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .insert(0, assign_call(1, 2, "LightOffset", &[256, -128, 512]));
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    world.refresh_families().unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Tasks,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    world.refresh_families().unwrap();
+    assert_eq!(world.object_lights()[0].position, [101, -201, 302]);
+    let snapshot = world.snapshot(&sources).unwrap();
+    let replacement = ScriptWorld::from_snapshot(
+        snapshot,
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(replacement.object_lights()[0].position, [101, -201, 302]);
+}

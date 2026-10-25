@@ -52,6 +52,10 @@ executable state, but allocator recycling and reuse across a long live session
 still require installed original/native/browser acceptance; the current public
 tests do not claim that parity.
 
+Authored object-light projection resolves its offset through the current retained
+actor pose. Snapshot material preparation uses the same projection without
+advancing scripts or refreshing families.
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
