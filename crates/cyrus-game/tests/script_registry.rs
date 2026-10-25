@@ -28135,7 +28135,7 @@ fn player_health_fixture_with(
     cyrus_game::player::data::PlayerScene,
 ) {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
-    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(prepare);
+    let (scripts, mut world, data, scene) = player_walking_fixture_with(prepare);
     let index = world
         .actors()
         .iter()
