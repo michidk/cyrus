@@ -27,6 +27,12 @@ def main():
     parser.add_argument("--port", type=int, default=7117)
     parser.add_argument("--seconds", type=int, default=60, help="soak time per world")
     parser.add_argument("--ready-timeout", type=int, default=300)
+    parser.add_argument(
+        "--request-timeout",
+        type=int,
+        default=60,
+        help="maximum seconds for one control request, including large actor pages",
+    )
     parser.add_argument("--flag", action="append", default=[], metavar="WORLD:NAME=VALUE")
     args = parser.parse_args()
     flags = {}
@@ -35,7 +41,7 @@ def main():
         flags.setdefault(world, []).append(assignment.replace("=", ","))
 
     def call(cmd):
-        with socket.create_connection(("127.0.0.1", args.port), timeout=300) as conn:
+        with socket.create_connection(("127.0.0.1", args.port), timeout=args.request_timeout) as conn:
             conn.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
             buf = b""
             while not buf.endswith(b"\n"):
