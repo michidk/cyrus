@@ -169,10 +169,20 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                     .iter()
                     .filter(|entry| matches!(entry.item.action, 102 | 202))
                     .count();
+                let base = if *page_id == 1 {
+                    if state.list_page == 0 {
+                        0
+                    } else {
+                        8 + (state.list_page - 1) * 9
+                    }
+                } else {
+                    state.list_page * 9
+                };
                 let slot = state
                     .slots
                     .iter()
                     .filter(|slot| *page_id != 1 || slot.slot != 0)
+                    .skip(base)
                     .nth(row);
                 item.text = slot
                     .map(|slot| slot.description.chars().take(40).collect())

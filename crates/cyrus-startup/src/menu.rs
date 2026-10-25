@@ -117,6 +117,8 @@ pub struct MenuState {
     pub selected: Option<usize>,
     pub slots: Vec<super::SaveSlot>,
     #[serde(skip)]
+    pub(super) list_page: usize,
+    #[serde(skip)]
     slot_rows: BTreeMap<usize, usize>,
     #[serde(skip)]
     pub(super) delete_confirmation: Option<DeleteConfirmation>,
@@ -171,11 +173,21 @@ impl MenuState {
             .filter(|(_, entry)| matches!(entry.action, 102 | 202))
             .enumerate()
         {
+            let base = if self.page == 1 {
+                if self.list_page == 0 {
+                    0
+                } else {
+                    8 + (self.list_page - 1) * 9
+                }
+            } else {
+                self.list_page * 9
+            };
             let slot_index = self
                 .slots
                 .iter()
                 .enumerate()
                 .filter(|(_, slot)| self.page != 1 || slot.slot != 0)
+                .skip(base)
                 .nth(row)
                 .map(|(index, _)| index);
             let slot = slot_index.and_then(|index| self.slots.get(index));
@@ -194,6 +206,12 @@ impl MenuState {
             self.selected = self.entries.iter().position(|entry| entry.eligible());
         }
         self.dirty = true;
+    }
+
+    fn change_list_page(&mut self, direction: isize) {
+        self.list_page = (self.list_page as isize + direction).max(0) as usize;
+        self.fill_load_rows();
+        self.selected = self.entries.iter().position(MenuItem::eligible);
     }
 
     fn navigate(&mut self, direction: isize) -> bool {
@@ -606,6 +624,10 @@ pub(super) fn drive(
                 }
                 menu.dirty = true;
             }
+        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::PageDown) {
+            menu.change_list_page(1);
+        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::PageUp) {
+            menu.change_list_page(-1);
         } else if menu.capturing.is_some() {
             menu.blink_seconds += input.0.delta_secs();
             // Blink cadence is presentation policy; the original toggles on menu updates.
@@ -845,6 +867,7 @@ impl MenuState {
             self.selections.insert(self.page, self.selected);
         }
         self.page = page;
+        self.list_page = 0;
         self.entries = book.pages[&page]
             .entries
             .iter()
@@ -1591,5 +1614,42 @@ mod tests {
         assert!(menu.entries[1].text.is_empty());
         assert!(!menu.entries[1].eligible());
         assert_eq!(menu.selected, Some(0));
+    }
+
+    #[test]
+    fn save_and_load_pages_advance_by_their_authored_row_counts() {
+        let row = |action| MenuItem {
+            text: "row".into(),
+            action,
+            selectable: true,
+            grayed: false,
+            implemented: true,
+            visible: true,
+        };
+        let mut menu = MenuState {
+            page: 2,
+            entries: (0..9).map(|_| row(202)).collect(),
+            slots: (0..20)
+                .map(|slot| super::super::SaveSlot {
+                    slot,
+                    description: format!("S{slot}"),
+                    revision: format!("r{slot}"),
+                })
+                .collect(),
+            ..default()
+        };
+        menu.fill_load_rows();
+        assert_eq!(menu.slots[menu.slot_rows[&0]].slot, 0);
+        menu.change_list_page(1);
+        assert_eq!(menu.slots[menu.slot_rows[&0]].slot, 9);
+        menu.page = 1;
+        menu.list_page = 0;
+        menu.entries = std::iter::once(row(101))
+            .chain((0..8).map(|_| row(102)))
+            .collect();
+        menu.fill_load_rows();
+        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 1);
+        menu.change_list_page(1);
+        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 9);
     }
 }
