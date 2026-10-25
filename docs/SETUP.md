@@ -375,10 +375,10 @@ MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Progression
 unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit
 attempts to close the tab; when the browser refuses, the menu remains usable.
-New Game enters the `WORLD.INI` starting world and marker. Load opens the installed page with the first nine saved slots and restores the
-selected revision through the host session boundary. Additional list pages and
-Save dialogs remain unavailable. Save and Continue remain grayed without a resumable
-world. World entry shows the installed
+New Game enters the `WORLD.INI` starting world and marker. Load opens the installed page with paginated saved slots and restores the
+selected revision through the host session boundary. Save opens the authored
+description editor for new and existing slots. Save and Continue remain grayed
+without a resumable world. World entry shows the installed
 destination artwork and red percentage bar until required assets and dependencies
 are ready. **Verified:** original world loading has a gold lower-left percentage
 and no right-hand status message. Native and browser presentation use that layout.
