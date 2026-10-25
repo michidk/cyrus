@@ -16221,9 +16221,34 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
 }
 
 #[test]
+fn current_animation_property_without_an_association_returns_zero() {
+    for object in [Object::Me, Object::Player, Object::Named { string: 0 }] {
+        let mut scripts = heading_property_scripts(294, object);
+        scripts.definition.references[294] = "anim.current".into();
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    }
+}
+
+#[test]
 fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
     for (name, write, separate, expected) in [
-        ("anim.current", false, false, "animation owner unavailable"),
         ("anim.current", true, false, "write unsupported"),
         ("torch_timer", false, true, "control owner unavailable"),
         ("torch_timer", true, true, "control owner unavailable"),

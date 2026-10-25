@@ -4386,14 +4386,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let name = self.property_name(target, reference)?;
         if name.eq_ignore_ascii_case("anim.current") {
             let index = self.property_receiver(target)?;
-            let animation = self.registry.actors[index]
+            return Ok(self.registry.actors[index]
                 .animation
                 .as_ref()
-                .context("anim.current animation owner unavailable")?;
-            return Ok(animation
-                .playback
-                .current_group()
-                .map_or(-1, |group| i32::from(group as i16)));
+                .map_or(0, |animation| {
+                    animation
+                        .playback
+                        .current_group()
+                        .map_or(-1, |group| i32::from(group as i16))
+                }));
         }
         if name.eq_ignore_ascii_case("torch_timer") {
             let index = self.property_receiver(target)?;
