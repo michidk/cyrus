@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
 const WEAPON_ITEM: u32 = 1;
 const TORCH_ITEM: u32 = 3;
-/// The one item the original flags separately when used; its effect is not recovered.
-const FLAGGED_ITEM: u16 = 83;
+/// Item 83 requests the island map; presentation is host-owned and not yet wired.
+const ISLAND_MAP_ITEM: u16 = 83;
 
 impl GameHost<'_, '_, '_, '_> {
     /// Use `item` for the receiver. Every refusal that is not an error (player lockout, an edge
@@ -106,8 +106,8 @@ impl GameHost<'_, '_, '_, '_> {
             control.held_item = Some(item as u8);
         }
         anyhow::ensure!(
-            item != FLAGGED_ITEM,
-            "UseItem({item}): the item's separate use flag is unrecovered"
+            item != ISLAND_MAP_ITEM,
+            "UseItem({item}): island-map presentation host unavailable"
         );
         if let Some((name, limit)) = used.script
             && (limit < 1 || self.registry.running_shells(&name) < limit as usize)
