@@ -3861,7 +3861,17 @@ fn inventory_snapshot_rejects_content_census_and_selection_mismatches() {
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
     let saved = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
-    for field in ["version", "selected", "definition", "missing", "extra"] {
+    for field in [
+        "version",
+        "selected",
+        "definition",
+        "missing",
+        "extra",
+        "item_type",
+        "use_script",
+        "script_instances",
+        "drop_use_items",
+    ] {
         let mut invalid = saved.clone();
         match field {
             "version" => invalid["version"] = 99.into(),
@@ -3872,6 +3882,12 @@ fn inventory_snapshot_rejects_content_census_and_selection_mismatches() {
             }
             "extra" => {
                 invalid["items"]["3"] = invalid["items"]["2"].clone();
+            }
+            "item_type" => invalid["definitions"]["1"]["item_type"] = 3.into(),
+            "use_script" => invalid["definitions"]["1"]["use_script"] = "IHEALTH".into(),
+            "script_instances" => invalid["definitions"]["1"]["script_instances"] = 2.into(),
+            "drop_use_items" => {
+                invalid["definitions"]["1"]["drop_use_items"] = serde_json::json!([2])
             }
             _ => unreachable!(),
         }

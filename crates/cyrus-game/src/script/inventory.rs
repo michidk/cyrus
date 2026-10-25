@@ -92,7 +92,11 @@ impl Inventory {
                     && saved.required_items == installed.required_items
                     && saved.drop_add_items == installed.drop_add_items
                     && saved.add_items == installed.add_items
-                    && saved.remove_drop_items == installed.remove_drop_items,
+                    && saved.remove_drop_items == installed.remove_drop_items
+                    && saved.item_type == installed.item_type
+                    && saved.use_script == installed.use_script
+                    && saved.script_instances == installed.script_instances
+                    && saved.drop_use_items == installed.drop_use_items,
                 "inventory snapshot item {id}: installed definition differs"
             );
         }
