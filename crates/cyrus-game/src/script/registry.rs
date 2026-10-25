@@ -4542,7 +4542,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // or multitask call of a function native runs the handler once and a zero return completes
         // the task at once. Only natives whose handler is shown to return zero take this form.
         if kind != CallKind::Function
-            && ["FlatAnimate", "FlatSound"]
+            && ["FlatAnimate", "FlatSound", "ResetRotation"]
                 .iter()
                 .any(|name| function.eq_ignore_ascii_case(name))
         {
