@@ -137,7 +137,9 @@ impl Host {
             Request::Slots { id, operation } => {
                 if matches!(
                     operation,
-                    SlotRequest::Create { .. } | SlotRequest::Overwrite { .. }
+                    SlotRequest::Create { .. }
+                        | SlotRequest::QuickSave
+                        | SlotRequest::Overwrite { .. }
                 ) {
                     self.phase = Some(Phase::Io(task(async move {
                         let plan = storage::plan(&operation).await?;
@@ -268,6 +270,23 @@ impl Host {
 
 fn update(world: &mut World) {
     world.resource_scope(|world, mut host: Mut<Host>| {
+        let quick_save = world
+            .get_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>()
+            .is_some_and(|keys| keys.just_pressed(bevy::prelude::KeyCode::F9));
+        if quick_save
+            && host.phase.is_none()
+            && host.result.is_none()
+            && world
+                .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+                .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+            && world.resource::<SessionBoundary>().is_idle()
+        {
+            let operation = SlotRequest::QuickSave;
+            host.phase = Some(Phase::Io(task(async move {
+                let plan = storage::plan(&operation).await?;
+                Ok(IoResult::Planned(operation, plan))
+            })));
+        }
         let request = world
             .resource_mut::<cyrus_startup::SaveLoadHost>()
             .take_request();
