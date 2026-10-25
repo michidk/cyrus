@@ -1,6 +1,6 @@
 //! Request arbitration and default fallback from preservation's engine/animation.md.
 use super::sequence::{SequenceSnapshot, SoundDispatcher};
-use super::{AnimationSound, Animations, FrameSequence};
+use super::{AnimationSound, Animations, FrameSequence, TransitionDecision};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -157,16 +157,16 @@ impl ActorAnimation {
     /// Initializes an animation-table model with the two ordinary group-zero requests
     /// specified by preservation's engine/animation.md. The caller establishes the
     /// model loading path and supplies the shared nominal ticks and sound dispatcher.
-    pub fn initialize(
+    pub fn initialize_with_decisions(
         data: &Animations,
         actor: &str,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<(Self, Option<u32>)> {
         let mut animation = Self::from_asset(data, actor, 0)?;
-        let mut frame = animation.request_with_sounds(0, 0, ticks, sounds)?;
+        let mut frame = animation.request_with_decisions(0, 0, ticks, sounds)?;
         frame = animation
-            .request_with_sounds(0, 0, ticks, sounds)?
+            .request_with_decisions(0, 0, ticks, sounds)?
             .or(frame);
         Ok((animation, frame))
     }
@@ -221,11 +221,11 @@ impl ActorAnimation {
     /// Replaces the old current default before its exit marker and separately
     /// retargets an old pending default, reusing this update's nominal ticks.
     /// Follows preservation's engine/animation.md living default selection.
-    pub fn select_default_with_sounds(
+    pub fn select_default_with_decisions(
         &mut self,
         group: u16,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
         let old = self.default;
@@ -239,10 +239,12 @@ impl ActorAnimation {
             .as_ref()
             .is_some_and(|(current, sequence)| *current == old && !sequence.exit_reached())
         {
-            frame = self.force_request_with_sounds(group, 0, ticks, sounds)?;
+            frame = self.force_request_with_decisions(group, 0, ticks, sounds)?;
         }
         if self.pending_group() == Some(old) {
-            frame = self.request_with_sounds(group, 0, ticks, sounds)?.or(frame);
+            frame = self
+                .request_with_decisions(group, 0, ticks, sounds)?
+                .or(frame);
         }
         Ok(frame)
     }
@@ -252,11 +254,11 @@ impl ActorAnimation {
     /// clears the exit marker and replaces the finite loop count with 32.
     /// Otherwise force-starts with modifier zero and this update's nominal ticks.
     /// Follows preservation's SOUP selected-player death animation override.
-    pub fn select_death_override_with_sounds(
+    pub fn select_death_override_with_decisions(
         &mut self,
         group: u16,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
         self.default = group;
@@ -268,7 +270,7 @@ impl ActorAnimation {
             sequence.set_loop_count(32);
             return Ok(None);
         }
-        self.force_request_with_sounds(group, 0, ticks, sounds)
+        self.force_request_with_decisions(group, 0, ticks, sounds)
     }
 
     /// Set playback direction without advancing, requesting a group or changing countdowns.
@@ -455,12 +457,12 @@ impl ActorAnimation {
 
     /// Makes an ordinary request with synchronous authored sound dispatch.
     /// Use the same handler for subsequent advances and requests; it retains the last handle.
-    pub fn request_with_sounds(
+    pub fn request_with_decisions(
         &mut self,
         group: u16,
         modifier: u8,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
         self.request_dispatch(group, modifier, ticks, &mut Some(sounds))
     }
@@ -506,12 +508,12 @@ impl ActorAnimation {
 
     /// Forces a replacement with the actor's sound handler. Replacement forgets the
     /// prior handle without stopping its channel; immediate cues reuse `ticks`.
-    pub fn force_request_with_sounds(
+    pub fn force_request_with_decisions(
         &mut self,
         group: u16,
         modifier: u8,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
         self.force_request_dispatch(group, modifier, ticks, &mut Some(sounds))
     }
@@ -575,10 +577,10 @@ impl ActorAnimation {
 
     /// Advances with synchronous PlaySound/End/replacement handling from preservation.
     /// The handler owns its last channel handle and must apply source surface and positional rules.
-    pub fn advance_with_sounds(
+    pub fn advance_with_decisions(
         &mut self,
         ticks: u32,
-        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
         self.advance_dispatch(ticks, &mut Some(sounds))
     }
@@ -665,5 +667,77 @@ impl ActorAnimation {
             }
             self.current = None;
         }
+    }
+    pub fn initialize(
+        data: &Animations,
+        actor: &str,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<(Self, Option<u32>)> {
+        Self::initialize_with_decisions(data, actor, ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
+    }
+
+    pub fn select_default_with_sounds(
+        &mut self,
+        group: u16,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.select_default_with_decisions(group, ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
+    }
+
+    pub fn select_death_override_with_sounds(
+        &mut self,
+        group: u16,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.select_death_override_with_decisions(group, ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
+    }
+
+    pub fn request_with_sounds(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.request_with_decisions(group, modifier, ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
+    }
+
+    pub fn force_request_with_sounds(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.force_request_with_decisions(group, modifier, ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
+    }
+
+    pub fn advance_with_sounds(
+        &mut self,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.advance_with_decisions(ticks, &mut |event| {
+            sounds(event)?;
+            Ok(TransitionDecision::Continue)
+        })
     }
 }

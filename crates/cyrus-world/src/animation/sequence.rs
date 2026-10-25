@@ -55,7 +55,7 @@ pub enum AnimationSound {
 }
 
 pub(super) type SoundDispatcher<'a> =
-    Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>;
+    Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>>;
 
 /// A current group. Callers supply activation, whole nominal ticks, and exit eligibility.
 /// Sound and actor-event commands require actor-side dispatch; remaining forward operations stay explicitly unsupported.
@@ -336,7 +336,7 @@ impl FrameSequence {
         &self,
         sounds: &mut SoundDispatcher<'_>,
         event: AnimationSound,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<TransitionDecision> {
         sounds
             .as_mut()
             .with_context(|| format!("{}: animation sound dispatch unsupported", self.context))?(
@@ -629,8 +629,14 @@ impl FrameSequence {
                         self.context,
                         self.command
                     );
-                    self.dispatch_sound(sounds, AnimationSound::Transition { mask, target })?;
-                    self.command = self.command.wrapping_add(1);
+                    if self.dispatch_sound(sounds, AnimationSound::Transition { mask, target })?
+                        == TransitionDecision::Take
+                    {
+                        self.exit_reached = true;
+                        self.command = target as i16;
+                    } else {
+                        self.command = self.command.wrapping_add(1);
+                    }
                 }
                 Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {
                     self.command = self.command.wrapping_sub(1);

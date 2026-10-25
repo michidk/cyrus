@@ -1,5 +1,5 @@
 //! Explicitly activated group playback. The game scheduler owns eligibility and timing.
-use super::{AnimationPose, AnimationRequest, Animations, FrameSequence};
+use super::{AnimationPose, AnimationRequest, Animations, FrameSequence, TransitionDecision};
 use crate::sound::SoundCue;
 use bevy::prelude::*;
 
@@ -72,7 +72,7 @@ pub(super) fn advance(
                         sound,
                         surface: surface.map(|value| value.0),
                     });
-                    Ok(())
+                    Ok(TransitionDecision::Continue)
                 };
                 playback
                     .playback
