@@ -261,7 +261,10 @@ impl ScriptWorld {
         control.directional_state = [0; 2];
         control.jump_selector = 0;
         let rope = &mut self.ropes[rope_index];
-        rope.attachments.push(Attachment {
+        // The engine links a newly attached node at the rope-list head.  Chain
+        // updates and owner scans are list-order sensitive, so appending here
+        // would make a second attachment run after older nodes.
+        rope.attachments.insert(0, Attachment {
             actor: index,
             node: link,
             motion: 0,
