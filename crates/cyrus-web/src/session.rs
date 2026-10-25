@@ -292,7 +292,9 @@ fn update(world: &mut World) {
             .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
             .is_some_and(|state| *state.get() == cyrus_game::AppState::Menu)
             && world.contains_resource::<cyrus_game::PausedGameplay>();
-        if !autosave {}
+        if !autosave {
+            host.autosave = false;
+        }
         if autosave
             && !host.autosave
             && host.phase.is_none()
