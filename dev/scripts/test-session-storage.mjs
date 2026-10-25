@@ -139,6 +139,17 @@ export async function testSessionSlots(operate = operateSlots) {
     assert(quick.slot.slot === 0 && quick.slot.description === 'Quick Save Game', 'quick-save slot contract failed');
     const auto = await operation({ type: 'auto_save' }, 'auto payload');
     assert(auto.slot.slot === 1 && auto.slot.description === 'Redguard AutoSave', 'autosave slot contract failed');
+    for (const [type, slot, description] of [
+      ['quick_save', 0, 'Quick Save Game'], ['auto_save', 1, 'Redguard AutoSave'],
+    ]) {
+      const planned = await operation({ type, prepare: true });
+      assert(planned.slot.slot === slot, 'reserved save preparation moved its slot');
+      const replacement = await operation({ type, expected_slot: slot }, 'replacement reserved payload');
+      assert(replacement.slot.slot === slot && replacement.slot.description === description,
+        'repeated reserved save moved its slot or changed its description');
+      assert((await operation({ type: 'load', ...replacement.slot })).document === 'replacement reserved payload',
+        'repeated reserved save did not replace its payload');
+    }
     await rejected({ type: 'overwrite', slot: 1, revision: auto.slot.revision, description: 'MANUAL' }, 'forbidden');
     assert(await read(name, 'diagnostic') === 'accepted named snapshot', 'slot operations touched named snapshots');
     const db = await new Promise((resolve, reject) => {

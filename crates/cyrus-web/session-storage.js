@@ -122,7 +122,7 @@ export async function operateSlots(name, encodedRequest, document) {
           consume(store.getAllKeys(range('payload')), payloadKeys => {
             const occupied = new Set([...metadataKeys, ...payloadKeys].map(key => key[1]));
             let number = reserved ? reservedSlot : 2;
-            while (number <= 299 && occupied.has(number)) number++;
+            while (!reserved && number <= 299 && occupied.has(number)) number++;
             check(reserved || number <= 299, 'no free manual save slots');
             check(expected_slot === undefined || number === expected_slot, 'planned slot changed; prepare the save again');
             if (reserved && occupied.has(reservedSlot)) {
