@@ -46,6 +46,12 @@ completes immediately after admission and its state writes; selected-player
 edge and hang services use the caller's receiver-bound collision geometry.
 Its contract follows preservation's `player.md#script-jump`.
 
+Created-object records (including projectile records) retain their creator,
+namespace and execution order through snapshots. `KillMe` removes their
+executable state, but allocator recycling and reuse across a long live session
+still require installed original/native/browser acceptance; the current public
+tests do not claim that parity.
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
