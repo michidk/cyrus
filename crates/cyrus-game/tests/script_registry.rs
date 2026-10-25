@@ -28135,7 +28135,7 @@ fn player_health_fixture_with(
     cyrus_game::player::data::PlayerScene,
 ) {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
-    let (scripts, mut world, data, scene) = player_walking_fixture_with(prepare);
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(prepare);
     let index = world
         .actors()
         .iter()
@@ -32867,4 +32867,116 @@ fn script_jump_refusals_return_zero_without_changing_jump_state() {
         );
         assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
     }
+}
+
+#[test]
+fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
+    use cyrus_game::script::{
+        ActivationInputs, PlayerCollisionSource, ScriptActorSource, ScriptInputs,
+    };
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "Jump".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let cyrus = scripts.actors.get_mut("CYRUS").unwrap();
+        cyrus
+            .program
+            .steps
+            .insert(0, assign_call(1, function_id, "Jump", &[]));
+    });
+    let player_index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let _player = world.id(player_index).unwrap();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let mut saved = saved;
+    saved["actors"][player_index]["animation"] = serde_json::Value::Null;
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &cyrus_game::script::WorldSnapshotSources {
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        },
+        cyrus_game::script::WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let player = world.id(player_index).unwrap();
+    world.bind_animation(player, &data, 19).unwrap();
+    world
+        .advance(
+            player,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    world.set_actor_surface(player, 0).unwrap();
+    let activation = ActivationInputs {
+        player,
+        actors: BTreeMap::new(),
+        labels: BTreeMap::new(),
+        lockout: 0,
+        dialogue_open: false,
+        lineup_result: 0,
+        use_held: false,
+        item_system_ready: false,
+        shell_execution: false,
+        render_disabled: false,
+    };
+    let before_heading = world.spatial(player).unwrap().local.angles[1];
+    let actor_ids = world
+        .actors()
+        .iter()
+        .enumerate()
+        .map(|(index, _)| world.id(index).unwrap())
+        .collect::<Vec<_>>();
+    world
+        .advance(
+            player,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                activation: Some(&activation),
+                nominal_ticks: Some(0),
+                fine_ticks: Some(0),
+                frame_scale: Some(256),
+                player_collision: Some(PlayerCollisionSource {
+                    scene: &scene,
+                    animations: &data,
+                    view: [10, 30],
+                    actors: &actor_ids,
+                }),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    let control = world.actors()[player_index].control_state().unwrap();
+    assert_eq!(control.queued_motion, 3);
+    assert_eq!(control.motion_vector[1], i32::from(before_heading));
+    assert_eq!(
+        serde_json::to_value(world.globals()).unwrap()["controller_prelude"]["conditional_ticks"],
+        6
+    );
 }
