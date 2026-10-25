@@ -16,6 +16,7 @@ pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 pub enum SlotOperation {
     List,
     QuickSave,
+    AutoSave,
     Create {
         description: String,
     },

@@ -29,6 +29,7 @@ pub(crate) struct NativeSessionLoad {
     last_game: bool,
     book: bool,
     quick: bool,
+    autosave: bool,
 }
 
 struct PreparedLoad {
@@ -158,7 +159,8 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
         match operation {
             SlotOperation::Create { .. }
             | SlotOperation::Overwrite { .. }
-            | SlotOperation::QuickSave => {
+            | SlotOperation::QuickSave
+            | SlotOperation::AutoSave => {
                 let plan = store.plan(operation)?;
                 retain_selection(world, plan.slot, plan.description.clone())?;
                 world.resource_mut::<SessionBoundary>().capture_live()?;
@@ -269,6 +271,23 @@ pub(crate) fn poll(world: &mut World) {
             Ok(()) => world.resource_mut::<NativeSessionLoad>().quick = true,
             Err(error) => bevy::log::error!("Quick Save Game: {error:#}"),
         }
+    }
+    let autosave = world
+        .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+        .is_some_and(|state| *state.get() == cyrus_game::AppState::Menu)
+        && world.contains_resource::<cyrus_game::PausedGameplay>();
+    if autosave
+        && world
+            .get_resource::<NativeSessionLoad>()
+            .is_some_and(|state| {
+                !state.autosave
+                    && !state.busy()
+                    && state.result.is_none()
+                    && state.slot_result.is_none()
+            })
+        && let Ok(()) = request_slots(world, SlotOperation::AutoSave)
+    {
+        world.resource_mut::<NativeSessionLoad>().autosave = true;
     }
     let request = world
         .get_resource_mut::<cyrus_startup::SaveLoadHost>()
@@ -424,6 +443,14 @@ pub(crate) fn poll(world: &mut World) {
             bevy::log::error!("Quick Save Game: {error:#}");
         }
         state.quick = false;
+    }
+    if state.autosave
+        && let Some(result) = state.slot_result.take()
+    {
+        if let Err(error) = result {
+            bevy::log::error!("Auto Save Game: {error:#}");
+        }
+        state.autosave = false;
     }
     if state.book
         && let Some(result) = state.slot_result.take()

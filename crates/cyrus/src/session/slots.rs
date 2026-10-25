@@ -158,11 +158,18 @@ impl SlotStore {
 
     pub(super) fn plan(&self, operation: SlotOperation) -> Result<SavePlan> {
         match operation {
-            SlotOperation::QuickSave => Ok(SavePlan {
-                slot: 0,
-                description: "Quick Save Game".into(),
-                revision: self.open(0)?.map(|(_, metadata, _)| metadata.revision),
-            }),
+            SlotOperation::QuickSave | SlotOperation::AutoSave => {
+                let (slot, description) = match operation {
+                    SlotOperation::QuickSave => (0, "Quick Save Game"),
+                    SlotOperation::AutoSave => (1, "Auto Save Game"),
+                    _ => unreachable!(),
+                };
+                Ok(SavePlan {
+                    slot,
+                    description: description.into(),
+                    revision: self.open(slot)?.map(|(_, metadata, _)| metadata.revision),
+                })
+            }
             SlotOperation::Create { description: value } => {
                 description(&value)?;
                 let slot = (2..=299)
@@ -183,7 +190,10 @@ impl SlotStore {
                 revision,
                 description: value,
             } => {
-                ensure!(slot != 0, "quick-save slot cannot be manually overwritten");
+                ensure!(
+                    (2..=299).contains(&slot),
+                    "reserved save slot cannot be manually overwritten"
+                );
                 description(&value)?;
                 self.metadata(slot, Some(&revision))?;
                 Ok(SavePlan {
