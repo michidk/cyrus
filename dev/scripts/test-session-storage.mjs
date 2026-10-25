@@ -135,6 +135,11 @@ export async function testSessionSlots(operate = operateSlots) {
     await operation({ type: 'delete', ...replacement });
     const reused = await operation({ type: 'create', description: 'REUSED' }, 'reused');
     assert(reused.slot.slot === 2, 'first free manual slot not reused');
+    const quick = await operation({ type: 'quick_save' }, 'quick payload');
+    assert(quick.slot.slot === 0 && quick.slot.description === 'Quick Save Game', 'quick-save slot contract failed');
+    const auto = await operation({ type: 'auto_save' }, 'auto payload');
+    assert(auto.slot.slot === 1 && auto.slot.description === 'Redguard AutoSave', 'autosave slot contract failed');
+    await rejected({ type: 'overwrite', slot: 1, revision: auto.slot.revision, description: 'MANUAL' }, 'forbidden');
     assert(await read(name, 'diagnostic') === 'accepted named snapshot', 'slot operations touched named snapshots');
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open(name, 1);

@@ -161,7 +161,7 @@ impl SlotStore {
             SlotOperation::QuickSave | SlotOperation::AutoSave => {
                 let (slot, description) = match operation {
                     SlotOperation::QuickSave => (0, "Quick Save Game"),
-                    SlotOperation::AutoSave => (1, "Auto Save Game"),
+                    SlotOperation::AutoSave => (1, "Redguard AutoSave"),
                     _ => unreachable!(),
                 };
                 Ok(SavePlan {
@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn quick_save_creates_and_revision_checks_reserved_slot() {
+    fn reserved_saves_create_and_revision_check_reserved_slots() {
         let store = Store::new();
         let first = store
             .0
@@ -406,6 +406,14 @@ mod tests {
             .unwrap();
         assert_eq!(first.slot, 0);
         assert_eq!(first.description, "Quick Save Game");
+        let auto = store
+            .0
+            .publish(store.0.plan(SlotOperation::AutoSave).unwrap(), b"auto")
+            .unwrap();
+        assert_eq!(
+            (auto.slot, auto.description.as_str()),
+            (1, "Redguard AutoSave")
+        );
         let plan = store.0.plan(SlotOperation::QuickSave).unwrap();
         assert_eq!(plan.revision.as_deref(), Some(first.revision.as_str()));
         let second = store.0.publish(plan, b"second").unwrap();

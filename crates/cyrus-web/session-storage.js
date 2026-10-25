@@ -50,7 +50,7 @@ export async function operateSlots(name, encodedRequest, document) {
   const context = `${name}/${type}/${slot ?? 'new'}`;
   const reserved = type === 'quick_save' || type === 'auto_save';
   const reservedSlot = type === 'quick_save' ? 0 : 1;
-  const reservedDescription = type === 'quick_save' ? 'Quick Save Game' : 'Auto Save Game';
+  const reservedDescription = type === 'quick_save' ? 'Quick Save Game' : 'Redguard AutoSave';
   const check = (condition, message) => { if (!condition) throw new Error(`${context}: ${message}`); };
   check(['list', 'quick_save', 'auto_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
   check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'quick_save' || type === 'auto_save' || type === 'overwrite'), 'invalid slot preparation');
