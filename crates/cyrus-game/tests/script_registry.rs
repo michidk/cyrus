@@ -17812,7 +17812,7 @@ fn kill_me_clears_receiver_tasks_before_marking_the_actor_dead() {
 }
 
 #[test]
-fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channels_unsupported() {
+fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
     let build = |channel: u8, user: u8, task: bool| {
         let mut ops = vec![];
         if task {
@@ -17847,9 +17847,9 @@ fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channel
     let (result, flag, tasks) = build(5, 0, false);
     result.unwrap();
     assert_eq!((flag, tasks), (7, 0));
-    // A user channel remains explicitly unsupported.
-    let error = build(0, 5, false).0.unwrap_err();
-    assert!(format!("{error:#}").contains("user synchronization channels unsupported"));
+    let (result, flag, tasks) = build(0, 5, false);
+    result.unwrap();
+    assert_eq!((flag, tasks), (7, 0));
     // The barrier wait registers a task that keeps waiting while the channel has not released group 3
     // (nothing has run the channel update), and the thread does not reach its flag write.
     let (result, flag, tasks) = build(5, 0, true);
@@ -17969,6 +17969,54 @@ fn live_world_entry_and_reload_register_group_members_before_task_polling() {
         );
         assert_eq!(world.flags()[0], 12);
     }
+}
+
+#[test]
+fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
+    for (channel, ignored, value, expected_tasks, expected_flag) in [
+        (0, 0, 3, 0, 7),
+        (5, 0, 0, 1, 12),
+        (5, 1, 0, 0, 7),
+        (5, 1, 256, 1, 12),
+        (5, 1, -256, 1, 12),
+    ] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                4,
+                "SyncWithUser",
+                CallKind::Task,
+                vec![Value::Integer { value }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "SyncWithUser".into(),
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.attributes.insert("attr_30".into(), channel);
+        logic.attributes.insert("attr_43".into(), ignored);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        world.step_tasks(id, Some(256)).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            expected_tasks
+        );
+        assert_eq!(world.flags()[0], expected_flag);
+    }
+}
+
+#[test]
+fn reset_user_sync_native_validates_arguments() {
+    run_native_world(&[("ResetUserSync", &[])]).unwrap();
+    let error = run_native_world(&[("ResetUserSync", &[1])]).err().unwrap();
+    assert!(format!("{error:#}").contains("ResetUserSync requires no arguments"));
 }
 
 #[test]

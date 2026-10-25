@@ -3245,6 +3245,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
+        let user_channel =
+            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_has_active = self
+            .registry
+            .globals
+            .group_sync
+            .user_has_active(&self.registry.actors, user_channel);
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
                 .actors
@@ -3318,6 +3325,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 state: &mut self.registry.globals.group_sync,
                 actor_index: self.index,
                 channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                user_channel,
+                user_has_active,
             }),
             frame_wait: Some(frame_wait),
             locomotion: Some(super::tasks::LocomotionCall {
@@ -4716,11 +4725,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetUserSync") {
+            anyhow::ensure!(arguments.is_empty(), "ResetUserSync requires no arguments");
+            let channel = self.registry.actors[self.index].attributes
+                [super::group_sync::USER_CHANNEL_ATTRIBUTE];
+            self.registry
+                .globals
+                .group_sync
+                .reset_user(self.index, channel);
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetGroupSync") {
             anyhow::ensure!(arguments.is_empty(), "ResetGroupSync requires no arguments");
             // The native clears this actor's posted value.  The channel update retains the
             // released byte; the next world-loop update observes this member as unposted.
-            self.registry.globals.group_sync.reset(self.index);
+            self.registry.globals.group_sync.reset_current(
+                self.index,
+                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+            );
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
@@ -6643,6 +6665,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
+        let user_channel =
+            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_has_active = self
+            .registry
+            .globals
+            .group_sync
+            .user_has_active(&self.registry.actors, user_channel);
         let (actor, player_actor) = match player_slot.and_then(|player| {
             self.registry
                 .actors
@@ -6722,6 +6751,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     state: &mut self.registry.globals.group_sync,
                     actor_index: self.index,
                     channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                    user_channel,
+                    user_has_active,
                 }),
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
@@ -6815,13 +6846,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
     }
     fn end(&mut self, _: Thread) -> Result<()> {
         let attributes = &self.registry.actors[self.index].attributes;
-        anyhow::ensure!(
-            attributes[30] == 0,
-            "user synchronization channels unsupported"
+        self.registry.globals.group_sync.reset_user(
+            self.index,
+            attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE],
         );
         // End clears the actor's pending group synchronization state.
         if attributes[super::group_sync::CHANNEL_ATTRIBUTE] != 0 {
-            self.registry.globals.group_sync.reset(self.index);
+            self.registry.globals.group_sync.reset_current(
+                self.index,
+                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+            );
         }
         Ok(())
     }

@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 /// Actor data byte 29: the group channel an actor belongs to; zero means none.
 pub(super) const CHANNEL_ATTRIBUTE: usize = 29;
+/// Actor data byte 30: the independent user channel.
+pub(super) const USER_CHANNEL_ATTRIBUTE: usize = 30;
 /// Actor data byte 43: a nonzero value excludes the actor from its channel's rendezvous.
 const IGNORED_ATTRIBUTE: usize = 43;
 /// Set in a posted value, or in a channel's released value, once every active member has posted.
@@ -24,6 +26,8 @@ pub struct GroupSync {
     released: BTreeMap<u8, u8>,
     /// Posted value per member actor: the requested group, with `POSTED` while it waits.
     posted: BTreeMap<usize, u8>,
+    #[serde(default)]
+    user: UserSync,
 }
 
 impl GroupSync {
@@ -41,6 +45,50 @@ impl GroupSync {
     pub(super) fn register_actors(&mut self, actors: &[ScriptActor]) {
         for (index, actor) in actors.iter().enumerate() {
             self.register(index, actor.attributes()[CHANNEL_ATTRIBUTE]);
+            self.register_user(index, actor.attributes()[USER_CHANNEL_ATTRIBUTE]);
+        }
+    }
+
+    pub(super) fn register_user(&mut self, actor: usize, channel: u8) {
+        self.user.channels.entry(actor).or_insert(channel);
+    }
+
+    pub(super) fn user_has_active(&self, actors: &[ScriptActor], channel: u8) -> bool {
+        self.user.channels.iter().any(|(&index, &member_channel)| {
+            member_channel == channel && actors[index].attributes()[IGNORED_ATTRIBUTE] == 0
+        })
+    }
+
+    /// Published user-channel rules compare the full operand after checking every member.
+    pub(super) fn post_user(
+        &mut self,
+        actor: usize,
+        channel: u8,
+        value: i32,
+        has_active: bool,
+    ) -> bool {
+        if channel == 0 || self.user.channels.get(&actor) != Some(&channel) {
+            return true;
+        }
+        let posted = value as u8 | POSTED;
+        self.user.posted.insert(actor, posted);
+        if has_active || i32::from(self.user.released.get(&channel).copied().unwrap_or(0)) != value
+        {
+            return false;
+        }
+        self.user.posted.insert(actor, posted & !POSTED);
+        true
+    }
+
+    pub(super) fn reset_current(&mut self, actor: usize, channel: u8) {
+        if self.contains_member(actor, channel) {
+            self.reset(actor);
+        }
+    }
+
+    pub(super) fn reset_user(&mut self, actor: usize, channel: u8) {
+        if channel != 0 && self.user.channels.get(&actor) == Some(&channel) {
+            self.user.posted.insert(actor, 0);
         }
     }
 
@@ -65,6 +113,7 @@ impl GroupSync {
 
     /// Per-iteration update of every channel that has members.
     pub(super) fn update(&mut self, actors: &[ScriptActor]) {
+        self.user.update(actors);
         let channels = self.channels.clone();
         self.update_members(actors.iter().enumerate().filter_map(|(index, actor)| {
             let channel = channels.get(&index).copied().unwrap_or(0);
@@ -105,6 +154,42 @@ impl GroupSync {
                     break;
                 }
                 current = (current + 1) & 0x7f;
+            }
+            self.released.insert(channel, released);
+        }
+    }
+}
+
+/// User-channel posts retain their mark during presence selection, unlike group channels.
+/// The contract is documented in preservation's SOUP User synchronization channels section.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct UserSync {
+    channels: BTreeMap<usize, u8>,
+    released: BTreeMap<u8, u8>,
+    posted: BTreeMap<usize, u8>,
+}
+
+impl UserSync {
+    fn update(&mut self, actors: &[ScriptActor]) {
+        let mut channels: BTreeMap<u8, [bool; 256]> = BTreeMap::new();
+        for (&index, &channel) in &self.channels {
+            if channel == 0 {
+                continue;
+            }
+            let present = channels.entry(channel).or_insert([false; 256]);
+            if actors[index].attributes()[IGNORED_ATTRIBUTE] == 0 {
+                present[usize::from(self.posted.get(&index).copied().unwrap_or(0))] = true;
+            }
+        }
+        for (channel, present) in channels {
+            let mut candidate = self.released.get(&channel).copied().unwrap_or(0);
+            let mut released = 0;
+            for _ in 0..256 {
+                if present[usize::from(candidate)] {
+                    released = candidate;
+                    break;
+                }
+                candidate = candidate.wrapping_add(1) & 0x7f;
             }
             self.released.insert(channel, released);
         }
