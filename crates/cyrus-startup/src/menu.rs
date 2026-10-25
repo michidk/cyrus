@@ -186,7 +186,7 @@ impl MenuState {
                 .slots
                 .iter()
                 .enumerate()
-                .filter(|(_, slot)| self.page != 1 || slot.slot != 0)
+                .filter(|(_, slot)| self.page != 1 || (slot.slot != 0 && slot.slot != 1))
                 .skip(base)
                 .nth(row)
                 .map(|(index, _)| index);
@@ -1648,7 +1648,7 @@ mod tests {
             .chain((0..8).map(|_| row(102)))
             .collect();
         menu.fill_load_rows();
-        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 1);
+        assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 2);
         menu.change_list_page(1);
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 9);
     }

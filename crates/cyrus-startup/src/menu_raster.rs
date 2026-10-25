@@ -181,7 +181,7 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                 let slot = state
                     .slots
                     .iter()
-                    .filter(|slot| *page_id != 1 || slot.slot != 0)
+                    .filter(|slot| *page_id != 1 || (slot.slot != 0 && slot.slot != 1))
                     .skip(base)
                     .nth(row);
                 item.text = slot
