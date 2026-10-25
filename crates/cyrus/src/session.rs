@@ -254,6 +254,29 @@ pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value
 }
 
 pub(crate) fn poll(world: &mut World) {
+    let quick_save = world
+        .get_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>()
+        .is_some_and(|keys| keys.just_pressed(bevy::prelude::KeyCode::F9));
+    if quick_save
+        && world
+            .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+            .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+    {
+        let revision = world
+            .resource::<slots::SlotStore>()
+            .metadata(0, None)
+            .map(|metadata| metadata.revision);
+        if let Ok(revision) = revision {
+            let _ = request_slots(
+                world,
+                SlotOperation::Overwrite {
+                    slot: 0,
+                    revision,
+                    description: "Quick Save Game".into(),
+                },
+            );
+        }
+    }
     let request = world
         .get_resource_mut::<cyrus_startup::SaveLoadHost>()
         .and_then(|mut host| host.take_request());
