@@ -478,7 +478,9 @@ impl TerrainGround {
         (1..=256).contains(&row) && column < 256 && self.water[(256 - row) * 256 + column]
     }
 
-    /// Samples interior terrain, water cells included. Returns `None` at grid edges.
+    /// Samples terrain, water cells included. Columns past the grid's east or west edge read the
+    /// neighbouring row of the height array (verified against the original); `None` only where the
+    /// linear index leaves the array.
     /// Input coordinates retain the original eight fractional bits.
     pub fn sample(&self, position: [i64; 3]) -> Option<GroundSupport> {
         let (height, plane) = self.plane(position)?;
@@ -518,7 +520,10 @@ impl TerrainGround {
         let z = (position[2] >> 8) as f64;
         let i = (x / 256.0 - 0.5).round_ties_even() as i32;
         let j = (z / 256.0 + 0.5).round_ties_even() as i32;
-        if !(0..255).contains(&i) || !(2..=255).contains(&j) {
+        // The original indexes the height array linearly with no bounds test, so a column past
+        // either end continues into the neighbouring row; only corners outside the array itself
+        // (which read unrelated memory) have no support.
+        if !(2..=255).contains(&j) {
             return None;
         }
         let live = self.live.0.read().expect("live terrain lock");
@@ -526,7 +531,9 @@ impl TerrainGround {
             .as_ref()
             .filter(|grid| (i - grid.center[0]).abs() <= 15 && (j - grid.center[1]).abs() <= 15);
         let corner = |column: i32, row: i32| {
-            let index = (256 - row) as usize * 256 + column as usize;
+            let index = usize::try_from((256 - row) * 256 + column)
+                .ok()
+                .filter(|&index| index < self.heights.len())?;
             let height = live.map_or_else(
                 || f64::from(self.heights[index]),
                 |grid| f64::from(grid.heights[index]),

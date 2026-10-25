@@ -442,3 +442,23 @@ fn incremental_upright_refresh_matches_selected_player_without_rebuilding() {
     refresh_upright_rotation(&mut matrix, 12, 12);
     assert_eq!(matrix, refreshed);
 }
+
+#[test]
+fn columns_past_the_east_edge_read_the_next_array_row() {
+    // The original's terrain probe has no bounds test: column 256 of one row is column 0 of the next
+    // index row. Observed in NECRISLE: swimming east past the grid climbs onto the west-edge heights.
+    let mut heights = vec![0; 256 * 256];
+    for row in 246..=247 {
+        heights[(256 - row) * 256] = -1000;
+    }
+    let terrain = TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap();
+    let at = |x: i64, z: i64| terrain.height([x << 8, 0, z << 8]);
+    assert_eq!(at(65_054, 63_410), Some(0.0));
+    let edge = at(65_336, 63_465).unwrap();
+    assert!((-300.0..-100.0).contains(&edge), "edge height {edge}");
+    // Further east the interpolation climbs back to column 1, which is level ground.
+    assert!(at(65_779, 63_552).unwrap() > edge);
+    // Rows outside the supported range and corners outside the array have no support.
+    assert_eq!(at(65_336, 100), None);
+    assert_eq!(at(65_336, 100_000), None);
+}
