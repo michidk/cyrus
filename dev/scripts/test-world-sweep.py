@@ -16,7 +16,6 @@ spec.loader.exec_module(sweep)
 class WorldSweepTests(unittest.TestCase):
     def run_sweep(self, frames):
         now = [0]
-        clocks = iter([1, 2])
         frames = iter(frames)
 
         class Connection:
@@ -55,6 +54,10 @@ class WorldSweepTests(unittest.TestCase):
         result, output = self.run_sweep([0, 0])
         self.assertEqual(result, 1)
         self.assertIn("script world_loop_frame did not advance (0)", output)
+
+    def test_missing_script_loop_counter_cannot_pass(self):
+        result, output = self.run_sweep([None, None])
+        self.assertEqual(result, 1, output)
 
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])

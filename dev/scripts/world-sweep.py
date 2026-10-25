@@ -105,7 +105,7 @@ def main():
         world_error = (final.get("scripts") or {}).get("error")
         ticked = (final.get("clock") or {}).get("game_seconds", 0) - game0
         loop1 = script_loop_frame()
-        loop_stalled = loop0 is not None and loop1 == loop0
+        loop_stalled = loop0 is None or loop1 is None or loop1 == loop0
         stalled = ticked < min(args.seconds, 30) / 10 or loop_stalled
         if loop_stalled:
             print(f"{world}: script world_loop_frame did not advance ({loop0})")
