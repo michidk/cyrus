@@ -17895,6 +17895,49 @@ fn group_sync_completes_when_attribute_writes_select_an_unregistered_channel() {
 }
 
 #[test]
+fn live_world_entry_and_reload_register_group_members_before_task_polling() {
+    use cyrus_game::script::ScriptActors;
+    let mut scripts = wait_cache(vec![
+        wait(
+            4,
+            "SyncWithGroup",
+            CallKind::Task,
+            vec![Value::Integer { value: 3 }],
+        ),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions.push(Function {
+        name: "SyncWithGroup".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_29".into(), 5);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut app, prepared, _) = revisit_test_app(&scripts);
+    for _ in 0..2 {
+        app.insert_resource(prepared.clone());
+        app.update();
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().expect("live script world prepared");
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        world.step_tasks(id, Some(256)).unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            1,
+            "the fresh member must wait for the channel's first release"
+        );
+        assert_eq!(world.flags()[0], 12);
+    }
+}
+
+#[test]
 fn reset_group_sync_native_accepts_no_arguments_and_rejects_arguments() {
     // The channel state itself is covered by GroupSync's algorithm tests; this exercises the
     // registry's installed function entry, including its zero-argument contract.
