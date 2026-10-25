@@ -75,8 +75,15 @@ def main():
 
     def failures(identity):
         found, offset = {}, 0
+        if None in identity:
+            found[("script inspection", "world identity unavailable during actor pagination")] = True
+            return found
         while True:
-            page = call({"type": "scripts", "offset": offset, "limit": 64})
+            try:
+                page = call({"type": "scripts", "offset": offset, "limit": 64})
+            except (OSError, RuntimeError, KeyError):
+                found[("script inspection", "world identity unavailable during actor pagination")] = True
+                return found
             if script_identity(page) != identity:
                 found[("script inspection", "world identity changed during actor pagination")] = True
                 return found

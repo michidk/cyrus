@@ -33,7 +33,7 @@ class WorldSweepTests(unittest.TestCase):
                     # Readiness does not sample game_seconds.
                     result["clock"] = {"game_seconds": now[0]}
                 elif cmd["type"] == "scripts":
-                    if script_error and cmd["limit"] == 1:
+                    if script_error and cmd["limit"] in (1, 64):
                         self.reply = (json.dumps({"ok": False, "error": "script world is not prepared"}) + "\n").encode()
                         return
                     result = {
@@ -83,6 +83,11 @@ class WorldSweepTests(unittest.TestCase):
         result, output = self.run_sweep([3, 4], script_error=True)
         self.assertEqual(result, 1, output)
         self.assertIn("script world identity changed or unavailable", output)
+
+    def test_persistent_unprepared_script_pagination_fails_contextually(self):
+        result, output = self.run_sweep([None, None], script_error=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("world identity unavailable during actor pagination", output)
 
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])
