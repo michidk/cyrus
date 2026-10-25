@@ -227,6 +227,7 @@ fn start_slot_load(
 
 pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value> {
     let mut state = world.resource_mut::<NativeSessionLoad>();
+    ensure!(!state.book, "book owns the native slot result");
     ensure!(
         !acknowledge || state.slot_result.is_some(),
         "native slots have no terminal result"
@@ -543,6 +544,29 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    #[test]
+    fn diagnostics_cannot_consume_book_slot_completion() {
+        let mut world = World::new();
+        world.insert_resource(NativeSessionLoad {
+            book: true,
+            slot_result: Some(Ok(json!({"slots":[]}))),
+            ..Default::default()
+        });
+        world.init_resource::<cyrus_startup::SaveLoadHost>();
+        for acknowledge in [false, true] {
+            let error = slots_result(&mut world, acknowledge).unwrap_err();
+            assert_eq!(error.to_string(), "book owns the native slot result");
+            assert!(world.resource::<NativeSessionLoad>().slot_result.is_some());
+        }
+        poll(&mut world);
+        assert!(!world.resource::<NativeSessionLoad>().book);
+        assert!(world.resource::<NativeSessionLoad>().slot_result.is_none());
+        assert_eq!(
+            slots_result(&mut world, false).unwrap(),
+            json!({"pending":true})
+        );
+    }
 
     #[test]
     fn slots_reject_competing_owners_and_retain_admitted_selection() -> Result<()> {
