@@ -190,4 +190,14 @@ mod tests {
         assert_eq!(host.take_result(), Some(Err("slot changed".into())));
         host.start(SaveLoadRequest::List).unwrap();
     }
+
+    #[test]
+    fn autosave_readiness_is_explicit_and_resettable() {
+        let mut host = SaveLoadHost::default();
+        assert!(!host.autosave_ready());
+        host.mark_autosave_ready();
+        assert!(host.autosave_ready());
+        host.clear_autosave_ready();
+        assert!(!host.autosave_ready());
+    }
 }
