@@ -3103,6 +3103,7 @@ pub(super) fn prepare(
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
             world.globals.group_sync = Default::default();
+            world.globals.group_sync.register_actors(&world.actors);
             actors.world_loop_outcome = None;
             actors.current = Some(world);
         }
