@@ -329,6 +329,7 @@ module where it is defined and regenerate.
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
 - `src/overlay.rs` — Installed GXA images that a running `ViewGXA` task draws over the world frame.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
+- `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
@@ -353,7 +354,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
-- `src/session.rs` — Diagnostic browser save/load with one outstanding host operation.
+- `src/session.rs` — Browser book and diagnostic save/load with one outstanding host operation.
 - `src/session/document.rs` — Typed browser documents; source admission and live replacement remain separate.
 - `src/session/load_assets.rs` — Browser cache preparation without publishing a world or starting gameplay.
 - `src/session/selection.rs` — Retained browser slot selection, separate from captured gameplay state.

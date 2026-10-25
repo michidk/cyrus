@@ -3,8 +3,10 @@
 Installed splash/title presentation, the book menu and settings, cinematic playback,
 world-entry loading, and the installed logbook reader. Book motion, rasterization and helpers remain internal.
 Book motion includes the documented Save camera movement and reversible Load
-page turn. Save-slot dialogs and activation remain unavailable; Load reports unavailable
-saved-game selection and never substitutes a fresh world.
+page turn. Load opens the installed page and requests slot metadata from the native/browser
+host. Its first nine rows use stored descriptions, retain slot revisions and load
+through the atomic session boundary. Empty rows are disabled. Additional list
+pages, Save dialogs, deletion and thumbnails remain unavailable.
 The crate depends on assets/game/world/text/audio/media/app and Bevy; it does not
 depend on cyrus-render. Preservation owns installed parsing and rendering facts.
 
@@ -20,8 +22,7 @@ Book motion and menu clock invocations follow changes in the host's BIOS-tick
 sample. Menu exit restores the partial timing checkpoint while retaining menu
 changes to smoothing, the measurement remainder, warmup and the last exposed step.
 World timing remains game-owned; this does not enable automatic actor updates.
-New Game applies the game-owned lockout reset before requesting its world. The
-temporary fresh-world Load action does not apply that New Game reset.
+New Game applies the game-owned lockout reset before requesting its world. Loading a save does not apply that New Game reset.
 
 Startup copies title readiness and committed menu preferences, including subtitles,
 into cyrus-audio before `ApplyPreferences`. Preferences still persist before they
@@ -87,8 +88,7 @@ Forward skips retain decoder state; menu return cancels downloads and playback.
 Native and browser playback share skip points, subtitles, interlace and menu return.
 New Game plays installed movie zero (Introduction), then enters the installed
 starting world and marker after playback completes or advances through its skip
-points. Movie loading or playback failure returns to the menu with an error. Load temporarily starts
-the same fresh world. Shared world entry waits for preparation, required asset dependencies and
+points. Movie loading or playback failure returns to the menu with an error. Load restores the selected slot through the host session boundary. Shared world entry waits for preparation, required asset dependencies and
 spawned scene instances behind the destination's installed GXA artwork, with preservation's
 red bar and REDSEL percentage label. Progress counts completed loading stages.
 **Verified:** original New Game loading shows the red bar and gold lower-left

@@ -99,6 +99,9 @@ pub struct MenuState {
     pub preferences: Option<MenuPreferences>,
     pub entries: Vec<MenuItem>,
     pub selected: Option<usize>,
+    pub slots: Vec<super::SaveSlot>,
+    #[serde(skip)]
+    slot_rows: BTreeMap<usize, usize>,
     pub unavailable: Option<String>,
     #[serde(skip)]
     pub(super) image: Handle<Image>,
@@ -136,6 +139,34 @@ impl MenuState {
                 5 => self.main_disabled[1],
                 _ => false,
             }
+    }
+
+    // shortcut: only the first list page is exposed; #197 owns later-page input and selection.
+    fn fill_load_rows(&mut self) {
+        self.slot_rows.clear();
+        for (row, (index, entry)) in self
+            .entries
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, entry)| entry.action == 202)
+            .enumerate()
+        {
+            let slot = self.slots.get(row);
+            entry.text = slot
+                .map(|slot| slot.description.chars().take(40).collect())
+                .unwrap_or_default();
+            entry.grayed = slot.is_none();
+            if slot.is_some() {
+                self.slot_rows.insert(index, row);
+            }
+        }
+        if self
+            .selected
+            .is_none_or(|index| !self.entries[index].eligible())
+        {
+            self.selected = self.entries.iter().position(|entry| entry.eligible());
+        }
+        self.dirty = true;
     }
 
     fn navigate(&mut self, direction: isize) -> bool {
@@ -181,6 +212,7 @@ impl AssetLoader for MenuLoader {
 
 pub(super) fn register(app: &mut App) {
     app.init_resource::<cyrus_game::preferences::Preferences>()
+        .init_resource::<super::SaveLoadHost>()
         .init_resource::<LaunchRequest>()
         .add_message::<MovieRequest>()
         .init_asset::<MenuAsset>()
@@ -297,6 +329,14 @@ type Inputs<'w> = (
     Option<Res<'w, ButtonInput<MouseButton>>>,
 );
 
+type MenuRuntime<'w, 's> = (
+    ResMut<'w, cyrus_game::preferences::Preferences>,
+    ResMut<'w, cyrus_game::player::input::PlayerBindings>,
+    Commands<'w, 's>,
+    ResMut<'w, NextState<AppState>>,
+    ResMut<'w, super::SaveLoadHost>,
+);
+
 pub(super) fn drive(
     assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
     clock: Option<ResMut<SimulationClock>>,
@@ -311,13 +351,7 @@ pub(super) fn drive(
         Query<&mut Text, With<MenuNotice>>,
         MessageWriter<SoundCue>,
     ),
-    runtime: (
-        ResMut<cyrus_game::preferences::Preferences>,
-        ResMut<cyrus_game::player::input::PlayerBindings>,
-        Commands,
-        ResMut<NextState<AppState>>,
-        MessageWriter<super::SaveLoadRequest>,
-    ),
+    runtime: MenuRuntime,
 ) {
     if menu.last_game.is_some() {
         return;
@@ -395,6 +429,24 @@ pub(super) fn drive(
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
     }
+    if let Some(result) = save_load.take_result() {
+        match result {
+            Ok(value) if value.get("slots").is_some() => {
+                match serde_json::from_value::<Vec<super::SaveSlot>>(value["slots"].clone()) {
+                    Ok(slots) => {
+                        menu.slots = slots;
+                        if menu.page == 2 {
+                            menu.fill_load_rows();
+                        }
+                    }
+                    Err(error) => menu.unavailable = Some(format!("Save list: {error}")),
+                }
+            }
+            Ok(_) => {}
+            Err(error) => menu.unavailable = Some(error),
+        }
+        menu.dirty = true;
+    }
     if menu.enter_world {
         menu.enter_world = false;
         begin_world_entry(
@@ -427,7 +479,7 @@ pub(super) fn drive(
     }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
-    if !moving && !menu.closing {
+    if !moving && !menu.closing && !save_load.busy() {
         if menu.capturing.is_some() {
             menu.blink_seconds += input.0.delta_secs();
             // Blink cadence is presentation policy; the original toggles on menu updates.
@@ -530,23 +582,34 @@ pub(super) fn drive(
                             menu.closing = true;
                         }
                     }
-                    2 if menu.context == MenuContext::Death => {
-                        menu.unavailable = Some("Saved-game selection is unavailable.".into());
-                    }
-                    // New Game starts a fresh world. Load must never silently
-                    // substitute a fresh world for a missing or unsupported save.
                     2 => {
-                        save_load.write(super::SaveLoadRequest::Load);
-                        menu.unavailable = Some("Saved-game selection is unavailable.".into());
+                        menu.open(book, 2);
+                        if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
+                            menu.unavailable = Some(error);
+                        }
                     }
                     10 => {
-                        if entry.action == 10 {
-                            reset_for_new_game(&mut commands);
-                        }
+                        reset_for_new_game(&mut commands);
                         commands.write_message(MovieRequest::NewGame);
                         menu.ready = false;
                         return;
                     }
+                    202 => {
+                        if let Some(slot) = menu
+                            .slot_rows
+                            .get(&index)
+                            .and_then(|row| menu.slots.get(*row))
+                        {
+                            let request = super::SaveLoadRequest::Load {
+                                slot: slot.slot,
+                                revision: slot.revision.clone(),
+                            };
+                            if let Err(error) = save_load.start(request) {
+                                menu.unavailable = Some(error);
+                            }
+                        }
+                    }
+                    200 => menu.open(book, 0),
                     3 | 4 => menu.open(book, entry.action as u8),
                     300 | 400 => menu.open(book, 0),
                     405..=407 => menu.open(book, (entry.action - 400) as u8),
@@ -640,6 +703,9 @@ impl MenuState {
                 item
             })
             .collect();
+        if page == 2 {
+            self.fill_load_rows();
+        }
         let start = self.selections.get(&page).copied().flatten().unwrap_or(0);
         self.selected = (0..self.entries.len())
             .map(|step| (start + step) % self.entries.len())
@@ -738,8 +804,7 @@ fn restore_cameras(
     }
 }
 
-/// Enter the installed starting world after a completed New Game introduction,
-/// or the temporary fresh-world Load action.
+/// Enter the installed starting world after a completed New Game introduction.
 fn begin_world_entry(
     commands: &mut Commands,
     images: &mut Assets<Image>,
@@ -914,7 +979,7 @@ mod tests {
         .init_resource::<cyrus_game::player::input::PlayerBindings>()
         .add_message::<AppExit>()
         .add_message::<SoundCue>()
-        .add_message::<super::SaveLoadRequest>()
+        .init_resource::<crate::SaveLoadHost>()
         .insert_resource(clock)
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(60),
@@ -966,10 +1031,62 @@ mod tests {
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Enter);
         app.update();
+        assert_eq!(app.world().resource::<MenuState>().page, 2);
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::List)
+        ));
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"slots": [{
+                "slot": 17, "description": "Harbour save", "revision": "harbour-r1"
+            }]})));
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        for _ in 0..100 {
+            app.update();
+        }
+        let row = app
+            .world()
+            .resource::<MenuState>()
+            .entries
+            .iter()
+            .position(|entry| entry.action == 202 && entry.eligible())
+            .unwrap();
+        app.world_mut().resource_mut::<MenuState>().selected = Some(row);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert!(matches!(
+            app.world_mut().resource_mut::<crate::SaveLoadHost>().take_request(),
+            Some(crate::SaveLoadRequest::Load { slot: 17, revision }) if revision == "harbour-r1"
+        ));
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Err("save slot 17 changed; refresh the save list".into()));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert_eq!(app.world().resource::<MenuState>().page, 2);
         assert_eq!(
             app.world().resource::<MenuState>().unavailable.as_deref(),
-            Some("Saved-game selection is unavailable.")
+            Some("save slot 17 changed; refresh the save list")
         );
+        app.world_mut()
+            .resource_scope(|world, mut menu: Mut<MenuState>| {
+                let books = world.resource::<Assets<MenuAsset>>();
+                let handle = menu.asset.clone();
+                menu.open(books.get(&handle).unwrap(), 0);
+                while menu.motion.as_ref().is_some_and(BookMotion::busy) {
+                    menu.motion.as_mut().unwrap().tick(|_| {});
+                }
+            });
         assert!(
             !app.world()
                 .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
@@ -1089,6 +1206,36 @@ mod tests {
         assert_eq!(menu.selected, Some(2));
         menu.entries[2].selectable = false;
         menu.navigate(1);
+        assert_eq!(menu.selected, Some(0));
+    }
+    #[test]
+    fn load_rows_keep_slot_identity_and_limit_authored_labels() {
+        let row = || MenuItem {
+            text: "placeholder".into(),
+            action: 202,
+            selectable: true,
+            grayed: false,
+            implemented: true,
+            visible: true,
+        };
+        let mut menu = MenuState {
+            entries: vec![row(), row(), row()],
+            slots: vec![super::super::SaveSlot {
+                slot: 19,
+                revision: "rev-19".into(),
+                description: "123456789012345678901234567890123456789012345".into(),
+            }],
+            ..default()
+        };
+        menu.fill_load_rows();
+        assert_eq!(
+            menu.entries[0].text,
+            "1234567890123456789012345678901234567890"
+        );
+        assert_eq!(menu.slots[menu.slot_rows[&0]].slot, 19);
+        assert_eq!(menu.slots[menu.slot_rows[&0]].revision, "rev-19");
+        assert!(menu.entries[1].text.is_empty());
+        assert!(!menu.entries[1].eligible());
         assert_eq!(menu.selected, Some(0));
     }
 }

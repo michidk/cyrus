@@ -142,8 +142,8 @@ installed current/visited worlds and service sources off-live. Poll
 Preparation alone is not success. Only one native load may be pending, and its
 terminal result remains available across repeated polls. Acknowledge it with
 `session_load_result {acknowledge: true}` before another request. Capture commands reject while
-that load owns the boundary. These diagnostics do not enable menu Load or
-establish original save eligibility. Installed rendered restoration and revisit
+that load owns the boundary. The authored Load page uses this host to list the first nine slots and restore
+the selected revision. This does not establish original save eligibility. Installed rendered restoration and revisit
 acceptance remain unfinished.
 
 Native diagnostic `session_slots {operation}` supports list, create, overwrite,
@@ -155,4 +155,5 @@ files. Failed capture, preparation or publication does not replace accepted data
 Admitted save/load selections retain the last-save slot and description for death
 confirmation. Its Yes choice restores that slot through the shared atomic session
 boundary; missing or malformed saves report errors without starting a fresh world.
-These diagnostics do not implement ordinary Save/Load pages or save eligibility.
+The Load page consumes the same slot host; Save dialogs and save eligibility
+remain unavailable.

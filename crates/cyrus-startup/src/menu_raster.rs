@@ -149,19 +149,35 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
     let mut surfaces = book.textures.clone();
     for (page_id, page) in &book.pages {
         for (index, entry) in page.entries.iter().enumerate() {
-            if !entry.item.visible {
+            let mut item = if *page_id == state.page {
+                state.entries.get(index).unwrap_or(&entry.item).clone()
+            } else {
+                entry.item.clone()
+            };
+            if *page_id == 2 && item.action == 202 {
+                let row = page.entries[..index]
+                    .iter()
+                    .filter(|entry| entry.item.action == 202)
+                    .count();
+                let slot = state.slots.get(row);
+                item.text = slot
+                    .map(|slot| slot.description.chars().take(40).collect())
+                    .unwrap_or_default();
+                item.grayed = slot.is_none();
+            }
+            if !item.visible {
                 continue;
             }
             let selected = state.selections.get(page_id).copied().flatten() == Some(index)
-                && entry.item.eligible()
+                && item.eligible()
                 && !state.main_entry_disabled(*page_id, index);
             let font = &book.fonts[usize::from(selected)];
             let surface = &mut surfaces[entry.texture];
             let style = if selected {
                 0
-            } else if !entry.item.selectable {
+            } else if !item.selectable {
                 3
-            } else if entry.item.grayed || state.main_entry_disabled(*page_id, index) {
+            } else if item.grayed || state.main_entry_disabled(*page_id, index) {
                 2
             } else {
                 1
@@ -170,7 +186,7 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                 surface,
                 font,
                 &book.palette,
-                &entry.item.text,
+                &item.text,
                 entry.position,
                 entry.justify,
                 style,

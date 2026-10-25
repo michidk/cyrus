@@ -1,4 +1,4 @@
-//! Diagnostic browser save/load with one outstanding host operation.
+//! Browser book and diagnostic save/load with one outstanding host operation.
 use anyhow::{Context, Result, ensure};
 use bevy::{
     log::error,
@@ -67,6 +67,7 @@ struct Host {
     phase: Option<Phase>,
     result: Option<Result<Value>>,
     last_game: bool,
+    book: bool,
     diagnostics: bool,
 }
 
@@ -76,6 +77,7 @@ pub fn register(app: &mut App, diagnostics: bool) {
         ..Default::default()
     })
     .init_resource::<cyrus_startup::LastGameLoader>()
+    .init_resource::<cyrus_startup::SaveLoadHost>()
     .add_systems(PreUpdate, update);
 }
 
@@ -90,8 +92,8 @@ fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
 impl Host {
     fn request(&mut self, request: Request, world: &mut World) -> Result<Value> {
         ensure!(
-            !self.last_game,
-            "last-game restore owns the browser session host"
+            !self.last_game && !self.book,
+            "book restore owns the browser session host"
         );
         if let Request::Result { id } = request {
             return match self.result.take() {
@@ -266,44 +268,60 @@ impl Host {
 
 fn update(world: &mut World) {
     world.resource_scope(|world, mut host: Mut<Host>| {
+        let request = world
+            .resource_mut::<cyrus_startup::SaveLoadHost>()
+            .take_request();
+        if let Some(request) = request {
+            let operation = match request {
+                cyrus_startup::SaveLoadRequest::List => SlotRequest::List,
+                cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
+                    SlotRequest::Load { slot, revision }
+                }
+            };
+            match host.request(Request::Slots { id: 0, operation }, world) {
+                Ok(_) => host.book = true,
+                Err(error) => world
+                    .resource_mut::<cyrus_startup::SaveLoadHost>()
+                    .finish(Err(format!("{error:#}"))),
+            }
+        }
+
         if host.phase.is_none()
             && host.result.is_none()
             && world.resource::<SessionBoundary>().is_idle()
-        {
-            if let Some(save) = world
+            && let Some(save) = world
                 .resource_mut::<cyrus_startup::LastGameLoader>()
                 .take_request()
-            {
-                host.last_game = true;
-                host.phase = Some(Phase::Io(task(async move {
-                    let listing = storage::slots(&SlotRequest::List, "").await?;
-                    let slots = listing["slots"]
-                        .as_array()
-                        .context("save list omitted slots")?;
-                    let metadata = slots
-                        .iter()
-                        .find(|entry| entry["slot"].as_u64() == Some(u64::from(save.slot)))
-                        .with_context(|| format!("retained save slot {} absent", save.slot))?;
-                    let revision = metadata["revision"]
-                        .as_str()
-                        .context("retained slot revision absent")?
-                        .to_owned();
-                    let value = storage::slots(
-                        &SlotRequest::Load {
-                            slot: save.slot,
-                            revision,
-                        },
-                        "",
-                    )
-                    .await?;
-                    let text = value["document"]
-                        .as_str()
-                        .context("retained slot document absent")?;
-                    let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
-                        .with_context(|| format!("decoding retained save slot {}", save.slot))?;
-                    Ok(IoResult::Read(Box::new(snapshot)))
-                })));
-            }
+        {
+            host.last_game = true;
+            host.phase = Some(Phase::Io(task(async move {
+                let listing = storage::slots(&SlotRequest::List, "").await?;
+                let slots = listing["slots"]
+                    .as_array()
+                    .context("save list omitted slots")?;
+                let metadata = slots
+                    .iter()
+                    .find(|entry| entry["slot"].as_u64() == Some(u64::from(save.slot)))
+                    .with_context(|| format!("retained save slot {} absent", save.slot))?;
+                let revision = metadata["revision"]
+                    .as_str()
+                    .context("retained slot revision absent")?
+                    .to_owned();
+                let value = storage::slots(
+                    &SlotRequest::Load {
+                        slot: save.slot,
+                        revision,
+                    },
+                    "",
+                )
+                .await?;
+                let text = value["document"]
+                    .as_str()
+                    .context("retained slot document absent")?;
+                let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
+                    .with_context(|| format!("decoding retained save slot {}", save.slot))?;
+                Ok(IoResult::Read(Box::new(snapshot)))
+            })));
         }
         if let Some(phase) = host.phase.take() {
             match host.advance(phase, world) {
@@ -311,17 +329,25 @@ fn update(world: &mut World) {
                 Err(error) => host.result = Some(Err(error)),
             }
         }
-        if host.last_game {
-            if let Some(result) = host.result.take() {
-                let completion = result.map(|_| ()).map_err(|error| format!("{error:#}"));
-                if let Err(error) = world
-                    .resource_mut::<cyrus_startup::LastGameLoader>()
-                    .finish(completion)
-                {
-                    error!("last-game completion rejected: {error:#}");
-                }
-                host.last_game = false;
+        if host.last_game
+            && let Some(result) = host.result.take()
+        {
+            let completion = result.map(|_| ()).map_err(|error| format!("{error:#}"));
+            if let Err(error) = world
+                .resource_mut::<cyrus_startup::LastGameLoader>()
+                .finish(completion)
+            {
+                error!("last-game completion rejected: {error:#}");
             }
+            host.last_game = false;
+        }
+        if host.book
+            && let Some(result) = host.result.take()
+        {
+            world
+                .resource_mut::<cyrus_startup::SaveLoadHost>()
+                .finish(result.map_err(|error| format!("{error:#}")));
+            host.book = false;
         }
         if !host.diagnostics {
             return;

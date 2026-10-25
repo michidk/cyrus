@@ -39,8 +39,9 @@ without capture mode. Missing slots, stale revisions and failed restoration
 report errors and retain the live session. Browser slot diagnostics retain an admitted
 save selection before capture and a load selection before document decoding.
 Save preparation reads metadata without writing; publication rejects a changed
-planned slot or stale overwrite revision. Manual book integration remains
-unavailable.
+planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists the
+first nine saves and restores the selected revision. Save dialogs, additional
+list pages, deletion and thumbnails remain unavailable.
 Run `testSessionStorage()` and `testSessionSlots()` from
 `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify
 atomic publication, concurrent allocation, stale revisions and failed-write protection.

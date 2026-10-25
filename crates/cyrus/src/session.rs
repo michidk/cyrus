@@ -27,6 +27,7 @@ pub(crate) struct NativeSessionLoad {
     capture: Option<slots::SavePlan>,
     slot_load: bool,
     last_game: bool,
+    book: bool,
 }
 
 struct PreparedLoad {
@@ -252,6 +253,24 @@ pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value
 }
 
 pub(crate) fn poll(world: &mut World) {
+    let request = world
+        .get_resource_mut::<cyrus_startup::SaveLoadHost>()
+        .and_then(|mut host| host.take_request());
+    if let Some(request) = request {
+        let operation = match request {
+            cyrus_startup::SaveLoadRequest::List => SlotOperation::List,
+            cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
+                SlotOperation::Load { slot, revision }
+            }
+        };
+        match request_slots(world, operation) {
+            Ok(()) => world.resource_mut::<NativeSessionLoad>().book = true,
+            Err(error) => world
+                .resource_mut::<cyrus_startup::SaveLoadHost>()
+                .finish(Err(format!("{error:#}"))),
+        }
+    }
+
     let Some(mut state) = world.remove_resource::<NativeSessionLoad>() else {
         return;
     };
@@ -365,6 +384,14 @@ pub(crate) fn poll(world: &mut World) {
         } else {
             state.result = Some(result);
         }
+    }
+    if state.book
+        && let Some(result) = state.slot_result.take()
+    {
+        world
+            .resource_mut::<cyrus_startup::SaveLoadHost>()
+            .finish(result.map_err(|error| format!("{error:#}")));
+        state.book = false;
     }
     world.insert_resource(state);
 }
