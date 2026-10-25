@@ -84,7 +84,7 @@ class WorldSweepTests(unittest.TestCase):
         self.assertEqual(result, 1, output)
 
     def test_world_replacement_cannot_look_like_loop_progress(self):
-        result, output = self.run_sweep([3, 4], generations=[7, 7, 7, 8])
+        result, output = self.run_sweep([3, 4], generations=[7, 7, 8])
         self.assertEqual(result, 1, output)
         self.assertIn("script world identity changed", output)
 

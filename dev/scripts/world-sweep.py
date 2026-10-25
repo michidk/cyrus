@@ -70,7 +70,7 @@ def main():
     def script_loop_sample():
         try:
             page = call({"type": "scripts", "offset": 0, "limit": 1})
-        except (OSError, RuntimeError, KeyError):
+        except (OSError, RuntimeError, KeyError, StopIteration):
             return (None, None, None), None
         globals_ = page.get("globals") or {}
         return script_identity(page), globals_.get("world_loop_frame")
@@ -132,12 +132,14 @@ def main():
             call({"type": "console", "open": False})
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
         identity0, loop0 = script_loop_sample()
+        # Large worlds can spend many seconds servicing each actor page. Keep
+        # the soak focused on loop progress, then paginate actors once at the end.
         seen, end = {}, time.time() + args.seconds
         while True:
-            seen.update(failures(identity0))
             if time.time() >= end:
                 break
             time.sleep(min(15, max(1, end - time.time())))
+        seen.update(failures(identity0))
         for (name, message) in seen:
             print(f"{world}: {name}: {message[:300]}")
         # A failed script world stops ticking without any actor reporting it, so check the world itself.
