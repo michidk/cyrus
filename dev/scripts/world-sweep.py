@@ -66,7 +66,10 @@ def main():
         return tuple(page.get(key) for key in ("world", "generation", "content_id"))
 
     def script_loop_sample():
-        page = call({"type": "scripts", "offset": 0, "limit": 1})
+        try:
+            page = call({"type": "scripts", "offset": 0, "limit": 1})
+        except (OSError, RuntimeError, KeyError):
+            return (None, None, None), None
         globals_ = page.get("globals") or {}
         return script_identity(page), globals_.get("world_loop_frame")
 

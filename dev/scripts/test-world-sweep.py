@@ -14,7 +14,7 @@ spec.loader.exec_module(sweep)
 
 
 class WorldSweepTests(unittest.TestCase):
-    def run_sweep(self, frames, generations=None, actors=False):
+    def run_sweep(self, frames, generations=None, actors=False, script_error=False):
         now = [0]
         frames = iter(frames)
         generations = iter(generations) if generations else None
@@ -33,6 +33,9 @@ class WorldSweepTests(unittest.TestCase):
                     # Readiness does not sample game_seconds.
                     result["clock"] = {"game_seconds": now[0]}
                 elif cmd["type"] == "scripts":
+                    if script_error and cmd["limit"] == 1:
+                        self.reply = (json.dumps({"ok": False, "error": "script world is not prepared"}) + "\n").encode()
+                        return
                     result = {
                         "actors": [], "world": 1,
                         "generation": next(generations) if generations else 7,
@@ -75,6 +78,11 @@ class WorldSweepTests(unittest.TestCase):
         result, output = self.run_sweep([3, 4], generations=[7, 7, 8, 7, 7, 7], actors=True)
         self.assertEqual(result, 1, output)
         self.assertIn("world identity changed during actor pagination", output)
+
+    def test_transient_unprepared_script_sample_fails_contextually(self):
+        result, output = self.run_sweep([3, 4], script_error=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("script world identity changed or unavailable", output)
 
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])
