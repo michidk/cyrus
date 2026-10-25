@@ -1204,7 +1204,7 @@ pub fn run_ordinary(
         .and_then(|index| world.id(index).ok());
     let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
         if let super::super::ScriptSound::Animation {
-            sound: cyrus_world::animation::AnimationSound::Transition { mask },
+            sound: cyrus_world::animation::AnimationSound::Transition { mask, .. },
             ..
         } = sound
         {

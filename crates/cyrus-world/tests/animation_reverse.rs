@@ -350,7 +350,7 @@ fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
         Some(70),
         "the transition continues to the next command"
     );
-    assert_eq!(seen, [AnimationSound::Transition { mask: 2 }]);
+    assert_eq!(seen, [AnimationSound::Transition { mask: 2, target: 36 }]);
     let mut refused = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
     let error = refused
         .request_with_sounds(7, 0, 0, &mut |_| anyhow::bail!("combat state unmodelled"))

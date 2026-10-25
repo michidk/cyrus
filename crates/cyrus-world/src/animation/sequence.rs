@@ -33,7 +33,7 @@ pub enum AnimationSound {
     /// decides mask 4 from the actor's falling byte). The host decides whether the transition is
     /// taken; returning `Ok` continues with the next command, and an error stops playback, which
     /// is how a host refuses a mask whose state it does not model. Reverse playback never asks.
-    Transition { mask: u32 },
+    Transition { mask: u32, target: u32 },
     /// The actor-event service with the command's operand: a bit set the host maps to surface
     /// effects and a screen-shake impulse.
     Event { flags: u32 },
@@ -613,14 +613,14 @@ impl FrameSequence {
                         self.command = self.command.wrapping_add(1);
                     }
                 }
-                Command::Transition(mask, _) => {
+                Command::Transition(mask, target) => {
                     anyhow::ensure!(
                         sounds.is_some(),
                         "{} command {}: opcode 15 playback unsupported",
                         self.context,
                         self.command
                     );
-                    self.dispatch_sound(sounds, AnimationSound::Transition { mask })?;
+                    self.dispatch_sound(sounds, AnimationSound::Transition { mask, target })?;
                     self.command = self.command.wrapping_add(1);
                 }
                 Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {
