@@ -4,10 +4,10 @@ Installed splash/title presentation, the book menu and settings, cinematic playb
 world-entry loading, and the installed logbook reader. Book motion, rasterization and helpers remain internal.
 Book motion includes the documented Save camera movement and reversible Load
 page turn. Load opens the installed page and requests slot metadata from the native/browser
-host. Its first nine rows use stored descriptions, retain slot revisions and load
-through the atomic session boundary. Empty rows are disabled. Additional list
-pages and thumbnails remain unavailable. Save opens the installed first page,
-excluding quick slot zero. New and existing rows open a 64-character description
+host. Its first page uses stored descriptions, retains slot revisions and loads
+through the atomic session boundary. Empty rows are disabled. PageUp and PageDown
+reach the remaining authored rows. Save opens the installed first page,
+excluding reserved slots zero and one. New and existing rows open a 64-character description
 editor and dispatch create or revision-checked overwrite through the session host.
 New ASCII letters become uppercase; prefilled case is retained. Delete on an existing Load row
 opens the installed mini-confirmation artwork; confirming deletes only the listed

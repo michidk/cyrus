@@ -32,8 +32,7 @@ first with ascending slot numbers on ties. Creation allocates the first free
 manual slot from 2 through 299 inside the write transaction. Revision tokens reject
 stale overwrite, load and delete requests. Descriptions support 1–64 original input characters, including byte codes 11
 and 13 alongside printable ASCII. Other text is explicitly unsupported. Named diagnostic
-snapshots are unchanged. These operations do not provide the book's dialogs,
-thumbnails, quick saves, autosaves or complete gameplay save eligibility.
+snapshots are unchanged. Reserved `quick_save` (slot 0) and `auto_save` (slot 1) operations capture the current session with fixed descriptions. F9 requests a quick save and an eligible paused death menu admits one autosave. These operations share the same atomic publication and revision checks as authored saves.
 Retained-save death confirmation can load an existing slot through this host
 without capture mode. Missing slots, stale revisions and failed restoration
 report errors and retain the live session. Browser slot diagnostics retain an admitted
