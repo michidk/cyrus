@@ -60,8 +60,8 @@ export async function operateSlots(name, encodedRequest, document) {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
   }
+  const effectiveDescription = reserved ? reservedDescription : description;
   if (type === 'create' || type === 'quick_save' || type === 'auto_save' || type === 'overwrite') {
-    const effectiveDescription = reserved ? reservedDescription : description;
     check(typeof effectiveDescription === 'string' && effectiveDescription.length > 0 && effectiveDescription.length <= 64
       && !/[^\x0b\x0d\x20-\x7e]/.test(effectiveDescription), 'description must contain 1..64 original input characters');
     check(prepare || (typeof document === 'string' && document.length > 0), 'empty session document');
