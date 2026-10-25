@@ -18,7 +18,7 @@ struct ControlSnapshot {
     queued_motion: u8,
     motion_direction: u8,
     motion_classification: u8,
-    directional_state: [u8; 2],
+    directional_state: [u32; 2],
     action_transition_counter: u8,
     #[serde(default)]
     jump_window: u8,

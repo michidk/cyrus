@@ -239,11 +239,13 @@ impl super::ActorControlState {
         if self.action_transition_counter == 0 {
             return;
         }
-        if self.directional_state.contains(&0) && (self.action_transition_counter as i8) < 3 {
+        if self.directional_state.iter().any(|word| word & 255 == 0)
+            && (self.action_transition_counter as i8) < 3
+        {
             self.action_transition_counter = 0;
             return;
         }
-        self.directional_state = self.directional_state.map(|value| value & 127);
+        self.directional_state = self.directional_state.map(|value| value & !128);
         let remaining = self.action_transition_counter.wrapping_sub(ticks as u8) as i8;
         self.action_transition_counter = remaining.max(0) as u8;
     }

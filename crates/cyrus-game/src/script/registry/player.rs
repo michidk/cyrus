@@ -364,10 +364,7 @@ impl ScriptWorld {
         }
         let step_hold = attribute_11 == 0 || (control.movement_flags >> 4) & 3 == 3;
         if step_hold && matches!(group, Some(18 | 30)) && !exit_reached {
-            control
-                .directional_state
-                .iter_mut()
-                .for_each(|byte| *byte |= 3);
+            control.directional_state[0] |= 3;
             control.jump_window = 0;
             return Ok(());
         }

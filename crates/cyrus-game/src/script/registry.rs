@@ -317,8 +317,8 @@ pub struct ActorControlState {
     pub motion_direction: u8,
     /// Retained movement-helper classification, distinct from displacement direction.
     pub motion_classification: u8,
-    /// Allocator-zero directional-state bytes; low bits gate surface assignment.
-    pub directional_state: [u8; 2],
+    /// Pending and accepted action words; their low bytes own directional motion flags.
+    pub directional_state: [u32; 2],
     /// Allocator-zero action-transition counter; state-17 reset assigns six.
     pub action_transition_counter: u8,
     /// Ticks since the directional-state pending byte began, promoting it after 36.
@@ -4551,6 +4551,74 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // The original's function table keeps only each handler, not the declared kind, so a task
         // or multitask call of a function native runs the handler once and a zero return completes
         // the task at once. Only natives whose handler is shown to return zero take this form.
+        if ["SetAction", "ResetAction", "ResetAllAction"]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            anyhow::ensure!(
+                kind == CallKind::Function,
+                "{function}: task completion of a void native is unsupported"
+            );
+            let expected = usize::from(!function.eq_ignore_ascii_case("ResetAllAction"));
+            anyhow::ensure!(
+                arguments.len() == expected,
+                "{function} requires {expected} arguments"
+            );
+            let mask = arguments
+                .first()
+                .map(Argument::integer)
+                .transpose()?
+                .unwrap_or(0) as u32;
+            let actor = &mut self.registry.actors[self.index];
+            let control = actor
+                .control
+                .as_mut()
+                .context("action native: control unavailable")?;
+            if function.eq_ignore_ascii_case("ResetAllAction") {
+                control.directional_state = [0; 2];
+            } else if function.eq_ignore_ascii_case("ResetAction") {
+                control
+                    .directional_state
+                    .iter_mut()
+                    .for_each(|word| *word &= !mask);
+            } else {
+                if !matches!(mask, 1 | 2)
+                    || control
+                        .directional_state
+                        .iter()
+                        .any(|word| word & mask != 0)
+                {
+                    return Ok(CallResult::CompleteWithoutValue);
+                }
+                let animation = actor
+                    .animation
+                    .as_ref()
+                    .context("SetAction: animation unavailable")?;
+                let group = animation
+                    .playback
+                    .current_group()
+                    .context("SetAction: current group unavailable")?;
+                if (65..=74).contains(&group)
+                    || control.queued_motion != 0
+                    || control.falling_state != 0
+                {
+                    control
+                        .directional_state
+                        .iter_mut()
+                        .for_each(|word| *word &= !3);
+                } else {
+                    let step_hold =
+                        actor.attributes[11] == 0 || (control.movement_flags >> 4) & 3 == 3;
+                    if step_hold && matches!(group, 18 | 30) && !animation.playback.exit_reached() {
+                        control.directional_state[0] |= 3;
+                        control.jump_window = 0;
+                    } else {
+                        self.call(target, kind, "Jump", &[], invocation, flags)?;
+                    }
+                }
+            }
+            return Ok(CallResult::CompleteWithoutValue);
+        }
         if kind != CallKind::Function
             && ["FlatAnimate", "FlatSound", "ResetRotation", "Jump"]
                 .iter()
