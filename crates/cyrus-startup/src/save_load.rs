@@ -91,6 +91,7 @@ pub struct SaveLoadHost {
     request: Option<SaveLoadRequest>,
     busy: bool,
     result: Option<Result<Value, String>>,
+    autosave_ready: bool,
 }
 
 impl SaveLoadHost {
@@ -121,6 +122,19 @@ impl SaveLoadHost {
 
     pub(crate) fn busy(&self) -> bool {
         self.busy
+    }
+
+    /// The gameplay host sets this after publishing the death autosave.
+    pub fn autosave_ready(&self) -> bool {
+        self.autosave_ready
+    }
+
+    pub fn mark_autosave_ready(&mut self) {
+        self.autosave_ready = true;
+    }
+
+    pub fn clear_autosave_ready(&mut self) {
+        self.autosave_ready = false;
     }
 }
 

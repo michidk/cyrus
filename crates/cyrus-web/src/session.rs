@@ -294,6 +294,15 @@ fn update(world: &mut World) {
             && world.contains_resource::<cyrus_game::PausedGameplay>();
         if !autosave {
             host.autosave = false;
+            if world
+                .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+                .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+            {
+                if let Some(mut save_load) = world.get_resource_mut::<cyrus_startup::SaveLoadHost>()
+                {
+                    save_load.clear_autosave_ready();
+                }
+            }
         }
         if autosave
             && !host.autosave
@@ -406,9 +415,18 @@ fn update(world: &mut World) {
         }
         if host.autosave
             && host.phase.is_none()
-            && let Some(Err(error)) = host.result.take()
+            && let Some(result) = host.result.take()
         {
-            error!("Auto Save Game: {error:#}");
+            match result {
+                Ok(_) => {
+                    if let Some(mut save_load) =
+                        world.get_resource_mut::<cyrus_startup::SaveLoadHost>()
+                    {
+                        save_load.mark_autosave_ready();
+                    }
+                }
+                Err(error) => error!("Auto Save Game: {error:#}"),
+            }
         }
         if !host.diagnostics {
             return;

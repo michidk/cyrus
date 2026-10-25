@@ -278,6 +278,13 @@ pub(crate) fn poll(world: &mut World) {
         && world.contains_resource::<cyrus_game::PausedGameplay>();
     if !autosave {
         world.resource_mut::<NativeSessionLoad>().autosave = false;
+        if world
+            .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+            .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+            && let Some(mut host) = world.get_resource_mut::<cyrus_startup::SaveLoadHost>()
+        {
+            host.clear_autosave_ready();
+        }
     }
     if autosave
         && world
@@ -448,9 +455,15 @@ pub(crate) fn poll(world: &mut World) {
         state.quick = false;
     }
     if state.autosave
-        && let Some(Err(error)) = state.slot_result.take()
+        && let Some(result) = state.slot_result.take()
     {
-        bevy::log::error!("Auto Save Game: {error:#}");
+        if let Err(error) = result {
+            bevy::log::error!("Auto Save Game: {error:#}");
+        } else {
+            if let Some(mut host) = world.get_resource_mut::<cyrus_startup::SaveLoadHost>() {
+                host.mark_autosave_ready();
+            }
+        }
     }
     if state.book
         && let Some(result) = state.slot_result.take()

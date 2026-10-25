@@ -717,7 +717,7 @@ pub(super) fn drive(
                     -1 if menu.context == MenuContext::Death && !menu.main_disabled[1] => {
                         next.set(AppState::InGame);
                     }
-                    -2 if menu.context == MenuContext::Death => {
+                    -2 if menu.context == MenuContext::Death && !save_load.autosave_ready() => {
                         menu.unavailable =
                             Some("Quit automatic-save preparation is unavailable.".into());
                     }
