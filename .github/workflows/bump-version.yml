@@ -1,3 +1,7 @@
+# @orcastrate
+# template: rust/bump-version
+# @end-orcastrate
+
 name: Bump Version & Tag
 
 on:
