@@ -33082,3 +33082,77 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
     .unwrap();
     assert_eq!(replacement.object_lights()[0].position, [101, -201, 302]);
 }
+
+#[test]
+fn action_statement_resets_preserve_high_words_through_snapshot_restore() {
+    use cyrus_game::script::ScriptInputs;
+    for (name, arguments, expected) in [
+        ("ResetAction", vec![-2147483647], [258, 514]),
+        ("ResetAllAction", vec![], [0, 0]),
+        ("SetAction", vec![1], [2147483907, 2147484162]),
+    ] {
+        let (mut world, _, _) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.definition.functions.push(Function {
+                    name: name.into(),
+                    param_count: arguments.len() as u8,
+                    kind: CallKind::Function,
+                });
+                let function_id = scripts.definition.functions.len() as u16 - 1;
+                scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+                    (
+                        0,
+                        Step {
+                            next: 1,
+                            operation: wait(
+                                function_id,
+                                name,
+                                CallKind::Function,
+                                arguments
+                                    .iter()
+                                    .map(|&value| Value::Integer { value })
+                                    .collect(),
+                            ),
+                        },
+                    ),
+                    (
+                        1,
+                        Step {
+                            next: 2,
+                            operation: Operation::End { target: 0 },
+                        },
+                    ),
+                ]);
+            },
+            |saved| {
+                saved["actors"][0]["control"]["directional_state"] =
+                    serde_json::json!([2147483907u32, 2147484162u32]);
+                saved["actors"][0]["control"]["jump_window"] = 27.into();
+            },
+        );
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.directional_state, expected, "{name}");
+        assert_eq!(
+            control.jump_window, 27,
+            "duplicate SetAction and reset preserve timer"
+        );
+    }
+}
