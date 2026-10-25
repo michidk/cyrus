@@ -260,6 +260,18 @@ pub(crate) fn poll(world: &mut World) {
     if let Some(request) = request {
         let operation = match request {
             cyrus_startup::SaveLoadRequest::List => SlotOperation::List,
+            cyrus_startup::SaveLoadRequest::Create { description } => {
+                SlotOperation::Create { description }
+            }
+            cyrus_startup::SaveLoadRequest::Overwrite {
+                slot,
+                revision,
+                description,
+            } => SlotOperation::Overwrite {
+                slot,
+                revision,
+                description,
+            },
             cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
                 SlotOperation::Load { slot, revision }
             }

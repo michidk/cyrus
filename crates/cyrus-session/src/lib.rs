@@ -331,9 +331,11 @@ impl RuntimeSessionSnapshot {
         hud_asset: &HudAsset,
     ) -> Result<Self> {
         validate_reader_boundary(world)?;
+        let state = resource::<State<AppState>>(world, "application state")?.get();
+        let paused = world.get_resource::<cyrus_game::PausedGameplay>();
         ensure!(
-            resource::<State<AppState>>(world, "application state")?.get() == &AppState::InGame,
-            "session capture requires an active gameplay world"
+            state == &AppState::InGame || (state == &AppState::Menu && paused.is_some()),
+            "session capture requires active gameplay or an eligible paused book"
         );
         ensure!(
             world
@@ -404,7 +406,10 @@ impl RuntimeSessionSnapshot {
         let logical = actors.snapshot_session(
             sources,
             resource::<ScriptHud>(world, "script HUD")?,
-            resource::<SimulationClock>(world, "clock")?,
+            match paused {
+                Some(paused) => &paused.clock,
+                None => resource::<SimulationClock>(world, "clock")?,
+            },
             resource::<EngineRandom>(world, "random")?,
             *resource::<PlayerToggles>(world, "player toggles")?,
         )?;

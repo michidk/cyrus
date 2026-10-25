@@ -8,8 +8,73 @@ use serde_json::Value;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SaveLoadRequest {
     List,
-    Load { slot: u16, revision: String },
-    Delete { slot: u16, revision: String },
+    Create {
+        description: String,
+    },
+    Overwrite {
+        slot: u16,
+        revision: String,
+        description: String,
+    },
+    Load {
+        slot: u16,
+        revision: String,
+    },
+    Delete {
+        slot: u16,
+        revision: String,
+    },
+}
+
+/// Original description input retains prefilled case and uppercases newly typed ASCII.
+pub(super) struct DescriptionEditor {
+    pub text: String,
+    pub slot: Option<SaveSlot>,
+    pub background: image::RgbaImage,
+}
+
+impl DescriptionEditor {
+    pub fn append(&mut self, text: &str) {
+        for ch in text
+            .chars()
+            .filter(|ch| matches!(ch, '\u{b}' | '\r' | ' '..='~'))
+        {
+            if self.text.len() == 64 {
+                break;
+            }
+            self.text.push(ch.to_ascii_uppercase());
+        }
+    }
+
+    pub fn request(&self) -> Option<SaveLoadRequest> {
+        if self.text.is_empty() {
+            return None;
+        }
+        Some(match &self.slot {
+            Some(slot) => SaveLoadRequest::Overwrite {
+                slot: slot.slot,
+                revision: slot.revision.clone(),
+                description: self.text.clone(),
+            },
+            None => SaveLoadRequest::Create {
+                description: self.text.clone(),
+            },
+        })
+    }
+
+    pub fn display(&self) -> String {
+        let mut chars: Vec<_> = self.text.chars().collect();
+        let mut cursor = 13;
+        while cursor + 1 < chars.len() {
+            if chars[cursor] == ' ' {
+                chars[cursor] = '\n';
+                cursor += 14;
+            } else {
+                cursor += 1;
+            }
+        }
+        chars.into_iter().collect()
+    }
 }
 
 /// Slot metadata supplied by native files or browser IndexedDB.
@@ -62,6 +127,36 @@ impl SaveLoadHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn description_preserves_prefill_and_limits_new_original_characters() {
+        let mut editor = DescriptionEditor {
+            text: "Mixed case ".into(),
+            slot: Some(SaveSlot {
+                slot: 18,
+                description: "Mixed case ".into(),
+                revision: "r18".into(),
+            }),
+            background: image::RgbaImage::new(640, 480),
+        };
+        editor.append("new é\t\r\u{b}");
+        assert_eq!(editor.text, "Mixed case NEW \r\u{b}");
+        editor.append(&"x".repeat(80));
+        assert_eq!(editor.text.len(), 64);
+        assert!(
+            matches!(editor.request(), Some(SaveLoadRequest::Overwrite { slot: 18, revision, description }) if revision == "r18" && description.starts_with("Mixed case NEW"))
+        );
+        editor.text = "0123456789012 4567890123456 890 ".into();
+        assert_eq!(editor.display(), "0123456789012\n4567890123456\n890 ");
+        assert_eq!(editor.text, "0123456789012 4567890123456 890 ");
+        editor.text.clear();
+        assert!(editor.request().is_none());
+        editor.slot = None;
+        editor.append("harbour");
+        assert!(
+            matches!(editor.request(), Some(SaveLoadRequest::Create { description }) if description == "HARBOUR")
+        );
+    }
 
     #[test]
     fn selection_owns_request_until_terminal_result_is_consumed() {

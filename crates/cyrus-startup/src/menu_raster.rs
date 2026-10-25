@@ -145,6 +145,13 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
     if let Some(confirmation) = &state.delete_confirmation {
         return confirmation.paint(book);
     }
+    if let Some(editor) = &state.description_editor {
+        return super::confirmation::LastGameConfirmation::paint_description(
+            &book.confirmation,
+            &editor.background,
+            &editor.display(),
+        );
+    }
     let preferences = state
         .preferences
         .as_ref()
@@ -157,12 +164,16 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
             } else {
                 entry.item.clone()
             };
-            if *page_id == 2 && item.action == 202 {
+            if matches!(*page_id, 1 | 2) && matches!(item.action, 102 | 202) {
                 let row = page.entries[..index]
                     .iter()
-                    .filter(|entry| entry.item.action == 202)
+                    .filter(|entry| matches!(entry.item.action, 102 | 202))
                     .count();
-                let slot = state.slots.get(row);
+                let slot = state
+                    .slots
+                    .iter()
+                    .filter(|slot| *page_id != 1 || slot.slot != 0)
+                    .nth(row);
                 item.text = slot
                     .map(|slot| slot.description.chars().take(40).collect())
                     .unwrap_or_default();

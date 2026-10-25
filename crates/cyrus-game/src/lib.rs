@@ -28,6 +28,14 @@ pub enum AppState {
 #[derive(Resource)]
 pub struct RestoredSessionEntry;
 
+/// Gameplay continuation retained while an eligible book menu owns presentation.
+/// Startup and terminal death menus must not create this admission token.
+#[derive(Resource)]
+pub struct PausedGameplay {
+    pub clock: clock::SimulationClock,
+    pub active_cameras: Vec<Entity>,
+}
+
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {

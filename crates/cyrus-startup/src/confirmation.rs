@@ -108,6 +108,29 @@ impl LastGameConfirmation {
         background: &RgbaImage,
         prompt: &str,
     ) -> anyhow::Result<RgbaImage> {
+        self.paint_dialog(artwork, background, prompt, true)
+    }
+
+    pub(super) fn paint_description(
+        artwork: &ConfirmationArtwork,
+        background: &RgbaImage,
+        description: &str,
+    ) -> anyhow::Result<RgbaImage> {
+        Self::displayed(0, 0).paint_dialog(
+            artwork,
+            background,
+            &format!("Game Description\n{description}"),
+            false,
+        )
+    }
+
+    fn paint_dialog(
+        &self,
+        artwork: &ConfirmationArtwork,
+        background: &RgbaImage,
+        prompt: &str,
+        choices: bool,
+    ) -> anyhow::Result<RgbaImage> {
         anyhow::ensure!(
             background.dimensions() == (640, 480),
             "last-game confirmation: expected 640x480 captured background"
@@ -161,16 +184,18 @@ impl LastGameConfirmation {
         for (line, value) in prompt.split('\n').enumerate() {
             text(value, 160 + line as i32 * line_height, true);
         }
-        text(
-            "Yes",
-            160 + 4 * line_height,
-            self.choice == ConfirmationChoice::Yes,
-        );
-        text(
-            "No",
-            160 + 5 * line_height,
-            self.choice == ConfirmationChoice::No,
-        );
+        if choices {
+            text(
+                "Yes",
+                160 + 4 * line_height,
+                self.choice == ConfirmationChoice::Yes,
+            );
+            text(
+                "No",
+                160 + 5 * line_height,
+                self.choice == ConfirmationChoice::No,
+            );
+        }
         Ok(image)
     }
 }

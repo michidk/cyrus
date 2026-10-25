@@ -274,6 +274,18 @@ fn update(world: &mut World) {
         if let Some(request) = request {
             let operation = match request {
                 cyrus_startup::SaveLoadRequest::List => SlotRequest::List,
+                cyrus_startup::SaveLoadRequest::Create { description } => {
+                    SlotRequest::Create { description }
+                }
+                cyrus_startup::SaveLoadRequest::Overwrite {
+                    slot,
+                    revision,
+                    description,
+                } => SlotRequest::Overwrite {
+                    slot,
+                    revision,
+                    description,
+                },
                 cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
                     SlotRequest::Load { slot, revision }
                 }

@@ -120,6 +120,8 @@ pub struct MenuState {
     slot_rows: BTreeMap<usize, usize>,
     #[serde(skip)]
     pub(super) delete_confirmation: Option<DeleteConfirmation>,
+    #[serde(skip)]
+    pub(super) description_editor: Option<super::save_load::DescriptionEditor>,
     pub unavailable: Option<String>,
     #[serde(skip)]
     pub(super) image: Handle<Image>,
@@ -166,16 +168,23 @@ impl MenuState {
             .entries
             .iter_mut()
             .enumerate()
-            .filter(|(_, entry)| entry.action == 202)
+            .filter(|(_, entry)| matches!(entry.action, 102 | 202))
             .enumerate()
         {
-            let slot = self.slots.get(row);
+            let slot_index = self
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| self.page != 1 || slot.slot != 0)
+                .nth(row)
+                .map(|(index, _)| index);
+            let slot = slot_index.and_then(|index| self.slots.get(index));
             entry.text = slot
                 .map(|slot| slot.description.chars().take(40).collect())
                 .unwrap_or_default();
             entry.grayed = slot.is_none();
-            if slot.is_some() {
-                self.slot_rows.insert(index, row);
+            if let Some(slot_index) = slot_index {
+                self.slot_rows.insert(index, slot_index);
             }
         }
         if self
@@ -233,6 +242,7 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<super::SaveLoadHost>()
         .init_resource::<LaunchRequest>()
         .add_message::<MovieRequest>()
+        .add_message::<bevy::input::keyboard::KeyboardInput>()
         .init_asset::<MenuAsset>()
         .init_asset_loader::<MenuLoader>()
         .add_systems(OnEnter(AppState::Menu), (pause_cameras, setup))
@@ -242,6 +252,7 @@ pub(super) fn register(app: &mut App) {
             (
                 fit_image,
                 super::last_game::drive.before(drive),
+                description_text.before(drive),
                 drive.before(cyrus_audio::ApplyPreferences),
                 launch.after(drive),
             )
@@ -355,6 +366,28 @@ type MenuRuntime<'w, 's> = (
     ResMut<'w, super::SaveLoadHost>,
 );
 
+fn description_text(
+    mut events: MessageReader<bevy::input::keyboard::KeyboardInput>,
+    mut menu: ResMut<MenuState>,
+) {
+    for event in events.read() {
+        if event.state != bevy::input::ButtonState::Pressed
+            || matches!(
+                event.key_code,
+                KeyCode::Enter | KeyCode::Backspace | KeyCode::Escape
+            )
+        {
+            continue;
+        }
+        if let Some(editor) = &mut menu.description_editor
+            && let Some(text) = &event.text
+        {
+            editor.append(text);
+            menu.dirty = true;
+        }
+    }
+}
+
 pub(super) fn drive(
     assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
     clock: Option<ResMut<SimulationClock>>,
@@ -454,14 +487,14 @@ pub(super) fn drive(
                     Ok(slots) => {
                         menu.slots = slots;
                         menu.unavailable = menu.persistence_error.clone();
-                        if menu.page == 2 {
+                        if matches!(menu.page, 1 | 2) {
                             menu.fill_load_rows();
                         }
                     }
                     Err(error) => menu.unavailable = Some(format!("Save list: {error}")),
                 }
             }
-            Ok(value) if value.get("deleted").is_some() => {
+            Ok(value) if value.get("deleted").is_some() || value.get("slot").is_some() => {
                 if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
                     menu.unavailable = Some(error);
                 }
@@ -504,7 +537,30 @@ pub(super) fn drive(
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
     if !moving && !menu.closing && !save_load.busy() {
-        if let Some(mut confirmation) = menu.delete_confirmation.take() {
+        if let Some(mut editor) = menu.description_editor.take() {
+            let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+            if keys.just_pressed(KeyCode::Escape) {
+                menu.dirty = true;
+            } else if keys.just_pressed(KeyCode::Enter) && !shift && editor.request().is_some() {
+                if let Err(error) = save_load.start(editor.request().unwrap()) {
+                    menu.unavailable = Some(error);
+                }
+                menu.dirty = true;
+            } else {
+                if keys.just_pressed(KeyCode::Backspace) {
+                    if shift {
+                        editor.append("\r");
+                    } else {
+                        editor.text.pop();
+                    }
+                }
+                if keys.just_pressed(KeyCode::Enter) && shift {
+                    editor.append("\u{b}");
+                }
+                menu.description_editor = Some(editor);
+                menu.dirty = true;
+            }
+        } else if let Some(mut confirmation) = menu.delete_confirmation.take() {
             let logical = bindings.sample_with_mouse(keys, input.3.as_deref());
             let result = confirmation.dialog.update(
                 sample,
@@ -528,7 +584,7 @@ pub(super) fn drive(
                 None => menu.delete_confirmation = Some(confirmation),
             }
             menu.dirty = true;
-        } else if menu.page == 2 && keys.just_pressed(KeyCode::Delete) {
+        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::Delete) {
             let slot = menu
                 .selected
                 .and_then(|index| menu.slot_rows.get(&index))
@@ -652,8 +708,8 @@ pub(super) fn drive(
                             menu.closing = true;
                         }
                     }
-                    2 => {
-                        menu.open(book, 2);
+                    1 | 2 => {
+                        menu.open(book, entry.action as u8);
                         if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
                             menu.unavailable = Some(error);
                         }
@@ -679,7 +735,33 @@ pub(super) fn drive(
                             }
                         }
                     }
-                    200 => menu.open(book, 0),
+                    101 | 102 => {
+                        let slot = menu
+                            .slot_rows
+                            .get(&index)
+                            .and_then(|row| menu.slots.get(*row))
+                            .cloned();
+                        if entry.action == 101 || slot.is_some() {
+                            match super::menu_raster::paint(book, &menu) {
+                                Ok(background) => {
+                                    menu.description_editor =
+                                        Some(super::save_load::DescriptionEditor {
+                                            text: slot
+                                                .as_ref()
+                                                .map(|slot| slot.description.clone())
+                                                .unwrap_or_default(),
+                                            slot,
+                                            background,
+                                        })
+                                }
+                                Err(error) => {
+                                    menu.unavailable = Some(format!("Game Description: {error:#}"))
+                                }
+                            }
+                            menu.dirty = true;
+                        }
+                    }
+                    100 | 200 => menu.open(book, 0),
                     3 | 4 => menu.open(book, entry.action as u8),
                     300 | 400 => menu.open(book, 0),
                     405..=407 => menu.open(book, (entry.action - 400) as u8),
@@ -773,7 +855,7 @@ impl MenuState {
                 item
             })
             .collect();
-        if page == 2 {
+        if matches!(page, 1 | 2) {
             self.fill_load_rows();
         }
         let start = self.selections.get(&page).copied().flatten().unwrap_or(0);
@@ -843,6 +925,7 @@ fn cleanup(
     commands.remove_resource::<cyrus_game::script::LastGameEntry>();
     commands.remove_resource::<super::last_game::CapturedFrame>();
     commands.remove_resource::<MenuState>();
+    commands.remove_resource::<cyrus_game::PausedGameplay>();
 }
 
 #[derive(Component)]
@@ -852,15 +935,27 @@ fn pause_cameras(
     mut commands: Commands,
     mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
     confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
+    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    clock: Option<Res<SimulationClock>>,
 ) {
     if confirmation.is_some() {
         return;
     }
+    let mut active_cameras = Vec::new();
     for (entity, mut camera) in &mut cameras {
         if camera.is_active {
+            active_cameras.push(entity);
             camera.is_active = false;
             commands.entity(entity).insert(BookPausedCamera);
         }
+    }
+    if death.is_some_and(|entry| entry.override_group == 0)
+        && let Some(clock) = clock
+    {
+        commands.insert_resource(cyrus_game::PausedGameplay {
+            clock: clock.clone(),
+            active_cameras,
+        });
     }
 }
 
@@ -1296,6 +1391,92 @@ mod tests {
                 menu.open(books.get(&handle).unwrap(), 0);
             });
         assert!(!app.world().resource::<MenuState>().entries[5].grayed);
+        let save = app
+            .world()
+            .resource::<MenuState>()
+            .entries
+            .iter()
+            .position(|entry| entry.action == 1)
+            .unwrap();
+        app.world_mut().resource_mut::<MenuState>().selected = Some(save);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(app.world().resource::<MenuState>().page, 1);
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::List)
+        ));
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"slots":[
+                {"slot":0,"description":"Quick","revision":"q0"},
+                {"slot":17,"description":"Mixed case","revision":"r17"}
+            ]})));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        for _ in 0..100 {
+            app.update();
+        }
+        let existing = app
+            .world()
+            .resource::<MenuState>()
+            .entries
+            .iter()
+            .position(|entry| entry.action == 102 && entry.eligible())
+            .unwrap();
+        assert_eq!(
+            app.world().resource::<MenuState>().entries[existing].text,
+            "Mixed case"
+        );
+        app.world_mut().resource_mut::<MenuState>().selected = Some(existing);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<MenuState>()
+                .description_editor
+                .as_ref()
+                .unwrap()
+                .text,
+            "Mixed case"
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert!(
+            matches!(app.world_mut().resource_mut::<crate::SaveLoadHost>().take_request(), Some(crate::SaveLoadRequest::Overwrite { slot:17, revision, description }) if revision == "r17" && description == "Mixed case")
+        );
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Err("save slot changed".into()));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        assert_eq!(
+            app.world().resource::<MenuState>().unavailable.as_deref(),
+            Some("save slot changed")
+        );
+        app.world_mut()
+            .resource_scope(|world, mut menu: Mut<MenuState>| {
+                let books = world.resource::<Assets<MenuAsset>>();
+                let handle = menu.asset.clone();
+                menu.open(books.get(&handle).unwrap(), 0);
+                while menu.motion.as_ref().is_some_and(BookMotion::busy) {
+                    menu.motion.as_mut().unwrap().tick(|_| {});
+                }
+            });
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Escape);

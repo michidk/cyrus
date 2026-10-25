@@ -103,9 +103,13 @@ impl CameraSnapshot {
             .context("camera framing owner absent")?;
         let saved = Self {
             version: 1,
-            active: world
-                .get::<bevy::prelude::Camera>(entity)
-                .map(|camera| camera.is_active),
+            active: world.get::<bevy::prelude::Camera>(entity).map(|camera| {
+                world
+                    .get_resource::<cyrus_game::PausedGameplay>()
+                    .map_or(camera.is_active, |paused| {
+                        paused.active_cameras.contains(&entity)
+                    })
+            }),
             pose: Pose::capture(pose),
             projection: [
                 projection.fov,
@@ -233,6 +237,33 @@ mod tests {
         assert_eq!(
             serde_json::to_vec(&CameraSnapshot::capture(&fresh).unwrap().unwrap()).unwrap(),
             bytes
+        );
+        fresh.entity_mut(camera).insert(bevy::prelude::Camera {
+            is_active: false,
+            ..Default::default()
+        });
+        fresh.insert_resource(cyrus_game::PausedGameplay {
+            clock: cyrus_game::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+                normal_frame_rate: 12,
+                min_frame_rate: 6,
+                max_frame_rate: 300,
+                use_smooth_fps: true,
+                use_smooth_divisor: true,
+            })
+            .unwrap(),
+            active_cameras: vec![camera],
+        });
+        assert_eq!(
+            serde_json::to_value(CameraSnapshot::capture(&fresh).unwrap().unwrap()).unwrap()["active"],
+            true
+        );
+        fresh
+            .resource_mut::<cyrus_game::PausedGameplay>()
+            .active_cameras
+            .clear();
+        assert_eq!(
+            serde_json::to_value(CameraSnapshot::capture(&fresh).unwrap().unwrap()).unwrap()["active"],
+            false
         );
         fresh.spawn(ViewCamera);
         assert!(CameraSnapshot::capture(&fresh).is_err());

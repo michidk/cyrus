@@ -274,3 +274,8 @@ Logical load planning validates each represented world's source fingerprint once
 and retains immutable source borrows through reconstruction. Aggregate planning
 reuses those checked fingerprints. Direct world restores still validate sources,
 and assembly/publication independently recheck live asset content before mutation.
+
+An eligible book owns `PausedGameplay` while its gameplay camera is suspended.
+Capture admits this menu context, retains the gameplay clock from book entry,
+and records each camera's pre-book activation instead of its temporary hidden state.
+Startup and terminal death books have no capture admission.

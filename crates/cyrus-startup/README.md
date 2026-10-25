@@ -6,7 +6,10 @@ Book motion includes the documented Save camera movement and reversible Load
 page turn. Load opens the installed page and requests slot metadata from the native/browser
 host. Its first nine rows use stored descriptions, retain slot revisions and load
 through the atomic session boundary. Empty rows are disabled. Additional list
-pages, Save dialogs and thumbnails remain unavailable. Delete on an existing Load row
+pages and thumbnails remain unavailable. Save opens the installed first page,
+excluding quick slot zero. New and existing rows open a 64-character description
+editor and dispatch create or revision-checked overwrite through the session host.
+New ASCII letters become uppercase; prefilled case is retained. Delete on an existing Load row
 opens the installed mini-confirmation artwork; confirming deletes only the listed
 revision and refreshes the rows.
 The crate depends on assets/game/world/text/audio/media/app and Bevy; it does not
