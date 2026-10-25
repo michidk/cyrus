@@ -8,7 +8,7 @@ mod sequence;
 pub use actor::{ActorAnimation, ActorAnimationCheckpoint, ActorAnimationSnapshot};
 pub use class::group_class;
 pub use playback::{AnimationPlayback, AnimationTick};
-pub use sequence::{AnimationSound, FrameSequence};
+pub use sequence::{AnimationSound, FrameSequence, TransitionDecision};
 
 use cyrus_assets::animation::AnimationLoader;
 pub use cyrus_assets::animation::{AnimationModel, Animations, ModelFrame};

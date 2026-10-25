@@ -27,6 +27,15 @@ enum Command {
 /// The caller owns surface remapping, positional gains, channel allocation and its last handle.
 /// `Event` and `Transition` are not sounds: sound consumers ignore them and the world host owns
 /// their effects and decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Decision returned by a host when an authored transition asks whether to jump.
+pub enum TransitionDecision {
+    /// Continue with the command after the transition.
+    Continue,
+    /// Take the transition target encoded by the authored command.
+    Take,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnimationSound {
     /// A forward `Transition` command's trigger mask, for masks other than 4 (the sequence
