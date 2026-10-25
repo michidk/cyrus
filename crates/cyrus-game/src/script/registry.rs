@@ -319,11 +319,6 @@ pub struct ActorControlState {
     pub motion_classification: u8,
     /// Allocator-zero directional-state bytes; low bits gate surface assignment.
     pub directional_state: [u8; 2],
-    /// Pending and accepted SOUP action words. The native action handlers own
-    /// admission; the update path promotes pending bits after 36 ticks.
-    pub action_pending: u8,
-    pub action_accepted: u8,
-    pub action_timer: u8,
     /// Allocator-zero action-transition counter; state-17 reset assigns six.
     pub action_transition_counter: u8,
     /// Ticks since the directional-state pending byte began, promoting it after 36.
@@ -378,28 +373,6 @@ pub struct ActorControlState {
     pub creator: Option<usize>,
     pub combat_death_default: Option<i32>,
     pub combat: Option<super::CombatControlState>,
-}
-
-impl ActorControlState {
-    pub(crate) fn reset_action(&mut self, mask: u8) {
-        self.action_pending &= !mask;
-        self.action_accepted &= !mask;
-    }
-
-    pub(crate) fn reset_all_action(&mut self) {
-        self.action_pending = 0;
-        self.action_accepted = 0;
-        self.action_timer = 0;
-    }
-
-    pub(crate) fn advance_action_words(&mut self, ticks: u32) {
-        self.action_timer = self.action_timer.wrapping_add(ticks as u8);
-        if self.action_timer > 0x24 {
-            self.action_accepted |= self.action_pending;
-            self.action_pending = 0;
-            self.action_timer = 0;
-        }
-    }
 }
 
 pub struct ScriptActor {
@@ -6992,27 +6965,6 @@ fn select_combat_taunt<'a>(
             return selected;
         }
         requested = 2;
-    }
-}
-
-#[cfg(test)]
-mod action_word_tests {
-    use super::ActorControlState;
-
-    #[test]
-    fn action_words_reset_and_promote_after_strict_thirty_six_ticks() {
-        let mut control = ActorControlState::default();
-        control.action_pending = 0b11;
-        control.advance_action_words(36);
-        assert_eq!(control.action_pending, 0b11);
-        assert_eq!(control.action_accepted, 0);
-        control.advance_action_words(1);
-        assert_eq!(control.action_pending, 0);
-        assert_eq!(control.action_accepted, 0b11);
-        control.reset_action(1);
-        assert_eq!(control.action_accepted, 0b10);
-        control.reset_all_action();
-        assert_eq!((control.action_pending, control.action_accepted, control.action_timer), (0, 0, 0));
     }
 }
 
