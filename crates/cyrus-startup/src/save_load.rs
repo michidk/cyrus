@@ -3,6 +3,48 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Gameplay image retained while the book covers the live view.
+#[derive(Resource, Default)]
+pub struct GameplayThumbnail(pub Option<Vec<u8>>);
+
+/// Requests a screenshot before book presentation replaces the gameplay view.
+pub(super) fn capture_gameplay(
+    mut commands: Commands,
+    next: Res<NextState<cyrus_game::AppState>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+) {
+    if !matches!(*next, NextState::Pending(cyrus_game::AppState::Menu)) || windows.single().is_err()
+    {
+        return;
+    }
+    use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
+    commands.remove_resource::<GameplayThumbnail>();
+    commands.spawn(Screenshot::primary_window()).observe(
+        |event: On<ScreenshotCaptured>, mut commands: Commands| match encode_thumbnail(
+            event.image.clone(),
+        ) {
+            Ok(bytes) => commands.insert_resource(GameplayThumbnail(Some(bytes))),
+            Err(error) => {
+                bevy::log::error!("gameplay snapshot: {error:#}");
+                commands.insert_resource(GameplayThumbnail(None));
+            }
+        },
+    );
+}
+
+fn encode_thumbnail(image: Image) -> anyhow::Result<Vec<u8>> {
+    let image = image.try_into_dynamic()?;
+    let resized = image.resize_to_fill(256, 192, image::imageops::FilterType::Triangle);
+    let mut output = std::io::Cursor::new(Vec::new());
+    resized.write_to(&mut output, image::ImageFormat::Png)?;
+    Ok(output.into_inner())
+}
+
+/// A thumbnail describes one book visit; saving from live gameplay stores none.
+pub(super) fn discard_gameplay(mut commands: Commands) {
+    commands.remove_resource::<GameplayThumbnail>();
+}
+
 /// Storage operation requested by the installed book action.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -83,6 +125,9 @@ pub struct SaveSlot {
     pub slot: u16,
     pub description: String,
     pub revision: String,
+    /// PNG bytes for the 256x192 gameplay view, when captured.
+    #[serde(default)]
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 /// One operation owns the book's storage boundary until its result is consumed.
@@ -143,6 +188,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gameplay_thumbnail_keeps_aspect_and_is_a_256x192_png() {
+        let image = Image::new_fill(
+            bevy::render::render_resource::Extent3d {
+                width: 1280,
+                height: 720,
+                depth_or_array_layers: 1,
+            },
+            bevy::render::render_resource::TextureDimension::D2,
+            &[10, 20, 30, 255],
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            default(),
+        );
+        let decoded = image::load_from_memory(&encode_thumbnail(image).unwrap()).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (256, 192));
+    }
+
+    #[test]
     fn description_preserves_prefill_and_limits_new_original_characters() {
         let mut editor = DescriptionEditor {
             text: "Mixed case ".into(),
@@ -150,6 +212,7 @@ mod tests {
                 slot: 18,
                 description: "Mixed case ".into(),
                 revision: "r18".into(),
+                thumbnail: None,
             }),
             background: image::RgbaImage::new(640, 480),
         };

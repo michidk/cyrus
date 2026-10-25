@@ -56,6 +56,7 @@ pub async fn publish(
     slot: u16,
     plan: &serde_json::Value,
     document: &str,
+    thumbnail: Option<Vec<u8>>,
 ) -> Result<serde_json::Value> {
     let mut encoded = serde_json::to_value(request)?;
     if matches!(
@@ -67,6 +68,7 @@ pub async fn publish(
     if matches!(request, SlotRequest::QuickSave | SlotRequest::AutoSave) {
         encoded["expected_revision"] = plan["revision"].clone();
     }
+    encoded["thumbnail"] = serde_json::to_value(thumbnail)?;
     operate(encoded, document).await
 }
 

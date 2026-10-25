@@ -12,7 +12,7 @@ mod overlay;
 pub use overlay::OverlayPlugin;
 mod menu;
 mod save_load;
-pub use save_load::{SaveLoadHost, SaveLoadRequest, SaveSlot};
+pub use save_load::{GameplayThumbnail, SaveLoadHost, SaveLoadRequest, SaveSlot};
 mod menu_raster;
 mod movie;
 #[cfg(not(target_arch = "wasm32"))]
@@ -129,6 +129,11 @@ impl Plugin for StartupPlugin {
                 .after(menu::drive)
                 .before(cyrus_audio::ApplyPreferences),
         );
+        app.add_systems(
+            Last,
+            save_load::capture_gameplay.run_if(in_state(AppState::InGame)),
+        );
+        app.add_systems(OnExit(AppState::Menu), save_load::discard_gameplay);
         menu::register(app);
         movie::register(app);
         credits::register(app);

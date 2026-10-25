@@ -172,6 +172,9 @@ impl Host {
                 let SessionBoundaryResult::Captured(snapshot) = result? else {
                     anyhow::bail!("browser capture received a commit result");
                 };
+                let thumbnail = world
+                    .get_resource::<cyrus_startup::GameplayThumbnail>()
+                    .and_then(|capture| capture.0.clone());
                 if let Some(target) = key {
                     Ok(Some(Phase::Io(task(async move {
                         match target {
@@ -182,7 +185,8 @@ impl Host {
                             SaveTarget::Slot(operation, slot, plan) => {
                                 let document = String::from_utf8(snapshot.encode_document()?)?;
                                 Ok(IoResult::Response(
-                                    storage::publish(&operation, slot, &plan, &document).await?,
+                                    storage::publish(&operation, slot, &plan, &document, thumbnail)
+                                        .await?,
                                 ))
                             }
                         }

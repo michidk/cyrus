@@ -161,7 +161,10 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
             | SlotOperation::Overwrite { .. }
             | SlotOperation::QuickSave
             | SlotOperation::AutoSave => {
-                let plan = store.plan(operation)?;
+                let mut plan = store.plan(operation)?;
+                plan.thumbnail = world
+                    .get_resource::<cyrus_startup::GameplayThumbnail>()
+                    .and_then(|capture| capture.0.clone());
                 retain_selection(world, plan.slot, plan.description.clone())?;
                 world.resource_mut::<SessionBoundary>().capture_live()?;
                 state.capture = Some(plan);

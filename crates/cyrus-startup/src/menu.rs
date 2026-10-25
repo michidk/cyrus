@@ -102,6 +102,8 @@ pub enum MenuContext {
 #[derive(Resource, Default, Serialize)]
 pub struct MenuState {
     pub context: MenuContext,
+    #[serde(skip)]
+    pub(super) gameplay_thumbnail: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) last_game: Option<super::last_game::Presentation>,
     /// True once the installed book is rendered and input can be accepted.
@@ -119,7 +121,7 @@ pub struct MenuState {
     #[serde(skip)]
     pub(super) list_page: usize,
     #[serde(skip)]
-    slot_rows: BTreeMap<usize, usize>,
+    pub(super) slot_rows: BTreeMap<usize, usize>,
     #[serde(skip)]
     pub(super) delete_confirmation: Option<DeleteConfirmation>,
     #[serde(skip)]
@@ -268,6 +270,7 @@ pub(super) fn register(app: &mut App) {
         .add_systems(
             Update,
             (
+                sync_thumbnail.before(drive),
                 fit_image,
                 super::last_game::drive.before(drive),
                 description_text.before(drive),
@@ -277,6 +280,14 @@ pub(super) fn register(app: &mut App) {
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(OnExit(AppState::Menu), cleanup);
+}
+
+fn sync_thumbnail(capture: Option<Res<super::GameplayThumbnail>>, mut menu: ResMut<MenuState>) {
+    let current = capture.and_then(|capture| capture.0.clone());
+    if menu.gameplay_thumbnail != current {
+        menu.gameplay_thumbnail = current;
+        menu.dirty = true;
+    }
 }
 
 /// Session reset the New Game entry performs before its movie or world entry.
@@ -1600,6 +1611,7 @@ mod tests {
             slots: vec![super::super::SaveSlot {
                 slot: 19,
                 revision: "rev-19".into(),
+                thumbnail: None,
                 description: "123456789012345678901234567890123456789012345".into(),
             }],
             ..default()
@@ -1634,6 +1646,7 @@ mod tests {
                     slot,
                     description: format!("S{slot}"),
                     revision: format!("r{slot}"),
+                    thumbnail: None,
                 })
                 .collect(),
             ..default()

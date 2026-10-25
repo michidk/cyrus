@@ -13,6 +13,7 @@ use std::{
 
 const MAGIC: &[u8] = b"CYRUS-SLOT\n";
 const HEADER_LIMIT: usize = 4096;
+const THUMBNAIL_LIMIT: usize = 256 * 192 * 4 + 4096;
 static NEXT_REVISION: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Resource)]
@@ -34,6 +35,7 @@ pub(crate) struct SlotMetadata {
     pub description: String,
     pub modified_ms: u64,
     pub revision: String,
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -43,6 +45,8 @@ struct Header {
     slot: u16,
     description: String,
     revision: String,
+    #[serde(default)]
+    thumbnail_bytes: u32,
     document_bytes: u64,
 }
 
@@ -50,6 +54,7 @@ pub(super) struct SavePlan {
     pub slot: u16,
     pub description: String,
     revision: Option<String>,
+    pub thumbnail: Option<Vec<u8>>,
 }
 
 fn description(value: &str) -> Result<()> {
@@ -109,12 +114,24 @@ impl SlotStore {
                 "invalid slot version/identity/revision"
             );
             description(&header.description)?;
+            ensure!(
+                header.thumbnail_bytes as usize <= THUMBNAIL_LIMIT,
+                "slot thumbnail exceeds its format limit"
+            );
+            let thumbnail = if header.thumbnail_bytes == 0 {
+                None
+            } else {
+                let mut thumbnail = vec![0; header.thumbnail_bytes as usize];
+                file.read_exact(&mut thumbnail)?;
+                Some(thumbnail)
+            };
             let metadata = file.metadata()?;
             ensure!(
                 header.document_bytes > 0
                     && metadata.len()
                         == ((MAGIC.len() + 4 + size) as u64)
-                            .checked_add(header.document_bytes)
+                            .checked_add(u64::from(header.thumbnail_bytes))
+                            .and_then(|size| size.checked_add(header.document_bytes))
                             .context("slot document length overflow")?,
                 "slot document length differs from its header"
             );
@@ -127,6 +144,7 @@ impl SlotStore {
                     description: header.description,
                     modified_ms,
                     revision: header.revision,
+                    thumbnail,
                 },
                 header.document_bytes,
             )))
@@ -168,6 +186,7 @@ impl SlotStore {
                     slot,
                     description: description.into(),
                     revision: self.open(slot)?.map(|(_, metadata, _)| metadata.revision),
+                    thumbnail: None,
                 })
             }
             SlotOperation::Create { description: value } => {
@@ -183,6 +202,7 @@ impl SlotStore {
                     slot,
                     description: value,
                     revision: None,
+                    thumbnail: None,
                 })
             }
             SlotOperation::Overwrite {
@@ -200,6 +220,7 @@ impl SlotStore {
                     slot,
                     description: value,
                     revision: Some(revision),
+                    thumbnail: None,
                 })
             }
             _ => anyhow::bail!("slot operation does not prepare a save"),
@@ -227,11 +248,17 @@ impl SlotStore {
                 std::process::id(),
                 NEXT_REVISION.fetch_add(1, Ordering::Relaxed)
             );
+            let thumbnail = plan.thumbnail.unwrap_or_default();
+            ensure!(
+                thumbnail.len() <= THUMBNAIL_LIMIT,
+                "slot thumbnail exceeds its format limit"
+            );
             let header = serde_json::to_vec(&Header {
                 version: 1,
                 slot: plan.slot,
                 description: plan.description,
                 revision,
+                thumbnail_bytes: thumbnail.len() as u32,
                 document_bytes: document.len() as u64,
             })?;
             ensure!(
@@ -242,6 +269,7 @@ impl SlotStore {
             bytes.extend_from_slice(MAGIC);
             bytes.extend_from_slice(&(header.len() as u32).to_le_bytes());
             bytes.extend_from_slice(&header);
+            bytes.extend_from_slice(&thumbnail);
             bytes.extend_from_slice(document);
             cyrus_config::write(&path, &bytes)?;
             self.metadata(plan.slot, None)
@@ -322,6 +350,28 @@ mod tests {
     }
 
     #[test]
+    fn thumbnail_survives_reopen_without_becoming_part_of_the_session_document() {
+        let store = Store::new();
+        let mut plan = store
+            .0
+            .plan(SlotOperation::Create {
+                description: "Harbour".into(),
+            })
+            .unwrap();
+        let thumbnail: Vec<u8> = (0..8192).map(|index| (index % 251) as u8).collect();
+        plan.thumbnail = Some(thumbnail.clone());
+        let stored = store.0.publish(plan, b"opaque session").unwrap();
+        let reopened = store.reopen();
+        assert_eq!(
+            reopened.list().unwrap()[0].thumbnail,
+            Some(thumbnail.clone())
+        );
+        let (document, metadata) = reopened.read(stored.slot, Some(&stored.revision)).unwrap();
+        assert_eq!(document, b"opaque session");
+        assert_eq!(metadata.thumbnail, Some(thumbnail));
+    }
+
+    #[test]
     fn first_free_slot_and_stale_overwrite_keep_accepted_document() {
         let store = Store::new();
         let first = store.create("Mixed case\u{b}description\r", b"first");
@@ -378,6 +428,7 @@ mod tests {
                     slot: 0,
                     description: "Quick Save Game".into(),
                     revision: None,
+                    thumbnail: None,
                 },
                 b"quick",
             )

@@ -40,7 +40,7 @@ save selection before capture and a load selection before document decoding.
 Save preparation reads metadata without writing; publication rejects a changed
 planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists the
 first nine saves and restores the selected revision. The first Save page also uses this host for description editing and create/overwrite.
-Additional list pages and thumbnails remain unavailable. Delete on an existing Load row asks
+Slot metadata carries the optional gameplay thumbnail bytes (`null` when none was captured). Delete on an existing Load row asks
 for confirmation, removes the selected revision and refreshes the list.
 Run `testSessionStorage()` and `testSessionSlots()` from
 `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify

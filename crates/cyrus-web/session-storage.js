@@ -77,6 +77,8 @@ export async function operateSlots(name, encodedRequest, document) {
       && value.description.length <= 64 && !/[^\x0b\x0d\x20-\x7e]/.test(value.description)
       && Number.isSafeInteger(value.modified_ms) && value.modified_ms >= 0
       && typeof value.revision === 'string' && value.revision.length > 0, 'invalid slot metadata');
+    if (value.thumbnail !== null && value.thumbnail !== undefined) check(Array.isArray(value.thumbnail) && value.thumbnail.length > 0, 'invalid slot thumbnail');
+    if (value.thumbnail === undefined) value.thumbnail = null;
     return value;
   };
   const db = await open(name);
@@ -99,7 +101,7 @@ export async function operateSlots(name, encodedRequest, document) {
       };
       const publish = number => {
         if (prepare) { result = { slot: { slot: number, description: effectiveDescription } }; return; }
-        const metadata = { slot: number, description: effectiveDescription, modified_ms: Date.now(), revision: crypto.randomUUID() };
+        const metadata = { slot: number, description: effectiveDescription, modified_ms: Date.now(), revision: crypto.randomUUID(), thumbnail: request.thumbnail ?? null };
         store.put(document, payloadKey(number));
         store.put(metadata, metadataKey(number));
         result = { stored: true, slot: metadata };

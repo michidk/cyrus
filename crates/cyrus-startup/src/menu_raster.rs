@@ -263,6 +263,46 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                 )?;
             }
         }
+        let selected_thumbnail = if matches!(*page_id, 1 | 2) && *page_id == state.page {
+            state.selected.and_then(|index| {
+                if state
+                    .entries
+                    .get(index)
+                    .is_some_and(|entry| entry.action == 101)
+                {
+                    state.gameplay_thumbnail.as_ref()
+                } else {
+                    state
+                        .slot_rows
+                        .get(&index)
+                        .and_then(|row| state.slots.get(*row))
+                        .and_then(|slot| slot.thumbnail.as_ref())
+                }
+            })
+        } else if *page_id == 0 {
+            state.gameplay_thumbnail.as_ref()
+        } else {
+            None
+        };
+        if let Some(thumbnail) = selected_thumbnail
+            && let Ok(decoded) = image::load_from_memory(thumbnail)
+        {
+            let rgba = decoded.to_rgba8();
+            if rgba.width() == 256
+                && rgba.height() == 192
+                && let Some(surface) = page.surfaces.get(1)
+            {
+                picture(
+                    &mut surfaces[*surface],
+                    &MenuPicture {
+                        width: 256,
+                        height: 192,
+                        rgba: rgba.into_raw(),
+                    },
+                    [0, 33],
+                );
+            }
+        }
         if *page_id == 3
             && let Some(index) = state.selections.get(page_id).copied().flatten()
         {
