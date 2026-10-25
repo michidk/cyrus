@@ -4974,7 +4974,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [x, y, z, spread, descriptor, speed] = arguments else {
                 anyhow::bail!("AddFlatEffect requires six arguments")
             };
-            anyhow::ensure!(spread.integer()? == 0, "AddFlatEffect: nonzero spread unsupported");
+            anyhow::ensure!(
+                spread.integer()? == 0,
+                "AddFlatEffect: nonzero spread unsupported"
+            );
             self.registry.spawn_environment_effect_with_speed(
                 descriptor.integer()? as u32,
                 [x.integer()?, y.integer()?, z.integer()?],
