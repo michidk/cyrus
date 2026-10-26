@@ -109,6 +109,10 @@ class WorldSweepTests(unittest.TestCase):
         result, output = self.run_sweep([3, 4], script_states=iter(["Loading", "Loaded"]))
         self.assertEqual(result, 0, output)
 
+    def test_direct_scene_state_remains_compatible(self):
+        result, output = self.run_sweep([3, 4])
+        self.assertEqual(result, 0, output)
+
     def test_running_script_loop_passes(self):
         result, output = self.run_sweep([3, 4])
         self.assertEqual(result, 0, output)

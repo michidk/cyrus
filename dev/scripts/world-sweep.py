@@ -111,8 +111,22 @@ def main():
 
     bad = 0
     for world in args.worlds:
-        call({"type": "load_scene", "name": world})
-        time.sleep(8)
+        # A runtime started directly in this world is already rendered and
+        # prepared; reloading the same large scene can reset the control loop.
+        try:
+            initial = call({"type": "state"})
+            initial_scripts = initial.get("scripts") or {}
+            already_ready = (
+                initial.get("state") == "InGame"
+                and initial.get("scene_ready")
+                and initial.get("scene") == world
+                and initial_scripts.get("state", "Loaded") == "Loaded"
+            )
+        except (OSError, RuntimeError, KeyError):
+            already_ready = False
+        if not already_ready:
+            call({"type": "load_scene", "name": world})
+            time.sleep(8)
         if not wait_ready(world):
             print(f"{world}: not ready after {args.ready_timeout} s")
             bad += 1
