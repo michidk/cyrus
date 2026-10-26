@@ -183,7 +183,11 @@ pub(crate) fn step(
     mut ticks: MessageReader<GroundedTick>,
     simulation: (ResMut<PlayerRuntime>, Option<ResMut<Messages<SoundCue>>>),
     mut actors: Option<ResMut<ScriptActors>>,
-    entry: (Res<State<crate::AppState>>, Res<MarkerEntry>),
+    entry: (
+        Res<State<crate::AppState>>,
+        Res<MarkerEntry>,
+        Option<Res<crate::PausedGameplay>>,
+    ),
     assets: RuntimeAssets,
     mut players: Query<(Entity, Option<&mut PlayerPose>, &mut Transform), With<Player>>,
 ) {
@@ -196,7 +200,7 @@ pub(crate) fn step(
         ticks.clear();
         return;
     }
-    let (state, marker) = entry;
+    let (state, marker, paused) = entry;
     let Ok((entity, pose, mut transform)) = players.single_mut() else {
         *runtime = PlayerRuntime::default();
         ticks.clear();
@@ -232,7 +236,9 @@ pub(crate) fn step(
         marker: *marker,
         generation: world.generation(),
     };
-    if state.get() != &crate::AppState::InGame || runtime.source.as_ref() != Some(&source) {
+    // A book that pauses the world keeps its player bound so a save made there can capture it.
+    let left_world = state.get() != &crate::AppState::InGame && paused.is_none();
+    if left_world || runtime.source.as_ref() != Some(&source) {
         *runtime = PlayerRuntime::default();
         runtime.entry_pending = true;
         commands
