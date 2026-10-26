@@ -107,6 +107,8 @@ pub(crate) fn prepare_menu(
     let palette_bytes = read("fxart/REDGUARD.COL")?;
     let normal_bytes = read("fonts/FONTNORM.FNT")?;
     let selected_bytes = read("fonts/FONTSEL.FNT")?;
+    let small_normal_bytes = read("fonts/FONTNORS.FNT")?;
+    let small_selected_bytes = read("fonts/FONTSELS.FNT")?;
     let widget_bytes = [
         read("system/MM_CHECK.GXA")?,
         read("system/MM_SLIDE.GXA")?,
@@ -176,8 +178,12 @@ pub(crate) fn prepare_menu(
         &system_bytes,
         &archive_bytes,
         &palette_bytes,
-        &normal_bytes,
-        &selected_bytes,
+        (
+            &normal_bytes,
+            &selected_bytes,
+            &small_normal_bytes,
+            &small_selected_bytes,
+        ),
         &widget_bytes,
         &banks,
     )
@@ -318,7 +324,12 @@ pub(crate) fn prepare_menu(
             .collect::<anyhow::Result<_>>()?,
         textures,
         palette: palette.colors.to_vec(),
-        fonts: [font(&normal_bytes)?, font(&selected_bytes)?],
+        fonts: [
+            font(&normal_bytes)?,
+            font(&selected_bytes)?,
+            font(&small_normal_bytes)?,
+            font(&small_selected_bytes)?,
+        ],
         confirmation,
         checks: pictures(&widget_bytes[0])?,
         sliders: pictures(&widget_bytes[1])?,

@@ -164,6 +164,9 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
             } else {
                 entry.item.clone()
             };
+            if *page_id == 1 && item.action == 101 && state.list_page == 0 {
+                item.text = "<NEW SAVE GAME>".into();
+            }
             if matches!(*page_id, 1 | 2) && matches!(item.action, 102 | 202) {
                 let row = page.entries[..index]
                     .iter()
@@ -195,7 +198,9 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
             let selected = state.selections.get(page_id).copied().flatten() == Some(index)
                 && item.eligible()
                 && !state.main_entry_disabled(*page_id, index);
-            let font = &book.fonts[usize::from(selected)];
+            // The original draws the Save and Load list rows with the small font pair.
+            let small = matches!(item.action, 101 | 102 | 202);
+            let font = &book.fonts[usize::from(selected) + 2 * usize::from(small)];
             let surface = &mut surfaces[entry.texture];
             let style = if selected {
                 0

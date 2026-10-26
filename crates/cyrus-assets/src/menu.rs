@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Menu cache revision including installed mini-confirmation artwork and font styles.
-pub const MENU_VERSION: u32 = 16;
+pub const MENU_VERSION: u32 = 17;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
@@ -20,7 +20,8 @@ pub struct MenuAsset {
     pub models: Vec<MenuModel>,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
-    pub fonts: [cyrus_text::Font; 2],
+    /// Normal, selected, small normal and small selected; the small pair draws the Save/Load list rows.
+    pub fonts: [cyrus_text::Font; 4],
     pub confirmation: ConfirmationArtwork,
     pub checks: Vec<MenuPicture>,
     pub sliders: Vec<MenuPicture>,

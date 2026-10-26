@@ -68,7 +68,7 @@ override is active; Quit from the startup book does neither. Direct-scene hosts 
 The shared `LastGameConfirmation` core applies the published Yes/No input ordering,
 context-three entry delay and release-before-return rules. Its CPU painter restores
 a supplied canonical capture for each redraw and uses installed MINIMENU artwork,
-REDSEL, and SYSTEM.INI colour/alpha styles. Menu cache schema 16 includes those
+REDSEL, and SYSTEM.INI colour/alpha styles. Menu cache schema 17 includes those
 assets and rejects older exports. Available-save death entry connects this core
 to window capture and host-owned saved-game requests.
 Its portable `cache/menu/book.menu` retains all authored model frames and topology,
