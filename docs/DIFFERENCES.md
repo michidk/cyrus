@@ -50,9 +50,9 @@ faster); the original's pace there is not a target.
 ## Rope attachment shortcuts
 
 **Verified:** the attach test, the controls, the swing and the release follow preservation's rope sections.
-**Inferred or simplified:** the climb helpers do not read the animation record's progress bytes, and the
-swing sound (owned by the first attached actor; not heard in a running world) starts at channel index 6 as
-preservation documents. The hand-height link choice clamps against the floor probe as decoded; **Inferred:** the terrain sample
+**Inferred or simplified:** the climb helpers do not read the animation record's progress bytes. The
+implementation emits the swing sound owned by the first attached actor at channel index 6, as
+preservation documents; native/browser audibility has not been compared. The hand-height link choice clamps against the floor probe as decoded; **Inferred:** the terrain sample
 truncates like the queued clearance's, and the clamp has no live comparison with the original (the shipped
 rope's room was not reached in the original). A host without collision data skips the clamp.
 A hit on the hanging selected player lets go through
