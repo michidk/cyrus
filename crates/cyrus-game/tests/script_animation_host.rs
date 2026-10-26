@@ -3234,6 +3234,33 @@ fn new_game_empties_the_power_up_slots() {
 }
 
 #[test]
+fn new_game_deletes_the_logbook_text_and_keeps_the_duplicate_tag_history() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: Some(r#"["Earlier session."]"#.into()),
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&hud_asset(), &preferences);
+    let tag = i32::from_le_bytes(*b"TEST");
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    assert_eq!(hud.entries().unwrap().len(), 2);
+    hud.begin_new_game();
+    assert!(hud.entries().unwrap().is_empty());
+    assert_eq!(
+        writes.lock().unwrap().last().map(String::as_str),
+        Some("[]")
+    );
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    assert!(
+        hud.entries().unwrap().is_empty(),
+        "a tag logged before New Game stays suppressed"
+    );
+}
+
+#[test]
 fn inventory_startup_reports_recursive_definition_errors_without_partial_inventory() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = inventory_fixture(&[(1, 0), (2, 0)]);

@@ -120,6 +120,25 @@ impl Journal {
         self.labels.get(label).map(String::as_str)
     }
 
+    /// New Game's session initializer deletes the logbook file, so accepted text is emptied and the
+    /// store rewritten. A failed write leaves the journal in the retained-error state. The duplicate
+    /// tag history is untouched: nothing in the initializer clears it.
+    pub(super) fn begin_new_game(&mut self) {
+        let cleared = self
+            .store
+            .as_ref()
+            .context("local logbook store unavailable")
+            .and_then(|store| {
+                store
+                    .save(PreferenceKey::Logbook, "[]")
+                    .context("New Game logbook clear")
+            });
+        self.entries = match cleared {
+            Ok(()) => Ok(Vec::new()),
+            Err(error) => Err(format!("local logbook: {error:#}")),
+        };
+    }
+
     /// Apply AddLog's ordered tag retention and installed-text lookup.
     /// Failed writes preserve accepted entries and notification, but retain the tag.
     pub fn add_log(&mut self, tag: i32) -> Result<()> {

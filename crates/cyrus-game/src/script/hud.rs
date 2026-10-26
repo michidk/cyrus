@@ -231,8 +231,9 @@ impl ScriptHud {
     }
 
     /// New Game reopens the item system, so the inventory returns to the installed start list and
-    /// selection, and the session initializer empties both power-up slots and restarts their
-    /// alternation at slot one. The compass flag and journal are outside that initializer.
+    /// selection, the session initializer empties both power-up slots and restarts their
+    /// alternation at slot one, and it deletes the logbook file. The compass flag is outside that
+    /// initializer.
     pub fn begin_new_game(&self) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
         if let Some(start) = state.start_inventory.clone() {
@@ -240,6 +241,9 @@ impl ScriptHud {
         }
         state.powerups = [None, None];
         state.next_slot = 0;
+        if let Some(journal) = state.journal.as_mut() {
+            journal.begin_new_game();
+        }
     }
 
     /// Installed script HUD inputs have been supplied by the host.
