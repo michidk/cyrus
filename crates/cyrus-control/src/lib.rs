@@ -84,6 +84,16 @@ pub enum Command {
         y: f32,
         z: f32,
     },
+    /// Place the selected player at a map position (map units, as `scripts` reports them) and
+    /// heading, clearing ledge, fall and queued-motion state; unlike `teleport`, which moves the
+    /// presentation only, this changes the logical player.
+    PlacePlayer {
+        x: i32,
+        y: i32,
+        z: i32,
+        #[serde(default)]
+        heading: u16,
+    },
     /// `key` is a Bevy `KeyCode` name, e.g. `KeyW`, `ArrowUp`, `Space`.
     Input {
         key: String,

@@ -36,6 +36,33 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Inspection placement: move the selected player to the Q8 `position` facing `yaw` and
+    /// clear its ledge, fall, slide and queued-motion state, as the control port's `place_player`
+    /// needs to start an acceptance run at a chosen spot. The next update settles ground support.
+    pub fn place_selected_player(&mut self, position: [i32; 3], yaw: u16) -> Result<()> {
+        let player = self
+            .selected_player()
+            .context("place player: selected player unavailable")?;
+        let index = self.resolve(player)?;
+        self.spatial
+            .as_mut()
+            .context("place player: spatial state not prepared")?
+            .actor_mut(index)?
+            .relocate(position, yaw);
+        if let Some(control) = self.actors[index].control.as_mut() {
+            control.living_state = 0;
+            control.falling_state = 0;
+            control.queued_motion = 0;
+            control.sliding_state = 0;
+        }
+        self.actors[index].model.ledge_support = None;
+        self.refresh_transform(player)?;
+        if let Some(camera) = self.camera.as_mut() {
+            camera.mark_cut();
+        }
+        Ok(())
+    }
+
     /// Evaluate once after this frame's actor/presentation work. Pending world
     /// transitions bypass timer updates; falling timeout precedes inhibited death,
     /// which precedes the win request. `ticks` is the shared nominal-tick increment.

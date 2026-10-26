@@ -33223,3 +33223,16 @@ fn using_the_island_map_item_raises_the_island_map_request_once() {
     assert!(world.globals_mut().take_island_map_request());
     assert!(!world.globals_mut().take_island_map_request());
 }
+
+#[test]
+fn place_selected_player_moves_the_logical_player_and_clears_ledge_and_fall_state() {
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    let player = world.selected_player().unwrap();
+    world
+        .place_selected_player([256 * 1000, -256 * 50, 256 * 2000], 513)
+        .unwrap();
+    let spatial = world.spatial(player).unwrap();
+    assert_eq!(spatial.local.position, [256 * 1000, -256 * 50, 256 * 2000]);
+    assert_eq!(spatial.local.angles[1], 513);
+    assert_eq!(spatial.previous_local_position, spatial.local.position);
+}

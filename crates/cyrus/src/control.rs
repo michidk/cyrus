@@ -292,6 +292,18 @@ fn handle(
                 }
                 Err(_) => Err("no player".into()),
             },
+            Command::PlacePlayer { x, y, z, heading } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.place_selected_player(
+                    [x, y, z].map(|value| value.wrapping_mul(256)),
+                    heading,
+                )?;
+                Ok(json!({"position": [x, y, z], "heading": heading & 2047}))
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::Flycam {
                 enabled,
                 position,
