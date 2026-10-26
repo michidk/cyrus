@@ -59,10 +59,15 @@ def main():
         while time.time() < deadline:
             try:
                 state = call({"type": "state"})
+                scripts = state.get("scripts") or {}
                 if (
                     state["state"] == "InGame"
                     and state.get("scene_ready")
                     and state["scene"] == world
+                    # Scene readiness can precede script-world preparation on
+                    # large replacements.  When the runtime exposes that
+                    # state, do not start the soak until it is Loaded.
+                    and scripts.get("state", "Loaded") == "Loaded"
                 ):
                     return True
             except (OSError, RuntimeError, KeyError):
