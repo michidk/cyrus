@@ -448,6 +448,10 @@ impl GameplayGlobals {
             .context("player controller: explicit initialization unavailable")?;
         state.action_ticks = state.action_ticks.saturating_sub(nominal_ticks);
         state.secondary_ticks = state.secondary_ticks.saturating_sub(nominal_ticks);
+        // The ledge action-inhibition countdown is one of these unconditional countdowns.
+        if let Some(inhibition) = self.selected_action_inhibition.as_mut() {
+            *inhibition = inhibition.saturating_sub(u8::try_from(nominal_ticks).unwrap_or(u8::MAX));
+        }
         self.player_hit_inhibited()
             .context("player controller: hit inhibition unavailable")
     }
@@ -1044,7 +1048,9 @@ mod idle_tests {
         state.conditional_ticks = 10;
         state.action_ticks = 7;
         state.secondary_ticks = u32::MAX;
+        globals.selected_action_inhibition = Some(16);
         globals.prepare_player_controller(4, 1, 0, 0).unwrap();
+        assert_eq!(globals.selected_action_inhibition, Some(12));
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(
             (
@@ -1084,6 +1090,7 @@ mod idle_tests {
             ),
             (0, 0, 0)
         );
+        assert_eq!(globals.selected_action_inhibition, Some(0));
     }
 
     #[test]
