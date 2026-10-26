@@ -3209,6 +3209,31 @@ fn new_game_restores_the_installed_start_inventory() {
 }
 
 #[test]
+fn new_game_empties_the_power_up_slots() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let asset = inventory_fixture(&[(0, 1)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
+    assert_eq!(
+        hud.inspect()["powerups"],
+        serde_json::json!([[0, 0], [1, 1]])
+    );
+    hud.begin_new_game();
+    assert_eq!(hud.inspect()["powerups"], serde_json::json!([null, null]));
+    // Alternation restarts at slot one: with both slots filled again, the next new frame
+    // replaces slot one.
+    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
+    assert_eq!(
+        hud.inspect()["powerups"],
+        serde_json::json!([[0, 2], [1, 1]])
+    );
+}
+
+#[test]
 fn inventory_startup_reports_recursive_definition_errors_without_partial_inventory() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = inventory_fixture(&[(1, 0), (2, 0)]);
