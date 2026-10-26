@@ -60,7 +60,15 @@ fn spawn(mut commands: Commands, players: Query<(), With<Player>>) {
     }
 }
 
-fn despawn(mut commands: Commands, players: Query<Entity, With<Player>>) {
+fn despawn(
+    mut commands: Commands,
+    players: Query<Entity, With<Player>>,
+    pause: Option<Res<crate::PauseBookEntry>>,
+) {
+    // A book opened from gameplay keeps the paused world, and a save made there captures its player.
+    if pause.is_some() {
+        return;
+    }
     for player in &players {
         commands.entity(player).despawn();
     }
@@ -99,5 +107,17 @@ mod entry_tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn paused_book_keeps_the_live_player_for_session_capture() {
+        let mut app = App::new();
+        let player = app.world_mut().spawn((Player, Transform::default())).id();
+        app.insert_resource(crate::PauseBookEntry { page: 1 })
+            .add_systems(Update, despawn);
+
+        app.update();
+
+        assert!(app.world().get_entity(player).is_ok());
     }
 }
