@@ -156,6 +156,14 @@ def main():
         identity_changed = identity0 != identity1 or None in identity0
         loop_stalled = loop0 is None or loop1 is None or loop1 == loop0
         clock_stalled = ticked < min(args.seconds, 30) / 10
+        # Actor pagination can monopolize the control path in large worlds. A
+        # zero delta sampled immediately after that pass is provisional: give
+        # the ordinary loop one grace interval before calling it stalled.
+        if loop_stalled and not identity_changed and not clock_stalled:
+            time.sleep(10)
+            identity2, loop2 = script_loop_sample()
+            identity_changed = identity_changed or identity2 != identity0 or None in identity2
+            loop_stalled = loop2 is None or loop2 == loop1
         stalled = clock_stalled or loop_stalled or identity_changed
         if identity_changed:
             print(f"{world}: script world identity changed or unavailable during soak")
