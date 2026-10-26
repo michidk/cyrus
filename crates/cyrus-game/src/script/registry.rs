@@ -1900,6 +1900,20 @@ impl ScriptWorld {
 
     /// Current selected-player item gates from the logical actor, never presentation defaults.
     /// Player switching and prompt lineup scheduling remain separate unsupported services.
+    /// What the island map screen reads when it opens.
+    pub fn island_map_world(&self) -> crate::island_map::IslandMapWorld {
+        let player = self.selected_player_index();
+        crate::island_map::IslandMapWorld {
+            world: self.world,
+            player: player
+                .and_then(|index| self.id(index).ok())
+                .and_then(|id| self.spatial(id).ok())
+                .map(|spatial| spatial.local.position),
+            lockout: self.globals.lockout(),
+            player_type: player.map(|index| self.actors[index].attributes[105]),
+        }
+    }
+
     pub fn player_activation_state(&self) -> Result<(ScriptActorId, super::ActivationActor)> {
         let index = self
             .selected_player_index()

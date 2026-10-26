@@ -85,6 +85,8 @@ pub(crate) fn prepare(
     // The inventory screen loads these names directly.
     let border_bytes = read("system/INVBORDR.GXA")?;
     let arrow_bytes = read("system/INVARROW.GXA")?;
+    let map_bytes = read("system/MAPMAP.GXA")?;
+    let cross_bytes = read("system/CROSS.GXA")?;
     let font_bytes = read("fonts/REDSEL.FNT")?;
     let rtx_path = crate::preparation::path(
         source,
@@ -100,9 +102,10 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        13u32,
+        14u32,
         (&system, &items, &keys, &worlds),
         (&selected_bytes, &border_bytes, &arrow_bytes),
+        (&map_bytes, &cross_bytes),
         (
             &candle_bytes,
             &compass_bytes,
@@ -220,6 +223,12 @@ pub(crate) fn prepare(
     anyhow::ensure!(
         !border.frames.is_empty() && arrows.frames.len() >= 2,
         "hud: system/INVBORDR.GXA needs one frame and system/INVARROW.GXA two"
+    );
+    let map = parse_gxa_file(&map_bytes).context("hud: system/MAPMAP.GXA")?;
+    let cross = parse_gxa_file(&cross_bytes).context("hud: system/CROSS.GXA")?;
+    anyhow::ensure!(
+        !map.frames.is_empty() && !cross.frames.is_empty(),
+        "hud: system/MAPMAP.GXA and system/CROSS.GXA need at least one frame"
     );
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
@@ -347,6 +356,10 @@ pub(crate) fn prepare(
             size(&arrows.frames[0]),
             size(&arrows.frames[1]),
         ],
+        island_map: crate::hud::IslandMapArtwork {
+            map: size(&map.frames[0]),
+            cross: cross.frames.iter().map(size).collect(),
+        },
         labels,
     };
 
@@ -366,6 +379,8 @@ pub(crate) fn prepare(
         ("selected", selected_atlas),
         ("invbordr", border),
         ("invarrow", arrows),
+        ("mapmap", map),
+        ("cross", cross),
     ] {
         for (index, frame) in atlas.frames.into_iter().enumerate() {
             save(

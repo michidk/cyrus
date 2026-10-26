@@ -91,6 +91,7 @@ struct Inspection<'w, 's> {
     script_hud: Option<Res<'w, cyrus_game::script::ScriptHud>>,
     logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
     inventory_screen: Option<Res<'w, cyrus_game::inventory_screen::InventoryScreen>>,
+    island_map: Option<Res<'w, cyrus_game::island_map::IslandMapScreen>>,
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
@@ -139,6 +140,7 @@ fn handle(
         script_hud,
         logbook,
         inventory_screen,
+        island_map,
         scripts,
         mut script_actors,
         mut random,
@@ -268,7 +270,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {

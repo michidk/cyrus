@@ -405,6 +405,11 @@ impl ScriptHud {
             .is_some_and(|items| items.begin_use_definition(id))
     }
 
+    /// Whether the player owns at least one unit of item `id`.
+    pub fn item_owned(&self, id: u16) -> bool {
+        self.item_count(id).is_ok_and(|count| count > 0)
+    }
+
     /// Item zero is the compass: using it flips the shared flag.
     pub(super) fn toggle_compass(&self) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

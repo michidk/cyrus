@@ -67,6 +67,16 @@ missing side's surface class from uninitialised stack memory, so its result is n
 missing side as neither class 2 nor class 4: a missing current surface clears the results, and a class 2
 current surface after a missing previous one runs the heading comparison.
 
+## Island map screen details not recovered
+
+**Verified:** the island map screen (map key or using item 83) follows preservation's
+[island map screen](https://github.com/michidk/redguard-preservation/blob/main/docs/config/item-ini.md): the
+gates, the marker position and scale per world, one pass over the cross frames at 100 ms and a key press to
+close. **Unknown:** the original also switches the music mode while the screen is up (the routines it calls were
+not decoded), accepts six game-controller button codes as keys (controller input is #71), and decodes both images
+with the palette read last; cyrus decodes each image with its own palette. cyrus keeps the simulation clock
+frozen for the screen's duration like the inventory screen does and does not switch the music mode.
+
 ## Natives no installed script calls
 
 **Verified:** the native catalogue has 367 entries; the installed scripts of all 27 maps call 151 of

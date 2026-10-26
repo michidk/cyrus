@@ -727,6 +727,7 @@ mod tests {
             used_text_alpha: [0; 2],
             torch_time: None,
             inventory_screen: Default::default(),
+            island_map: Default::default(),
         };
         let hud = crate::script::ScriptHud::default();
         hud.configure(&data, &crate::preferences::Preferences::default());

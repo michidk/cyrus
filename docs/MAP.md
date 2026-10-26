@@ -127,6 +127,7 @@ module where it is defined and regenerate.
 - `src/console/cheats.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/inventory_screen.rs` — Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
+- `src/island_map.rs` — The island map screen: the marker position rules and the screen lifecycle.
 - `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.

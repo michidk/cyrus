@@ -65,6 +65,17 @@ pub struct HudAsset {
     /// Frame sizes of `SYSTEM\INVBORDR.GXA` frame 0 and `SYSTEM\INVARROW.GXA` frames 0 and 1,
     /// exported as `hud/invbordr-00.png` and `hud/invarrow-NN.png`.
     pub inventory_screen: [[u16; 2]; 3],
+    /// Frame sizes of the island map screen's images, exported as `hud/mapmap-00.png` and
+    /// `hud/cross-NN.png`.
+    #[serde(default)]
+    pub island_map: IslandMapArtwork,
+}
+
+/// Frame sizes of `SYSTEM\MAPMAP.GXA` frame 0 and of every `SYSTEM\CROSS.GXA` frame.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct IslandMapArtwork {
+    pub map: [u16; 2],
+    pub cross: Vec<[u16; 2]>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

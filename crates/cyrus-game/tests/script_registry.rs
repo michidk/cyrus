@@ -4178,6 +4178,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13590,6 +13591,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13699,6 +13701,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13807,6 +13810,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13915,6 +13919,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -30293,6 +30298,7 @@ fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     }
 }
 
@@ -33155,4 +33161,65 @@ fn action_statement_resets_preserve_high_words_through_snapshot_restore() {
             "duplicate SetAction and reset preserve timer"
         );
     }
+}
+
+#[test]
+fn using_the_island_map_item_raises_the_island_map_request_once() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "UseItem".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        let call = Operation::ObjectCall {
+            call: Call {
+                function_id: id,
+                function: "UseItem".into(),
+                target: Object::Player,
+                kind: CallKind::Function,
+                arguments: vec![Value::Integer { value: 83 }],
+            },
+        };
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps =
+            [call, Operation::End { target: 0 }]
+                .into_iter()
+                .enumerate()
+                .map(|(index, operation)| {
+                    (
+                        index as u32,
+                        Step {
+                            next: index as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(0, 1), (83, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    let map = world.id(0).unwrap();
+    assert!(!world.globals_mut().take_island_map_request());
+    world
+        .advance(
+            map,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(world.globals_mut().take_island_map_request());
+    assert!(!world.globals_mut().take_island_map_request());
 }

@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
 const WEAPON_ITEM: u32 = 1;
 const TORCH_ITEM: u32 = 3;
-/// Item 83 requests the island map; presentation is host-owned and not yet wired.
+/// Item 83 requests the island map screen, which the host presents.
 const ISLAND_MAP_ITEM: u16 = 83;
 
 impl GameHost<'_, '_, '_, '_> {
@@ -15,8 +15,8 @@ impl GameHost<'_, '_, '_, '_> {
     /// compass toggles; a torch item lights the torch and is held, and any use while a torch burns
     /// puts it out; a general item starts its use script unless the item's instance limit is
     /// reached, then consumes its drop list and flags. A weapon item becomes the weapon attribute
-    /// and is drawn, and is consumed only when the draw began. The island-map item is explicitly
-    /// unsupported until a presentation host is available.
+    /// and is drawn, and is consumed only when the draw began. The island-map item also
+    /// raises the island map request before its use script runs.
     pub(super) fn use_item(&mut self, item: u16) -> Result<()> {
         let hud = self
             .inputs
@@ -105,10 +105,9 @@ impl GameHost<'_, '_, '_, '_> {
             }
             control.held_item = Some(item as u8);
         }
-        anyhow::ensure!(
-            item != ISLAND_MAP_ITEM,
-            "UseItem({item}): island-map presentation host unavailable"
-        );
+        if item == ISLAND_MAP_ITEM {
+            self.registry.globals.island_map_request = true;
+        }
         if let Some((name, limit)) = used.script
             && (limit < 1 || self.registry.running_shells(&name) < limit as usize)
         {

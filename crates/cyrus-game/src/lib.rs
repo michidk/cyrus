@@ -4,6 +4,7 @@ pub mod clock;
 pub mod console;
 pub mod fidelity;
 pub mod inventory_screen;
+pub mod island_map;
 pub mod logbook;
 pub mod player;
 pub mod preferences;
@@ -41,6 +42,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         logbook::register(app);
         inventory_screen::register(app);
+        island_map::register(app);
         app.init_resource::<preferences::Preferences>()
             .init_resource::<random::EngineRandom>()
             .init_resource::<cheats::Cheats>()

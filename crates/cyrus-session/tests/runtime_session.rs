@@ -193,6 +193,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         used_text_alpha: [0; 2],
         torch_time: None,
         inventory_screen: Default::default(),
+        island_map: Default::default(),
     }
 }
 

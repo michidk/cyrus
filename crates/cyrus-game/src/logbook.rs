@@ -175,6 +175,9 @@ pub struct LogbookScreen {
     /// clock suspension as the reader, so every `suspended()` caller covers both.
     #[serde(skip)]
     pub inventory_open: bool,
+    /// Set by the island map screen driver, which holds the same suspension.
+    #[serde(skip)]
+    pub map_open: bool,
     #[serde(skip)]
     checkpoint: Option<crate::clock::ClockCheckpoint>,
     #[serde(skip)]
@@ -187,7 +190,7 @@ pub struct LogbookScreen {
 impl LogbookScreen {
     /// Includes exit-key release, during which gameplay still must not consume input.
     pub fn suspended(&self) -> bool {
-        self.reading() || self.inventory_open
+        self.reading() || self.inventory_open || self.map_open
     }
     /// The reader alone, which hides the HUD; the inventory screen keeps the frozen frame visible.
     pub fn reading(&self) -> bool {

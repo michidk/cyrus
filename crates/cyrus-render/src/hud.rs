@@ -287,6 +287,13 @@ struct HudContent;
 #[derive(Component)]
 struct InventoryOverlay;
 
+/// The island map screen: the map image and the cross frame over a black screen.
+#[derive(Component)]
+struct IslandMapOverlay;
+
+#[derive(Component)]
+struct IslandMapStage;
+
 #[derive(Component)]
 struct HudViewport;
 
@@ -392,6 +399,7 @@ impl Plugin for HudPlugin {
             .init_asset_loader::<HudLoader>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(OnEnter(AppState::InGame), spawn_inventory.after(spawn))
+            .add_systems(OnEnter(AppState::InGame), spawn_island_map)
             .add_systems(
                 Update,
                 configure_scripts
@@ -411,7 +419,13 @@ impl Plugin for HudPlugin {
                     .after(update)
                     .run_if(in_state(AppState::InGame)),
             )
-            .add_systems(OnExit(AppState::InGame), despawn);
+            .add_systems(
+                Update,
+                island_map_draw
+                    .after(update)
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(OnExit(AppState::InGame), (despawn, despawn_island_map));
     }
 }
 
@@ -458,6 +472,100 @@ fn spawn_inventory(mut commands: Commands, viewports: Query<Entity, With<HudView
         // The backing quad spans (90, 49) to (550, 433).
         place([90, 49], [460, 384]),
     ));
+}
+
+fn spawn_island_map(mut commands: Commands) {
+    commands
+        .spawn((
+            IslandMapOverlay,
+            Visibility::Hidden,
+            GlobalZIndex(110),
+            BackgroundColor(Color::BLACK),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_child((
+            IslandMapStage,
+            // A 4:3 box as large as the window allows; children use its 640×480 units.
+            Node {
+                height: percent(100),
+                max_width: percent(100),
+                aspect_ratio: Some(640.0 / 480.0),
+                ..default()
+            },
+        ));
+}
+
+fn despawn_island_map(mut commands: Commands, overlays: Query<Entity, With<IslandMapOverlay>>) {
+    for overlay in &overlays {
+        commands.entity(overlay).despawn();
+    }
+}
+
+/// Draws the map image centred vertically and the current cross frame at the marker, rebuilding
+/// the two images only when the frame changes.
+#[allow(clippy::too_many_arguments)] // Bevy supplies each independent resource and query as a parameter.
+fn island_map_draw(
+    screen: Option<Res<cyrus_game::island_map::IslandMapScreen>>,
+    hud_handle: Option<Res<HudHandle>>,
+    huds: Res<Assets<HudAsset>>,
+    assets: Res<AssetServer>,
+    mut overlays: Query<&mut Visibility, With<IslandMapOverlay>>,
+    stages: Query<(Entity, Option<&Children>), With<IslandMapStage>>,
+    mut commands: Commands,
+    mut shown: Local<Option<usize>>,
+) {
+    use cyrus_game::island_map::Phase;
+    let (Some(screen), Some(handle), Ok(mut visibility), Ok((overlay, children))) =
+        (screen, hud_handle, overlays.single_mut(), stages.single())
+    else {
+        return;
+    };
+    if !screen.open() {
+        visibility.set_if_neq(Visibility::Hidden);
+        *shown = None;
+        return;
+    }
+    visibility.set_if_neq(Visibility::Inherited);
+    let Some(hud) = huds.get(&handle.0) else {
+        return;
+    };
+    let art = &hud.island_map;
+    // The cross animation ends on its last frame, which stays up while the screen waits.
+    let frame = match screen.phase {
+        Phase::Playing { frame } => frame,
+        _ => art.cross.len().saturating_sub(1),
+    };
+    if *shown == Some(frame) {
+        return;
+    }
+    *shown = Some(frame);
+    if let Some(children) = children {
+        for child in children.iter() {
+            commands.entity(child).despawn();
+        }
+    }
+    let Some(cross_size) = art.cross.get(frame).copied() else {
+        return;
+    };
+    commands.entity(overlay).with_children(|parent| {
+        let top = (480 - i32::from(art.map[1])) / 2;
+        parent.spawn((
+            ImageNode::new(assets.load("cache://hud/mapmap-00.png")),
+            place([0, top], art.map),
+            ZIndex(1),
+        ));
+        parent.spawn((
+            ImageNode::new(assets.load(format!("cache://hud/cross-{frame:02}.png"))),
+            place(screen.cross, cross_size),
+            ZIndex(2),
+        ));
+    });
 }
 
 fn inventory_draw(
@@ -1458,6 +1566,7 @@ mod tests {
             used_text_alpha: [128, 100],
             torch_time: None,
             inventory_screen: Default::default(),
+            island_map: Default::default(),
         }
     }
 

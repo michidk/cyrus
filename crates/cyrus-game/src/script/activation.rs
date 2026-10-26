@@ -228,6 +228,8 @@ pub struct GameplayGlobals {
     pub(super) item_viewer: ItemViewerRequest,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
+    /// Using item 83 asks the island map screen to open; transient like the host requests.
+    pub(super) island_map_request: bool,
 }
 
 /// Session-level requests raised by scripts. The original stores each in an engine global that
@@ -252,6 +254,11 @@ impl GameplayGlobals {
     /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
     pub fn player_swapped(&self) -> bool {
         self.player_swapped
+    }
+
+    /// Takes and clears the pending island map request.
+    pub fn take_island_map_request(&mut self) -> bool {
+        std::mem::take(&mut self.island_map_request)
     }
 
     /// Takes and clears the pending script requests.
@@ -1432,6 +1439,7 @@ impl GameplayGlobals {
             printed: Vec::new(),
             item_viewer: ItemViewerRequest::default(),
             host_requests: HostRequests::default(),
+            island_map_request: false,
         })
     }
 }
