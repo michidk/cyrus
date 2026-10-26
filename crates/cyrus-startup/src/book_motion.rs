@@ -49,6 +49,16 @@ impl BookMotion {
         motion
     }
 
+    /// A gameplay shortcut enters its page from the settled main-page camera.
+    pub fn settled(frame_counts: [usize; 5]) -> Self {
+        Self {
+            pose: BookPose::default(),
+            frame_counts,
+            turns: std::array::from_fn(|_| None),
+            camera: VecDeque::new(),
+        }
+    }
+
     pub fn opening(frame_counts: [usize; 5]) -> Self {
         let mut motion = Self {
             pose: BookPose {

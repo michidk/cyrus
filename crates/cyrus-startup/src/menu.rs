@@ -162,6 +162,12 @@ pub struct MenuState {
     held_seconds: f32,
     #[serde(skip)]
     pub(super) main_disabled: [bool; 2],
+    /// Page a gameplay shortcut opens directly; zero for the main page.
+    #[serde(skip)]
+    entry_page: u8,
+    /// Quit waits for its automatic-save preparation to finish.
+    #[serde(skip)]
+    quit_pending: bool,
 }
 
 impl MenuState {
@@ -299,6 +305,20 @@ fn sync_thumbnail(capture: Option<Res<super::GameplayThumbnail>>, mut menu: ResM
     }
 }
 
+// Only the browser host needs `commands`; the native book exits through its closing motion.
+#[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
+fn begin_quit(menu: &mut MenuState, commands: &mut Commands) {
+    menu.quit_pending = false;
+    // The browser host owns closing; the native book plays its closing motion first.
+    #[cfg(target_arch = "wasm32")]
+    commands.write_message(super::QuitRequest);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        menu.motion.as_mut().unwrap().close();
+        menu.closing = true;
+    }
+}
+
 /// Session reset the New Game entry performs before its movie or world entry.
 fn reset_for_new_game(commands: &mut Commands) {
     commands.queue(|world: &mut World| {
@@ -380,6 +400,7 @@ fn setup(
         } else {
             MenuContext::Startup
         },
+        entry_page: pause.as_ref().map_or(0, |entry| entry.page),
         main_disabled: match (&death, &pause) {
             (Some(entry), _) => [entry.override_group != 0; 2],
             (None, Some(_)) => [false; 2],
@@ -518,15 +539,24 @@ pub(super) fn drive(
         let frames = std::array::from_fn(|i| book.models[i].frames.len());
         menu.motion = Some(match menu.context {
             MenuContext::Startup => BookMotion::opening(frames),
+            MenuContext::InGame if menu.entry_page != 0 => BookMotion::settled(frames),
             MenuContext::Death | MenuContext::InGame => BookMotion::death_entry(frames),
             MenuContext::LastGame => return,
         });
         menu.open(book, 0);
+        if menu.entry_page != 0 {
+            let entry_page = menu.entry_page;
+            menu.open(book, entry_page);
+            if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
+                menu.unavailable = Some(error);
+            }
+        }
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
     }
     if let Some(result) = save_load.take_result() {
         match result {
+            Ok(_) if menu.quit_pending => begin_quit(&mut menu, &mut commands),
             Ok(value) if value.get("slots").is_some() => {
                 match serde_json::from_value::<Vec<super::SaveSlot>>(value["slots"].clone()) {
                     Ok(slots) => {
@@ -545,7 +575,10 @@ pub(super) fn drive(
                 }
             }
             Ok(_) => {}
-            Err(error) => menu.unavailable = Some(error),
+            Err(error) => {
+                menu.quit_pending = false;
+                menu.unavailable = Some(error);
+            }
         }
         menu.dirty = true;
     }
@@ -744,19 +777,23 @@ pub(super) fn drive(
                     -1 if menu.context.is_from_world() && !menu.main_disabled[1] => {
                         next.set(AppState::InGame);
                     }
-                    -2 if menu.context.is_from_world() && !save_load.autosave_ready() => {
-                        menu.unavailable =
-                            Some("Quit automatic-save preparation is unavailable.".into());
-                    }
-                    -2 => {
-                        #[cfg(target_arch = "wasm32")]
-                        commands.write_message(super::QuitRequest);
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            menu.motion.as_mut().unwrap().close();
-                            menu.closing = true;
+                    -2 if menu.context.is_from_world() => {
+                        // Preservation engine/menu.md: Quit saves the live world, or removes
+                        // the automatic save once the death override is active.
+                        let request = if menu.main_disabled[0] {
+                            Some(super::SaveLoadRequest::DiscardAutoSave)
+                        } else {
+                            menu.gameplay_thumbnail
+                                .is_some()
+                                .then_some(super::SaveLoadRequest::AutoSave)
+                        };
+                        match request.map(|request| save_load.start(request)) {
+                            None => begin_quit(&mut menu, &mut commands),
+                            Some(Ok(())) => menu.quit_pending = true,
+                            Some(Err(error)) => menu.unavailable = Some(error),
                         }
                     }
+                    -2 => begin_quit(&mut menu, &mut commands),
                     1 | 2 => {
                         menu.open(book, entry.action as u8);
                         if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
@@ -1426,11 +1463,27 @@ mod tests {
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Enter);
         app.update();
-        assert_eq!(
-            app.world().resource::<MenuState>().unavailable.as_deref(),
-            Some("Quit automatic-save preparation is unavailable.")
-        );
+        // The death override removes the automatic save before Quit proceeds.
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::DiscardAutoSave)
+        ));
+        assert!(app.world().resource::<MenuState>().quit_pending);
         assert!(!app.world().resource::<MenuState>().closing);
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Err("disk full".into()));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        // The session adapter publishes the terminal result after the menu drive system.
+        app.update();
+        let menu = app.world().resource::<MenuState>();
+        assert_eq!(menu.unavailable.as_deref(), Some("disk full"));
+        assert!(!menu.quit_pending && !menu.closing);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();

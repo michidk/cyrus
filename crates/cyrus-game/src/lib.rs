@@ -37,10 +37,13 @@ pub struct PausedGameplay {
     pub active_cameras: Vec<Entity>,
 }
 
-/// Escape opened the book from live gameplay (ordinary in-game context, as opposed to death).
+/// The book opened from live gameplay (ordinary in-game context, as opposed to death).
 /// Retained until the book returns to gameplay.
 #[derive(Resource)]
-pub struct PauseBookEntry;
+pub struct PauseBookEntry {
+    /// Destination book page: 0 for Escape, 1 for the F2 Save and 2 for the F3 Load shortcut.
+    pub page: u8,
+}
 
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
@@ -86,8 +89,18 @@ fn request_pause_book(
         || logbook.is_some_and(|screen| screen.suspended())
         || console.is_some_and(|console| console.open || console.blocked)
         || matches!(*next, NextState::Pending(_));
-    if escape_opens_book(&keys, &mut armed, held_elsewhere) {
-        commands.insert_resource(PauseBookEntry);
+    // Escape outranks the shortcuts (preservation engine/menu.md). F4–F6 need pages the
+    // book cannot yet enter directly, so they stay unhandled.
+    let page = if escape_opens_book(&keys, &mut armed, held_elsewhere) {
+        Some(0)
+    } else {
+        [(KeyCode::F2, 1), (KeyCode::F3, 2)]
+            .into_iter()
+            .find(|(key, _)| !held_elsewhere && keys.just_pressed(*key))
+            .map(|(_, page)| page)
+    };
+    if let Some(page) = page {
+        commands.insert_resource(PauseBookEntry { page });
         next.set(AppState::Menu);
     }
 }

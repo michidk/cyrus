@@ -62,8 +62,9 @@ Startup entry uses preservation's context-one cover sweep and delayed opening cu
 Death context three uses its short entry path when the startup host has no retained
 last-save selection. It suspends ordinary actor updates, disables world cameras,
 and applies the selected actor override to Save/Continue availability. Returning
-clears hit inhibition and the terminal outcome. Quit automatic-save preparation
-remains unavailable; direct-scene hosts do not install this service.
+clears hit inhibition and the terminal outcome. Quit from a world context prepares
+reserved slot one (`Redguard AutoSave`) before closing, or removes it while the death
+override is active; Quit from the startup book does neither. Direct-scene hosts do not install this service.
 The shared `LastGameConfirmation` core applies the published Yes/No input ordering,
 context-three entry delay and release-before-return rules. Its CPU painter restores
 a supplied canonical capture for each redraw and uses installed MINIMENU artwork,

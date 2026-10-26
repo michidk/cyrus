@@ -488,7 +488,7 @@ that observation did not show (**Unknown**: it may have been the scripted duel).
 preservation: Escape in a world opens the book after its release and gives Save, Continue and Quit
 the paused world (**Verified** in the native build: the book opened from the first world and its
 Save page showed the 256x192 gameplay thumbnail; `--scene` launches have no book, so use
-`--new-game --skip-movies` or the menu). F2 through F6 and the death override on the main page are not implemented.
+`--new-game --skip-movies` or the menu). F2 and F3 open the Save and Load pages (same `final_version` gate; their entry camera, from the settled main page, is **Inferred**). F4 through F6 are not implemented. Quit from a world prepares the `Redguard AutoSave` slot when a gameplay snapshot exists, or removes it while the death override is active (preservation `engine/menu.md`).
 
 ## Logs
 

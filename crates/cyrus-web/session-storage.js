@@ -52,12 +52,12 @@ export async function operateSlots(name, encodedRequest, document) {
   const reservedSlot = type === 'quick_save' ? 0 : 1;
   const reservedDescription = type === 'quick_save' ? 'Quick Save Game' : 'Redguard AutoSave';
   const check = (condition, message) => { if (!condition) throw new Error(`${context}: ${message}`); };
-  check(['list', 'quick_save', 'auto_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
+  check(['list', 'quick_save', 'auto_save', 'discard_auto_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
   check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'quick_save' || type === 'auto_save' || type === 'overwrite'), 'invalid slot preparation');
   check(expected_slot === undefined || ((type === 'create' && Number.isInteger(expected_slot)
     && expected_slot >= 2 && expected_slot <= 299) || ((type === 'quick_save' && expected_slot === 0) || (type === 'auto_save' && expected_slot === 1))), 'invalid planned slot');
   check(expected_revision === undefined || (reserved && (expected_revision === null || (typeof expected_revision === 'string' && expected_revision.length > 0))), 'invalid planned revision');
-  if (type !== 'list' && type !== 'create' && type !== 'quick_save' && type !== 'auto_save') {
+  if (type !== 'list' && type !== 'create' && type !== 'quick_save' && type !== 'auto_save' && type !== 'discard_auto_save') {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
   }
@@ -119,6 +119,11 @@ export async function operateSlots(name, encodedRequest, document) {
             result = { slots: entries };
           }
         });
+      } else if (type === 'discard_auto_save') {
+        // A death-menu Quit removes the reserved slot whatever its revision; absence is success.
+        store.delete(metadataKey(1));
+        store.delete(payloadKey(1));
+        result = { deleted: true, slot: 1 };
       } else if (type === 'create' || type === 'quick_save' || type === 'auto_save') {
         // Both scans and publication hold the same write transaction across tabs.
         consume(store.getAllKeys(range('metadata')), metadataKeys => {

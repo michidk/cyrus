@@ -50,6 +50,10 @@ pub(super) fn discard_gameplay(mut commands: Commands) {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SaveLoadRequest {
     List,
+    /// Reserved automatic save written when Quit leaves a live world.
+    AutoSave,
+    /// Removes the reserved automatic save when Quit leaves a dead world.
+    DiscardAutoSave,
     Create {
         description: String,
     },
@@ -136,7 +140,6 @@ pub struct SaveLoadHost {
     request: Option<SaveLoadRequest>,
     busy: bool,
     result: Option<Result<Value, String>>,
-    autosave_ready: bool,
 }
 
 impl SaveLoadHost {
@@ -167,19 +170,6 @@ impl SaveLoadHost {
 
     pub(crate) fn busy(&self) -> bool {
         self.busy
-    }
-
-    /// The gameplay host sets this after publishing the death autosave.
-    pub fn autosave_ready(&self) -> bool {
-        self.autosave_ready
-    }
-
-    pub fn mark_autosave_ready(&mut self) {
-        self.autosave_ready = true;
-    }
-
-    pub fn clear_autosave_ready(&mut self) {
-        self.autosave_ready = false;
     }
 }
 
@@ -252,15 +242,5 @@ mod tests {
         assert!(host.start(SaveLoadRequest::List).is_err());
         assert_eq!(host.take_result(), Some(Err("slot changed".into())));
         host.start(SaveLoadRequest::List).unwrap();
-    }
-
-    #[test]
-    fn autosave_readiness_is_explicit_and_resettable() {
-        let mut host = SaveLoadHost::default();
-        assert!(!host.autosave_ready());
-        host.mark_autosave_ready();
-        assert!(host.autosave_ready());
-        host.clear_autosave_ready();
-        assert!(!host.autosave_ready());
     }
 }

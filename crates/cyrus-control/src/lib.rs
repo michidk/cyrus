@@ -17,6 +17,8 @@ pub enum SlotOperation {
     List,
     QuickSave,
     AutoSave,
+    /// Removes the reserved automatic save, as a death-menu Quit does.
+    DiscardAutoSave,
     Create {
         description: String,
     },

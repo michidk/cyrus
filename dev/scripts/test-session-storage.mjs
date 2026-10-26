@@ -156,6 +156,10 @@ export async function testSessionSlots(operate = operateSlots) {
         'repeated reserved save did not replace its payload');
     }
     await rejected({ type: 'overwrite', slot: 1, revision: auto.slot.revision, description: 'MANUAL' }, 'forbidden');
+    await operation({ type: 'discard_auto_save' });
+    await operation({ type: 'discard_auto_save' });
+    const kept = (await operation({ type: 'list' })).slots.map(entry => entry.slot);
+    assert(!kept.includes(1) && kept.includes(0), 'discarding the autosave removed only slot 1');
     assert(await read(name, 'diagnostic') === 'accepted named snapshot', 'slot operations touched named snapshots');
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open(name, 1);

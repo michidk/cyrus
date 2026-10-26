@@ -69,7 +69,6 @@ struct Host {
     last_game: bool,
     book: bool,
     diagnostics: bool,
-    autosave: bool,
 }
 
 pub fn register(app: &mut App, diagnostics: bool) {
@@ -140,6 +139,7 @@ impl Host {
                     operation,
                     SlotRequest::Create { .. }
                         | SlotRequest::QuickSave
+                        | SlotRequest::AutoSave
                         | SlotRequest::Overwrite { .. }
                 ) {
                     self.phase = Some(Phase::Io(task(async move {
@@ -292,41 +292,14 @@ fn update(world: &mut World) {
                 Ok(IoResult::Planned(operation, plan))
             })));
         }
-        let autosave = world
-            .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-            .is_some_and(|state| *state.get() == cyrus_game::AppState::Menu)
-            && world.contains_resource::<cyrus_game::PausedGameplay>();
-        if !autosave {
-            host.autosave = false;
-            if world
-                .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-                .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
-            {
-                if let Some(mut save_load) = world.get_resource_mut::<cyrus_startup::SaveLoadHost>()
-                {
-                    save_load.clear_autosave_ready();
-                }
-            }
-        }
-        if autosave
-            && !host.autosave
-            && host.phase.is_none()
-            && host.result.is_none()
-            && world.resource::<SessionBoundary>().is_idle()
-        {
-            let operation = SlotRequest::AutoSave;
-            host.phase = Some(Phase::Io(task(async move {
-                let plan = storage::plan(&operation).await?;
-                Ok(IoResult::Planned(operation, plan))
-            })));
-            host.autosave = true;
-        }
         let request = world
             .resource_mut::<cyrus_startup::SaveLoadHost>()
             .take_request();
         if let Some(request) = request {
             let operation = match request {
                 cyrus_startup::SaveLoadRequest::List => SlotRequest::List,
+                cyrus_startup::SaveLoadRequest::AutoSave => SlotRequest::AutoSave,
+                cyrus_startup::SaveLoadRequest::DiscardAutoSave => SlotRequest::DiscardAutoSave,
                 cyrus_startup::SaveLoadRequest::Create { description } => {
                     SlotRequest::Create { description }
                 }
@@ -416,21 +389,6 @@ fn update(world: &mut World) {
                 .resource_mut::<cyrus_startup::SaveLoadHost>()
                 .finish(result.map_err(|error| format!("{error:#}")));
             host.book = false;
-        }
-        if host.autosave
-            && host.phase.is_none()
-            && let Some(result) = host.result.take()
-        {
-            match result {
-                Ok(_) => {
-                    if let Some(mut save_load) =
-                        world.get_resource_mut::<cyrus_startup::SaveLoadHost>()
-                    {
-                        save_load.mark_autosave_ready();
-                    }
-                }
-                Err(error) => error!("Auto Save Game: {error:#}"),
-            }
         }
         if !host.diagnostics {
             return;

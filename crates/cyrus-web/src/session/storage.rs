@@ -23,6 +23,7 @@ pub enum SlotRequest {
     List,
     QuickSave,
     AutoSave,
+    DiscardAutoSave,
     Create {
         description: String,
     },

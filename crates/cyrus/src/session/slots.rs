@@ -306,6 +306,18 @@ impl SlotStore {
         std::fs::remove_file(&path)
             .with_context(|| format!("deleting save slot {slot} {}", path.display()))
     }
+
+    /// Removes the reserved automatic save whatever its revision; an absent save is already removed.
+    pub(super) fn discard_auto_save(&self) -> Result<()> {
+        let _lock = self.writer_lock()?;
+        let path = self.path(1)?;
+        match std::fs::remove_file(&path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                Err(error).with_context(|| format!("discarding auto save {}", path.display()))
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -479,6 +491,22 @@ mod tests {
             store.0.read(0, Some(&second.revision)).unwrap().0,
             b"second"
         );
+    }
+
+    #[test]
+    fn discarding_the_auto_save_leaves_the_quick_save_and_tolerates_absence() {
+        let store = Store::new();
+        store.0.discard_auto_save().unwrap();
+        for operation in [SlotOperation::QuickSave, SlotOperation::AutoSave] {
+            store
+                .0
+                .publish(store.0.plan(operation).unwrap(), b"saved")
+                .unwrap();
+        }
+        store.0.discard_auto_save().unwrap();
+        store.0.discard_auto_save().unwrap();
+        let slots: Vec<_> = store.0.list().unwrap().iter().map(|s| s.slot).collect();
+        assert_eq!(slots, [0]);
     }
 
     #[test]
