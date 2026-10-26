@@ -33,6 +33,12 @@ def main():
         default=60,
         help="maximum seconds for one control request, including large actor pages",
     )
+    parser.add_argument(
+        "--actor-page-size",
+        type=int,
+        default=64,
+        help="actor records requested per inspection page (bounded to keep the game loop responsive)",
+    )
     parser.add_argument("--flag", action="append", default=[], metavar="WORLD:NAME=VALUE")
     args = parser.parse_args()
     flags = {}
@@ -93,9 +99,12 @@ def main():
             return found
         while True:
             try:
-                # Request a large page so a world with hundreds of actors does not
-                # monopolize the control loop across dozens of round trips.
-                page = call({"type": "scripts", "offset": offset, "limit": 1024})
+                # Keep each request bounded.  Installed ISLAND has 976 actors;
+                # a single all-actor request can monopolize the native control
+                # loop while the renderer is servicing that scene.  The original
+                # runtime observation used 64-record pages and allowed ordinary
+                # loop admissions between requests.
+                page = call({"type": "scripts", "offset": offset, "limit": args.actor_page_size})
             except (OSError, RuntimeError, KeyError):
                 found[("script inspection", "world identity unavailable during actor pagination")] = True
                 return found
