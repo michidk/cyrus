@@ -107,24 +107,29 @@ impl ScriptWorld {
                     sounds,
                 )?;
             }
-            // The random taunt chance belongs to the waiting branch.  Active
-            // coordination has its own kind-nine taunt gate; consuming this
-            // draw there would shift the shared combat RNG and alter later
-            // spacing/defence choices.  Waiting-taunt kind is selected from
-            // the allocation/world-loop parity at the point of the draw.
-            if branch == super::OrdinaryCombatBranch::Waiting && random.draw() * 100 / 32767 < 2 {
-                let allocation = self.actors[self.resolve(id)?]
-                    .control
-                    .as_ref()
-                    .and_then(|control| control.combat.as_ref())
-                    .context("receiver combat unavailable")?
-                    .allocation_index;
-                let trigger =
+            // Both engaged branches end with one random draw that admits a chance taunt. The active
+            // branch always requests type 5; the waiting branch picks 5 or 8 from the parity of the
+            // allocation index plus the world-loop frame (preservation SOUP.md, decision stage).
+            if matches!(
+                branch,
+                super::OrdinaryCombatBranch::Active | super::OrdinaryCombatBranch::Waiting
+            ) && random.draw() * 100 / 32767 < 2
+            {
+                let trigger = if branch == super::OrdinaryCombatBranch::Active {
+                    5
+                } else {
+                    let allocation = self.actors[self.resolve(id)?]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .context("receiver combat unavailable")?
+                        .allocation_index;
                     if (allocation as u32).wrapping_add(self.globals.world_loop_frame) & 1 == 0 {
                         5
                     } else {
                         8
-                    };
+                    }
+                };
                 self.request_timed_combat_taunt(id, trigger, clock, inputs, random, sounds)?;
             }
             Ok(())
