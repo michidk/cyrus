@@ -136,6 +136,9 @@ def main():
                 print(f"{world}: setflag {assignment}: assignment not confirmed: {reports!r}")
                 bad += 1
             call({"type": "console", "open": False})
+        # Scene replacement can report ready before the first ordinary loop
+        # admission. Let that transition settle before taking the baseline.
+        time.sleep(10)
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
         identity0, loop0 = script_loop_sample()
         # Large worlds can spend many seconds servicing each actor page. Keep
