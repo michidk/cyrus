@@ -290,7 +290,9 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
             let rgba = decoded.to_rgba8();
             if rgba.width() == 256
                 && rgba.height() == 192
-                && let Some(surface) = page.surfaces.get(1)
+                // The main page keeps its entries on its second surface, so its snapshot takes
+                // the first; the save/load pages show theirs on the second.
+                && let Some(surface) = page.surfaces.get(usize::from(*page_id != 0))
             {
                 picture(
                     &mut surfaces[*surface],
