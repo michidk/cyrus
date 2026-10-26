@@ -486,7 +486,9 @@ did not open the menu; the book menu appeared once the opening duel played out. 
 `engine/menu.md` says Escape opens the book with `final_version=1` (the install's own value), which
 that observation did not show (**Unknown**: it may have been the scripted duel). cyrus follows
 preservation: Escape in a world opens the book after its release and gives Save, Continue and Quit
-the paused world. F2 through F6 and the death override on the main page are not implemented.
+the paused world (**Verified** in the native build: the book opened from the first world and its
+Save page showed the 256x192 gameplay thumbnail; `--scene` launches have no book, so use
+`--new-game --skip-movies` or the menu). F2 through F6 and the death override on the main page are not implemented.
 
 ## Logs
 
