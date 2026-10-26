@@ -33237,3 +33237,22 @@ fn place_selected_player_moves_the_logical_player_and_clears_ledge_and_fall_stat
     assert_eq!(spatial.local.angles[1], 513);
     assert_eq!(spatial.previous_local_position, spatial.local.position);
 }
+
+#[test]
+fn set_actor_attribute_writes_one_attribute_byte_and_rejects_bad_targets() {
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    world.set_actor_attribute(0, 3, 0).unwrap();
+    assert_eq!(world.actors()[0].attributes()[3], 0);
+    world.set_actor_attribute(0, 3, 77).unwrap();
+    assert_eq!(world.actors()[0].attributes()[3], 77);
+    assert!(world.set_actor_attribute(usize::MAX, 3, 1).is_err());
+    assert!(world.set_actor_attribute(0, 256, 1).is_err());
+}
+
+#[test]
+fn mark_actor_dead_sets_the_state_is_dead_reads() {
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    world.mark_actor_dead(0).unwrap();
+    assert_eq!(world.actors()[0].attributes()[3], 0);
+    assert!(world.mark_actor_dead(usize::MAX).is_err());
+}

@@ -1900,6 +1900,38 @@ impl ScriptWorld {
 
     /// Current selected-player item gates from the logical actor, never presentation defaults.
     /// Player switching and prompt lineup scheduling remain separate unsupported services.
+    /// Acceptance-run tool for the control port's `set_attribute`: write one attribute byte of the
+    /// actor at `index`, for example a health of zero to reach a script's death branch without
+    /// playing the fight.
+    pub fn set_actor_attribute(&mut self, index: usize, attribute: usize, value: u8) -> Result<()> {
+        let actor = self
+            .actors
+            .get_mut(index)
+            .with_context(|| format!("set attribute: no actor {index}"))?;
+        *actor
+            .attributes
+            .get_mut(attribute)
+            .with_context(|| format!("set attribute: no attribute {attribute}"))? = value;
+        Ok(())
+    }
+
+    /// Acceptance-run tool for the control port's `mark_dead`: set the actor's health to zero and
+    /// its lifecycle selector to eight, the state `IsDead` reads, without the death animation or
+    /// sounds, so a script's death branch can be reached without playing the fight.
+    pub fn mark_actor_dead(&mut self, index: usize) -> Result<()> {
+        let actor = self
+            .actors
+            .get_mut(index)
+            .with_context(|| format!("mark dead: no actor {index}"))?;
+        actor.attributes[3] = 0;
+        actor
+            .control
+            .as_mut()
+            .with_context(|| format!("mark dead: actor {index} has no control state"))?
+            .death_selector = 8;
+        Ok(())
+    }
+
     /// What the island map screen reads when it opens.
     pub fn island_map_world(&self) -> crate::island_map::IslandMapWorld {
         let player = self.selected_player_index();

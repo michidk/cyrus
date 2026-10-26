@@ -94,6 +94,18 @@ pub enum Command {
         #[serde(default)]
         heading: u16,
     },
+    /// Write one attribute byte of the script actor at `index` (as `scripts` lists them); for
+    /// acceptance runs, for example health zero to reach a script's death branch.
+    SetAttribute {
+        index: usize,
+        attribute: usize,
+        value: u8,
+    },
+    /// Mark the script actor at `index` dead (health zero, lifecycle selector eight, which is what
+    /// `IsDead` reads) without the death animation; for acceptance runs.
+    MarkDead {
+        index: usize,
+    },
     /// `key` is a Bevy `KeyCode` name, e.g. `KeyW`, `ArrowUp`, `Space`.
     Input {
         key: String,

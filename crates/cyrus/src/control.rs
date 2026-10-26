@@ -292,6 +292,28 @@ fn handle(
                 }
                 Err(_) => Err("no player".into()),
             },
+            Command::SetAttribute {
+                index,
+                attribute,
+                value,
+            } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.set_actor_attribute(index, attribute, value)?;
+                Ok(json!({"index": index, "attribute": attribute, "value": value}))
+            })()
+            .map_err(|error| format!("{error:#}")),
+            Command::MarkDead { index } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.mark_actor_dead(index)?;
+                Ok(json!({"index": index, "dead": true}))
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::PlacePlayer { x, y, z, heading } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
