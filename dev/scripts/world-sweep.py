@@ -88,7 +88,9 @@ def main():
             return found
         while True:
             try:
-                page = call({"type": "scripts", "offset": offset, "limit": 64})
+                # Request a large page so a world with hundreds of actors does not
+                # monopolize the control loop across dozens of round trips.
+                page = call({"type": "scripts", "offset": offset, "limit": 1024})
             except (OSError, RuntimeError, KeyError):
                 found[("script inspection", "world identity unavailable during actor pagination")] = True
                 return found

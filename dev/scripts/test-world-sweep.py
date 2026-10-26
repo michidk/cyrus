@@ -33,7 +33,7 @@ class WorldSweepTests(unittest.TestCase):
                     # Readiness does not sample game_seconds.
                     result["clock"] = {"game_seconds": now[0]}
                 elif cmd["type"] == "scripts":
-                    if script_error and cmd["limit"] in (1, 64):
+                    if script_error and cmd["limit"] in (1, 64, 1024):
                         self.reply = (json.dumps({"ok": False, "error": "script world is not prepared"}) + "\n").encode()
                         return
                     result = {
@@ -41,7 +41,7 @@ class WorldSweepTests(unittest.TestCase):
                         "generation": next(generations) if generations else 7,
                         "content_id": "synthetic",
                     }
-                    if actors and cmd["limit"] == 64 and cmd["offset"] == 0:
+                    if actors and cmd["limit"] in (64, 1024) and cmd["offset"] == 0:
                         result["actors"] = [{"name": "actor", "failure": None}]
                     if cmd["limit"] == 1:
                         result["globals"] = {"world_loop_frame": next(frames)}
