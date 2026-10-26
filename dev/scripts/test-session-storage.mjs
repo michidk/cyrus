@@ -137,7 +137,7 @@ export async function testSessionSlots(operate = operateSlots) {
     assert(reused.slot.slot === 2, 'first free manual slot not reused');
     const thumb = Array.from({ length: 256 * 192 }, (_, index) => index % 251);
     const thumbSave = await operation({ type: 'create', description: 'THUMBNAIL', thumbnail: thumb }, 'thumbnail payload');
-    assert(JSON.stringify((await operation({ type: 'list' })).slots.find(entry => entry.slot === thumbSave.slot).thumbnail) === JSON.stringify(thumb), 'thumbnail metadata did not round trip');
+    assert(JSON.stringify((await operation({ type: 'list' })).slots.find(entry => entry.slot === thumbSave.slot.slot).thumbnail) === JSON.stringify(thumb), 'thumbnail metadata did not round trip');
     const quick = await operation({ type: 'quick_save' }, 'quick payload');
     assert(quick.slot.slot === 0 && quick.slot.description === 'Quick Save Game', 'quick-save slot contract failed');
     const auto = await operation({ type: 'auto_save' }, 'auto payload');
