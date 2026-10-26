@@ -482,7 +482,11 @@ world; `final_version=1` plays it, with or without the debug-text flags (**Verif
 `RETRO_PRISTINE=1 just retro` uses the install's own `SYSTEM.INI` and an empty `SAVEGAME`
 (under `magic/retro-pristine/`), so the original starts as a player sees it: title, Introduction,
 then the book menu, where Movies plays the cinematics. From the first world, Escape
-did not open the menu; the book menu appeared once the opening duel played out.
+did not open the menu; the book menu appeared once the opening duel played out. Preservation
+`engine/menu.md` says Escape opens the book with `final_version=1` (the install's own value), which
+that observation did not show (**Unknown**: it may have been the scripted duel). cyrus follows
+preservation: Escape in a world opens the book after its release and gives Save, Continue and Quit
+the paused world. F2 through F6 and the death override on the main page are not implemented.
 
 ## Logs
 

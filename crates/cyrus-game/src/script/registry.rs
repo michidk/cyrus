@@ -2917,6 +2917,14 @@ fn apply_player_lockout(
 }
 
 impl ScriptActors {
+    /// SYSTEM.INI `[debug] final_version` of the current world, which enables the gameplay book
+    /// shortcuts (preservation engine/menu.md).
+    pub fn final_version(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|world| world.updates.final_version)
+    }
+
     /// Run after death confirmation or the book returns, before loading another game. Clear only
     /// hit inhibition, retaining the override group, death progress and falling timer.
     /// A replacement session must not apply this operation to its restored state.
@@ -7169,6 +7177,7 @@ mod fighting_tests {
                 animation_system: true,
                 disable_slaves: false,
                 disable_master_slaves: false,
+                final_version: false,
             },
             player_distance_override: false,
             actors,

@@ -37,6 +37,7 @@ fn cache() -> Scripts {
             animation_system: true,
             disable_slaves: false,
             disable_master_slaves: false,
+            final_version: false,
         },
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
@@ -689,7 +690,8 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             task_system: true,
             animation_system: false,
             disable_slaves: true,
-            disable_master_slaves: false
+            disable_master_slaves: false,
+            final_version: false,
         }
     );
     for (normal, min, field) in [(-1, 6, "normal_frame_rate"), (12, 0, "min_frame_rate")] {
@@ -882,6 +884,12 @@ fn installed_update_switch_conversion_rejects_missing_inputs() {
     let parse = |text: &str| {
         UpdateSettings::from_system(&rgpre::import::system_ini::SystemIni::parse(text).unwrap())
     };
+    assert!(!parse(text).unwrap().final_version);
+    assert!(
+        parse(&text.replace("[debug]\n", "[debug]\nfinal_version=yes\n"))
+            .unwrap()
+            .final_version
+    );
     assert_eq!(
         parse(text).unwrap(),
         UpdateSettings {
@@ -901,7 +909,8 @@ fn installed_update_switch_conversion_rejects_missing_inputs() {
             task_system: false,
             animation_system: true,
             disable_slaves: false,
-            disable_master_slaves: true
+            disable_master_slaves: true,
+            final_version: false,
         }
     );
     for (dummy, convert, expected) in [

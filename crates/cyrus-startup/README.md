@@ -114,7 +114,7 @@ installed world assignments; native playback reads the CD image. Book motion and
 direction/capture feedback dispatch installed effects through the shared native/browser sound path, following
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
-rebinding, lighting and camera-plane clipping remain unsupported. Entering the book from gameplay captures a
+rebinding, lighting and camera-plane clipping remain unsupported. Escape in a world opens the book (`MenuContext::InGame`) only with SYSTEM.INI `final_version`. Entering the book from gameplay captures a
 256x192 centre-cropped `GameplayThumbnail` for the book and for slot saves; leaving the book discards it. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
 
 The in-game logbook reader loads `LOGPAPER.GXA`, small normal/selected fonts and

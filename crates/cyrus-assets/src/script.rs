@@ -100,6 +100,10 @@ pub struct UpdateSettings {
     pub animation_system: bool,
     pub disable_slaves: bool,
     pub disable_master_slaves: bool,
+    /// `[debug] final_version`: enables the gameplay book shortcuts (Escape, F2 through F6);
+    /// absent in caches exported before the book had a gameplay entry (re-export).
+    #[serde(default)]
+    pub final_version: bool,
 }
 
 /// Installed rope attachment values, as the engine stores them: the jump-off speed is
@@ -179,6 +183,7 @@ impl UpdateSettings {
                 .debug
                 .disable_master_slaves
                 .context("SYSTEM.INI [debug] disable_master_slaves missing")?,
+            final_version: settings.debug.final_version.unwrap_or(false),
         })
     }
 }

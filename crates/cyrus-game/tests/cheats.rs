@@ -559,6 +559,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
             animation_system: true,
             disable_slaves: false,
             disable_master_slaves: false,
+            final_version: false,
         },
         player_distance_override: false,
         actor_pool_capacity: 10,

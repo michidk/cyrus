@@ -106,6 +106,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
             animation_system: true,
             disable_slaves: false,
             disable_master_slaves: false,
+            final_version: false,
         },
         clock: ClockSettings {
             normal_frame_rate: 12,

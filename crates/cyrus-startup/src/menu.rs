@@ -95,7 +95,16 @@ pub enum MenuContext {
     #[default]
     Startup,
     Death,
+    /// Escape from live gameplay: the ordinary in-game book.
+    InGame,
     LastGame,
+}
+
+impl MenuContext {
+    /// Contexts entered from a running world, whose Continue and Quit use the paused world.
+    fn is_from_world(self) -> bool {
+        matches!(self, Self::Death | Self::InGame)
+    }
 }
 
 /// Current installed menu selection and explicitly unsupported activation.
@@ -336,7 +345,10 @@ fn setup(
     mut commands: Commands,
     assets: Res<AssetServer>,
     startup: Res<super::StartupPresentation>,
-    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    (death, pause): (
+        Option<Res<cyrus_game::script::DeathBookEntry>>,
+        Option<Res<cyrus_game::PauseBookEntry>>,
+    ),
     last_game: Option<Res<cyrus_game::script::LastGameEntry>>,
     mut dispatch: Option<ResMut<cyrus_game::script::DeathDispatch>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -363,12 +375,16 @@ fn setup(
     commands.insert_resource(MenuState {
         context: if death.is_some() {
             MenuContext::Death
+        } else if pause.is_some() {
+            MenuContext::InGame
         } else {
             MenuContext::Startup
         },
-        main_disabled: death
-            .as_ref()
-            .map_or([true, true], |entry| [entry.override_group != 0; 2]),
+        main_disabled: match (&death, &pause) {
+            (Some(entry), _) => [entry.override_group != 0; 2],
+            (None, Some(_)) => [false; 2],
+            (None, None) => [true, true],
+        },
         asset: if startup.menu == Handle::default() {
             assets.load("cache://menu/book.menu")
         } else {
@@ -502,7 +518,7 @@ pub(super) fn drive(
         let frames = std::array::from_fn(|i| book.models[i].frames.len());
         menu.motion = Some(match menu.context {
             MenuContext::Startup => BookMotion::opening(frames),
-            MenuContext::Death => BookMotion::death_entry(frames),
+            MenuContext::Death | MenuContext::InGame => BookMotion::death_entry(frames),
             MenuContext::LastGame => return,
         });
         menu.open(book, 0);
@@ -678,7 +694,7 @@ pub(super) fn drive(
             if menu.page != 0 {
                 let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
                 menu.open(book, target);
-            } else if menu.context == MenuContext::Death && !menu.main_disabled[1] {
+            } else if menu.context.is_from_world() && !menu.main_disabled[1] {
                 next.set(AppState::InGame);
             }
         } else {
@@ -725,10 +741,10 @@ pub(super) fn drive(
             {
                 let entry = menu.entries[index].clone();
                 match entry.action {
-                    -1 if menu.context == MenuContext::Death && !menu.main_disabled[1] => {
+                    -1 if menu.context.is_from_world() && !menu.main_disabled[1] => {
                         next.set(AppState::InGame);
                     }
-                    -2 if menu.context == MenuContext::Death && !save_load.autosave_ready() => {
+                    -2 if menu.context.is_from_world() && !save_load.autosave_ready() => {
                         menu.unavailable =
                             Some("Quit automatic-save preparation is unavailable.".into());
                     }
@@ -960,6 +976,7 @@ fn cleanup(
     commands.remove_resource::<super::last_game::CapturedFrame>();
     commands.remove_resource::<MenuState>();
     commands.remove_resource::<cyrus_game::PausedGameplay>();
+    commands.remove_resource::<cyrus_game::PauseBookEntry>();
 }
 
 #[derive(Component)]
@@ -970,6 +987,7 @@ fn pause_cameras(
     mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
     confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
     death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    pause: Option<Res<cyrus_game::PauseBookEntry>>,
     clock: Option<Res<SimulationClock>>,
 ) {
     if confirmation.is_some() {
@@ -983,7 +1001,7 @@ fn pause_cameras(
             commands.entity(entity).insert(BookPausedCamera);
         }
     }
-    if death.is_some_and(|entry| entry.override_group == 0)
+    if (pause.is_some() || death.is_some_and(|entry| entry.override_group == 0))
         && let Some(clock) = clock
     {
         commands.insert_resource(cyrus_game::PausedGameplay {

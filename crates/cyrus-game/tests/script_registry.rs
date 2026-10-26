@@ -107,6 +107,7 @@ fn cache() -> Scripts {
             animation_system: true,
             disable_slaves: false,
             disable_master_slaves: false,
+            final_version: false,
         },
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
