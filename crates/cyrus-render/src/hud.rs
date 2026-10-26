@@ -1343,7 +1343,7 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<HudState>();
-    commands.remove_resource::<HudHandle>();
+    // The handle stays so a save made from the paused book can still capture the bound HUD.
 }
 
 #[cfg(test)]
@@ -1353,6 +1353,21 @@ mod tests {
 
     fn frames(candle: &mut Candle, health: u8, n: usize) -> Vec<u16> {
         (0..n).map(|_| candle.advance(health)).collect()
+    }
+
+    #[test]
+    fn leaving_the_world_keeps_the_hud_asset_for_a_paused_book_save() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<HudAsset>();
+        let handle = app
+            .world_mut()
+            .resource_mut::<Assets<HudAsset>>()
+            .add(asset(0));
+        app.insert_resource(HudHandle(handle))
+            .add_systems(Update, despawn);
+        app.update();
+        assert!(bound_asset(app.world()).is_some());
     }
 
     #[test]
