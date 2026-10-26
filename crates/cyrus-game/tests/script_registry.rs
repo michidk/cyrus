@@ -20971,6 +20971,44 @@ fn live_neighbor_sidestep_translates_synchronously_and_ignores_completion() {
 }
 
 #[test]
+fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, _scripts, _data) = spacing_fixture(|_| {});
+    world.ordinary_actors([0, 0]).unwrap();
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    let inputs = || ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        ..Default::default()
+    };
+    // Without frame scale the step is unsupported rather than guessed.
+    let error = world
+        .continue_ordinary_forward(
+            id,
+            ScriptInputs {
+                hud: Some(&hud),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("frame_scale"));
+    let start = world.spatial(id).unwrap().local.position;
+    world.continue_ordinary_forward(id, inputs(), None).unwrap();
+    let after = world.spatial(id).unwrap().local.position;
+    assert_ne!(after, start);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(control.motion_direction, 2);
+    assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
+    // The forward-called flag ends the continuation for the rest of the update.
+    world.continue_ordinary_forward(id, inputs(), None).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, after);
+}
+
+#[test]
 fn live_spacing_root_registers_idle_passes_once_and_keeps_rng_and_tasks_untouched() {
     use cyrus_game::script::{OrdinarySpacingInput, ScriptHud, ScriptInputs};
     let (mut world, scripts, data) = spacing_fixture(|_| {});

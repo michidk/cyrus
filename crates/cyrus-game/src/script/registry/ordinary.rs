@@ -481,6 +481,19 @@ impl ScriptWorld {
                 if let Some(query) = player_query {
                     self.advance_player_walking(id, query, player_timing, true, sounds)?;
                 }
+                if !selected_role {
+                    // The walk continues in a forward group when this update requested no movement.
+                    let query = inputs.locomotion_geometry.map(|geometry| {
+                        super::obstacle::OrdinaryObstacleQuery {
+                            scene: geometry.ground.scene,
+                            animations: geometry.ground.animations,
+                            prepared: geometry.ground.prepared,
+                            vertical_offset: 0,
+                            respond: false,
+                        }
+                    });
+                    self.continue_ordinary_forward(id, inputs, query)?;
+                }
                 if !self.actors[id.index]
                     .control
                     .as_ref()

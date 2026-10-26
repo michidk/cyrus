@@ -667,3 +667,112 @@ impl ScriptWorld {
         result.with_context(|| format!("world {} instance {} forward amount", self.world, id.index))
     }
 }
+
+/// Animation groups whose playback keeps a nonplayer actor walking forward when the update made no
+/// movement request: 18, 30, 67 through 70, 75, 77, 92, 106, 130, 131 and 142.
+const FORWARD_CONTINUATION_GROUPS: [u16; 13] =
+    [18, 30, 67, 68, 69, 70, 75, 77, 92, 106, 130, 131, 142];
+
+impl ScriptWorld {
+    /// Continue an ordinary actor's forward walk after its script and decision stages. The step runs
+    /// only when no forward movement was called this update and the current animation group is a
+    /// forward group. It requests no group, so an idle request made earlier in the update stays
+    /// pending until the playing group finishes, and the actor keeps moving until then
+    /// (preservation SOUP.md, movement continuation). Swimming actors and sliding, falling,
+    /// rope or queued motion are not continued (#52).
+    pub fn continue_ordinary_forward(
+        &mut self,
+        id: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        query: Option<OrdinaryObstacleQuery<'_>>,
+    ) -> Result<()> {
+        let result = (|| -> Result<()> {
+            let index = self.resolve(id)?;
+            // The held-weapon predicate needs the item owner; update passes without one
+            // (timer and inspection passes) make no continuation step.
+            if self.globals.locomotion_called & 4 != 0 || inputs.hud.is_none() {
+                return Ok(());
+            }
+            let frame_scale = inputs
+                .frame_scale
+                .context("movement continuation frame_scale unavailable")?
+                as i32;
+            let actor = &self.actors[index];
+            let (Some(control), Some(animation)) =
+                (actor.control.as_ref(), actor.animation.as_ref())
+            else {
+                return Ok(());
+            };
+            let group = animation.playback.current_group();
+            if !group.is_some_and(|group| FORWARD_CONTINUATION_GROUPS.contains(&group))
+                || control.rope_attached
+                || control.sliding_state != 0
+                || control.falling_state != 0
+                || control.queued_motion != 0
+                || control.living_state != 0
+                || matches!(actor.surface, Some(2 | 4))
+            {
+                return Ok(());
+            }
+            let suppressed = animation.playback.translation_suppressed();
+            let combat_stance = control
+                .combat
+                .as_ref()
+                .is_some_and(|combat| combat.flags & 4 != 0);
+            let adjustment = actor.attributes[11];
+            let counters = control.movement_flags;
+            let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
+            if (counters >> 4) & 3 < 3
+                && !self
+                    .forward_step_clear(id, selected_player, frame_scale, query)?
+                    .context("movement continuation step geometry unavailable")?
+            {
+                return Ok(());
+            }
+            let attributes = &self.actors[index].attributes;
+            let step = if holding_weapon || combat_stance {
+                i32::from(attributes[17]) << 8
+            } else if matches!(group, Some(75 | 77)) {
+                i32::from(attributes[8]) << 7
+            } else {
+                i32::from(attributes[8]) << 8
+            };
+            let control = self.actors[index]
+                .control
+                .as_mut()
+                .context("movement continuation control unavailable")?;
+            control.motion_direction = 2;
+            self.globals.locomotion_called |= 4;
+            let distance = super::super::locomotion::initial_step_distance(
+                &mut control.movement_flags,
+                4,
+                adjustment,
+                step,
+            );
+            let spatial = self
+                .spatial
+                .as_mut()
+                .context("movement continuation spatial state unavailable")?
+                .actor_mut(index)?;
+            if let Some((heading, distance)) = super::super::locomotion::forward_translation(
+                spatial.local.angles[1],
+                distance,
+                frame_scale,
+                suppressed,
+            ) {
+                spatial.local.position = cyrus_world::transform::translate_forward(
+                    spatial.local.position,
+                    heading,
+                    distance,
+                )?;
+            }
+            Ok(())
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} movement continuation",
+                self.world, id.index
+            )
+        })
+    }
+}
