@@ -561,7 +561,7 @@ an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
-update supports bounded sheathed forward walking; complete installed traversal
+update supports bounded sheathed forward, backward and lateral movement; complete installed traversal
 and the original follow camera remain unfinished.
 
 Native player input reads `KEYS.INI` and its user overrides. The TCP/MCP `state`
