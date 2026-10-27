@@ -37,7 +37,7 @@ impl ScriptWorld {
     }
 
     /// Inspection placement: move the selected player to the Q8 `position` facing `yaw` and
-    /// clear its ledge, fall, slide and queued-motion state, as the control port's `place_player`
+    /// clear its ledge, fall, slide, queued-motion and stable-position state, as the control port's `place_player`
     /// needs to start an acceptance run at a chosen spot. The next update settles ground support.
     pub fn place_selected_player(&mut self, position: [i32; 3], yaw: u16) -> Result<()> {
         let player = self
@@ -54,6 +54,8 @@ impl ScriptWorld {
             control.falling_state = 0;
             control.queued_motion = 0;
             control.sliding_state = 0;
+            // A retained stable position would otherwise undo a placement the ground probe rejects.
+            control.stable_position_valid = false;
         }
         self.actors[index].model.ledge_support = None;
         self.refresh_transform(player)?;

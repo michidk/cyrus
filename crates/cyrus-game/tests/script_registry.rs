@@ -33484,6 +33484,13 @@ fn place_selected_player_moves_the_logical_player_and_clears_ledge_and_fall_stat
     assert_eq!(spatial.local.position, [256 * 1000, -256 * 50, 256 * 2000]);
     assert_eq!(spatial.local.angles[1], 513);
     assert_eq!(spatial.previous_local_position, spatial.local.position);
+    assert!(
+        !world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .stable_position_valid,
+        "a retained stable position would restore the old spot after the placement"
+    );
 }
 
 #[test]
