@@ -110,6 +110,16 @@ def main():
             lost_max = max(lost_max, sum(1 for a in others if combat_state(a).get("lost_sight_ticks", 0) > 0))
             routing_max = max(routing_max, sum(1 for a in others if combat_state(a).get("lost_sight_routing", 0) > 0))
             world_error = (call({"type": "state"}).get("scripts") or {}).get("error")
+            # The target's horizontal distance to the player in map units, for comparison runs.
+            here = next((a for a in listed if a.get("source") == "player" and a.get("spatial")), None)
+            there = next((a for a in listed if a.get("id") == target.get("id") and a.get("spatial")), None)
+            if here and there:
+                a, b = here["spatial"]["effective"]["position"], there["spatial"]["effective"]["position"]
+                print(
+                    f"{world}: dwell {dwell} target {target['name']} distance {math.hypot(a[0] - b[0], a[2] - b[2]) / 256:.0f}"
+                    f" group {(there.get('animation') or {}).get('current_group')}"
+                    f" routing {combat_state(there).get('lost_sight_routing', 0)}"
+                )
         for name, message in failures:
             print(f"{world}: {name}: {message}")
         if world_error:
