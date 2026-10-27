@@ -873,15 +873,20 @@ mod idle_tests {
                 index: 4
             }
         ));
-        assert!(
-            GameplayGlobals::from_snapshot(
-                saved.clone(),
-                &controller_settings(),
-                &[],
-                &Default::default()
-            )
-            .is_err()
-        );
+        let departed = GameplayGlobals::from_snapshot(
+            saved.clone(),
+            &controller_settings(),
+            &[],
+            &Default::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            departed.native_source,
+            NativeSource::Actor {
+                generation: u64::MAX,
+                index: 2
+            }
+        ));
         let mut legacy = serde_json::to_value(saved).unwrap();
         legacy.as_object_mut().unwrap().remove("native_source");
         let restored = GameplayGlobals::from_snapshot(
@@ -1401,7 +1406,11 @@ impl GameplayGlobals {
         let native_source = match saved.native_source {
             NativeSource::Unknown => NativeSource::Unknown,
             NativeSource::Actor { generation, index } => {
-                let actor = rebind(generation, index)?;
+                // World replacement retains the source, so it may name a replaced world's actor.
+                let actor = rebind(generation, index).unwrap_or(ScriptActorId {
+                    generation: super::combat::DEPARTED_GENERATION,
+                    index,
+                });
                 NativeSource::Actor {
                     generation: actor.generation,
                     index: actor.index,

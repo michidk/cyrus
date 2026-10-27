@@ -304,7 +304,7 @@ pub struct CombatMessage {
 }
 
 /// Generation no live actor carries; saved references to replaced worlds' actors restore under it.
-const DEPARTED_GENERATION: u64 = u64::MAX;
+pub(super) const DEPARTED_GENERATION: u64 = u64::MAX;
 
 #[derive(Default, Debug, Serialize)]
 struct ClassQueue {
