@@ -84,7 +84,7 @@ jobs:
           metadata="$(cargo metadata --locked --no-deps --format-version 1)"
           versions=()
 
-          versions+=("$(jq -er --arg manifest 'Cargo.toml' \
+          versions+=("$(jq -er --arg manifest 'crates/cyrus/Cargo.toml' \
             '.packages[] | select(.manifest_path == (env.GITHUB_WORKSPACE + "/" + $manifest)) | .version' <<< "$metadata")")
 
           current="$(printf '%s\n' "${versions[@]}" | sort -u)"
@@ -142,14 +142,14 @@ jobs:
           metadata="$(cargo metadata --locked --no-deps --format-version 1)"
           packages=()
 
-          packages+=(--package "$(jq -er --arg manifest 'Cargo.toml' \
+          packages+=(--package "$(jq -er --arg manifest 'crates/cyrus/Cargo.toml' \
             '.packages[] | select(.manifest_path == (env.GITHUB_WORKSPACE + "/" + $manifest)) | .name' <<< "$metadata")")
 
           cargo set-version "${packages[@]}" "$VERSION"
           cargo update --workspace
           metadata="$(cargo metadata --locked --no-deps --format-version 1)"
 
-          actual="$(jq -er --arg manifest 'Cargo.toml' \
+          actual="$(jq -er --arg manifest 'crates/cyrus/Cargo.toml' \
             '.packages[] | select(.manifest_path == (env.GITHUB_WORKSPACE + "/" + $manifest)) | .version' <<< "$metadata")"
           if [[ "$actual" != "$VERSION" ]]; then
             echo '::error::Cargo version does not match the requested version.'
