@@ -33,6 +33,23 @@ advances to the next installed skip point, then returns to the menu. Saved Sound
 preferences apply to native effects, speech, and CD music. Browser Movies shares
 playback rules using locally exported cinematic assets; it has no control port.
 
+Acceptance-run commands for the script world (all need `scene_ready`; `scripts` pages at most 64 actors,
+use `offset`):
+
+- `scripts {offset?, limit?}` lists logical script actors with their id, attributes, control record,
+  animation group and position (Q8; divide by 256 for map units).
+- `place_player {x,y,z,heading}` moves the selected player to a map position and heading and clears its
+  ledge, fall, slide and queued-motion state. It changes the logical player; `teleport` moves only the
+  presentation. A script that re-places the player each loop (a teleporter pad's `MovePlayerAboveMe`) can
+  undo it.
+- `set_attribute {index,attribute,value}` writes one attribute byte of the actor at `index`; health is
+  attribute 3. `mark_dead {index}` sets health zero and lifecycle selector eight, which is what `IsDead`
+  reads, without the death animation.
+- `cheat {name,value}` and `console {line}` run the installed cheats and console commands, for example
+  `item add,79`; `drevil` keeps the player alive at zero health and `neversaydie` keeps enemies passive.
+- `session_slots {operation}` creates, lists, loads or deletes save slots (`create` needs the player idle);
+  poll `session_slots_result` and send it again with `acknowledge: true` to clear a stale result.
+
 `set_sky_scroll {direction, offset}` applies a captured original sky direction
 from 0 through 2047 and two texture offsets in texels from -256 through 256.
 Use it after loading the reference world. It synchronizes sky motion for
