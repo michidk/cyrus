@@ -85,6 +85,12 @@ shortens every voiced line (**Verified:** the START story from the last kill to 
 30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
 prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
 
+`dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
+it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
+far away, and prints failed actors, a world-level script error and how many actors reached
+lost-sight timing and routed pursuit (exit 1 on a failure). The `teleport` command moves only the
+render transform, so it cannot be used for this. Run one world per process.
+
 `dev/scripts/native-audit.py --scripts game-config/cache` lists the natives that the exported
 installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
 up there, though a mention does not prove the handler works.
