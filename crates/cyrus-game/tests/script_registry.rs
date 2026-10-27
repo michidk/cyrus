@@ -20986,7 +20986,7 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
     };
     // Without frame scale the step is unsupported rather than guessed.
     let error = world
-        .continue_ordinary_forward(
+        .continue_ordinary_motion(
             id,
             ScriptInputs {
                 hud: Some(&hud),
@@ -20997,15 +20997,50 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
         .unwrap_err();
     assert!(format!("{error:#}").contains("frame_scale"));
     let start = world.spatial(id).unwrap().local.position;
-    world.continue_ordinary_forward(id, inputs(), None).unwrap();
+    world.continue_ordinary_motion(id, inputs(), None).unwrap();
     let after = world.spatial(id).unwrap().local.position;
     assert_ne!(after, start);
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(control.motion_direction, 2);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
     // The forward-called flag ends the continuation for the rest of the update.
-    world.continue_ordinary_forward(id, inputs(), None).unwrap();
+    world.continue_ordinary_motion(id, inputs(), None).unwrap();
     assert_eq!(world.spatial(id).unwrap().local.position, after);
+}
+
+#[test]
+fn backward_and_circle_continuations_set_their_own_called_flags() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for (group, flag, direction) in [(93, 8, 3), (94, 1, 25), (95, 2, 5)] {
+        let (mut world, _scripts, _data) = spacing_fixture_group(group, |_| {});
+        world.ordinary_actors([0, 0]).unwrap();
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let start = world.spatial(id).unwrap().local.position;
+        world
+            .continue_ordinary_motion(
+                id,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap();
+        assert_ne!(
+            world.spatial(id).unwrap().local.position,
+            start,
+            "group {group}"
+        );
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            direction
+        );
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], flag);
+    }
 }
 
 #[test]

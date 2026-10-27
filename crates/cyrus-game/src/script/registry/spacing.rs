@@ -668,29 +668,57 @@ impl ScriptWorld {
     }
 }
 
-/// Animation groups whose playback keeps a nonplayer actor walking forward when the update made no
-/// movement request: 18, 30, 67 through 70, 75, 77, 92, 106, 130, 131 and 142.
-const FORWARD_CONTINUATION_GROUPS: [u16; 13] =
-    [18, 30, 67, 68, 69, 70, 75, 77, 92, 106, 130, 131, 142];
+/// The movement a nonplayer actor's current animation group keeps going when the update made no
+/// request: forward in 18, 30, 67 through 70, 75, 77, 92, 106, 130, 131 and 142; backward in 19,
+/// 76, 78 and 93; the combat circle left in 94 and right in 95.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Continuation {
+    Forward,
+    Backward,
+    Circle(super::super::locomotion::Strafe),
+}
+
+impl Continuation {
+    fn of(group: u16) -> Option<Self> {
+        use super::super::locomotion::Strafe;
+        match group {
+            18 | 30 | 67..=70 | 75 | 77 | 92 | 106 | 130 | 131 | 142 => Some(Self::Forward),
+            19 | 76 | 78 | 93 => Some(Self::Backward),
+            94 => Some(Self::Circle(Strafe::Left)),
+            95 => Some(Self::Circle(Strafe::Right)),
+            _ => None,
+        }
+    }
+
+    /// The shared movement-called flag bit this step sets.
+    fn called_flag(self) -> u8 {
+        match self {
+            Self::Forward => 4,
+            Self::Backward => 8,
+            Self::Circle(strafe) => strafe.called_flag(),
+        }
+    }
+}
 
 impl ScriptWorld {
-    /// Continue an ordinary actor's forward walk after its script and decision stages. The step runs
-    /// only when no forward movement was called this update and the current animation group is a
-    /// forward group. It requests no group, so an idle request made earlier in the update stays
-    /// pending until the playing group finishes, and the actor keeps moving until then
-    /// (preservation SOUP.md, movement continuation). Swimming actors and sliding, falling,
-    /// rope or queued motion are not continued (#52).
-    pub fn continue_ordinary_forward(
+    /// Continue an ordinary actor's movement after its script and decision stages. The step runs
+    /// only when its movement was not called this update and the current animation group is one
+    /// of the continuing groups. It requests no group, so an idle request made earlier in the
+    /// update stays pending until the playing group finishes, and the actor keeps moving until
+    /// then (preservation SOUP.md, movement continuation). Swimming actors, the sliding and
+    /// ledge variants, and the walking and sidestep groups outside combat are not continued (#52).
+    pub fn continue_ordinary_motion(
         &mut self,
         id: ScriptActorId,
         inputs: super::ScriptInputs<'_>,
         query: Option<OrdinaryObstacleQuery<'_>>,
     ) -> Result<()> {
+        use super::super::locomotion;
         let result = (|| -> Result<()> {
             let index = self.resolve(id)?;
             // The held-weapon predicate needs the item owner; update passes without one
             // (timer and inspection passes) make no continuation step.
-            if self.globals.locomotion_called & 4 != 0 || inputs.hud.is_none() {
+            if inputs.hud.is_none() {
                 return Ok(());
             }
             let frame_scale = inputs
@@ -704,7 +732,10 @@ impl ScriptWorld {
                 return Ok(());
             };
             let group = animation.playback.current_group();
-            if !group.is_some_and(|group| FORWARD_CONTINUATION_GROUPS.contains(&group))
+            let Some(step) = group.and_then(Continuation::of) else {
+                return Ok(());
+            };
+            if self.globals.locomotion_called & step.called_flag() != 0
                 || control.rope_attached
                 || control.sliding_state != 0
                 || control.falling_state != 0
@@ -722,44 +753,95 @@ impl ScriptWorld {
             let adjustment = actor.attributes[11];
             let counters = control.movement_flags;
             let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
-            if (counters >> 4) & 3 < 3
-                && !self
-                    .forward_step_clear(id, selected_player, frame_scale, query)?
-                    .context("movement continuation step geometry unavailable")?
-            {
-                return Ok(());
+            let stance = holding_weapon || combat_stance;
+            match step {
+                Continuation::Forward => {
+                    if (counters >> 4) & 3 < 3
+                        && !self
+                            .forward_step_clear(id, selected_player, frame_scale, query)?
+                            .context("movement continuation step geometry unavailable")?
+                    {
+                        return Ok(());
+                    }
+                }
+                Continuation::Backward => {
+                    if stance
+                        && let Some(query) = query
+                        && self.blocked_ahead(id, 30, query)?
+                    {
+                        return Ok(());
+                    }
+                }
+                // Combat circling runs no lateral step check, as its native does not.
+                Continuation::Circle(_) => {}
             }
             let attributes = &self.actors[index].attributes;
-            let step = if holding_weapon || combat_stance {
-                i32::from(attributes[17]) << 8
-            } else if matches!(group, Some(75 | 77)) {
-                i32::from(attributes[8]) << 7
-            } else {
-                i32::from(attributes[8]) << 8
+            let (step_length, shift) = match step {
+                Continuation::Forward if stance => (i32::from(attributes[17]) << 8, 4),
+                Continuation::Forward if matches!(group, Some(75 | 77)) => {
+                    (i32::from(attributes[8]) << 7, 4)
+                }
+                Continuation::Forward => (i32::from(attributes[8]) << 8, 4),
+                Continuation::Backward if stance => (i32::from(attributes[18]) << 8, 6),
+                Continuation::Backward if matches!(group, Some(76 | 78)) => {
+                    (i32::from(attributes[8]) << 7, 6)
+                }
+                Continuation::Backward => (i32::from(attributes[9]) << 8, 6),
+                Continuation::Circle(strafe) => {
+                    (i32::from(attributes[83]) << 8, strafe.counter_shift())
+                }
             };
+            let turn = attributes[84];
             let control = self.actors[index]
                 .control
                 .as_mut()
                 .context("movement continuation control unavailable")?;
-            control.motion_direction = 2;
-            self.globals.locomotion_called |= 4;
-            let distance = super::super::locomotion::initial_step_distance(
+            control.motion_direction = match step {
+                Continuation::Forward => 2,
+                Continuation::Backward => 3,
+                // The original stores 25 for the left circle and the right strafe's 5 for the right.
+                Continuation::Circle(locomotion::Strafe::Left) => 25,
+                Continuation::Circle(locomotion::Strafe::Right) => 5,
+            };
+            self.globals.locomotion_called |= step.called_flag();
+            let distance = locomotion::initial_step_distance(
                 &mut control.movement_flags,
-                4,
+                shift,
                 adjustment,
-                step,
+                step_length,
             );
             let spatial = self
                 .spatial
                 .as_mut()
                 .context("movement continuation spatial state unavailable")?
                 .actor_mut(index)?;
-            if let Some((heading, distance)) = super::super::locomotion::forward_translation(
-                spatial.local.angles[1],
-                distance,
-                frame_scale,
-                suppressed,
-            ) {
+            let movement = match step {
+                Continuation::Forward => locomotion::forward_translation(
+                    spatial.local.angles[1],
+                    distance,
+                    frame_scale,
+                    suppressed,
+                ),
+                Continuation::Backward => locomotion::backward_translation(
+                    spatial.local.angles[1],
+                    distance,
+                    frame_scale,
+                    suppressed,
+                ),
+                Continuation::Circle(strafe) => {
+                    let (angle, movement) = locomotion::strafe_motion(
+                        strafe,
+                        spatial.local.angles[1],
+                        turn,
+                        distance,
+                        frame_scale,
+                        suppressed,
+                    );
+                    spatial.local.angles[1] = angle;
+                    movement
+                }
+            };
+            if let Some((heading, distance)) = movement {
                 spatial.local.position = cyrus_world::transform::translate_forward(
                     spatial.local.position,
                     heading,
