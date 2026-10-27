@@ -163,15 +163,23 @@ impl DialogueState {
                         !saved.active || saved.owner.is_some(),
                         "active speaker unavailable"
                     );
+                    // Nothing reads an inactive record's speaker, and it may name an actor of a
+                    // world generation that was replaced since the line ended, so only an active
+                    // line must bind its speaker.
                     let owner = saved
                         .owner
                         .map(|id| {
-                            actor_bindings
-                                .get(&id)
-                                .copied()
-                                .with_context(|| format!("speaker {id:?} binding unavailable"))
+                            let bound = actor_bindings.get(&id).copied();
+                            if saved.active {
+                                bound
+                                    .map(Some)
+                                    .with_context(|| format!("speaker {id:?} binding unavailable"))
+                            } else {
+                                Ok(bound)
+                            }
                         })
-                        .transpose()?;
+                        .transpose()?
+                        .flatten();
                     let sample = saved
                         .sample
                         .map(|sample| {

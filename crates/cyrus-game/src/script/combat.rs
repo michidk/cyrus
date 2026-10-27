@@ -303,6 +303,9 @@ pub struct CombatMessage {
     pub code: i32,
 }
 
+/// Generation no live actor carries; saved references to replaced worlds' actors restore under it.
+const DEPARTED_GENERATION: u64 = u64::MAX;
+
 #[derive(Default, Debug, Serialize)]
 struct ClassQueue {
     write: u8,
@@ -430,11 +433,20 @@ impl CombatMessages {
         }
     }
 
-    /// Every retained reference is rebound, including entries behind a read cursor.
+    /// Every retained reference is rebound, including entries behind a read cursor. The queues
+    /// outlive world changes, so an entry can name an actor of a world generation that has since
+    /// been replaced; it can never match a live actor, so it is restored under the departed
+    /// marker generation, keeping its slot (an empty slot would stop reads instead of skipping).
     pub(super) fn from_snapshot(
         saved: CombatMessagesSnapshot,
         rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
     ) -> Result<Self> {
+        let rebind = |generation, index| {
+            rebind(generation, index).unwrap_or(ScriptActorId {
+                generation: DEPARTED_GENERATION,
+                index,
+            })
+        };
         anyhow::ensure!(
             saved.classes.len() == 256,
             "saved combat class count differs"
@@ -457,11 +469,10 @@ impl CombatMessages {
                         "saved combat class {class} slot {slot}: occupied zero-code sentinel"
                     );
                     entries[slot] = Some(CombatMessage {
-                        sender: rebind(message.sender.0, message.sender.1)?,
+                        sender: rebind(message.sender.0, message.sender.1),
                         receiver: message
                             .receiver
-                            .map(|(generation, index)| rebind(generation, index))
-                            .transpose()?,
+                            .map(|(generation, index)| rebind(generation, index)),
                         code: message.code,
                     });
                 }
@@ -1005,5 +1016,36 @@ mod message_queue_tests {
         assert_eq!(first.code, 0xd005);
         assert_eq!(queue.peek(7, id(4), 0).unwrap(), Some(first));
         assert_eq!(queue.consume(7, id(4), &mut 0).unwrap(), Some(first));
+    }
+
+    #[test]
+    fn a_saved_message_for_a_replaced_world_restores_as_a_skipped_entry() {
+        let mut queue = CombatMessages::default();
+        let departed = ScriptActorId {
+            generation: 2,
+            index: 19,
+        };
+        for receiver in [departed, id(4)] {
+            queue.send(
+                7,
+                CombatMessage {
+                    sender: id(2),
+                    receiver: Some(receiver),
+                    code: 0xd001,
+                },
+            );
+        }
+        let live = |generation: u64, index: usize| {
+            (generation == 1)
+                .then_some(id(index))
+                .ok_or_else(|| anyhow::anyhow!("departed"))
+        };
+        let restored = CombatMessages::from_snapshot(queue.snapshot(), &live).unwrap();
+        let first = restored.classes[7].entries[0].unwrap();
+        assert_eq!(first.receiver.unwrap().generation, DEPARTED_GENERATION);
+        let mut read = 0;
+        let delivered = restored.consume(7, id(4), &mut read).unwrap().unwrap();
+        assert_eq!(delivered.receiver, Some(id(4)));
+        assert_eq!(read, 2);
     }
 }

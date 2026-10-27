@@ -234,10 +234,10 @@ fn malformed_snapshots_and_incomplete_or_aliased_bindings_are_rejected() {
         format!("{:#}", restore(bad, &actors, &samples).unwrap_err())
             .contains("record 0: saved sample 16")
     );
-    let missing_inactive = restore(saved.clone(), &actors[..1], &samples).unwrap_err();
-    assert!(
-        format!("{missing_inactive:#}").contains("record 1: speaker (4, 9) binding unavailable")
-    );
+    let missing_active = restore(saved.clone(), &actors[1..], &samples).unwrap_err();
+    assert!(format!("{missing_active:#}").contains("record 0: speaker (4, 2) binding unavailable"));
+    let restored = restore(saved.clone(), &actors[..1], &samples).unwrap();
+    assert_eq!(encode(&restored)["records"][1]["owner"], Value::Null);
     assert!(restore(saved.clone(), &actors, &BTreeMap::from([(3, 9)])).is_err());
     assert!(restore(saved.clone(), &actors, &BTreeMap::from([(0, 8), (3, 8)])).is_err());
     assert!(restore(saved.clone(), &actors, &BTreeMap::from([(0, 8), (3, 16)])).is_err());
