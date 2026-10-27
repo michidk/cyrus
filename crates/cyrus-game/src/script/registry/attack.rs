@@ -546,10 +546,10 @@ impl ScriptWorld {
             return Ok(());
         }
         for candidate in &ground.prepared.candidates.faces {
+            // An actor that never selected a weapon attachment keeps its zeroed endpoints.
             let endpoints = self
                 .equipped_weapon(id)?
-                .context("retained weapon endpoints unavailable")?
-                .endpoints;
+                .map_or([[0; 3]; 2], |weapon| weapon.endpoints);
             let single = cyrus_collision::candidates::CollisionCandidates {
                 faces: vec![*candidate],
                 actors: Vec::new(),
