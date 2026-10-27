@@ -539,15 +539,23 @@ pub(super) fn drive(
         let frames = std::array::from_fn(|i| book.models[i].frames.len());
         menu.motion = Some(match menu.context {
             MenuContext::Startup => BookMotion::opening(frames),
+            MenuContext::InGame if menu.entry_page >= 5 => {
+                BookMotion::settled_on(menu.entry_page, frames)
+            }
             MenuContext::InGame if menu.entry_page != 0 => BookMotion::settled(frames),
             MenuContext::Death | MenuContext::InGame => BookMotion::death_entry(frames),
             MenuContext::LastGame => return,
         });
-        menu.open(book, 0);
+        // The first page opened needs no transition; a settings shortcut never shows the main page.
+        if menu.entry_page < 5 {
+            menu.open(book, 0);
+        }
         if menu.entry_page != 0 {
             let entry_page = menu.entry_page;
             menu.open(book, entry_page);
-            if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
+            if matches!(entry_page, 1 | 2)
+                && let Err(error) = save_load.start(super::SaveLoadRequest::List)
+            {
                 menu.unavailable = Some(error);
             }
         }

@@ -59,6 +59,26 @@ impl BookMotion {
         }
     }
 
+    /// A gameplay shortcut to Display (5), Sound (6) or Controls (7) starts on that page's
+    /// settled pose (preservation engine/menu.md): Options turns the first and second pages (with their depth shifts), Display
+    /// and Sound move the camera, Controls also turns the third page. The shortcut's own
+    /// transition is not documented, so none is invented.
+    pub fn settled_on(page: u8, frame_counts: [usize; 5]) -> Self {
+        let mut motion = Self::settled(frame_counts);
+        motion.pose.frames[1] = frame_counts[1];
+        motion.pose.frames[3] = frame_counts[3];
+        motion.pose.depth[1] = 4.0;
+        match page {
+            5 => motion.pose.camera = [336.0, -128.0, 0.0],
+            6 => motion.pose.camera = [336.0, 176.0, 0.0],
+            _ => {
+                motion.pose.frames[4] = frame_counts[4];
+                motion.pose.depth[4] = -4.0;
+            }
+        }
+        motion
+    }
+
     pub fn opening(frame_counts: [usize; 5]) -> Self {
         let mut motion = Self {
             pose: BookPose {
@@ -331,6 +351,31 @@ mod tests {
         }
         // Delay five, then nine steps from the frame-count index.
         assert_eq!(last_page_update, 14);
+    }
+
+    #[test]
+    fn settings_shortcuts_start_on_the_settled_page_and_return_through_options() {
+        for (page, camera, frames) in [
+            (5, [336.0, -128.0, 0.0], [0, 9, 0, 9, 0]),
+            (6, [336.0, 176.0, 0.0], [0, 9, 0, 9, 0]),
+            (7, [0.0; 3], [0, 9, 0, 9, 9]),
+        ] {
+            let mut motion = BookMotion::settled_on(page, [9, 9, 0, 9, 9]);
+            assert!(!motion.busy(), "page {page}");
+            assert_eq!(motion.pose.camera, camera, "page {page}");
+            assert_eq!(motion.pose.frames, frames, "page {page}");
+            assert_eq!(
+                motion.pose.depth,
+                [0.0, 4.0, 0.0, 0.0, if page == 7 { -4.0 } else { 0.0 }]
+            );
+            motion.navigate(page, 4).unwrap();
+            while motion.tick(|_| {}) {}
+            motion.navigate(4, 0).unwrap();
+            while motion.tick(|_| {}) {}
+            assert_eq!(motion.pose.camera, [0.0; 3], "page {page}");
+            assert_eq!(motion.pose.frames, [0; 5], "page {page}");
+            assert_eq!(motion.pose.depth, [0.0; 5], "page {page}");
+        }
     }
 
     #[test]

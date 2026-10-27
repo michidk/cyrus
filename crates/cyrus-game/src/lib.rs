@@ -41,7 +41,7 @@ pub struct PausedGameplay {
 /// Retained until the book returns to gameplay.
 #[derive(Resource)]
 pub struct PauseBookEntry {
-    /// Destination book page: 0 for Escape, 1 for the F2 Save and 2 for the F3 Load shortcut.
+    /// Destination book page: 0 for Escape, otherwise the page of the pressed `BOOK_SHORTCUTS` key.
     pub page: u8,
 }
 
@@ -74,6 +74,15 @@ impl Plugin for GamePlugin {
     }
 }
 
+/// Gameplay book shortcuts in sampling order: Save, Load, Display, Sound, Controls.
+const BOOK_SHORTCUTS: [(KeyCode, u8); 5] = [
+    (KeyCode::F2, 1),
+    (KeyCode::F3, 2),
+    (KeyCode::F4, 5),
+    (KeyCode::F5, 6),
+    (KeyCode::F6, 7),
+];
+
 /// With `final_version` set, Escape is processed after its release (preservation
 /// engine/menu.md); the original without it ignores Escape in a world.
 fn request_pause_book(
@@ -89,12 +98,11 @@ fn request_pause_book(
         || logbook.is_some_and(|screen| screen.suspended())
         || console.is_some_and(|console| console.open || console.blocked)
         || matches!(*next, NextState::Pending(_));
-    // Escape outranks the shortcuts (preservation engine/menu.md). F4–F6 need pages the
-    // book cannot yet enter directly, so they stay unhandled.
+    // Escape outranks the shortcuts (preservation engine/menu.md).
     let page = if escape_opens_book(&keys, &mut armed, held_elsewhere) {
         Some(0)
     } else {
-        [(KeyCode::F2, 1), (KeyCode::F3, 2)]
+        BOOK_SHORTCUTS
             .into_iter()
             .find(|(key, _)| !held_elsewhere && keys.just_pressed(*key))
             .map(|(_, page)| page)
