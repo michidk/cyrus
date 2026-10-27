@@ -1,5 +1,7 @@
 # @orcastrate
 # template: rust/bump-version
+# params:
+#   manifest_paths: [crates/cyrus/Cargo.toml]
 # @end-orcastrate
 
 name: Bump Version & Tag
