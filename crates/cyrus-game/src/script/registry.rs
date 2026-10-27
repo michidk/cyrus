@@ -1980,6 +1980,18 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Acceptance-run and test tool: put the actor in or out of the slope response's slide, whose
+    /// only writer is the ordinary slope response.
+    pub fn set_actor_sliding(&mut self, id: ScriptActorId, sliding: bool) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.actors[index]
+            .control
+            .as_mut()
+            .with_context(|| format!("set sliding: actor {index} has no control state"))?
+            .sliding_state = u8::from(sliding);
+        Ok(())
+    }
+
     /// Authoritative local and composed pose for this generation's actor.
     pub fn spatial(&self, id: ScriptActorId) -> Result<&super::ActorSpatial> {
         let index = self.resolve(id)?;

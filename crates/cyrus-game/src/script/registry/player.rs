@@ -175,11 +175,13 @@ impl ScriptWorld {
                 .expect("validated control");
             ensure!(
                 !control.rope_attached
-                    && control.sliding_state == 0
                     && (matches!(control.living_state, 0 | 20 | 21 | 33 | 34)
                         || (10..=19).contains(&control.living_state)),
-                "player controller requires a grounded or airborne state without rope or slide"
+                "player controller requires a grounded or airborne state without rope"
             );
+            // Under the slope response's slide the movement and jump helpers all refuse
+            // (preservation player.md, controller under sliding motion).
+            let sliding = control.sliding_state != 0;
 
             let airborne = control.queued_motion != 0 || control.falling_state != 0;
             // Holding a weapon or the combat flag selects the armed movement dispatch.
@@ -256,6 +258,7 @@ impl ScriptWorld {
             }
             let moved = match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
+                _ if sliding => Ok(()),
                 SheathedAction::Sidestep(strafe) => {
                     let function = match strafe {
                         super::super::locomotion::Strafe::Left => "MoveLeft",
@@ -276,7 +279,9 @@ impl ScriptWorld {
                 }
             };
             moved?;
-            world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)?;
+            if !sliding {
+                world.jump_key_arbitration(id, input.held, query, inputs, timing, sounds)?;
+            }
             if holding {
                 world.run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
             }
