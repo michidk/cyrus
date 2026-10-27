@@ -670,12 +670,16 @@ impl ScriptWorld {
 
 /// The movement a nonplayer actor's current animation group keeps going when the update made no
 /// request: forward in 18, 30, 67 through 70, 75, 77, 92, 106, 130, 131 and 142; backward in 19,
-/// 76, 78 and 93; the combat circle left in 94 and right in 95.
+/// 76, 78 and 93; the combat circle left in 94 and right in 95; the walk forward in 20, 21 and 31;
+/// the walk backward in 22 and 23; the sidestep left in 24, 25 and 28 and right in 26, 27 and 29.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Continuation {
     Forward,
     Backward,
     Circle(super::super::locomotion::Strafe),
+    Walk,
+    WalkBackward,
+    Sidestep(super::super::locomotion::Strafe),
 }
 
 impl Continuation {
@@ -686,6 +690,10 @@ impl Continuation {
             19 | 76 | 78 | 93 => Some(Self::Backward),
             94 => Some(Self::Circle(Strafe::Left)),
             95 => Some(Self::Circle(Strafe::Right)),
+            20 | 21 | 31 => Some(Self::Walk),
+            22 | 23 => Some(Self::WalkBackward),
+            24 | 25 | 28 => Some(Self::Sidestep(Strafe::Left)),
+            26 | 27 | 29 => Some(Self::Sidestep(Strafe::Right)),
             _ => None,
         }
     }
@@ -693,9 +701,24 @@ impl Continuation {
     /// The shared movement-called flag bit this step sets.
     fn called_flag(self) -> u8 {
         match self {
-            Self::Forward => 4,
-            Self::Backward => 8,
-            Self::Circle(strafe) => strafe.called_flag(),
+            Self::Forward | Self::Walk => 4,
+            Self::Backward | Self::WalkBackward => 8,
+            Self::Circle(strafe) | Self::Sidestep(strafe) => strafe.called_flag(),
+        }
+    }
+
+    /// The motion direction the original stores for this step.
+    fn direction(self) -> u8 {
+        use super::super::locomotion::Strafe;
+        match self {
+            Self::Forward => 2,
+            Self::Backward => 3,
+            Self::Walk => 6,
+            Self::WalkBackward => 7,
+            Self::Sidestep(strafe) => strafe.motion_direction(),
+            // The original stores 25 for the left circle and the right strafe's 5 for the right.
+            Self::Circle(Strafe::Left) => 25,
+            Self::Circle(Strafe::Right) => 5,
         }
     }
 }
@@ -705,15 +728,18 @@ impl ScriptWorld {
     /// only when its movement was not called this update and the current animation group is one
     /// of the continuing groups. It requests no group, so an idle request made earlier in the
     /// update stays pending until the playing group finishes, and the actor keeps moving until
-    /// then (preservation SOUP.md, movement continuation). Swimming actors, the sliding and
-    /// ledge variants, and the walking and sidestep groups outside combat are not continued (#52).
+    /// then (preservation SOUP.md, movement continuation). The walk, walk-backward and sidestep
+    /// steps need the ordinary collision geometry for their step check and make no step without
+    /// it. Swimming actors and the sliding and ledge variants are not continued (#52).
     pub fn continue_ordinary_motion(
         &mut self,
         id: ScriptActorId,
         inputs: super::ScriptInputs<'_>,
         query: Option<OrdinaryObstacleQuery<'_>>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        use super::super::locomotion;
+        use super::super::locomotion::{self, Strafe};
+        use super::hazard::OrdinaryStepDirection;
         let result = (|| -> Result<()> {
             let index = self.resolve(id)?;
             // The held-weapon predicate needs the item owner; update passes without one
@@ -754,6 +780,17 @@ impl ScriptWorld {
             let counters = control.movement_flags;
             let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
             let stance = holding_weapon || combat_stance;
+            // The walk, walk-backward and sidestep steps store their direction before the check.
+            if matches!(
+                step,
+                Continuation::Walk | Continuation::WalkBackward | Continuation::Sidestep(_)
+            ) {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("movement continuation control unavailable")?
+                    .motion_direction = step.direction();
+            }
             match step {
                 Continuation::Forward => {
                     if (counters >> 4) & 3 < 3
@@ -774,8 +811,37 @@ impl ScriptWorld {
                 }
                 // Combat circling runs no lateral step check, as its native does not.
                 Continuation::Circle(_) => {}
+                Continuation::Walk => {
+                    if !self
+                        .forward_step_clear(id, selected_player, frame_scale, query)?
+                        .context("movement continuation step geometry unavailable")?
+                    {
+                        return Ok(());
+                    }
+                }
+                Continuation::WalkBackward | Continuation::Sidestep(_) => {
+                    let Some(geometry) = inputs.locomotion_geometry else {
+                        return Ok(());
+                    };
+                    let direction = match step {
+                        Continuation::Sidestep(Strafe::Left) => OrdinaryStepDirection::Left,
+                        Continuation::Sidestep(Strafe::Right) => OrdinaryStepDirection::Right,
+                        _ => OrdinaryStepDirection::Backward,
+                    };
+                    if !self.ordinary_step_clear(
+                        id,
+                        direction,
+                        geometry.ground,
+                        geometry.environment,
+                        sounds,
+                    )? {
+                        return Ok(());
+                    }
+                }
             }
             let attributes = &self.actors[index].attributes;
+            // A zero walk step length falls back to half of the plain step byte, unshifted.
+            let half = |plain: u8| i32::from(plain) >> 1;
             let (step_length, shift) = match step {
                 Continuation::Forward if stance => (i32::from(attributes[17]) << 8, 4),
                 Continuation::Forward if matches!(group, Some(75 | 77)) => {
@@ -790,19 +856,42 @@ impl ScriptWorld {
                 Continuation::Circle(strafe) => {
                     (i32::from(attributes[83]) << 8, strafe.counter_shift())
                 }
+                Continuation::Walk => {
+                    let walk = if stance {
+                        attributes[19]
+                    } else {
+                        attributes[12]
+                    };
+                    let length = if walk == 0 {
+                        half(attributes[8])
+                    } else {
+                        i32::from(walk) << 8
+                    };
+                    (length, 4)
+                }
+                Continuation::WalkBackward => {
+                    let walk = if stance {
+                        attributes[20]
+                    } else {
+                        attributes[13]
+                    };
+                    let length = if walk == 0 {
+                        half(attributes[9])
+                    } else {
+                        i32::from(walk) << 8
+                    };
+                    (length, 6)
+                }
+                Continuation::Sidestep(strafe) => {
+                    (i32::from(attributes[10]) << 8, strafe.counter_shift())
+                }
             };
             let turn = attributes[84];
             let control = self.actors[index]
                 .control
                 .as_mut()
                 .context("movement continuation control unavailable")?;
-            control.motion_direction = match step {
-                Continuation::Forward => 2,
-                Continuation::Backward => 3,
-                // The original stores 25 for the left circle and the right strafe's 5 for the right.
-                Continuation::Circle(locomotion::Strafe::Left) => 25,
-                Continuation::Circle(locomotion::Strafe::Right) => 5,
-            };
+            control.motion_direction = step.direction();
             self.globals.locomotion_called |= step.called_flag();
             let distance = locomotion::initial_step_distance(
                 &mut control.movement_flags,
@@ -816,18 +905,20 @@ impl ScriptWorld {
                 .context("movement continuation spatial state unavailable")?
                 .actor_mut(index)?;
             let movement = match step {
-                Continuation::Forward => locomotion::forward_translation(
+                Continuation::Forward | Continuation::Walk => locomotion::forward_translation(
                     spatial.local.angles[1],
                     distance,
                     frame_scale,
                     suppressed,
                 ),
-                Continuation::Backward => locomotion::backward_translation(
-                    spatial.local.angles[1],
-                    distance,
-                    frame_scale,
-                    suppressed,
-                ),
+                Continuation::Backward | Continuation::WalkBackward => {
+                    locomotion::backward_translation(
+                        spatial.local.angles[1],
+                        distance,
+                        frame_scale,
+                        suppressed,
+                    )
+                }
                 Continuation::Circle(strafe) => {
                     let (angle, movement) = locomotion::strafe_motion(
                         strafe,
@@ -840,6 +931,13 @@ impl ScriptWorld {
                     spatial.local.angles[1] = angle;
                     movement
                 }
+                Continuation::Sidestep(strafe) => locomotion::strafe_translation(
+                    strafe,
+                    spatial.local.angles[1],
+                    distance,
+                    frame_scale,
+                    suppressed,
+                ),
             };
             if let Some((heading, distance)) = movement {
                 spatial.local.position = cyrus_world::transform::translate_forward(

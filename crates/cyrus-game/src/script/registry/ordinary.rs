@@ -492,7 +492,7 @@ impl ScriptWorld {
                             respond: false,
                         }
                     });
-                    self.continue_ordinary_motion(id, inputs, query)?;
+                    self.continue_ordinary_motion(id, inputs, query, sounds)?;
                 }
                 if !self.actors[id.index]
                     .control

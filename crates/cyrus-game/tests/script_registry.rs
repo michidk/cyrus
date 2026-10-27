@@ -20993,18 +20993,23 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
                 ..Default::default()
             },
             None,
+            &mut |_, _| Ok(()),
         )
         .unwrap_err();
     assert!(format!("{error:#}").contains("frame_scale"));
     let start = world.spatial(id).unwrap().local.position;
-    world.continue_ordinary_motion(id, inputs(), None).unwrap();
+    world
+        .continue_ordinary_motion(id, inputs(), None, &mut |_, _| Ok(()))
+        .unwrap();
     let after = world.spatial(id).unwrap().local.position;
     assert_ne!(after, start);
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(control.motion_direction, 2);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
     // The forward-called flag ends the continuation for the rest of the update.
-    world.continue_ordinary_motion(id, inputs(), None).unwrap();
+    world
+        .continue_ordinary_motion(id, inputs(), None, &mut |_, _| Ok(()))
+        .unwrap();
     assert_eq!(world.spatial(id).unwrap().local.position, after);
 }
 
@@ -21028,6 +21033,7 @@ fn backward_and_circle_continuations_set_their_own_called_flags() {
                     ..Default::default()
                 },
                 None,
+                &mut |_, _| Ok(()),
             )
             .unwrap();
         assert_ne!(
@@ -21038,6 +21044,47 @@ fn backward_and_circle_continuations_set_their_own_called_flags() {
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
             direction
+        );
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], flag);
+    }
+}
+
+#[test]
+fn walk_continuation_steps_and_geometry_steps_wait_for_their_check() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    // (group, moves without collision geometry, motion direction, called flag when it moved)
+    for (group, moves, direction, flag) in [
+        (20, true, 6, 4),
+        (31, true, 6, 4),
+        (22, false, 7, 0),
+        (24, false, 4, 0),
+        (27, false, 5, 0),
+    ] {
+        let (mut world, _scripts, _data) = spacing_fixture_group(group, |_| {});
+        world.ordinary_actors([0, 0]).unwrap();
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let start = world.spatial(id).unwrap().local.position;
+        world
+            .continue_ordinary_motion(
+                id,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                None,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        let moved = world.spatial(id).unwrap().local.position != start;
+        assert_eq!(moved, moves, "group {group}");
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            direction,
+            "group {group}"
         );
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], flag);
     }
