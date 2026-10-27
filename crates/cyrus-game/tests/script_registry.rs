@@ -21052,10 +21052,11 @@ fn backward_and_circle_continuations_set_their_own_called_flags() {
 #[test]
 fn walk_continuation_steps_and_geometry_steps_wait_for_their_check() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
-    // (group, moves without collision geometry, motion direction, called flag when it moved)
+    // (group, moves without collision geometry, motion direction, called flag when it moved);
+    // every step here needs the collision geometry for its step check.
     for (group, moves, direction, flag) in [
-        (20, true, 6, 4),
-        (31, true, 6, 4),
+        (20, false, 6, 0),
+        (31, false, 6, 0),
         (22, false, 7, 0),
         (24, false, 4, 0),
         (27, false, 5, 0),
@@ -21088,6 +21089,33 @@ fn walk_continuation_steps_and_geometry_steps_wait_for_their_check() {
         );
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], flag);
     }
+}
+
+#[test]
+fn a_swimming_continuation_waits_for_its_edge_probe() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, _scripts, _data) = spacing_fixture_group(92, |_| {});
+    world.ordinary_actors([0, 0]).unwrap();
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, 2).unwrap();
+    let hud = ScriptHud::default();
+    let start = world.spatial(id).unwrap().local.position;
+    world
+        .continue_ordinary_motion(
+            id,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, start);
+    assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
 }
 
 #[test]

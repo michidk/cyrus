@@ -729,8 +729,9 @@ impl ScriptWorld {
     /// of the continuing groups. It requests no group, so an idle request made earlier in the
     /// update stays pending until the playing group finishes, and the actor keeps moving until
     /// then (preservation SOUP.md, movement continuation). The walk, walk-backward and sidestep
-    /// steps need the ordinary collision geometry for their step check and make no step without
-    /// it. Swimming actors and the sliding and ledge variants are not continued (#52).
+    /// steps, and any step of a swimming actor, need the ordinary collision geometry for their
+    /// step check or edge probe and make no step without it. The sliding and ledge variants are
+    /// not continued (#52).
     pub fn continue_ordinary_motion(
         &mut self,
         id: ScriptActorId,
@@ -767,10 +768,10 @@ impl ScriptWorld {
                 || control.falling_state != 0
                 || control.queued_motion != 0
                 || control.living_state != 0
-                || matches!(actor.surface, Some(2 | 4))
             {
                 return Ok(());
             }
+            let deep = matches!(actor.surface, Some(2 | 4));
             let suppressed = animation.playback.translation_suppressed();
             let combat_stance = control
                 .combat
@@ -811,21 +812,14 @@ impl ScriptWorld {
                 }
                 // Combat circling runs no lateral step check, as its native does not.
                 Continuation::Circle(_) => {}
-                Continuation::Walk => {
-                    if !self
-                        .forward_step_clear(id, selected_player, frame_scale, query)?
-                        .context("movement continuation step geometry unavailable")?
-                    {
-                        return Ok(());
-                    }
-                }
-                Continuation::WalkBackward | Continuation::Sidestep(_) => {
+                Continuation::Walk | Continuation::WalkBackward | Continuation::Sidestep(_) => {
                     let Some(geometry) = inputs.locomotion_geometry else {
                         return Ok(());
                     };
                     let direction = match step {
                         Continuation::Sidestep(Strafe::Left) => OrdinaryStepDirection::Left,
                         Continuation::Sidestep(Strafe::Right) => OrdinaryStepDirection::Right,
+                        Continuation::Walk => OrdinaryStepDirection::Forward,
                         _ => OrdinaryStepDirection::Backward,
                     };
                     if !self.ordinary_step_clear(
@@ -837,6 +831,15 @@ impl ScriptWorld {
                     )? {
                         return Ok(());
                     }
+                }
+            }
+            if deep {
+                // A swimming actor also needs the terrain edge probe along its motion direction.
+                let Some(geometry) = inputs.locomotion_geometry else {
+                    return Ok(());
+                };
+                if !self.edge_probe_clear(id, step.direction(), geometry.ground.scene)? {
+                    return Ok(());
                 }
             }
             let attributes = &self.actors[index].attributes;
@@ -899,6 +902,13 @@ impl ScriptWorld {
                 adjustment,
                 step_length,
             );
+            // Swimming halves every step except the backward ones.
+            let distance =
+                if deep && !matches!(step, Continuation::Backward | Continuation::WalkBackward) {
+                    distance >> 1
+                } else {
+                    distance
+                };
             let spatial = self
                 .spatial
                 .as_mut()
