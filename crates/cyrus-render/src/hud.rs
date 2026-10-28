@@ -425,7 +425,30 @@ impl Plugin for HudPlugin {
                     .after(update)
                     .run_if(in_state(AppState::InGame)),
             )
+            .add_systems(
+                PostUpdate,
+                hide_for_book_capture
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate)
+                    .run_if(in_state(AppState::InGame)),
+            )
             .add_systems(OnExit(AppState::InGame), (despawn, despawn_island_map));
+    }
+}
+
+/// The book's gameplay picture holds no HUD: the view is captured in the frame that requests the
+/// book, so the overlay is hidden for exactly that frame (verified against the original's fall and
+/// death book pictures).
+fn hide_for_book_capture(
+    next: Res<NextState<AppState>>,
+    mut content: Query<&mut Visibility, With<HudContent>>,
+) {
+    let book_pending = matches!(*next, NextState::Pending(AppState::Menu));
+    for mut visibility in &mut content {
+        visibility.set_if_neq(if book_pending {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        });
     }
 }
 
@@ -2558,5 +2581,24 @@ mod tests {
                 .is_err()
         );
         Ok(())
+    }
+    #[test]
+    fn hud_is_hidden_only_for_the_frame_that_requests_the_book() {
+        let mut app = App::new();
+        app.insert_resource(NextState::<AppState>::Unchanged)
+            .add_systems(Update, hide_for_book_capture);
+        let hud = app
+            .world_mut()
+            .spawn((HudContent, Visibility::Inherited))
+            .id();
+        let visibility = |app: &App| *app.world().get::<Visibility>(hud).unwrap();
+        app.update();
+        assert_eq!(visibility(&app), Visibility::Inherited);
+        app.insert_resource(NextState::<AppState>::Pending(AppState::Menu));
+        app.update();
+        assert_eq!(visibility(&app), Visibility::Hidden);
+        app.insert_resource(NextState::<AppState>::Unchanged);
+        app.update();
+        assert_eq!(visibility(&app), Visibility::Inherited);
     }
 }
