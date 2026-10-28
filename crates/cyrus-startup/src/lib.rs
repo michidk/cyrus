@@ -131,7 +131,10 @@ impl Plugin for StartupPlugin {
         );
         app.add_systems(
             Last,
-            save_load::capture_gameplay.run_if(in_state(AppState::InGame)),
+            // The death exit requests the book in this same schedule; the view is captured after it.
+            save_load::capture_gameplay
+                .after(cyrus_game::script::WorldLoopExit)
+                .run_if(in_state(AppState::InGame)),
         );
         app.add_systems(OnExit(AppState::Menu), save_load::discard_gameplay);
         menu::register(app);

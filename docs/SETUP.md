@@ -401,7 +401,7 @@ performance. Book/page
 motion and navigation feedback play installed effects through the shared sound
 path on native and browser builds. **Verified:** the original default book menu has no pointer
 hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
-camera-plane clipping remain unsupported. Entering the book from gameplay captures a 256x192 centre-cropped
+camera-plane clipping remain unsupported. Entering the book from gameplay, or by a fatal death, captures a 256x192 centre-cropped
 view that the book shows and slot saves store; a save made from live gameplay (quick save) stores no thumbnail.
 
 With `?scene=...`, the page requests that world's GLB and sidecars from the
