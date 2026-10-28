@@ -1,7 +1,8 @@
 //! The selected player's ledge transition (living states 10 through 19), the hang release and the
-//! climb request, from preservation's player.md. Entry through the ground-level classes 1 and 2
-//! (states 12 and 10) stays unsupported: only falls and queued motion, which produce class 3
-//! records, reach the ledge here.
+//! climb request, from preservation's player.md. State 19 selects the first class 1 record (low
+//! ledge, state 12), else the first class 2 record (high ledge, state 10), else the hand-nearest
+//! class 3 record (catch, state 14); the edge service starts it from a fall, queued motion or the
+//! selected jump entry.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
 use anyhow::{Context, Result};
 

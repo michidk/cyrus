@@ -1,6 +1,6 @@
 //! Selected-player ledge entry: the edge service, the ledge scan with its record classification,
-//! and the entry transition. The ledge living states live in `ledge_states`; entry through
-//! the ground-level classes 1 and 2 stays unsupported.
+//! and the entry transition. The ledge living states live in `ledge_states`; the entry selects
+//! a class 1, 2 or 3 record (states 12, 10 and 14) as player.md specifies.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge_states::LedgeTiming};
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
