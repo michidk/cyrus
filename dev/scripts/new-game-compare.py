@@ -20,6 +20,14 @@ import time
 TIMING = {"player_idle_counter", "sound_maintenance", "world_loop_frame", "selected_health", "generation", "highlighted_choice"}
 
 
+def strip_generation(source):
+    """The retained native source without its actor generation (`{"Actor": {"index", "generation"}}`)."""
+    actor = source.get("Actor") if isinstance(source, dict) else None
+    if isinstance(actor, dict):
+        return {"Actor": {"index": actor.get("index")}}
+    return source
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--port", type=int, default=7117)
@@ -98,6 +106,10 @@ def main():
     for section in ("hud", "script_hud", "globals"):
         for key in sorted(set(first[section] or {}) | set(second[section] or {})):
             a, b = (first[section] or {}).get(key), (second[section] or {}).get(key)
+            if key == "native_source":
+                # The retained native-command source is an actor identity; a world re-entry gives the
+                # same actor a new generation, so only the index is compared.
+                a, b = (strip_generation(a), strip_generation(b))
             if a != b:
                 expected = section == "hud" or key in TIMING
                 bad |= not expected
