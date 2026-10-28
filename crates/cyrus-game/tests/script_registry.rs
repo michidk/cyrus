@@ -27664,6 +27664,77 @@ fn range_contact_uses_first_motion_strict_ranges_and_candidate_radius() {
 }
 
 #[test]
+fn range_contact_with_attribute_126_tests_the_retained_weapon_tip_against_the_shifted_sphere() {
+    let build = || {
+        movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.updates.dummy_model_manager = true;
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                }
+            },
+            |saved| {
+                let combat = serde_json::to_value(cyrus_game::script::CombatControlState {
+                    attack_indices: [Some(0); 9],
+                    retained_action_indices: [-1, 0],
+                    ..Default::default()
+                })
+                .unwrap();
+                saved["actors"][0]["control"]["combat"] = combat.clone();
+                saved["actors"][1]["control"]["combat"] = combat;
+                saved["actors"][1]["control"]["combat"]["contact_profile"] =
+                    serde_json::json!({"vertex":0,"radius":100 << 8});
+                saved["actors"][1]["attributes"][126] = 1.into();
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+                saved["spatial"]["actors"][1]["local"]["position"] =
+                    serde_json::json!([0, 0, 50 << 8]);
+            },
+        )
+    };
+    let (world, scripts, mut data) = build();
+    data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+    data.models.insert(
+        "WEAPON".into(),
+        cyrus_assets::animation::AnimationModel {
+            radius: Some(1.),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            corner_normals: vec![],
+            encoding: "animated_i16".into(),
+            positions: vec![vec![]],
+            normals: vec![vec![]],
+        },
+    );
+    let point = world
+        .actor_model_point(world.id(1).unwrap(), &data, None, 0)
+        .unwrap()
+        .map(|value| value >> 8);
+    // The query shifts the point and radius right eight bits and includes equality.
+    for (offset, expected) in [(100, true), (101, false), (-100, true), (-101, false)] {
+        let tip = [point[0] + offset, point[1], point[2]];
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["model"]["weapon"] = serde_json::json!({
+            "item":1,"model":"WEAPON","position_bits":[0,0,0],
+            "matrix_bits":[[1065353216_u32,0,0],[0,1065353216_u32,0],[0,0,1065353216_u32]],
+            "retained_point":[0,0,0],"retained_angles":[0,0,0],
+            "endpoints":[tip,tip]
+        });
+        let world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        assert_eq!(
+            world
+                .combat_range_contact(world.id(0).unwrap(), world.id(1).unwrap(), &data, None)
+                .unwrap(),
+            expected,
+            "tip offset {offset}"
+        );
+    }
+}
+
+#[test]
 fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
     for (start, duration, cursor, flags, expected) in [
         (1, 1, 0, 1, false),
