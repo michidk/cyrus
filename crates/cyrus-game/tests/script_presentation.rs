@@ -122,6 +122,32 @@ fn session_state_carries_across_world_loads_until_new_game() {
         .as_mut()
         .unwrap()
         .set_attribute_for_test(selected, 3, 37);
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .set_selected_torch(1)
+        .unwrap();
+    let torches = |app: &App| {
+        let world = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap();
+        ["CYRUS", "GREMLIN"].map(|name| {
+            world
+                .actors()
+                .iter()
+                .find(|actor| actor.name() == name)
+                .unwrap()
+                .control_state()
+                .unwrap()
+                .torch_burning
+        })
+    };
+    assert_eq!(torches(&app).iter().filter(|torch| **torch != 0).count(), 1);
     let flag = |app: &App| {
         let world = app
             .world()
@@ -174,6 +200,8 @@ fn session_state_carries_across_world_loads_until_new_game() {
     assert!(!dialogue_line(&mut app));
     assert_eq!(health(&app), [37, 37]);
     assert_eq!(flag(&app), changed_flag);
+    // Both player actors are allocated afresh with the burning-torch counter at zero.
+    assert_eq!(torches(&app), [0, 0]);
     // New Game restores full health and the installed flag values.
     app.world_mut()
         .resource_mut::<ScriptActors>()
