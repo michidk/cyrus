@@ -179,7 +179,8 @@ impl ScriptWorld {
     /// checks current-motion orientation, first-motion three-dimensional range,
     /// then shared elevation. A nonzero candidate radius resolves its model point
     /// before orientation and uses horizontal distance with strict range/radius
-    /// boundaries. Attribute 126's sphere/segment branch remains unsupported.
+    /// boundaries. A nonzero attribute 126 instead tests the receiver's retained weapon tip
+    /// against the candidate's shifted model point and radius.
     pub fn combat_range_contact(
         &self,
         id: ScriptActorId,
