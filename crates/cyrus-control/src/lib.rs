@@ -108,6 +108,11 @@ pub enum Command {
     MarkDead {
         index: usize,
     },
+    /// Select inventory item `id` as the active item, as confirming it in the inventory screen
+    /// does; for acceptance runs that need an item without driving the screen.
+    SelectItem {
+        id: u16,
+    },
     /// `key` is a Bevy `KeyCode` name, e.g. `KeyW`, `ArrowUp`, `Space`.
     Input {
         key: String,

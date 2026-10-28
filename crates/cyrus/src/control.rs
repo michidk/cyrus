@@ -315,6 +315,14 @@ fn handle(
                 Ok(json!({"index": index, "dead": true}))
             })()
             .map_err(|error| format!("{error:#}")),
+            Command::SelectItem { id } => (|| -> anyhow::Result<_> {
+                let hud = script_hud
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("inventory is not prepared"))?;
+                hud.select_item(id)?;
+                Ok(json!({"selected": id}))
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::PlacePlayer { x, y, z, heading } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
