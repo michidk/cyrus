@@ -315,6 +315,15 @@ fn handle(
                 Ok(json!({"index": index, "dead": true}))
             })()
             .map_err(|error| format!("{error:#}")),
+            Command::SetTorch { burning } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.set_selected_torch(burning)?;
+                Ok(json!({"burning": burning}))
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::SelectItem { id } => (|| -> anyhow::Result<_> {
                 let hud = script_hud
                     .as_ref()

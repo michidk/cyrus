@@ -113,6 +113,11 @@ pub enum Command {
     SelectItem {
         id: u16,
     },
+    /// Set the selected player's burning-torch counter (zero is unlit), without the lighting
+    /// animation; for acceptance runs of `TorchActivate` and other burning-torch gates.
+    SetTorch {
+        burning: u8,
+    },
     /// `key` is a Bevy `KeyCode` name, e.g. `KeyW`, `ArrowUp`, `Space`.
     Input {
         key: String,

@@ -36,6 +36,22 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Inspection: set the selected player's burning-torch counter directly (zero is unlit), as the
+    /// control port's `set_torch` needs to reach gates that read a burning torch without playing the
+    /// lighting animation.
+    pub fn set_selected_torch(&mut self, burning: u8) -> Result<()> {
+        let player = self
+            .selected_player()
+            .context("set torch: selected player unavailable")?;
+        let index = self.resolve(player)?;
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("set torch: player control unavailable")?
+            .torch_burning = burning;
+        Ok(())
+    }
+
     /// Inspection placement: move the selected player to the Q8 `position` facing `yaw` and
     /// clear its ledge, fall, slide, queued-motion, rope-attachment and stable-position state, as the control port's `place_player`
     /// needs to start an acceptance run at a chosen spot. The next update settles ground support.

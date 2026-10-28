@@ -49,6 +49,8 @@ use `offset`):
   `item add,79`; `drevil` keeps the player alive at zero health. `neversaydie` makes `PlayerDistance` return
   9999999, so every script gated on the player being near stays idle: leave it off for interaction runs.
 - `select_item {id}` makes inventory item `id` the active item, as confirming it in the inventory screen does.
+  `set_torch {burning}` sets the selected player's burning-torch counter (zero is unlit) without the lighting
+  animation, to reach `TorchActivate` and other burning-torch gates.
 - `session_slots {operation}` creates, lists, loads or deletes save slots (`create` needs the player idle);
   poll `session_slots_result` and send it again with `acknowledge: true` to clear a stale result.
 

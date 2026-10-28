@@ -33494,6 +33494,28 @@ fn place_selected_player_moves_the_logical_player_and_clears_ledge_and_fall_stat
 }
 
 #[test]
+fn set_selected_torch_writes_the_burning_counter_of_the_selected_player() {
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    let player = world.selected_player().unwrap();
+    world.set_selected_torch(200).unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .torch_burning,
+        200
+    );
+    world.set_selected_torch(0).unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .torch_burning,
+        0
+    );
+}
+
+#[test]
 fn set_actor_attribute_writes_one_attribute_byte_and_rejects_bad_targets() {
     let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
     world.set_actor_attribute(0, 3, 0).unwrap();
