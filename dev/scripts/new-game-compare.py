@@ -9,7 +9,7 @@ snapshots again and prints the differences. Timing-driven values (frame counters
 fight runs, the idle counter) are listed but expected to differ; inventory, flags, compass and
 power-ups must not.
 
-    dev/scripts/new-game-compare.py [--port 7117]
+    dev/scripts/new-game-compare.py [--port 7117] [--cycles 3]
 """
 import argparse
 import json
@@ -31,6 +31,7 @@ def strip_generation(source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--port", type=int, default=7117)
+    parser.add_argument("--cycles", type=int, default=1, help="death and New Game repetitions, each compared with the first load")
     args = parser.parse_args()
 
     def call(cmd):
@@ -96,24 +97,29 @@ def main():
     wait(lambda s: s["state"] == "InGame" and s["scene_ready"])
     time.sleep(15)
     first = snapshot()
-    tap("KeyS", 1.0)
-    wait(lambda s: s["state"] == "Menu" and (s["menu"] or {}).get("context") == "death", 600)
-    wait(lambda s: (s["menu"] or {}).get("ready"))
-    choose_new()
-    time.sleep(15)
-    second = snapshot()
     bad = False
-    for section in ("hud", "script_hud", "globals"):
-        for key in sorted(set(first[section] or {}) | set(second[section] or {})):
-            a, b = (first[section] or {}).get(key), (second[section] or {}).get(key)
-            if key == "native_source":
-                # The retained native-command source is an actor identity; a world re-entry gives the
-                # same actor a new generation, so only the index is compared.
-                a, b = (strip_generation(a), strip_generation(b))
-            if a != b:
-                expected = section == "hud" or key in TIMING
-                bad |= not expected
-                print(f"{'timing' if expected else 'DIFFERS'} {section}.{key}: {json.dumps(a)[:120]} -> {json.dumps(b)[:120]}")
+    for cycle in range(1, args.cycles + 1):
+        tap("KeyS", 1.0)
+        wait(lambda s: s["state"] == "Menu" and (s["menu"] or {}).get("context") == "death", 600)
+        wait(lambda s: (s["menu"] or {}).get("ready"))
+        choose_new()
+        time.sleep(15)
+        second = snapshot()
+        print(f"cycle {cycle}")
+        for section in ("hud", "script_hud", "globals"):
+            for key in sorted(set(first[section] or {}) | set(second[section] or {})):
+                a, b = (first[section] or {}).get(key), (second[section] or {}).get(key)
+                if key == "native_source":
+                    # The retained native-command source is an actor identity; a world re-entry gives the
+                    # same actor a new generation, so only the index is compared.
+                    a, b = (strip_generation(a), strip_generation(b))
+                if a != b:
+                    expected = section == "hud" or key in TIMING
+                    bad |= not expected
+                    print(f"{'timing' if expected else 'DIFFERS'} {section}.{key}: {json.dumps(a)[:120]} -> {json.dumps(b)[:120]}")
+        if first["actors"] != second["actors"]:
+            bad = True
+            print(f"DIFFERS actors: {first['actors']} -> {second['actors']}")
     print("fresh state after New Game" if not bad else "stale state after New Game")
     return 1 if bad else 0
 
