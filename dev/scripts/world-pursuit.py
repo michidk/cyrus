@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--port", type=int, default=7117)
     parser.add_argument("--near", type=int, default=40, help="map units from the actor at first")
     parser.add_argument("--far", type=int, default=700, help="map units away afterwards")
+    parser.add_argument("--far-toward-spawn", action="store_true", help="put the far position --far units from the actor along the line to the player's spawn instead of east")
     parser.add_argument("--dwells", type=int, default=13, help="control polls (the first is near)")
     parser.add_argument("--dwell-seconds", type=int, default=20)
     args = parser.parse_args()
@@ -92,15 +93,15 @@ def main():
         failures, lost_max, routing_max, world_error = {}, 0, 0, None
         for dwell in range(args.dwells):
             offset = args.far if dwell else args.near
-            call(
-                {
-                    "type": "place_player",
-                    "x": spot[0] // 256 + offset,
-                    "y": spot[1] // 256,
-                    "z": spot[2] // 256,
-                    "heading": 0,
-                }
-            )
+            if dwell and args.far_toward_spawn:
+                dx, dz = origin[0] - spot[0], origin[2] - spot[2]
+                norm = math.hypot(dx, dz) or 1.0
+                x = int(spot[0] // 256 + dx / norm * args.far)
+                y = spot[1] // 256
+                z = int(spot[2] // 256 + dz / norm * args.far)
+            else:
+                x, y, z = spot[0] // 256 + offset, spot[1] // 256, spot[2] // 256
+            call({"type": "place_player", "x": x, "y": y, "z": z, "heading": 0})
             time.sleep(args.dwell_seconds)
             listed = actors()
             for actor in listed:
