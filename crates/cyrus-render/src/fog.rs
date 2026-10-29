@@ -268,18 +268,6 @@ fn prepare_flat_compositing(
     }
 }
 
-/// Whether the requested environment is the current script world's own, so its lights come from
-/// the retained script state. A restored or console-edited environment is a private in-memory
-/// asset of that world and carries no path.
-fn retains_script_lights(
-    request: Option<&bevy::asset::AssetPath<'_>>,
-    prepared: &cyrus_world::lifecycle::PreparedWorld,
-    current_world: u32,
-) -> bool {
-    prepared.world == Some(current_world)
-        && request.is_none_or(|path| path == &prepared.environment_path)
-}
-
 // This system joins the active environment, camera and GLTF material assets.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn apply_scene_fog(
@@ -350,8 +338,9 @@ fn apply_scene_fog(
         .zip(light_owners.1.as_ref())
         .and_then(|(actors, prepared)| {
             let current = actors.current.as_ref()?;
-            retains_script_lights(request.0.path(), prepared, current.world)
-                .then(|| current.object_lights())
+            (prepared.world == Some(current.world)
+                && request.0.path() == Some(&prepared.environment_path))
+            .then(|| current.object_lights())
         });
     let light_texture = lights.update(
         request.0.id(),
@@ -741,30 +730,6 @@ fn prepare_model_geometry<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn script_lights_are_retained_for_the_worlds_own_or_a_private_environment() {
-        use bevy::asset::AssetPath;
-        let prepared = cyrus_world::lifecycle::PreparedWorld {
-            requested_name: "TEST".into(),
-            world: Some(4),
-            animations: Default::default(),
-            scripts: Default::default(),
-            player_path: "test.player".into(),
-            scene_path: "test.glb".into(),
-            environment_path: "test.environment".into(),
-        };
-        let own = AssetPath::from("test.environment");
-        let other = AssetPath::from("other.environment");
-        assert!(retains_script_lights(Some(&own), &prepared, 4));
-        assert!(
-            retains_script_lights(None, &prepared, 4),
-            "a restored or edited environment has no path"
-        );
-        assert!(!retains_script_lights(Some(&other), &prepared, 4));
-        assert!(!retains_script_lights(Some(&own), &prepared, 5));
-        assert!(!retains_script_lights(None, &prepared, 5));
-    }
 
     #[test]
     fn original_clipping_and_material_properties_survive_debug_override_and_reset() {
