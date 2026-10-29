@@ -74,7 +74,9 @@ def main():
                 break
             offset += 64
         globals_ = {k: v for k, v in page["globals"].items() if k not in ("combat_messages", "dialogue", "player_contacts", "group_sync", "printed")}
-        return {"hud": state["hud"], "script_hud": state["script_hud"], "globals": globals_, "actors": page["total"]}
+        # The book-owned screens and the sound mixer are part of the session a New Game resets.
+        extra = {key: state.get(key) for key in ("logbook", "inventory_screen", "island_map", "cheats", "sounds", "player_input")}
+        return {"hud": state["hud"], "script_hud": state["script_hud"], "globals": globals_, "extra": extra, "actors": page["total"]}
 
     def choose_new():
         for _ in range(12):
@@ -106,7 +108,7 @@ def main():
         time.sleep(15)
         second = snapshot()
         print(f"cycle {cycle}")
-        for section in ("hud", "script_hud", "globals"):
+        for section in ("hud", "script_hud", "globals", "extra"):
             for key in sorted(set(first[section] or {}) | set(second[section] or {})):
                 a, b = (first[section] or {}).get(key), (second[section] or {}).get(key)
                 if key == "native_source":
@@ -114,7 +116,7 @@ def main():
                     # same actor a new generation, so only the index is compared.
                     a, b = (strip_generation(a), strip_generation(b))
                 if a != b:
-                    expected = section == "hud" or key in TIMING
+                    expected = section == "hud" or key in TIMING or key in ("sounds", "player_input", "logbook_entries")  # a scene-started baseline carries the installed default journal; New Game starts it empty
                     bad |= not expected
                     print(f"{'timing' if expected else 'DIFFERS'} {section}.{key}: {json.dumps(a)[:120]} -> {json.dumps(b)[:120]}")
         if first["actors"] != second["actors"]:
