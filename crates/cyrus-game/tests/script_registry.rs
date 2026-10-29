@@ -32413,6 +32413,93 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
 }
 
 #[test]
+fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
+    use cyrus_game::script::{CombatControlState, ScriptHud, ScriptInputs};
+
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            let mut instance = scripts.instances[0].clone();
+            instance.object_id = 2;
+            scripts.instances.push(instance);
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.instances = 3;
+            actor.instance_variables = vec![vec![4]; 3];
+            for instance in &mut scripts.instances {
+                instance.active = 1;
+            }
+            scripts.combat_attacks = vec![cyrus_assets::script::combat::Attack {
+                is_combo: false,
+                motions: vec![
+                    serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "damage":1,"first_collide_frame":0,"collide_duration":1
+                    }))
+                    .unwrap(),
+                ],
+                min_range: 0,
+                max_range: 100,
+            }];
+        },
+        |saved| {
+            for index in [1, 2] {
+                saved["actors"][index]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        attacker_selection_state: 1,
+                        action: 0,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+            }
+            saved["actors"][1]["attributes"][3] = 40.into();
+            saved["actors"][2]["attributes"][23] = 75.into();
+            saved["actors"][2]["attributes"][96] = 1.into();
+        },
+    );
+    let receiver = world.id(1).unwrap();
+    let sender = world.id(2).unwrap();
+    let selected_weapon_before = world
+        .selected_player()
+        .map(|selected| (selected, world.actors()[selected.index].attributes()[23]));
+    let hud = ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(1, 0), (75, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::default()),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.actors()[sender.index].attributes()[23], 1);
+    if let Some((selected_player, selected_weapon_before)) = selected_weapon_before {
+        assert_eq!(
+            world.actors()[selected_player.index].attributes()[23],
+            selected_weapon_before,
+            "restoring a nonselected sender must not rewrite the selected actor's weapon"
+        );
+    }
+    let inventory = hud.inventory(None).unwrap();
+    assert_eq!((inventory.counts[&1], inventory.counts[&75]), (1, 0));
+    assert_eq!(inventory.selected, Some(1));
+    assert_eq!(world.actors()[receiver.index].attributes()[3], 39);
+}
+
+#[test]
 fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();

@@ -377,6 +377,12 @@ impl ScriptWorld {
             }
             self.dispatch_combat_death(receiver, 0, inputs, random, sounds)?;
         }
+        // Direct damage uses the same post-response charged-weapon restoration
+        // as the scaled hit path. Keep it after health and death dispatch so
+        // earlier service failures retain their writes.
+        if self.actors[sender_index].attributes[23] == 75 {
+            self.restore_charged_sender_weapon(sender, inputs)?;
+        }
         Ok(())
     }
 
