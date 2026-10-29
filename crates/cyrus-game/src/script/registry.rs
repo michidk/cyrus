@@ -4261,7 +4261,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let armed = (selected_player && forward_held == Some(true))
             .then(|| self.actor_weapon_predicates(self.index, "IsHoldingWeapon"))
             .map(|predicates| predicates.map(|(holding, _, _)| holding));
-        let mut walk_step_requested = false;
+        let mut walk_step: Option<&'static str> = None;
         let camera = &mut self.registry.camera;
         let effects = &mut self.registry.effects;
         let actor = &mut self.registry.actors[self.index];
@@ -4297,14 +4297,17 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 && let cyrus_world::animation::AnimationSound::Transition { mask: 8, .. } = sound
             {
                 return match (forward_held, &armed) {
-                    (Some(true), Some(Ok(true))) => {
-                        anyhow::bail!("armed selected-player mask-8 transition is unsupported")
-                    }
                     (Some(true), Some(Err(error))) => {
                         anyhow::bail!("selected-player mask-8 transition: {error:#}")
                     }
-                    (Some(true), _) => {
-                        walk_step_requested = true;
+                    (Some(true), holding) => {
+                        // A held weapon runs the armed walk step (group 31), otherwise the
+                        // ordinary forward step.
+                        walk_step = Some(if matches!(holding, Some(Ok(true))) {
+                            "WalkForward"
+                        } else {
+                            "MoveForward"
+                        });
                         Ok(cyrus_world::animation::TransitionDecision::Yield)
                     }
                     (Some(false), _) => Ok(cyrus_world::animation::TransitionDecision::Continue),
@@ -4335,9 +4338,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             &mut emit,
         )?;
         animation.frame = frame.or(animation.frame);
-        if walk_step_requested {
+        if let Some(function) = walk_step {
             // The taken transition ORs the finished ramp into the movement counters and runs
-            // the ordinary walk step once; the step forces the walking group itself.
+            // one step; the step forces its group itself.
             if let Some(control) = self.registry.actors[self.index].control.as_mut() {
                 control.movement_flags |= 0x30;
             }
@@ -4346,7 +4349,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .as_mut()
                 .context("selected-player mask-8 transition: animation sound handler absent")?;
             self.registry
-                .step_player(id, "MoveForward", self.inputs, &mut **sounds)?;
+                .step_player(id, function, self.inputs, &mut **sounds)?;
         }
         Ok(())
     }
