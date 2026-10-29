@@ -325,6 +325,10 @@ struct ActorSnapshot {
     collision: Option<CollisionSnapshot>,
     player_movement: Option<player::PlayerMovementSnapshot>,
     light: Option<super::light::LightState>,
+    /// Whether the actor is a type-six map placement, the only kind projected as a map light.
+    /// Absent in older documents, which projected every enabled light.
+    #[serde(default)]
+    map_light: Option<bool>,
     #[serde(default)]
     flat: Option<super::flat::FlatState>,
     tasks: super::super::NativeTasksSnapshot,
@@ -374,6 +378,11 @@ impl ActorSnapshot {
             control: actor.control.as_ref().map(ControlSnapshot::capture),
             surface: actor.surface,
             light: actor.light.clone(),
+            map_light: Some(
+                actor
+                    .placement()
+                    .is_some_and(|placement| placement.object_type == 6),
+            ),
             flat: actor.flat.clone(),
             model: actor.model.snapshot(),
             collision: actor.collision.as_ref().map(CollisionSnapshot::capture),
@@ -1189,8 +1198,9 @@ pub struct LogicalSessionRestoreInputs<'a> {
     pub bios_tick: u32,
 }
 impl LogicalSessionSnapshot {
-    /// Saved enabled object lights for off-live material preparation. Source and
-    /// identity validation still belongs to the complete replacement plan.
+    /// Saved enabled map lights (type-six placements, as `ScriptWorld::object_lights` projects)
+    /// for off-live material preparation. Source and identity validation still belongs to the
+    /// complete replacement plan.
     pub fn object_lights(&self) -> Result<Vec<cyrus_assets::environment::LocalLight>> {
         let current = self
             .registry
@@ -1203,6 +1213,9 @@ impl LogicalSessionSnapshot {
             let Some(light) = &actor.light else {
                 continue;
             };
+            if actor.map_light == Some(false) {
+                continue;
+            }
             let pose = current
                 .spatial
                 .as_ref()

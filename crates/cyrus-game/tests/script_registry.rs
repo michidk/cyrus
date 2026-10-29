@@ -14691,6 +14691,39 @@ fn a_type_four_object_starts_with_its_placement_intensity_and_radius_and_no_colo
 }
 
 #[test]
+fn snapshot_marks_only_type_six_placements_as_map_lights() {
+    use cyrus_game::script::WorldSnapshotSources;
+    let mut scripts = random_scripts("LightKinds", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(2);
+    for (placement, object_type) in scripts.instances.iter_mut().zip([6, 4]) {
+        placement.object_type = object_type;
+        placement.light_intensity = 211;
+        placement.light_radius = 900;
+        placement.light_rgb = [12, 34, 56];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    assert_eq!(
+        world.object_lights().len(),
+        1,
+        "only the type-six placement is a map light"
+    );
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    assert_eq!(saved["actors"][0]["map_light"], true);
+    assert_eq!(saved["actors"][1]["map_light"], false);
+}
+
+#[test]
 fn authored_light_off_survives_world_replacement_without_reenabling() {
     use cyrus_game::script::{
         GameplayGlobals, ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,
