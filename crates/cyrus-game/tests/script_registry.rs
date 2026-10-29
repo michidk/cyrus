@@ -16381,6 +16381,45 @@ fn scabbard_properties_read_signed_installed_raex_words() {
 }
 
 #[test]
+fn grip_properties_read_signed_installed_raex_words() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
+    for (name, expected) in [("grip[0]", -32768), ("GRIP[1]", 32767)] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        add_standalone_receivers(&mut scripts);
+        let data = Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id,
+                "actors": [{"script_name": "LOGIC",
+                    "raex": {"grip0": -32768, "grip1": 32767}}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    animations: Some(AnimationData(&data)),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+    }
+}
+
+#[test]
 fn current_animation_property_without_an_association_returns_zero() {
     for object in [Object::Me, Object::Player, Object::Named { string: 0 }] {
         let mut scripts = heading_property_scripts(294, object);

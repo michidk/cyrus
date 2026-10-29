@@ -4495,6 +4495,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .map_or(-1, |group| i32::from(group as i16))
                 }));
         }
+        if let Some(word) = ["grip[0]", "grip[1]"]
+            .iter()
+            .position(|word| name.eq_ignore_ascii_case(word))
+        {
+            let index = self.property_receiver(target)?;
+            let actor = &self.registry.actors[index];
+            let control = actor
+                .control
+                .as_ref()
+                .with_context(|| format!("{name} control owner unavailable"))?;
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("{name} animation data unavailable"))?
+                .0;
+            let field = ["grip0", "grip1"][word];
+            let value = raex_word(Some(control), data.actor(actor.name())?, field)
+                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            return Ok(i32::from(value));
+        }
         if let Some(word) = ["scabbard[0]", "scabbard[1]"]
             .iter()
             .position(|word| name.eq_ignore_ascii_case(word))
