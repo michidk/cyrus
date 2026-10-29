@@ -34,6 +34,9 @@ pub enum TransitionDecision {
     Continue,
     /// Take the transition target encoded by the authored command.
     Take,
+    /// A taken mask-8 transition: the host has already made its group request, the cursor stays
+    /// on the command and the update ends without a new frame.
+    Yield,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -629,13 +632,17 @@ impl FrameSequence {
                         self.context,
                         self.command
                     );
-                    if self.dispatch_sound(sounds, AnimationSound::Transition { mask, target })?
-                        == TransitionDecision::Take
+                    match self
+                        .dispatch_sound(sounds, AnimationSound::Transition { mask, target })?
                     {
-                        self.exit_reached = true;
-                        self.command = target as i16;
-                    } else {
-                        self.command = self.command.wrapping_add(1);
+                        TransitionDecision::Take => {
+                            self.exit_reached = true;
+                            self.command = target as i16;
+                        }
+                        TransitionDecision::Yield => return Ok(None),
+                        TransitionDecision::Continue => {
+                            self.command = self.command.wrapping_add(1);
+                        }
                     }
                 }
                 Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {

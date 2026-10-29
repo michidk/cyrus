@@ -1,5 +1,7 @@
 //! Reverse playback, retained direction and original command boundaries through the actor API.
-use cyrus_world::animation::{ActorAnimation, ActorAnimationSnapshot, AnimationSound, Animations};
+use cyrus_world::animation::{
+    ActorAnimation, ActorAnimationSnapshot, AnimationSound, Animations, TransitionDecision,
+};
 use serde_json::json;
 fn data() -> Animations {
     Animations {
@@ -326,6 +328,40 @@ fn a_mask_four_transition_follows_the_falling_byte_without_asking_the_host() {
         assert_eq!(shown, Some(frame), "falling {falling}");
         assert!(seen.is_empty(), "mask 4 is decided without the host");
     }
+}
+
+#[test]
+fn a_yielded_mask_eight_transition_keeps_its_cursor_and_ends_the_update() {
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = json!([
+        {"opcode":15,"trigger_mask":8,"start_frame":0,"target_group":3},
+        {"opcode":0,"frame_reference":70},
+        {"opcode":1}
+    ]);
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut asked = 0;
+    let shown = actor
+        .request_with_decisions(7, 0, 0, &mut |_| {
+            asked += 1;
+            Ok(TransitionDecision::Yield)
+        })
+        .unwrap();
+    assert_eq!(shown, None, "the update ends without a frame");
+    let shown = actor
+        .advance_with_decisions(0, &mut |_| {
+            asked += 1;
+            Ok(TransitionDecision::Yield)
+        })
+        .unwrap();
+    assert_eq!(shown, None);
+    assert_eq!(
+        asked, 2,
+        "the cursor stays on the command, so each update asks again"
+    );
+    let shown = actor
+        .advance_with_decisions(0, &mut |_| Ok(TransitionDecision::Continue))
+        .unwrap();
+    assert_eq!(shown, Some(70), "a later continue moves past the command");
 }
 
 #[test]

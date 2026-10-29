@@ -957,24 +957,6 @@ fn queued_step(
     });
 }
 
-/// Decide a forward animation `Transition` command. Masks 1 and 2 take the transition only when
-/// the actor's accepted action word has the corresponding jump bit. The action-word updater and
-/// `SetAction` native own those words; the selected player's mask-8 combat flag remains an
-/// explicit unsupported boundary. Any other actor or mask continues, while mask 4 is decided by
-/// the animation from its falling byte before reaching this host callback.
-fn transition_continues(
-    actor: ScriptActorId,
-    mask: u32,
-    selected_player: Option<ScriptActorId>,
-) -> anyhow::Result<()> {
-    match mask {
-        8 if Some(actor) == selected_player => {
-            anyhow::bail!("selected-player combat animation transition is unsupported")
-        }
-        _ => Ok(()),
-    }
-}
-
 fn send_actor_sound(
     actor: ScriptActorId,
     sound: super::super::ScriptSound,
@@ -1209,16 +1191,15 @@ pub fn run_ordinary(
         return;
     }
     let timing = clock.step();
-    let selected_player = world
-        .selected_player_index()
-        .and_then(|index| world.id(index).ok());
     let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
+        // The animation stage decides masks 1, 2, 4 and the selected player's 8 itself; every
+        // other trigger is never taken.
         if let super::super::ScriptSound::Animation {
-            sound: cyrus_world::animation::AnimationSound::Transition { mask, .. },
+            sound: cyrus_world::animation::AnimationSound::Transition { .. },
             ..
         } = sound
         {
-            return transition_continues(actor, mask, selected_player);
+            return Ok(());
         }
         send_actor_sound(actor, sound, &request.0, &bindings, emit)
     };
@@ -1419,29 +1400,5 @@ pub fn run_ordinary(
         )
     {
         actors.error = Some(format!("camera frame: {error:#}"));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn transitions_continue_except_the_selected_players_combat_input() {
-        let other = ScriptActorId {
-            generation: 1,
-            index: 3,
-        };
-        let player = ScriptActorId {
-            generation: 1,
-            index: 5,
-        };
-        for mask in [0, 1, 2, 3, 4, 5, 16, 63] {
-            assert!(transition_continues(other, mask, Some(player)).is_ok());
-            assert!(transition_continues(player, mask, Some(player)).is_ok());
-        }
-        assert!(transition_continues(other, 8, Some(player)).is_ok());
-        assert!(transition_continues(other, 8, None).is_ok());
-        assert!(transition_continues(player, 8, Some(player)).is_err());
     }
 }
