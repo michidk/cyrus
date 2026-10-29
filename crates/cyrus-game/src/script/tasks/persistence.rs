@@ -210,16 +210,16 @@ impl Task {
             Self::AnimationFrame { player: true } => {
                 ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
             }
-            Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
+            Self::PlayerDialogue { .. } => ("RTXp", 1, None),
             Self::GroupSync => ("SyncWithGroup", 1, Some(CallKind::Task)),
             Self::UserSync => ("SyncWithUser", 1, Some(CallKind::Task)),
-            Self::SpeakerDialogue(_) => ("RTX", 1, Some(CallKind::Task)),
+            Self::SpeakerDialogue(_) => ("RTX", 1, None),
             Self::SpeakerAnimation { player: false, .. } => ("rtxAnim", 4, Some(CallKind::Task)),
             Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::ShowPlayerPan { .. } => ("showPlayerPan", 1, Some(CallKind::Task)),
-            Self::ObjectPan { command, .. } => (command.name(), 4, Some(CallKind::Task)),
-            Self::ShowLocation { command, .. } => (command.name(), 3, Some(CallKind::Task)),
+            Self::ObjectPan { command, .. } => (command.name(), 4, None),
+            Self::ShowLocation { command, .. } => (command.name(), 3, None),
             Self::Look { .. } => ("lookObj", 1, Some(CallKind::Task)),
             Self::ObjectRotation => ("showObjRot", 4, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),

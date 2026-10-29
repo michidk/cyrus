@@ -4599,3 +4599,50 @@ fn speech_and_camera_natives_accept_multitask_encoding() {
     assert!(!accepted("RTXp", CallKind::Function));
     assert!(!accepted("showPlayerPan", CallKind::Multitask));
 }
+
+#[test]
+fn dialogue_and_camera_multitasks_restore_without_changing_saved_continuations() {
+    let dialogue = dialogue();
+    let cases = [
+        ("RTX", vec![0], Task::SpeakerDialogue(Speech::default())),
+        ("RTXp", vec![0], Task::PlayerDialogue { started: true }),
+        (
+            "showObjPan",
+            vec![0, 0, 0, 20],
+            Task::ObjectPan {
+                command: crate::script::camera::ObjectPanCommand::Object,
+                counter: 7,
+                pan: None,
+            },
+        ),
+        (
+            "showObj",
+            vec![0, 0, 0],
+            Task::ShowLocation {
+                command: crate::script::camera::LocationCommand::Object,
+                counter: 9,
+            },
+        ),
+    ];
+    for (name, arguments, task) in cases {
+        for kind in [CallKind::Task, CallKind::Multitask] {
+            let vm = contract_vm(name, kind, &arguments);
+            let saved = one(task);
+            let expected = serde_json::to_value(&saved).unwrap()["tasks"][0]["state"].clone();
+            let restored = NativeTasks::from_snapshot(
+                saved,
+                &vm,
+                &BTreeMap::from([(1, 100)]),
+                NativeTaskBindings {
+                    dialogue: Some(&dialogue),
+                    ..Default::default()
+                },
+            )
+            .unwrap_or_else(|error| panic!("{name} {kind:?}: {error:#}"));
+            assert_eq!(
+                serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+                expected
+            );
+        }
+    }
+}
