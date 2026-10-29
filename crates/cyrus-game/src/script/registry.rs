@@ -5667,6 +5667,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .model
                 .static_radius
                 .is_some()
+                || (self.registry.actors[self.index].model.prepared && {
+                    let data = self
+                        .inputs
+                        .animations
+                        .context("ShowMe: model path metadata unavailable")?
+                        .0;
+                    self.registry.require_model_identity(data)?;
+                    matches!(
+                        data.actor(self.registry.actors[self.index].name())?["model_load_path"]
+                            .as_str(),
+                        Some("static")
+                    )
+                })
             {
                 let spatial = self
                     .registry

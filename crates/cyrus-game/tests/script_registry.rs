@@ -5355,6 +5355,62 @@ fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
 }
 
 #[test]
+fn show_refreshes_static_coordinates_even_without_a_retained_resource() {
+    use cyrus_assets::collision::ActorCollisionModels;
+    use cyrus_collision::actor_models::ActorModelCollision;
+    use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
+    for (path, expected) in [
+        ("static", [10.0, 20.0, 30.0]),
+        ("none", [0.0; 3]),
+        ("animation_table", [0.0; 3]),
+    ] {
+        let mut scripts = random_scripts("ShowMe", vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (_, mut data, _) = static_model_fixture(scripts.clone());
+        data.metadata["actors"][0]["model_load_path"] = path.into();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let empty = ActorModelCollision::new(&ActorCollisionModels {
+            object_count: 2,
+            collision_flags: BTreeMap::from([(0, 0), (1, 0)]),
+            ..Default::default()
+        })
+        .unwrap();
+        world.prepare_model_resources(&data, &empty).unwrap();
+        let actor = world.id(0).unwrap();
+        assert_eq!(world.model_position(actor).unwrap(), Some([0.0; 3]));
+        world
+            .advance(
+                actor,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    animations: Some(AnimationData(&data)),
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.model_position(actor).unwrap(),
+            Some(expected),
+            "{path}"
+        );
+        assert!(world.model_presentation(actor).unwrap().is_none(), "{path}");
+        assert!(!world.actors()[0].control_state().unwrap().hidden);
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    }
+}
+
+#[test]
 fn animated_model_selection_retains_radius_when_hidden_and_clears_missing_geometry() {
     use cyrus_assets::{animation::AnimationModel, collision::ActorCollisionModels};
     use cyrus_collision::actor_models::ActorModelCollision;
