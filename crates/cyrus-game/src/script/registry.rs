@@ -4495,6 +4495,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .map_or(-1, |group| i32::from(group as i16))
                 }));
         }
+        if let Some(word) = ["scabbard[0]", "scabbard[1]"]
+            .iter()
+            .position(|word| name.eq_ignore_ascii_case(word))
+        {
+            let index = self.property_receiver(target)?;
+            let actor = &self.registry.actors[index];
+            let control = actor
+                .control
+                .as_ref()
+                .with_context(|| format!("{name} control owner unavailable"))?;
+            let value = if let Some(value) = control.scabbard_override[word] {
+                value
+            } else {
+                let data = self
+                    .inputs
+                    .animations
+                    .with_context(|| format!("{name} animation data unavailable"))?
+                    .0;
+                let field = ["scabbard0", "scabbard1"][word];
+                raex_word(Some(control), data.actor(actor.name())?, field)
+                    .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?
+            };
+            return Ok(i32::from(value));
+        }
         if name.eq_ignore_ascii_case("torch_timer") {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]

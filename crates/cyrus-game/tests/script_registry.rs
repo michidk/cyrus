@@ -16265,8 +16265,8 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
     for (name, write, read) in [
         ("hide", Some(1), true),
         ("rope", None, true),
-        ("scabbard[0]", Some(42), false),
-        ("scabbard[1]", Some(-3), false),
+        ("scabbard[0]", Some(42), true),
+        ("scabbard[1]", Some(-3), true),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name.into();
@@ -16326,10 +16326,57 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
             }
             "scabbard[0]" => {
-                assert_eq!(control["scabbard_override"], serde_json::json!([42, null]))
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [42]);
+                assert_eq!(control["scabbard_override"], serde_json::json!([42, null]));
             }
-            _ => assert_eq!(control["scabbard_override"], serde_json::json!([null, -3])),
+            _ => {
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [-3]);
+                assert_eq!(control["scabbard_override"], serde_json::json!([null, -3]));
+            }
         }
+    }
+}
+
+#[test]
+fn scabbard_properties_read_signed_installed_raex_words() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
+    for (name, expected) in [("scabbard[0]", -32768), ("SCABBARD[1]", 32767)] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        add_standalone_receivers(&mut scripts);
+        let data = Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id,
+                "actors": [{"script_name": "LOGIC",
+                    "raex": {"scabbard0": -32768, "scabbard1": 32767}}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    animations: Some(AnimationData(&data)),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().scabbard_override,
+            [None; 2]
+        );
     }
 }
 
