@@ -171,6 +171,19 @@ def main():
         time.sleep(10)
         game0 = (call({"type": "state"}).get("clock") or {}).get("game_seconds", 0)
         identity0, loop0 = script_loop_sample()
+        initial_loop0 = loop0
+        # Scene readiness and script-world preparation can precede the first
+        # ordinary update by several frames, especially for large rendered
+        # worlds. Do not take a zero frame as the baseline while that admission
+        # is still pending.
+        if loop0 == 0:
+            deadline = time.time() + min(args.ready_timeout, 60)
+            while time.time() < deadline:
+                time.sleep(2)
+                identity, loop = script_loop_sample()
+                if identity != identity0 or loop is None or loop != 0:
+                    identity0, loop0 = identity, loop
+                    break
         # Large worlds can spend many seconds servicing each actor page. Keep
         # the soak focused on loop progress, then paginate actors once at the end.
         seen, end = {}, time.time() + args.seconds
@@ -201,7 +214,8 @@ def main():
         if identity_changed:
             print(f"{world}: script world identity changed or unavailable during soak")
         if loop_stalled:
-            print(f"{world}: script world_loop_frame did not advance ({loop0})")
+            reported_loop = loop0 if loop0 is not None else initial_loop0
+            print(f"{world}: script world_loop_frame did not advance ({reported_loop})")
         if world_error:
             print(f"{world}: script world failed: {world_error[:300]}")
         if clock_stalled:
