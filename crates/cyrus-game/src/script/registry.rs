@@ -2816,6 +2816,24 @@ impl ScriptWorld {
             })).collect::<Vec<_>>()
         })
     }
+    /// Bounded identity, health and position diagnostics without VM/task serialization.
+    pub fn inspect_summary(&self, offset: usize, limit: usize) -> serde_json::Value {
+        serde_json::json!({
+            "world": self.world,
+            "generation": self.generation,
+            "total": self.actors.len(),
+            "actors": self.actors.iter().enumerate().skip(offset).take(limit.min(64)).map(|(index, actor)| {
+                let position = self.spatial.as_ref().and_then(|spatial| spatial.actor(index).ok()).map(|pose| pose.local.position);
+                serde_json::json!({
+                    "id": ScriptActorId { generation: self.generation, index },
+                    "name": actor.name(),
+                    "object_id": actor.placement().map(|placement| placement.object_id),
+                    "health": actor.attributes[3],
+                    "position": position,
+                })
+            }).collect::<Vec<_>>()
+        })
+    }
     pub fn flags(&self) -> &[i32] {
         &self.flags
     }

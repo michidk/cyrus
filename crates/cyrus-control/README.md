@@ -69,6 +69,10 @@ Native hooks dispatch the retained RAHK call without advancing either script con
 For example, 256 supplies scale one; zero is accepted. Main and interrupt body
 steps do not poll existing tasks. These inspection tools do not enable gameplay.
 
+`script_summary {offset?, limit?}` returns only actor identity, object id, health and prepared map
+position. It avoids VM locals, task slots, geometry and failure serialization so native probes can
+sample a world without blocking on the full `scripts` payload.
+
 `bind_script_animation {generation, index, default_group, node?}` prepares an
 actor once for this world generation. The caller supplies the established default
 group. An optional exact scene node name transfers its animation presentation to

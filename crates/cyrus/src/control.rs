@@ -187,6 +187,7 @@ fn handle(
             Command::Ping
                 | Command::State
                 | Command::Scripts { .. }
+                | Command::ScriptSummary { .. }
                 | Command::BindScriptAnimation { .. }
                 | Command::StepScript { .. }
         ) {
@@ -489,6 +490,13 @@ fn handle(
                     None => Err("script world is not prepared".into()),
                 }
             }
+            Command::ScriptSummary { offset, limit } => match script_actors
+                .as_ref()
+                .and_then(|actors| actors.current.as_ref())
+            {
+                Some(world) => Ok(world.inspect_summary(offset, limit)),
+                None => Err("script world is not prepared".into()),
+            },
             Command::BindScriptAnimation {
                 generation,
                 index,

@@ -170,6 +170,13 @@ pub enum Command {
         #[serde(default = "script_page_size")]
         limit: usize,
     },
+    /// Inspect only bounded actor identity, health and map position.
+    ScriptSummary {
+        #[serde(default)]
+        offset: usize,
+        #[serde(default = "script_page_size")]
+        limit: usize,
+    },
     /// Prepare animation for an inspected actor, optionally binding a named scene node.
     BindScriptAnimation {
         generation: u64,
@@ -201,6 +208,25 @@ pub enum Command {
 
 fn script_page_size() -> usize {
     32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Command, Request};
+
+    #[test]
+    fn script_summary_defaults_match_script_pages() {
+        let request: Request = serde_json::from_str(r#"{"id":7,"cmd":{"type":"script_summary"}}"#)
+            .expect("script_summary request should deserialize");
+        assert_eq!(request.id, 7);
+        assert!(matches!(
+            request.cmd,
+            Command::ScriptSummary {
+                offset: 0,
+                limit: 32
+            }
+        ));
+    }
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
