@@ -15,6 +15,8 @@ Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`, `flycam {ena
 
 `skip_startup` goes to the book menu. `load_scene` skips presentation or
 leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGame`.
+`state.sounds` counts the effect and voice clips that are playing and, of those, paused
+(`{playing, paused}`), so a save/load can be checked for sample continuation without a sound device.
 `state.flycam` includes the scene-space camera position and quaternion rotation
 in `[x,y,z,w]` order for repeatable view comparisons.
 
