@@ -72,11 +72,13 @@ def main():
         down = set()
         while time.time() - t0 < args.seconds:
             now = time.time() - t0
-            for key, begin, end in holds:
-                if begin <= now < end and key not in down:
+            # A key is down while any of its windows is open, so repeated holds of one key do not cancel each other.
+            for key in {key for key, _, _ in holds}:
+                wanted = any(begin <= now < end for k, begin, end in holds if k == key)
+                if wanted and key not in down:
                     sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", "keydown", key, check=False)
                     down.add(key)
-                elif now >= end and key in down:
+                elif not wanted and key in down:
                     sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", "keyup", key, check=False)
                     down.discard(key)
             s = state()
