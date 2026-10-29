@@ -42,7 +42,28 @@ pub(super) fn register(app: &mut App) {
             prepare
                 .after(VisibilitySystems::CheckVisibility)
                 .after(crate::animation::apply_poses),
+        )
+        .add_systems(
+            PostUpdate,
+            sync_draw_transforms
+                .after(VisibilitySystems::CheckVisibility)
+                .before(prepare),
         );
+}
+
+/// A draw child has an identity local transform, so its world transform is its source's. Script pose
+/// application writes world transforms directly and ordinary propagation skips clean subtrees, which
+/// left restored draws at the origin while their clipping used the source: the GPU world position then
+/// disagreed with the projected one and the fog distance clip discarded the geometry.
+fn sync_draw_transforms(
+    mut draws: Query<(&ChildOf, &mut GlobalTransform), With<Draw>>,
+    sources: Query<&GlobalTransform, Without<Draw>>,
+) {
+    for (parent, mut global) in &mut draws {
+        if let Ok(source) = sources.get(parent.parent()) {
+            global.set_if_neq(*source);
+        }
+    }
 }
 
 // Binding joins source geometry, metadata and its existing material/layer ownership.
@@ -931,5 +952,18 @@ mod tests {
         );
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
+    }
+
+    #[test]
+    fn draw_children_follow_their_sources_world_transform() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        let moved = GlobalTransform::from_translation(Vec3::new(-1775.5, 9.1, -1529.0));
+        let source = world.spawn(moved).id();
+        let draw = world
+            .spawn((Draw, GlobalTransform::IDENTITY, ChildOf(source)))
+            .id();
+        world.run_system_once(sync_draw_transforms).unwrap();
+        assert_eq!(*world.get::<GlobalTransform>(draw).unwrap(), moved);
     }
 }
