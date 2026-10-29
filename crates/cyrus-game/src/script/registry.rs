@@ -4016,8 +4016,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         |_, _| anyhow::bail!("WalkBackward collision sound handler unavailable");
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     admission.backward_step_clear = Some(if player_backward {
-                        self.registry
-                            .player_step_clear(id, geometry.ground, false)?
+                        self.registry.player_step_clear(
+                            id,
+                            geometry.ground,
+                            hazard::OrdinaryStepDirection::Backward,
+                        )?
                     } else {
                         self.registry.ordinary_step_clear(
                             id,
@@ -4078,16 +4081,23 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         super::locomotion::Strafe::Left => hazard::OrdinaryStepDirection::Left,
                         super::locomotion::Strafe::Right => hazard::OrdinaryStepDirection::Right,
                     };
+                    let selected = self.selected_player() == Some(id);
                     let mut missing_sound =
                         |_, _| anyhow::bail!("strafe collision sound handler unavailable");
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
-                    admission.lateral_step_clear = Some(self.registry.ordinary_step_clear(
-                        id,
-                        direction,
-                        geometry.ground,
-                        geometry.environment,
-                        sounds,
-                    )?);
+                    // The selected player's step check is its support query, as for its walks.
+                    admission.lateral_step_clear = Some(if selected {
+                        self.registry
+                            .player_step_clear(id, geometry.ground, direction)?
+                    } else {
+                        self.registry.ordinary_step_clear(
+                            id,
+                            direction,
+                            geometry.ground,
+                            geometry.environment,
+                            sounds,
+                        )?
+                    });
                     if matches!(
                         strafe_plan,
                         super::locomotion::StrafeAdmission::DeepWater { .. }
@@ -4114,7 +4124,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             |_, _| anyhow::bail!("WalkForward collision sound handler unavailable");
                         let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                         admission.forward_step_clear = Some(if player_forward {
-                            self.registry.player_step_clear(id, geometry.ground, true)?
+                            self.registry.player_step_clear(
+                                id,
+                                geometry.ground,
+                                hazard::OrdinaryStepDirection::Forward,
+                            )?
                         } else {
                             self.registry.walk_forward_step_clear(
                                 id,

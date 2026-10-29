@@ -793,30 +793,33 @@ impl ScriptWorld {
         movement.startup.finish_update(accepted);
         Ok(())
     }
-    /// The selected player's scripted walking step check: the support query at the position one
-    /// step ahead (`WalkForward`: attribute 12 plus the front body extent) or behind
-    /// (`WalkBackward`: attribute 13 plus the rear extent), without moving the player. The
-    /// admission is the forward walking admission applied to that probe, which is inferred.
+    /// The selected player's scripted step check: the support query at the position one step
+    /// ahead (`WalkForward`: attribute 12 plus the front body extent), behind (`WalkBackward`:
+    /// attribute 13 plus the rear extent) or to the side (`MoveLeft`/`MoveRight`: attribute 10
+    /// plus the lateral body extent), without moving the player. The admission is the forward
+    /// walking admission applied to that probe, which is inferred.
     pub fn player_step_clear(
         &mut self,
         id: super::ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
-        forward: bool,
+        direction: super::hazard::OrdinaryStepDirection,
     ) -> Result<bool> {
+        use super::hazard::OrdinaryStepDirection::{Backward, Forward, Left, Right};
         let index = self.resolve(id)?;
         let shape = self.ordinary_collision_shape(id)?;
-        let (attribute, extent) = if forward {
-            (12, shape.positive_extent[2])
-        } else {
-            (13, shape.negative_extent[2])
+        let (attribute, extent, offset_axis, reverse) = match direction {
+            Forward => (12, shape.positive_extent[2], 2, false),
+            Backward => (13, shape.negative_extent[2], 2, true),
+            Left => (10, shape.negative_extent[0], 0, true),
+            Right => (10, shape.positive_extent[0], 0, false),
         };
         let step = i32::from(self.actors[index].attributes[attribute])
             .wrapping_add(extent)
             .wrapping_mul(256);
         let pose = self.spatial(id)?.local;
-        let rotated =
-            pose.matrix
-                .transform([0, 0, if forward { step } else { step.wrapping_neg() }])?;
+        let mut offset = [0; 3];
+        offset[offset_axis] = if reverse { step.wrapping_neg() } else { step };
+        let rotated = pose.matrix.transform(offset)?;
         let mut proposed = pose.position;
         proposed[0] = proposed[0].wrapping_add(rotated[0]);
         proposed[2] = proposed[2].wrapping_add(rotated[2]);
