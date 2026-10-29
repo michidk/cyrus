@@ -1038,6 +1038,12 @@ fn pause_cameras(
     if confirmation.is_some() {
         return;
     }
+    // Every book entry stops all sound channels first (preservation engine/menu.md).
+    if pause.is_some() || death.is_some() {
+        commands.queue(|world: &mut World| {
+            world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
+        });
+    }
     let mut active_cameras = Vec::new();
     for (entity, mut camera) in &mut cameras {
         if camera.is_active {
@@ -1631,6 +1637,26 @@ mod tests {
         assert!(world.get::<Camera>(active).unwrap().is_active);
         assert!(!world.get::<Camera>(inactive).unwrap().is_active);
         assert!(world.get::<BookPausedCamera>(active).is_none());
+    }
+
+    #[test]
+    fn gameplay_book_entry_stops_every_sound_but_the_startup_book_does_not() {
+        use bevy::ecs::system::RunSystemOnce;
+        use cyrus_audio::sound::SoundRequest;
+        let stops = |world: &mut World| {
+            world
+                .resource_mut::<Messages<SoundRequest>>()
+                .drain()
+                .filter(|request| matches!(request, SoundRequest::StopAll))
+                .count()
+        };
+        let mut world = World::new();
+        world.init_resource::<Messages<SoundRequest>>();
+        world.run_system_once(pause_cameras).unwrap();
+        assert_eq!(stops(&mut world), 0);
+        world.insert_resource(cyrus_game::PauseBookEntry { page: 0 });
+        world.run_system_once(pause_cameras).unwrap();
+        assert_eq!(stops(&mut world), 1);
     }
 
     #[test]
