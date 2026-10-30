@@ -32172,12 +32172,10 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
     let health = world.globals().selected_health().unwrap();
     assert!(health.hit_inhibited(), "the death-owning health ran");
     assert_eq!(health.displayed(), 0);
-    assert!(
-        matches!(
-            world.globals().player_death_override_group(),
-            Some(121 | 122)
-        ),
-        "the combat death service stored the armed death group"
+    assert_eq!(
+        world.globals().player_death_override_group(),
+        Some(121),
+        "an unarmed selected player dies in group 121, as in the original"
     );
     let control = world.actors()[receiver.index].control_state().unwrap();
     assert_eq!(control.death_selector, 8);

@@ -860,7 +860,8 @@ impl ScriptWorld {
 
     /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
     /// response); the weapon-contact caller uses [`Self::dispatch_contact_death`] instead.
-    /// Selector zero prefers group 122 when present, otherwise group 121. With attribute 69
+    /// Selector zero prefers group 122 when present (for the selected player only while it holds a
+    /// weapon), otherwise group 121. With attribute 69
     /// clear, the selected player stores the group as the death override when none is set (its
     /// death controller starts the animation); a nonplayer force-starts it, stores death default
     /// 124/123 (releasing its walk nodes), sends `0xd002` to the first coordinator sharing its
@@ -895,12 +896,17 @@ impl ScriptWorld {
             }
         }
         if self.actors[index].attributes[69] == 0 {
+            // The original's selected player dies in group 121 when unarmed and 122 when it holds a
+            // weapon (installed observation); the single retained table here always has both.
+            let has_122 = !selected || self.spacing_weapon(id, inputs)?.1;
             let animation = self.actors[index].animation.as_ref();
-            let group = if selector == 0 && animation.is_some_and(|a| a.playback.has_group(122)) {
-                122
-            } else {
-                121
-            };
+            let group =
+                if selector == 0 && has_122 && animation.is_some_and(|a| a.playback.has_group(122))
+                {
+                    122
+                } else {
+                    121
+                };
             if selected {
                 if self
                     .globals
