@@ -34173,3 +34173,373 @@ fn bind_scheduler_environment(
         .unwrap();
     handle
 }
+
+fn light_maintenance_scripts(kind: u8, count: usize, calls: &[(&str, &[i32])]) -> Scripts {
+    let mut scripts = cache();
+    scripts.instances.truncate(count);
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.instances = count as u16;
+    actor.instance_variables.truncate(count);
+    actor.program.steps.clear();
+    for (index, (name, arguments)) in calls.iter().enumerate() {
+        let function = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: (*name).into(),
+            param_count: arguments.len() as u8,
+            kind: CallKind::Function,
+        });
+        actor.program.steps.insert(
+            index as u32,
+            assign_call(index as u32 + 1, function, name, arguments),
+        );
+    }
+    let end = calls.len() as u32;
+    actor.program.steps.insert(
+        end,
+        Step {
+            next: end + 1,
+            operation: Operation::End { target: end },
+        },
+    );
+    for instance in &mut scripts.instances {
+        instance.object_type = kind;
+        instance.map_position = [600, 0, 600];
+        instance.light_intensity = 256;
+        instance.light_radius = 100;
+    }
+    scripts
+}
+
+fn light_maintenance_world(
+    mut scripts: Scripts,
+) -> (Scripts, ScriptWorld, cyrus_assets::animation::Animations) {
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, data) = revisit_test_app(&scripts);
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    (scripts, world, data)
+}
+
+fn light_maintenance_update(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    separate: bool,
+    ticks: u32,
+    random: &mut cyrus_game::random::EngineRandom,
+) {
+    let inputs = cyrus_game::script::ScriptInputs {
+        nominal_ticks: Some(ticks),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    if separate {
+        world
+            .update_separate([600, 600], inputs, random, &mut |_, _| Ok(()), 100)
+            .unwrap();
+    } else {
+        world
+            .update_ordinary(
+                data,
+                [600, 600],
+                cyrus_game::script::OrdinaryInputs {
+                    scripts: inputs,
+                    scene: None,
+                },
+                random,
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn light_maintenance_precedes_ordinary_scripts_but_follows_separate_scripts() {
+    for (kind, separate, first_intensity, first_radius, first_random) in [
+        (4, false, 256, 100, 1103527590),
+        (6, true, 259, 97, 662824084),
+    ] {
+        let mut scripts = light_maintenance_scripts(
+            kind,
+            1,
+            &[
+                ("LightFlicker", &[18, 1]),
+                ("LightSize", &[8, 1]),
+                ("Rnd", &[255]),
+            ],
+        );
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&3)
+            .unwrap()
+            .operation = Operation::End { target: 2 };
+        let (_, mut world, data) = light_maintenance_world(scripts);
+        let mut random = cyrus_game::random::EngineRandom::default();
+        light_maintenance_update(&mut world, &data, separate, 1, &mut random);
+        let actor = &world.actors()[0];
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["intensity"], first_intensity);
+        assert_eq!(light["radius"], first_radius);
+        assert_eq!(actor.runtime().unwrap().variables(), [198]);
+        assert_eq!(random.state(), first_random);
+        if !separate {
+            light_maintenance_update(&mut world, &data, false, 1, &mut random);
+            let actor = &world.actors()[0];
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            let light = actor.light_state().unwrap();
+            assert_eq!(light["intensity"], 259);
+            assert_eq!(light["radius"], 97);
+            assert_eq!(actor.runtime().unwrap().variables(), [107]);
+            assert_eq!(random.state(), 3295386429);
+        }
+    }
+}
+
+#[test]
+fn light_maintenance_consumes_intensity_then_radius_in_shared_actor_order() {
+    let scripts =
+        light_maintenance_scripts(6, 2, &[("LightFlicker", &[18, 1]), ("LightSize", &[8, 1])]);
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    assert_eq!(
+        world
+            .separate_actors([600, 600])
+            .unwrap()
+            .iter()
+            .map(|id| id.index)
+            .collect::<Vec<_>>(),
+        [1, 0]
+    );
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    for (index, intensity, radius) in [(1, 253, 102), (0, 248, 99)] {
+        let actor = &world.actors()[index];
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["intensity"], intensity);
+        assert_eq!(light["radius"], radius);
+    }
+    assert_eq!(random.state(), 3295386429);
+}
+
+#[test]
+fn light_maintenance_uses_signed_thresholds_one_draw_and_word_clamps() {
+    // Literal outcomes from original-instruction cases, including a wrapped input word.
+    for (
+        flicker,
+        size,
+        ticks,
+        start_intensity,
+        start_radius,
+        seed,
+        intensity,
+        radius,
+        phase,
+        state,
+    ) in [
+        ([18, 2], [8, 2], 1, 256, 100, 1, 256, 100, 1, 1),
+        ([18, 3], [8, 7], 100, 256, 100, 1, 253, 102, 0, 2524885223),
+        ([18, 0], [8, 0], 0, 256, 100, 1, 253, 102, 0, 2524885223),
+        (
+            [18, 1],
+            [0, 1],
+            1,
+            32767,
+            100,
+            2,
+            -32766,
+            100,
+            0,
+            2207042835,
+        ),
+        ([0, 1], [18, 1], 1, 256, 32767, 2, 256, 1, 0, 2207042835),
+        ([0, 1], [0, 1], 1, 256, -9, 1, 256, 1, 0, 1),
+        ([65536, 1], [0, 1], 1, 256, 100, 1, 256, 100, 0, 1),
+    ] {
+        let mut scripts =
+            light_maintenance_scripts(6, 1, &[("LightFlicker", &flicker), ("LightSize", &size)]);
+        scripts.instances[0].light_intensity = start_intensity;
+        scripts.instances[0].light_radius = start_radius;
+        let (_, mut world, data) = light_maintenance_world(scripts);
+        let mut random = cyrus_game::random::EngineRandom::from_state(seed);
+        light_maintenance_update(&mut world, &data, true, ticks, &mut random);
+        let actor = &world.actors()[0];
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["intensity"], intensity);
+        assert_eq!(light["radius"], radius);
+        assert_eq!(light["flicker"][1], phase);
+        assert_eq!(light["size"][1], phase);
+        assert_eq!(random.state(), state);
+    }
+}
+
+#[test]
+fn light_maintenance_signed_phase_and_shared_random_continue_after_snapshot() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let scripts =
+        light_maintenance_scripts(6, 1, &[("LightFlicker", &[18, 1]), ("LightSize", &[8, 1])]);
+    let (scripts, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    light_maintenance_update(&mut world, &data, true, 32768, &mut random);
+    let light = world.actors()[0].light_state().unwrap();
+    assert_eq!(light["flicker"][1], 32768);
+    assert_eq!(light["size"][1], 32768);
+    assert_eq!(random.state(), 1);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let snapshot =
+        serde_json::from_value(serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap())
+            .unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        snapshot,
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let mut restored_random = cyrus_game::random::EngineRandom::from_state(random.state());
+    for ticks in [32768, 1] {
+        light_maintenance_update(&mut world, &data, true, ticks, &mut random);
+        light_maintenance_update(&mut restored, &data, true, ticks, &mut restored_random);
+        assert_eq!(
+            world.actors()[0].light_state(),
+            restored.actors()[0].light_state()
+        );
+        assert_eq!(random.state(), restored_random.state());
+    }
+    let light = restored.actors()[0].light_state().unwrap();
+    assert_eq!(light["intensity"], 253);
+    assert_eq!(light["radius"], 102);
+    assert_eq!(random.state(), 2524885223);
+}
+
+#[test]
+fn light_maintenance_disabled_record_does_not_consume_random_or_modulate() {
+    let scripts = light_maintenance_scripts(
+        6,
+        1,
+        &[
+            ("LightFlicker", &[18, 0]),
+            ("LightSize", &[8, 0]),
+            ("LightOff", &[]),
+        ],
+    );
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    let actor = &world.actors()[0];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    let light = actor.light_state().unwrap();
+    assert_eq!(light["enabled"], false);
+    assert_eq!(light["inactive_ticks"], 1);
+    assert_eq!(light["intensity"], 256);
+    assert_eq!(light["radius"], 100);
+    assert_eq!(light["flicker"][1], 0);
+    assert_eq!(light["size"][1], 0);
+    assert_eq!(random.state(), 1);
+}
+
+#[test]
+fn light_maintenance_rejects_negative_wrapped_amplitude_before_mutation_or_draws() {
+    for amplitude in [-1, 65535] {
+        let scripts = light_maintenance_scripts(
+            6,
+            1,
+            &[("LightFlicker", &[18, 0]), ("LightSize", &[amplitude, 0])],
+        );
+        let (_, mut world, data) = light_maintenance_world(scripts);
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                Default::default(),
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let before = world.actors()[0].light_state();
+        let mut random = cyrus_game::random::EngineRandom::default();
+        light_maintenance_update(&mut world, &data, true, 1, &mut random);
+        let actor = &world.actors()[0];
+        let error = actor.failure().unwrap();
+        assert!(
+            error.contains("world 7 instance 0 actor LOGIC separate update"),
+            "{error}"
+        );
+        assert!(
+            error.contains("LightSize negative amplitude -1 unsupported"),
+            "{error}"
+        );
+        assert_eq!(actor.light_state(), before);
+        assert_eq!(random.state(), 1);
+    }
+}
+
+#[test]
+fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance() {
+    let mut scripts = light_maintenance_scripts(4, 1, &[("FlatAnimate", &[129, 1, 1])]);
+    scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    light_maintenance_update(&mut world, &data, false, 1, &mut random);
+    let actor = &world.actors()[0];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    assert_eq!(actor.flat_state().unwrap()["frame"], 0);
+    light_maintenance_update(&mut world, &data, false, 1, &mut random);
+    assert_eq!(world.actors()[0].flat_state().unwrap()["frame"], 1);
+
+    let scripts = light_maintenance_scripts(4, 1, &[("Flat", &[129]), ("FlatOff", &[])]);
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    light_maintenance_update(&mut world, &data, false, 33, &mut random);
+    let actor = &world.actors()[0];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    assert_eq!(actor.flat_state().unwrap()["enabled"], false);
+    assert_eq!(actor.flat_state().unwrap()["pending"], 0);
+    light_maintenance_update(&mut world, &data, false, 33, &mut random);
+    assert!(world.actors()[0].flat_state().is_none());
+}
+
+#[test]
+fn light_maintenance_keeps_hidden_ordinary_actor_phases_and_random_unchanged() {
+    let scripts = light_maintenance_scripts(
+        4,
+        1,
+        &[
+            ("LightFlicker", &[18, 0]),
+            ("LightSize", &[8, 0]),
+            ("HideMe", &[]),
+        ],
+    );
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            Default::default(),
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    let before = world.actors()[0].light_state();
+    let mut random = cyrus_game::random::EngineRandom::default();
+    light_maintenance_update(&mut world, &data, false, 100, &mut random);
+    let actor = &world.actors()[0];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    assert_eq!(actor.light_state(), before);
+    assert_eq!(random.state(), 1);
+}

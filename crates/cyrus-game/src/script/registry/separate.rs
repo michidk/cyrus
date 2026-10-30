@@ -337,7 +337,7 @@ impl ScriptWorld {
                         budget,
                     )?;
                 }
-                self.actors[id.index].maintain_light(inputs.nominal_ticks.unwrap());
+                self.actors[id.index].maintain_light(inputs.nominal_ticks.unwrap(), random)?;
                 self.actors[id.index].maintain_flat(inputs.nominal_ticks.unwrap());
                 Ok(())
             })();

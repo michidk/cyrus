@@ -73,6 +73,17 @@ Authored object-light projection resolves its offset through the current retaine
 actor pose. Snapshot material preparation uses the same projection without
 advancing scripts or refreshing families.
 
+Verified: retained light modulation follows preservation's
+[modulation maintenance contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/model-lighting.md#modulation-maintenance).
+Eligible ordinary actors maintain lights and flats before animation and script
+dispatch; separate objects maintain lights after script dispatch. Positive light
+amplitudes consume the shared session random stream in intensity-then-radius
+order. Enabled records with negative amplitudes after low-word conversion remain
+explicitly unsupported and fail before light maintenance changes state or consumes
+random values. Disabled records retain the inactivity cleanup path.
+Snapshots retain each channel's phase; the session retains the shared random state.
+This logical maintenance does not add ordinary actor lights to renderer submission.
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification

@@ -69,10 +69,25 @@ impl super::ScriptActor {
             .map(|light| serde_json::to_value(light).expect("light state serializes"))
     }
 
-    pub(super) fn maintain_light(&mut self, ticks: u32) {
+    pub(super) fn maintain_light(
+        &mut self,
+        ticks: u32,
+        random: &mut crate::random::EngineRandom,
+    ) -> anyhow::Result<()> {
         let Some(light) = &mut self.light else {
-            return;
+            return Ok(());
         };
+        if light.enabled || light.locked {
+            for (function, amplitude) in [
+                ("LightFlicker", light.flicker[0] as i16),
+                ("LightSize", light.size[0] as i16),
+            ] {
+                anyhow::ensure!(
+                    amplitude >= 0,
+                    "{function} negative amplitude {amplitude} unsupported"
+                );
+            }
+        }
         if light.locked {
             light.enabled = true;
         }
@@ -81,7 +96,28 @@ impl super::ScriptActor {
             if light.inactive_ticks > 32 {
                 self.light = None;
             }
+            return Ok(());
         }
+        for (words, starting, current) in [
+            (
+                &mut light.flicker,
+                light.starting_intensity,
+                &mut light.intensity,
+            ),
+            (&mut light.size, light.starting_radius, &mut light.radius),
+        ] {
+            if words[0] == 0 {
+                continue;
+            }
+            words[1] = words[1].wrapping_add(ticks as u16);
+            if words[1] as i16 >= words[2] as i16 {
+                words[1] = 0;
+                let offset = random.rnd(i32::from(words[0]))? - i32::from(words[0] / 2);
+                *current = starting.wrapping_add(offset as i16);
+            }
+        }
+        light.radius = light.radius.max(1);
+        Ok(())
     }
 }
 

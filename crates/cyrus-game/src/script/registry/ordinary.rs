@@ -236,6 +236,14 @@ impl ScriptWorld {
                     .expect("admitted ordinary control")
                     .advance_action_transition_counter(ticks);
                 self.finish_ledge_climb(id, ticks, sounds)?;
+                if !self.actors[id.index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.hidden)
+                {
+                    self.actors[id.index].maintain_light(ticks, random)?;
+                    self.actors[id.index].maintain_flat(ticks);
+                }
                 // A selected role admitted for a timer/inspection pass has no input-owned
                 // movement sample. Keep its ordinary script stages eligible, but do not advance
                 // the authored animation state as though a live player update occurred.
@@ -502,14 +510,6 @@ impl ScriptWorld {
                         }
                     });
                     self.continue_ordinary_motion(id, inputs, query, sounds)?;
-                }
-                if !self.actors[id.index]
-                    .control
-                    .as_ref()
-                    .is_some_and(|control| control.hidden)
-                {
-                    self.actors[id.index].maintain_light(ticks);
-                    self.actors[id.index].maintain_flat(ticks);
                 }
                 if self.actors[id.index].attributes[1] != 0 && !on_rope {
                     let scene = anyhow::Context::context(
