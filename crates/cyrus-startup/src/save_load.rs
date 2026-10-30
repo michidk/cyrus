@@ -11,9 +11,13 @@ pub struct GameplayThumbnail(pub Option<Vec<u8>>);
 pub(super) fn capture_gameplay(
     mut commands: Commands,
     next: Res<NextState<cyrus_game::AppState>>,
+    ending: Option<Res<cyrus_game::script::EndingEntry>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    if !matches!(*next, NextState::Pending(cyrus_game::AppState::Menu)) || windows.single().is_err()
+    // The book after the ending shows an empty picture frame in the original.
+    if !matches!(*next, NextState::Pending(cyrus_game::AppState::Menu))
+        || ending.is_some()
+        || windows.single().is_err()
     {
         return;
     }
