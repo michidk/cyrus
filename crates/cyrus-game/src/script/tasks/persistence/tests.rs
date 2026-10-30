@@ -20,6 +20,8 @@ struct NativeHost {
     calls: usize,
     polls: usize,
     frame_progress: u8,
+    animation: Option<ActorAnimation>,
+    animation_frame: Option<u32>,
 }
 impl Host for NativeHost {
     fn call(
@@ -52,9 +54,18 @@ impl Host for NativeHost {
                 (function, kind),
                 arguments,
                 invocation,
-                &mut None,
+                &mut self
+                    .animation
+                    .as_mut()
+                    .map(|animation| crate::script::tasks::AnimationCall {
+                        animation,
+                        ticks: 1,
+                        frame: &mut self.animation_frame,
+                        sounds: None,
+                    }),
                 &mut Some(spatial),
                 NativeServices {
+                    animation_requests_enabled: true,
                     frame_wait: Some(crate::script::tasks::FrameWaitCall {
                         receiver: Ok((7, -1, self.frame_progress)),
                         player: Ok(Some((7, -1, self.frame_progress))),
@@ -91,9 +102,18 @@ impl Host for NativeHost {
             token,
             arguments,
             invocation,
-            &mut None,
+            &mut self
+                .animation
+                .as_mut()
+                .map(|animation| crate::script::tasks::AnimationCall {
+                    animation,
+                    ticks: 1,
+                    frame: &mut self.animation_frame,
+                    sounds: None,
+                }),
             &mut Some(spatial),
             NativeServices {
+                animation_requests_enabled: true,
                 frame_wait: Some(crate::script::tasks::FrameWaitCall {
                     receiver: Ok((7, -1, self.frame_progress)),
                     player: Ok(Some((7, -1, self.frame_progress))),
@@ -4644,5 +4664,83 @@ fn dialogue_and_camera_multitasks_restore_without_changing_saved_continuations()
                 expected
             );
         }
+    }
+}
+
+#[test]
+fn installed_play_animation_restores_its_pending_slot_only_with_an_animation_binding() {
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{"script_name":"ACTOR", "animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+            {"group_index":10,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let program = code("PlayAnimation", CallKind::Multitask, &[10, 0]);
+    let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
+    let mut runtime = Runtime::from_shared(program, CodeOrigin(10), vec![], "BAT".into()).unwrap();
+    let mut host = NativeHost {
+        animation: Some(ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap()),
+        ..Default::default()
+    };
+    runtime
+        .invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    let saved = runtime.snapshot(&sources).unwrap();
+    let native = host.native.snapshot();
+    let tokens = BTreeMap::from([(1, 100)]);
+    let error = NativeTasks::from_snapshot(
+        native.clone(),
+        &saved,
+        &tokens,
+        NativeTaskBindings::default(),
+    )
+    .err()
+    .unwrap();
+    assert!(format!("{error:#}").contains("PlayAnimation request animation owner unavailable"));
+    let native = NativeTasks::from_snapshot(
+        native,
+        &saved,
+        &tokens,
+        NativeTaskBindings {
+            animation: host.animation.as_ref(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let mut restored = Runtime::from_snapshot(
+        CodeOrigin(10),
+        saved,
+        &sources,
+        &tokens,
+        "restored BAT".into(),
+    )
+    .unwrap();
+    let mut host = NativeHost {
+        native,
+        animation: host.animation,
+        animation_frame: host.animation_frame,
+        ..Default::default()
+    };
+    for _ in 0..8 {
+        restored
+            .invoke_tasks_timed(&mut host, &mut [], 256)
+            .unwrap();
+        restored
+            .invoke_body(Thread::Main, &mut host, &mut [], 20)
+            .unwrap();
+        assert_eq!(
+            restored
+                .snapshot(&sources)
+                .unwrap()
+                .task_tokens()
+                .collect::<Vec<_>>(),
+            [100]
+        );
+        assert_eq!(host.animation.as_ref().unwrap().current_group(), Some(10));
     }
 }

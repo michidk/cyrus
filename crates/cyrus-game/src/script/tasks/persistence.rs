@@ -172,6 +172,12 @@ impl NativeTasks {
                             "restored rtxAnim animation owner unavailable"
                         );
                     }
+                    Task::AnimationRequest => {
+                        ensure!(
+                            bindings.animation.is_some(),
+                            "restored PlayAnimation request animation owner unavailable"
+                        );
+                    }
                     Task::AnimationFrame { player: false } => {
                         ensure!(
                             bindings.animation.is_some(),
@@ -204,6 +210,7 @@ impl NativeTasks {
 impl Task {
     fn contract(self) -> (&'static str, usize, Option<CallKind>) {
         match self {
+            Self::AnimationRequest => ("PlayAnimation", 2, Some(CallKind::Multitask)),
             Self::Dialogue => ("WaitOnDialog", 0, Some(CallKind::Task)),
             Self::Menu => ("menuProc", 0, Some(CallKind::Task)),
             Self::AnimationFrame { player: false } => ("WaitAnimFrame", 2, Some(CallKind::Task)),

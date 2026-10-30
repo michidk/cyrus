@@ -88,6 +88,7 @@ pub(super) struct MenuCall<'a> {
 /// Shared services sampled for each native task invocation.
 #[derive(Default)]
 pub(super) struct NativeServices<'a> {
+    pub animation_requests_enabled: bool,
     pub ambient: Option<&'a AmbientCall<'a>>,
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
@@ -441,6 +442,8 @@ fn talk_cycle(
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
+    /// The installed `multitask PlayAnimation(10, 0)` request retains its slot across main loops.
+    AnimationRequest,
     Dialogue,
     /// `MoveToMarker`: a timed straight move to a marker.
     Marker,
@@ -2372,6 +2375,30 @@ impl Task {
                     _ => invocation.unpaused_blocking_tasks <= 1,
                 }
             }
+            Self::AnimationRequest => {
+                let [group, modifier] = arguments else {
+                    anyhow::bail!("PlayAnimation requires two arguments")
+                };
+                anyhow::ensure!(
+                    group.integer()? == 10 && modifier.integer()? == 0,
+                    "PlayAnimation multitask operands unsupported; expected installed (10, 0)"
+                );
+                if services.animation_requests_enabled {
+                    let input = animation.as_mut().context(
+                        "PlayAnimation multitask requires prepared animation and nominal ticks",
+                    )?;
+                    let frame = match &mut input.sounds {
+                        Some(sounds) => {
+                            input
+                                .animation
+                                .request_with_sounds(10, 0, input.ticks, *sounds)?
+                        }
+                        None => input.animation.request(10, 0, input.ticks)?,
+                    };
+                    *input.frame = frame.or(*input.frame);
+                }
+                false
+            }
             Self::Animation { group, started } | Self::ControlAnimation { group, started } => {
                 let name = if turning {
                     "PushControlAnimation"
@@ -2797,6 +2824,12 @@ impl NativeTasks {
             Task::AnimationFrame {
                 player: function.eq_ignore_ascii_case("WaitPlayerAnimFrame"),
             }
+        } else if function.eq_ignore_ascii_case("PlayAnimation") && kind != CallKind::Function {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "PlayAnimation requires function or installed multitask encoding"
+            );
+            Task::AnimationRequest
         } else if function.eq_ignore_ascii_case("PushAnimation") {
             Task::Animation {
                 group: 0,

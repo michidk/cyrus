@@ -46,6 +46,12 @@ completes immediately after admission and its state writes; selected-player
 edge and hang services use the caller's receiver-bound collision geometry.
 Its contract follows preservation's `player.md#script-jump`.
 
+Installed `multitask PlayAnimation(10, 0)` calls retain a native animation request
+across main-thread loops and session restore. Function-form requests complete
+immediately. Other task-form operands remain explicitly unsupported.
+Verified: the installed BAT slot retention follows preservation's
+[PlayAnimation contract](https://github.com/michidk/redguard-preservation/blob/8bfcb816d92d83df285ca553136f0bba2213185b/docs/engine/SOUP.md#playanimation).
+
 Created-object records (including projectile records) retain their creator,
 namespace and execution order through snapshots. `KillMe` removes their
 executable state, but allocator recycling and reuse across a long live session

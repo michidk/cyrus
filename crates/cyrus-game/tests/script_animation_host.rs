@@ -5150,6 +5150,91 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
 }
 
 #[test]
+fn installed_play_animation_multitask_retains_one_slot_across_end_and_stops_explicitly() {
+    for stop in [false, true] {
+        let mut data = play_animation_scripts([10, 0]);
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation
+        else {
+            unreachable!()
+        };
+        call.kind = CallKind::Multitask;
+        if stop {
+            actor.program.steps.get_mut(&1).unwrap().operation = Operation::TaskStop { label: 0 };
+        }
+        data.content_id = data.content_identity().unwrap();
+        let mut animation_data = animations(&data, false);
+        for actor in animation_data.metadata["actors"].as_array_mut().unwrap() {
+            actor["animation_groups"][1]["group_index"] = json!(10);
+        }
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.bind_animation(id, &animation_data, 10).unwrap();
+        for _ in 0..8 {
+            stage(&mut world, id, BODY);
+            stage(&mut world, id, TASKS);
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                usize::from(!stop)
+            );
+            assert_eq!(world.animation_frame(id).unwrap(), Some(1));
+        }
+        if !stop {
+            assert_eq!(
+                world.flags(),
+                [9],
+                "the multitask must not block the main thread"
+            );
+        }
+    }
+}
+
+#[test]
+fn play_animation_task_encodings_reject_unrecovered_operands() {
+    for (kind, arguments) in [
+        (CallKind::Task, [10, 0]),
+        (CallKind::Multitask, [1, 0]),
+        (CallKind::Multitask, [10, 1]),
+    ] {
+        let mut data = play_animation_scripts(arguments);
+        let Operation::Call { call } = &mut data
+            .actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation
+        else {
+            unreachable!()
+        };
+        call.kind = kind;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let result = world.advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        );
+        assert!(
+            result.is_err(),
+            "unrecovered {kind:?} {arguments:?} must fail explicitly"
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        assert_eq!(world.flags(), [0]);
+    }
+}
+
+#[test]
 fn show_item_natives_leave_a_pending_viewer_request() {
     for (name, values, expected) in [
         ("ShowItem", vec![5, 99, 7, 8], (false, 5, [7, 8])),

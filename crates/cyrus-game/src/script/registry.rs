@@ -3396,6 +3396,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
         let services = super::tasks::NativeServices {
+            animation_requests_enabled: self.animation_system
+                && !actor
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.object_update_excluded),
             ambient: Some(&ambient),
             dialogue: self.registry.globals.dialogue.as_mut(),
             menu: Some(super::tasks::MenuCall {
@@ -7101,6 +7106,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             &mut animation,
             &mut spatial_call,
             super::tasks::NativeServices {
+                animation_requests_enabled: self.animation_system
+                    && !actor
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| control.object_update_excluded),
                 ambient: Some(&ambient),
                 dialogue: self.registry.globals.dialogue.as_mut(),
                 menu: Some(super::tasks::MenuCall {
