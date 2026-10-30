@@ -645,7 +645,7 @@ pub(crate) fn sample_clock(
     mut running: Local<bool>,
     mut commands: Commands,
 ) {
-    let ready = !prepared
+    let mut ready = !prepared
         .logbook
         .as_ref()
         .is_some_and(|screen| screen.suspended())
@@ -665,6 +665,17 @@ pub(crate) fn sample_clock(
             .as_ref()
             .zip(prepared.request.as_ref())
             .is_some_and(|(view, request)| view.source == request.0);
+    if ready {
+        match prepared.prepare_environment_effects(actors.current.as_mut().expect("ready world")) {
+            Ok(prepared) => ready = prepared,
+            Err(error) => {
+                actors.error = Some(format!(
+                    "automatic environmental effect preparation: {error:#}"
+                ));
+                ready = false;
+            }
+        }
+    }
     commands.remove_resource::<WorldClockSample>();
     if let Some(mut clock) = clock {
         let tick = bios_tick(time.elapsed());
@@ -705,6 +716,61 @@ pub(crate) struct OrdinaryAssets<'w> {
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, crate::logbook::LogbookScreen>>,
     state: Option<Res<'w, State<crate::AppState>>>,
+}
+
+impl OrdinaryAssets<'_> {
+    fn prepare_environment_effects(&self, world: &mut ScriptWorld) -> anyhow::Result<bool> {
+        let Some(prepared) = self.prepared_world.as_ref() else {
+            // Explicit callers without a prepared host world supply their own services.
+            return Ok(true);
+        };
+        if prepared
+            .world
+            .is_some_and(|identity| identity != world.world)
+            || self
+                .request
+                .as_ref()
+                .is_none_or(|request| request.0 != prepared.animations)
+        {
+            return Ok(false);
+        }
+        let Some(animations) = self.assets.get(&prepared.animations) else {
+            return Ok(false);
+        };
+        if animations.world != world.world
+            || animations.metadata["script_content_id"].as_str() != Some(world.content_id.as_str())
+        {
+            return Ok(false);
+        }
+        if world.environmental_effects().is_some() {
+            return Ok(true);
+        }
+        let Some(environment) = self
+            .server
+            .as_ref()
+            .and_then(|server| {
+                server.get_handle::<cyrus_assets::environment::Environment>(
+                    prepared.environment_path.clone(),
+                )
+            })
+            .and_then(|handle| {
+                self.environments
+                    .as_ref()
+                    .and_then(|assets| assets.get(&handle))
+            })
+        else {
+            return Ok(false);
+        };
+        let source = environment.effects.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "world {} environment {}: environmental effect source absent",
+                world.world,
+                prepared.environment_path
+            )
+        })?;
+        world.prepare_environment_effects(source)?;
+        Ok(true)
+    }
 }
 
 /// Optional host execution adapter. The game retains ordinary stage ownership;
@@ -766,6 +832,9 @@ impl OrdinaryContext<'_, '_> {
             || world.model_admission.is_none()
             || (world.selected_player_index().is_some() && self.players.single().is_err())
         {
+            return Ok(false);
+        }
+        if !self.prepared.prepare_environment_effects(world)? {
             return Ok(false);
         }
         initialize_entry(

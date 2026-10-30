@@ -98,6 +98,23 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         scene_path: "island.glb".into(),
         environment_path: "island.environment".into(),
     });
+    app.init_asset::<cyrus_assets::environment::Environment>();
+    let environment = app
+        .world()
+        .resource::<AssetServer>()
+        .load::<cyrus_assets::environment::Environment>(
+            app.world()
+                .resource::<PreparedWorld>()
+                .environment_path
+                .clone(),
+        );
+    let environment_data =
+        serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
+            .unwrap();
+    app.world_mut()
+        .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
+        .insert(environment.id(), environment_data)
+        .unwrap();
     app.insert_resource(AnimationRequest(animations.clone()));
     app.insert_resource(ScriptView {
         source: animations,

@@ -3994,7 +3994,13 @@ fn kill_me_releases_the_receivers_light_and_flat_records() {
 }
 
 #[test]
-fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
+fn automatic_world_updates_wait_for_effects_then_advance_and_pause_in_menu() {
+    for browser_identity in [false, true] {
+        automatic_world_updates_with_prepared_identity(browser_identity);
+    }
+}
+
+fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
     use cyrus_assets::animation::Animations;
     use cyrus_game::{
@@ -4204,7 +4210,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .add(data);
     app.insert_resource(PreparedWorld {
         requested_name: "TEST".into(),
-        world: Some(7),
+        world: if browser_identity { None } else { Some(7) },
         scripts,
         animations: animations.clone(),
         player_path: "test.player".into(),
@@ -4287,6 +4293,108 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
     app.update();
+    let pending = snapshot(&app);
+    assert_eq!(pending["actors"][0]["animation"], serde_json::Value::Null);
+    let pending_clock = serde_json::to_value(
+        app.world()
+            .resource::<cyrus_game::clock::SimulationClock>()
+            .snapshot(),
+    )
+    .unwrap();
+    let pending_idle = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap()
+        .globals()
+        .player_idle_counter();
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_secs(60),
+    ));
+    for _ in 0..3 {
+        app.update();
+        assert_eq!(
+            snapshot(&app),
+            pending,
+            "pending effects must not run model or script work"
+        );
+        assert_eq!(
+            serde_json::to_value(
+                app.world()
+                    .resource::<cyrus_game::clock::SimulationClock>()
+                    .snapshot()
+            )
+            .unwrap(),
+            pending_clock
+        );
+        assert_eq!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .globals()
+                .player_idle_counter(),
+            pending_idle
+        );
+        assert!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .environmental_effects()
+                .is_none()
+        );
+    }
+    let _environment = bind_scheduler_environment(&mut app);
+    let source = app.world().resource::<AnimationRequest>().0.clone();
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&source)
+        .unwrap()
+        .world = 8;
+    app.update();
+    assert_eq!(
+        snapshot(&app),
+        pending,
+        "mismatched loaded animation metadata must not admit work"
+    );
+    assert_eq!(
+        serde_json::to_value(
+            app.world()
+                .resource::<cyrus_game::clock::SimulationClock>()
+                .snapshot()
+        )
+        .unwrap(),
+        pending_clock
+    );
+    assert!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .environmental_effects()
+            .is_none()
+    );
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&source)
+        .unwrap()
+        .world = 7;
+    app.update();
+    assert!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .environmental_effects()
+            .is_some()
+    );
+    app.insert_resource(bevy::time::TimeUpdateStrategy::Automatic);
     let first = snapshot(&app);
     let role_snapshot = |app: &App| {
         app.world()
@@ -13451,6 +13559,7 @@ fn keyboard_walk_runs_through_ordinary_scheduler_and_projects_release() {
         source: animations,
         position: [2560, 0, 7680],
     });
+    let _environment = bind_scheduler_environment(&mut app);
     app.update();
     app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
     app.world_mut()
@@ -34025,4 +34134,42 @@ fn retained_world_places_player_roles_at_the_new_destination() {
         )
         .unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [6]);
+}
+
+fn bind_scheduler_environment(
+    app: &mut bevy::prelude::App,
+) -> bevy::prelude::Handle<cyrus_assets::environment::Environment> {
+    use bevy::{asset::AssetApp, prelude::*};
+    use cyrus_assets::environment::Environment;
+    app.init_asset::<Environment>();
+    let path = app
+        .world()
+        .resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .environment_path
+        .clone();
+    let handle = app
+        .world()
+        .resource::<AssetServer>()
+        .load::<Environment>(path);
+    app.world_mut()
+        .resource_mut::<Assets<Environment>>()
+        .insert(
+            handle.id(),
+            Environment {
+                effects: Some(water_model_tests::effects()),
+                texture_scale: [1, 1],
+                sky: None,
+                background: [0; 3],
+                clipping: [1.0, 1000.0],
+                fog_table: [[0; 4]; 16],
+                terrain_heights: None,
+                water: None,
+                terrain_lighting: None,
+                model_lighting: Default::default(),
+                prelighting: Default::default(),
+                object_lights: vec![],
+            },
+        )
+        .unwrap();
+    handle
 }

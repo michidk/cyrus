@@ -390,7 +390,7 @@ impl ActorEventContext {
 }
 
 impl ScriptWorld {
-    /// Bind the exact installed source after its presentation host has prepared it.
+    /// Bind the exact installed source before model or script effect allocation.
     /// Rebinding preserves live slots and rejects changed source bytes within a world.
     pub fn prepare_environment_effects(&mut self, source: &Effects) -> Result<()> {
         if let Some(effects) = &self.effects {
@@ -407,7 +407,7 @@ impl ScriptWorld {
         }
         Ok(())
     }
-    /// Absent until an effect presentation host has bound its installed source.
+    /// Absent until a host has bound its installed source; independent of GPU readiness.
     pub fn environmental_effects(&self) -> Option<&EnvironmentalEffects> {
         self.effects.as_ref()
     }

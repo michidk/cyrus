@@ -710,6 +710,7 @@ fn automatic_model_phase_keeps_initialization_events_when_later_admission_fails(
             source,
             position: [0; 3],
         });
+    let _environment = bind_scheduler_environment(&mut app);
     app.update();
     app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
     app.insert_resource(State::new(cyrus_game::AppState::InGame));

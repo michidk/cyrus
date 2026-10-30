@@ -145,7 +145,7 @@ fn bind(
                 image.flags
             );
         }
-        // Images and geometry inputs are ready before selected death can allocate a slot.
+        // Binding validates the source and preserves an already prepared logical pool.
         world.prepare_environment_effects(source)?;
         let fog = super::fog_extension(environment, &fidelity, clipping);
         if !source.disabled {
