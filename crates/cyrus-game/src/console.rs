@@ -3,8 +3,8 @@ mod cheats;
 use crate::script::{ScriptActors, ScriptWorld};
 use anyhow::{Context, ensure};
 use bevy::prelude::{
-    App, Assets, Commands, DetectChangesMut, In, IntoScheduleConfigs, Plugin, PreUpdate, Real, Res,
-    ResMut, State, Time, World,
+    App, Assets, Commands, DetectChangesMut, In, IntoScheduleConfigs, Local, Plugin, PreUpdate,
+    Real, Res, ResMut, Resource, State, Time, Update, World,
 };
 use cyrus_assets::script::Scripts;
 use cyrus_console::{Command, Console, ConsoleApp, ConsoleInput, Invocation, Source};
@@ -15,6 +15,8 @@ impl Plugin for GameConsolePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(cyrus_console::ConsolePlugin)
             .add_systems(PreUpdate, availability.before(ConsoleInput))
+            .init_resource::<PendingConsoleLoad>()
+            .add_systems(Update, apply_console_load)
             .console_symbols(symbol);
         for (name, alias, usage) in [
             ("get", "g", "get pattern"),
@@ -92,10 +94,23 @@ impl Plugin for GameConsolePlugin {
         }
     }
 }
+/// The `load` request typed into the open console: the original holds it until the console closes,
+/// applies it after F12 and discards it after Escape; a later `load` replaces it (preservation
+/// `engine/console.md`).
+#[derive(Resource, Default)]
+struct PendingConsoleLoad(Option<[i32; 3]>);
+
 /// `load world[,marker][,angle]` requests a world load like the `LoadWorld` native: the world index
 /// must name a WORLD.INI entry, the marker supplies the start position and the angle (masked to
 /// 0 through 2047) the heading. Omitted marker and angle are zero. Symbols are not supported.
-fn load(In(command): In<Invocation>, mut commands: Commands) -> anyhow::Result<Vec<String>> {
+/// While the console is open the request waits for it to close; a command run with the console
+/// already closed (the control port) applies at once.
+fn load(
+    In(command): In<Invocation>,
+    mut commands: Commands,
+    console: Res<Console>,
+    mut pending: ResMut<PendingConsoleLoad>,
+) -> anyhow::Result<Vec<String>> {
     let arguments: Vec<&str> = command.args.split(',').map(str::trim).collect();
     ensure!(
         !command.args.is_empty() && arguments.len() <= 3,
@@ -107,13 +122,37 @@ fn load(In(command): In<Invocation>, mut commands: Commands) -> anyhow::Result<V
             anyhow::bail!("load accepts numeric literals, not the symbol {name:?}")
         })? as i32;
     }
-    crate::script::request_world(&mut commands, request)?;
+    if console.open {
+        pending.0 = Some(request);
+    } else {
+        crate::script::request_world(&mut commands, request)?;
+    }
     Ok(vec![format!(
         "load: world {}, marker {}, angle {}",
         request[0],
         request[1],
         request[2] & 2047
     )])
+}
+
+/// Applies the held `load` when the console closes with F12 and drops it when Escape closed it.
+fn apply_console_load(
+    mut console: ResMut<Console>,
+    mut pending: ResMut<PendingConsoleLoad>,
+    mut commands: Commands,
+    mut was_open: Local<bool>,
+) {
+    let open = console.open;
+    if *was_open && !open {
+        let escaped = console.take_escape();
+        if let Some(request) = pending.0.take()
+            && !escaped
+            && let Err(error) = crate::script::request_world(&mut commands, request)
+        {
+            bevy::log::error!("console load: {error:#}");
+        }
+    }
+    *was_open = open;
 }
 /// `item add,id` gives the selected player one item through the session inventory. The other
 /// original operations (`player`, `show`, `sub`, `drop`) are not implemented.
@@ -364,5 +403,44 @@ mod tests {
         ] {
             assert_eq!(super::flag_matches(name, pattern), expected);
         }
+    }
+
+    #[test]
+    fn typed_load_waits_for_the_console_to_close_f12_applies_and_escape_discards() {
+        use super::*;
+        use bevy::input::keyboard::KeyCode;
+        use cyrus_world::lifecycle::SceneRequest;
+        let mut world = World::new();
+        // One registered system keeps its `Local` open/closed memory between runs.
+        let id = world.register_system(apply_console_load);
+        let run = move |world: &mut World| world.run_system(id).unwrap();
+        world.insert_resource(Console::default());
+        world.init_resource::<PendingConsoleLoad>();
+        // Typed while open: nothing is requested yet; a later load replaces the first.
+        world.resource_mut::<Console>().open = true;
+        run(&mut world);
+        world.resource_mut::<PendingConsoleLoad>().0 = Some([5, 1, 0]);
+        world.resource_mut::<PendingConsoleLoad>().0 = Some([4, 2, 2048 + 7]);
+        run(&mut world);
+        assert!(!world.contains_resource::<SceneRequest>());
+        // F12 closes the console and applies the held request.
+        world.resource_mut::<Console>().key(KeyCode::F12, None);
+        run(&mut world);
+        assert_eq!(world.resource::<SceneRequest>().0, "4");
+        assert_eq!(
+            world
+                .resource::<crate::player::placement::MarkerEntry>()
+                .heading,
+            7
+        );
+        // Escape closes it and drops the request.
+        world.remove_resource::<SceneRequest>();
+        world.resource_mut::<Console>().open = true;
+        run(&mut world);
+        world.resource_mut::<PendingConsoleLoad>().0 = Some([3, 0, 0]);
+        world.resource_mut::<Console>().key(KeyCode::Escape, None);
+        run(&mut world);
+        assert!(!world.contains_resource::<SceneRequest>());
+        assert!(world.resource::<PendingConsoleLoad>().0.is_none());
     }
 }

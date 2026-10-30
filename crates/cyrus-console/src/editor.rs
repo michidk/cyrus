@@ -19,6 +19,9 @@ pub struct Console {
     #[serde(skip)]
     pub palette: Option<[u8; 16]>,
     pub open: bool,
+    /// The last close was by Escape (not F12); read once by [`Console::take_escape`].
+    #[serde(skip)]
+    escaped: bool,
     #[serde(skip)]
     blink_tick: u32,
     #[serde(skip)]
@@ -54,6 +57,7 @@ impl Default for Console {
             store: None,
             palette: None,
             open: false,
+            escaped: false,
             blink_tick: 0,
             blink_remainder: 0,
             blink_phase: false,
@@ -183,7 +187,11 @@ impl Console {
         self.cursor_forced = true;
         let editable = !self.lines[self.selected].report;
         match key {
-            KeyCode::F12 | KeyCode::Escape => self.open = false,
+            KeyCode::F12 => self.open = false,
+            KeyCode::Escape => {
+                self.open = false;
+                self.escaped = true;
+            }
             KeyCode::Enter | KeyCode::NumpadEnter if editable => {
                 let line = self.lines[self.selected].text.clone();
                 self.submit(&line);
@@ -271,6 +279,10 @@ impl Console {
                 }
             }
         }
+    }
+    /// Whether the console was last closed with Escape; clears the record.
+    pub fn take_escape(&mut self) -> bool {
+        std::mem::take(&mut self.escaped)
     }
     pub(crate) fn reset_input(&mut self) {
         self.open = false;

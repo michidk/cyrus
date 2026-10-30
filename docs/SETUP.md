@@ -666,7 +666,10 @@ Status zero remains unsupported because its original metadata XOR changes the
 flag type; rejection leaves every flag unchanged. `load world[,marker][,angle]` requests a world
 load through the same path as the script `LoadWorld` native: the world must be a WORLD.INI entry from 0
 through 99, the marker supplies the start position and the angle (masked to 0 through 2047) the heading,
-and omitted values are zero. It accepts numeric literals only, not symbols; a missing marker reports a
+and omitted values are zero. The request waits while the console is open: a later `load` replaces it,
+closing with F12 applies it and Escape discards it (**Verified** in the original's key and world loops,
+preservation `engine/console.md`; a command run through the control port with the console closed applies at
+once). It accepts numeric literals only, not symbols; a missing marker reports a
 placement error and keeps the player where it was. `item add,id` gives the selected player one item through
 the session inventory, the same acquisition path as the `AddItem` native (**Inferred** from the console reference;
 the original handler was not compared). The other `item` operations (`player`, `show`, `sub`, `drop`) report
