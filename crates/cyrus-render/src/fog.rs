@@ -53,6 +53,25 @@ impl RenderDistance {
 }
 
 type SceneMaterial = ExtendedMaterial<StandardMaterial, ModelExtension>;
+
+fn owns_prepared_environment(
+    world: &cyrus_game::script::ScriptWorld,
+    prepared: &cyrus_world::lifecycle::PreparedWorld,
+    environment: &EnvironmentRequest,
+    request: Option<&cyrus_world::animation::AnimationRequest>,
+    animations: Option<&Assets<cyrus_assets::animation::Animations>>,
+) -> bool {
+    let Some(request) = request else { return false };
+    let Some(animations) = animations.and_then(|assets| assets.get(&prepared.animations)) else {
+        return false;
+    };
+    prepared.world.is_none_or(|id| id == world.world)
+        && environment.0.path() == Some(&prepared.environment_path)
+        && request.0 == prepared.animations
+        && animations.world == world.world
+        && animations.metadata["script_content_id"].as_str() == Some(world.content_id.as_str())
+}
+
 type MaterialCache = HashMap<
     (
         AssetId<StandardMaterial>,
@@ -309,6 +328,8 @@ fn apply_scene_fog(
         (
             Option<Res<cyrus_game::script::ScriptActors>>,
             Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+            Option<Res<cyrus_world::animation::AnimationRequest>>,
+            Option<Res<Assets<cyrus_assets::animation::Animations>>>,
         ),
     ),
 ) {
@@ -338,8 +359,13 @@ fn apply_scene_fog(
         .zip(light_owners.1.as_ref())
         .and_then(|(actors, prepared)| {
             let current = actors.current.as_ref()?;
-            (prepared.world == Some(current.world)
-                && request.0.path() == Some(&prepared.environment_path))
+            owns_prepared_environment(
+                current,
+                prepared,
+                &request,
+                light_owners.2.as_deref(),
+                light_owners.3.as_deref(),
+            )
             .then(|| current.object_lights())
         });
     let light_texture = lights.update(
@@ -730,6 +756,183 @@ fn prepare_model_geometry<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn retained_lights_require_matching_prepared_animation_content() -> anyhow::Result<()> {
+        use cyrus_assets::{
+            animation::Animations, install::GameInstall, native::Files, script::Scripts,
+        };
+        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld};
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = GameInstall::open(&root) else {
+            eprintln!("skipped: no install (retained light world binding)");
+            return Ok(());
+        };
+        let files = Files::open(&install)?;
+        let mut environment: Environment = serde_json::from_slice(
+            &cyrus_assets::game::prepare(&files, "NECRISLE.environment")?["NECRISLE.environment"],
+        )?;
+        let scripts: Scripts = serde_json::from_slice(
+            &cyrus_assets::game::prepare(&files, "NECRISLE.scripts")?["NECRISLE.scripts"],
+        )?;
+        let current = ScriptWorld::prepare(&scripts, 10)?;
+        let light = current
+            .object_lights()
+            .into_iter()
+            .find(|light| light.radius > 0)
+            .expect("installed light");
+        // An empty fallback makes the shader texture distinguish logical ownership.
+        environment.object_lights.clear();
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Environment>()
+            .init_resource::<Assets<Animations>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<SceneMaterial>>()
+            .init_resource::<Assets<TerrainMaterial>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<Fidelity>()
+            .insert_resource(RenderDistance {
+                original: Some(environment.clipping),
+                override_far: None,
+            });
+        let handle: Handle<Environment> = app
+            .world()
+            .resource::<AssetServer>()
+            .load("NECRISLE.environment");
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .insert(handle.id(), environment)?;
+        let animation = app
+            .world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .add(Animations {
+                version: 2,
+                world: scripts.world,
+                metadata: serde_json::json!({"script_content_id": scripts.content_id}),
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            });
+        let mut actors = ScriptActors::default();
+        actors.current = Some(current);
+        app.insert_resource(actors)
+            .insert_resource(EnvironmentRequest(handle))
+            .insert_resource(AnimationRequest(animation.clone()))
+            .insert_resource(PreparedWorld {
+                requested_name: "NECRISLE".into(),
+                world: None,
+                animations: animation.clone(),
+                scripts: Handle::default(),
+                player_path: "NECRISLE.player".into(),
+                scene_path: "NECRISLE.glb".into(),
+                environment_path: "NECRISLE.environment".into(),
+            })
+            .add_systems(Update, apply_scene_fog);
+        app.world_mut().spawn((
+            ViewCamera,
+            Projection::Perspective(Default::default()),
+            Transform::from_xyz(
+                -light.position[0] as f32 / 20.0,
+                0.0,
+                ((light.position[2] as f64 - 65535.99609375) / 20.0) as f32,
+            ),
+        ));
+        let height = |app: &App| {
+            app.world()
+                .resource::<Assets<Image>>()
+                .iter()
+                .next()
+                .unwrap()
+                .1
+                .texture_descriptor
+                .size
+                .height
+        };
+        for declared_world in [None, Some(scripts.world)] {
+            app.world_mut().resource_mut::<PreparedWorld>().world = declared_world;
+            app.update();
+            assert!(
+                height(&app) > 256,
+                "logical lights reach the shader texture"
+            );
+            let images = app.world().resource::<Assets<Image>>();
+            let image = images.iter().next().unwrap().1;
+            let rows = &image.data.as_ref().unwrap()[256 * 8 * 4..];
+            let mut expected = Vec::new();
+            for value in [
+                light.position[0] as f32,
+                light.position[1] as f32,
+                light.position[2] as f32,
+                f32::from(light.radius),
+                f32::from(light.rgb[0]),
+                f32::from(light.rgb[1]),
+                f32::from(light.rgb[2]),
+            ] {
+                expected.extend(value.to_le_bytes());
+            }
+            assert!(
+                rows.as_chunks::<32>()
+                    .0
+                    .iter()
+                    .any(|row| row[..28] == expected)
+            );
+            app.world_mut()
+                .resource_mut::<Assets<Animations>>()
+                .get_mut(&animation)
+                .unwrap()
+                .metadata["script_content_id"] = serde_json::json!("stale");
+            app.update();
+            assert_eq!(
+                height(&app),
+                256,
+                "stale script content uses the empty authored fallback"
+            );
+            app.world_mut()
+                .resource_mut::<Assets<Animations>>()
+                .get_mut(&animation)
+                .unwrap()
+                .metadata["script_content_id"] = serde_json::json!(scripts.content_id);
+        }
+        app.world_mut().resource_mut::<PreparedWorld>().world = Some(scripts.world + 1);
+        app.update();
+        assert_eq!(height(&app), 256);
+        app.world_mut().resource_mut::<PreparedWorld>().world = None;
+        app.world_mut().resource_mut::<AnimationRequest>().0 = Handle::default();
+        app.update();
+        assert_eq!(height(&app), 256);
+        app.world_mut().resource_mut::<AnimationRequest>().0 = animation.clone();
+        app.world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .get_mut(&animation)
+            .unwrap()
+            .world = scripts.world + 1;
+        app.update();
+        assert_eq!(height(&app), 256);
+        app.world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .get_mut(&animation)
+            .unwrap()
+            .world = scripts.world;
+        app.world_mut()
+            .resource_mut::<PreparedWorld>()
+            .environment_path = "START.environment".into();
+        app.update();
+        assert_eq!(height(&app), 256);
+        app.world_mut()
+            .resource_mut::<PreparedWorld>()
+            .environment_path = "NECRISLE.environment".into();
+        app.update();
+        assert!(height(&app) > 256);
+        Ok(())
+    }
 
     #[test]
     fn original_clipping_and_material_properties_survive_debug_override_and_reset() {

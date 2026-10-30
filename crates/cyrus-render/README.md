@@ -444,7 +444,10 @@ preserving its deadline; automatic requests continue from that frame. These
 requests do not advance effect lifetime or apply draw-time movement.
 
 Environmental effects bind to the exact prepared environment, world and logical
-generation. The renderer retains billboard submissions before object updates and
+generation. Browser preparation may leave the numeric world unresolved; binding
+then requires the matching loaded animation handle, world and script content,
+with the exact prepared environment path. Retained object lights use the same
+identity check before reaching shader textures. The renderer retains billboard submissions before object updates and
 lifetime expiry, then draws them through the shared flat queue, lighting and
 texture materials. Replacement removes owned GPU assets. Texture snapshots retain
 submitted packets and presentation phase; restoration repaints without requesting

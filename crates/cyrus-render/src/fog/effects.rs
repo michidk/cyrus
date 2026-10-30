@@ -79,6 +79,10 @@ fn bind(
     environments: Res<Assets<Environment>>,
     prepared: Option<Res<PreparedWorld>>,
     ready: Option<Res<crate::ReadyScene>>,
+    animation_sources: (
+        Option<Res<cyrus_world::animation::AnimationRequest>>,
+        Option<Res<Assets<cyrus_assets::animation::Animations>>>,
+    ),
     mut actors: Option<ResMut<ScriptActors>>,
     mut textures: ResMut<TextureAnimations>,
     fidelity: Res<Fidelity>,
@@ -92,11 +96,15 @@ fn bind(
         .as_ref()
         .zip(prepared.as_ref())
         .and_then(|(world, prepared)| {
-            (prepared.world == Some(world.world)
-                && request.0.path() == Some(&prepared.environment_path)
-                && ready
-                    .as_ref()
-                    .is_some_and(|ready| ready.0 == prepared.animations))
+            (super::owns_prepared_environment(
+                world,
+                prepared,
+                &request,
+                animation_sources.0.as_deref(),
+                animation_sources.1.as_deref(),
+            ) && ready
+                .as_ref()
+                .is_some_and(|ready| ready.0 == prepared.animations))
             .then_some((request.0.id(), world.world, world.generation()))
         });
     if live.owner != owner {
@@ -565,6 +573,12 @@ mod tests {
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn installed_world_binding_waits_for_readiness_and_replaces_generation() -> anyhow::Result<()> {
+        installed_binding_scenario(true)?;
+        installed_binding_scenario(false)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn installed_binding_scenario(resolved_world: bool) -> anyhow::Result<()> {
         use cyrus_assets::{install::GameInstall, native::Files, script::Scripts};
         use cyrus_game::script::ScriptWorld;
         let root = std::env::var_os("REDGUARD_DIR")
@@ -591,6 +605,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Environment>()
+            .init_asset::<cyrus_assets::animation::Animations>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<Image>>()
             .init_resource::<Assets<SceneMaterial>>()
@@ -616,10 +631,22 @@ mod tests {
             .insert(handle.id(), environment)?;
         app.insert_resource(textures)
             .insert_resource(EnvironmentRequest(handle));
+        let animation = app
+            .world_mut()
+            .resource_mut::<Assets<cyrus_assets::animation::Animations>>()
+            .add(cyrus_assets::animation::Animations {
+                version: 2,
+                world: scripts.world,
+                metadata: serde_json::json!({"script_content_id": scripts.content_id}),
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            });
+        app.insert_resource(cyrus_world::animation::AnimationRequest(animation.clone()));
         let prepared = PreparedWorld {
             requested_name: "START".into(),
-            world: Some(scripts.world),
-            animations: Handle::default(),
+            world: resolved_world.then_some(scripts.world),
+            animations: animation.clone(),
             scripts: Handle::default(),
             player_path: "START.player".into(),
             scene_path: "START.glb".into(),
@@ -645,7 +672,20 @@ mod tests {
                 .environmental_effects()
                 .is_none()
         );
-        app.insert_resource(crate::ReadyScene(Handle::default()));
+        app.insert_resource(crate::ReadyScene(animation.clone()));
+        // Loaded metadata belongs to the script content, not merely its map number.
+        app.world_mut()
+            .resource_mut::<Assets<cyrus_assets::animation::Animations>>()
+            .get_mut(&animation)
+            .unwrap()
+            .metadata["script_content_id"] = serde_json::json!("stale");
+        app.update();
+        assert!(app.world().resource::<LiveEffects>().slots.is_empty());
+        app.world_mut()
+            .resource_mut::<Assets<cyrus_assets::animation::Animations>>()
+            .get_mut(&animation)
+            .unwrap()
+            .metadata["script_content_id"] = serde_json::json!(scripts.content_id);
         app.update();
         // A prepared world without an admitted clock sample cannot submit effects.
         assert!(app.world().resource::<LiveEffects>().pending.is_none());
