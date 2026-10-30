@@ -384,7 +384,9 @@ movie unlocks its entry, saves keep the unlock flags and New Game clears them
 pauses the world behind the in-game book context, plays that cinematic and resumes
 the world (**Verified** natively through the control `queue_movie` command: A_RUINS1.SMK
 played to its last frame, then gameplay resumed). A queued movie plays between worlds
-the same way, before the next world loads (implemented, not run live). Native Quit closes the book and exits. Browser Quit
+the same way, before the next world loads (**Verified** natively: `queue_movie 1` then
+`script_load_world 13 0 0` in CAVERNS played SCENE3.SMK first, and MGUILD loaded and became
+ready after it ended). Native Quit closes the book and exits. Browser Quit
 attempts to close the tab; when the browser refuses, the menu remains usable.
 New Game enters the `WORLD.INI` starting world and marker. Load opens the installed page with paginated saved slots and restores the
 selected revision through the host session boundary. Save opens the authored

@@ -293,6 +293,11 @@ impl GameplayGlobals {
         }
     }
 
+    /// Retains a `LoadWorld` request as the native does; the host's world-loop exit takes it.
+    pub fn request_load_world(&mut self, destination: [i32; 3]) {
+        self.host_requests.load_world = Some(destination);
+    }
+
     pub(super) fn request_mut(&mut self) -> &mut HostRequests {
         &mut self.host_requests
     }

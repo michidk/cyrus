@@ -500,6 +500,20 @@ fn handle(
                 }
                 None => Err("script world is not prepared".into()),
             },
+            Command::ScriptLoadWorld {
+                world,
+                marker,
+                heading,
+            } => match script_actors
+                .as_mut()
+                .and_then(|actors| actors.current.as_mut())
+            {
+                Some(current) => {
+                    current.globals_mut().request_load_world([world, marker, heading]);
+                    Ok(json!({"requested": [world, marker, heading]}))
+                }
+                None => Err("script world is not prepared".into()),
+            },
             Command::ScriptSummary { offset, limit } => match script_actors
                 .as_ref()
                 .and_then(|actors| actors.current.as_ref())

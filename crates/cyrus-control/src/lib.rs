@@ -168,6 +168,13 @@ pub enum Command {
     QueueMovie {
         movie: i32,
     },
+    /// Call `LoadWorld(world, marker, heading)` on the prepared world as a script would; the world
+    /// loop leaves for that world at the end of its frame, after any queued movie.
+    ScriptLoadWorld {
+        world: i32,
+        marker: i32,
+        heading: i32,
+    },
     /// Inspect at most 64 logical script actors in the prepared world.
     Scripts {
         #[serde(default)]
