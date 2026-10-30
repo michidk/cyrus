@@ -197,10 +197,10 @@ pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 pub use tasks::{
     GxaOverlay, NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot,
 };
-pub(crate) use world_request::request_world;
+pub use world_request::request_world;
 pub use world_request::{
     CreditsPlaying, DeathBookEntry, DeathDispatch, EndingEntry, LastGameEntry, LastSaveSelection,
-    WorldLoopExit,
+    ScriptMovieEntry, WorldLoopExit,
 };
 
 /// Retain scene submissions before player/object updates mutate their source state.

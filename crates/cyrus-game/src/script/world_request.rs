@@ -46,6 +46,41 @@ pub struct DeathBookEntry {
 #[derive(Resource)]
 pub struct EndingEntry;
 
+/// A script-requested cinematic plays over the paused world: `QueueMovie` 5 through 10 plays at once,
+/// and a queued movie plays after a world loop ends and before the next world loads (preservation
+/// engine/movies.md). The menu host plays it, then resumes the world, first requesting
+/// `then_load` when the world loop was leaving for another world. Retained until the host takes it.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct ScriptMovieEntry {
+    /// Zero-based MENU.INI movie index.
+    pub index: usize,
+    /// The `LoadWorld` destination that was waiting behind the movie.
+    pub then_load: Option<[i32; 3]>,
+}
+
+/// Movie to play when the world loop ends: a play-now request outranks the queue, and a value outside
+/// the fifteen-record movie table plays nothing.
+fn scripted_movie(play_now: Option<i32>, queued: Option<i32>) -> Option<usize> {
+    play_now
+        .or(queued)
+        .and_then(|movie| usize::try_from(movie).ok())
+        .filter(|&movie| movie < crate::MovieUnlocks::RECORDS)
+}
+
+/// Pauses the world behind the in-game book context and hands the movie to the menu host.
+fn start_script_movie(
+    commands: &mut Commands,
+    next: Option<&mut NextState<crate::AppState>>,
+    entry: ScriptMovieEntry,
+) -> anyhow::Result<()> {
+    let next =
+        next.ok_or_else(|| anyhow::anyhow!("script movie: application state unavailable"))?;
+    commands.insert_resource(crate::PauseBookEntry { page: 0 });
+    commands.insert_resource(entry);
+    next.set(crate::AppState::Menu);
+    Ok(())
+}
+
 /// The ending's credits scroll is running; the music owner plays its CD track meanwhile.
 #[derive(Resource)]
 pub struct CreditsPlaying;
@@ -71,7 +106,7 @@ fn destination(request: [i32; 3]) -> anyhow::Result<(SceneRequest, MarkerEntry)>
 
 /// Publishes a world load: the marker and heading first, then the request, plus a reload marker so a
 /// request naming the current world is prepared again. Shared by the script native and the console.
-pub(crate) fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyhow::Result<()> {
+pub fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyhow::Result<()> {
     let (scene, marker) = destination(request)?;
     commands.insert_resource(marker);
     commands.insert_resource(scene);
@@ -125,11 +160,37 @@ pub(super) fn consume(
     let world_id = world.world;
     match result {
         Ok(WorldLoopOutcome::Continue) => {
+            let play_now = world.globals_mut().request_mut().play_movie.take();
             actors.world_loop_outcome = None;
+            if let Some(index) = scripted_movie(play_now, None)
+                && let Err(error) = start_script_movie(
+                    &mut commands,
+                    next.as_deref_mut(),
+                    ScriptMovieEntry {
+                        index,
+                        then_load: None,
+                    },
+                )
+            {
+                actors.report_runtime_error(format!("{error:#}"));
+            }
         }
         Ok(WorldLoopOutcome::WorldTransition(destination)) => {
             world.globals_mut().request_mut().load_world = None;
-            if let Err(error) = request_world(&mut commands, destination) {
+            let play_now = world.globals_mut().request_mut().play_movie.take();
+            let queued = world.globals_mut().take_queued_movie();
+            let result = match scripted_movie(play_now, queued) {
+                Some(index) => start_script_movie(
+                    &mut commands,
+                    next.as_deref_mut(),
+                    ScriptMovieEntry {
+                        index,
+                        then_load: Some(destination),
+                    },
+                ),
+                None => request_world(&mut commands, destination),
+            };
+            if let Err(error) = result {
                 actors.report_runtime_error(format!("{error:#}"));
             }
         }
@@ -212,5 +273,15 @@ mod tests {
         assert!(destination([100, 0, 0]).is_err());
         assert!(destination([-1, 0, 0]).is_err());
         assert!(destination([1, -1, 0]).is_err());
+    }
+
+    #[test]
+    fn scripted_movie_prefers_play_now_and_stays_inside_the_table() {
+        assert_eq!(scripted_movie(Some(7), Some(2)), Some(7));
+        assert_eq!(scripted_movie(None, Some(2)), Some(2));
+        assert_eq!(scripted_movie(None, None), None);
+        assert_eq!(scripted_movie(None, Some(-1)), None);
+        assert_eq!(scripted_movie(None, Some(15)), None);
+        assert_eq!(scripted_movie(Some(14), None), Some(14));
     }
 }

@@ -109,3 +109,9 @@ pink-red rectangle, with no gameplay snapshot. cyrus shows the book's empty parc
 state (it takes no snapshot when the ending starts). **Inferred:** the flat fill is the original's
 unpopulated picture buffer drawn through the book palette, not designed artwork, so cyrus does not
 reproduce the colour.
+
+## Script movies run over the in-game book
+
+**Inferred:** the original plays a gameplay script's movie directly from the main loop. cyrus enters the
+in-game book context, plays the movie over it and resumes the world when it ends, so the book can show
+for the moment before the first frame and effect sounds stop as they do for any book entry.

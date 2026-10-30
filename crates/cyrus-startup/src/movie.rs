@@ -26,6 +26,9 @@ use {
 #[derive(Resource, Default)]
 pub(super) struct MoviePlayback {
     new_game: bool,
+    /// A gameplay script's movie is loading or playing; the world it paused resumes afterwards.
+    /// Holds the `LoadWorld` destination that was waiting behind it.
+    script: Option<Option<[i32; 3]>>,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<anyhow::Result<Prepared>>>,
     #[cfg(target_arch = "wasm32")]
@@ -105,6 +108,10 @@ pub(super) fn register(app: &mut App) {
             Update,
             ending.before(drive).run_if(in_state(AppState::Menu)),
         )
+        .add_systems(
+            Update,
+            script_movie.before(drive).run_if(in_state(AppState::Menu)),
+        )
         .add_systems(OnExit(AppState::Menu), cleanup);
 }
 
@@ -130,6 +137,31 @@ fn ending(
     }
     commands.insert_resource(super::credits::CreditsPending);
     movies.write(MovieRequest::Menu(ENDING_MOVIE));
+}
+
+/// Plays a gameplay script's movie once the book menu exists; the world resumes when it ends.
+fn script_movie(
+    mut commands: Commands,
+    entry: Option<Res<cyrus_game::script::ScriptMovieEntry>>,
+    menu: Option<Res<MenuState>>,
+    mut movies: MessageWriter<MovieRequest>,
+) {
+    let (Some(entry), Some(_)) = (entry, menu) else {
+        return;
+    };
+    movies.write(MovieRequest::Script(entry.index, entry.then_load));
+    commands.remove_resource::<cyrus_game::script::ScriptMovieEntry>();
+}
+
+/// A script movie is over, played or not: the paused world resumes, after requesting the world load
+/// that was waiting behind it.
+fn resume_script_world(commands: &mut Commands, menu: &mut MenuState, then_load: Option<[i32; 3]>) {
+    if let Some(destination) = then_load
+        && let Err(error) = cyrus_game::script::request_world(commands, destination)
+    {
+        menu.unavailable = Some(format!("{error:#}"));
+    }
+    menu.resume_game = true;
 }
 
 /// Decodes on a thread from one-based `frame` on; Smacker frames are deltas, so
@@ -260,8 +292,12 @@ pub(super) fn drive(
         #[cfg(not(target_arch = "wasm32"))]
         let root = install.root.clone();
         let index = match request {
-            MovieRequest::Menu(index) => *index,
+            MovieRequest::Menu(index) | MovieRequest::Script(index, _) => *index,
             MovieRequest::NewGame => 0,
+        };
+        playback.script = match request {
+            MovieRequest::Script(_, then_load) => Some(*then_load),
+            _ => None,
         };
         // Playing a movie sets its unlock flag before playback.
         if let Some(unlocks) = unlocks.as_mut() {
@@ -341,6 +377,9 @@ pub(super) fn drive(
                 menu.movie = None;
                 menu.unavailable = Some(format!("Movie unavailable: {error:#}"));
                 menu.dirty = true;
+                if let Some(then_load) = playback.script.take() {
+                    resume_script_world(&mut commands, &mut menu, then_load);
+                }
             }
         }
     }
@@ -537,6 +576,9 @@ pub(super) fn drive(
         if let Some(error) = failure {
             menu.unavailable = Some(error);
         }
+        if let Some(then_load) = playback.script.take() {
+            resume_script_world(&mut commands, &mut menu, then_load);
+        }
     }
 }
 
@@ -659,6 +701,30 @@ mod tests {
         assert!(world.resource::<MoviePlayback>().load.is_none());
     }
 
+    #[test]
+    fn script_movie_entry_is_taken_once_the_book_exists() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.init_resource::<Messages<MovieRequest>>();
+        world.insert_resource(cyrus_game::script::ScriptMovieEntry {
+            index: 7,
+            then_load: Some([3, 0, 0]),
+        });
+        world.run_system_once(script_movie).unwrap();
+        assert!(world.contains_resource::<cyrus_game::script::ScriptMovieEntry>());
+        world.init_resource::<MenuState>();
+        world.run_system_once(script_movie).unwrap();
+        assert!(!world.contains_resource::<cyrus_game::script::ScriptMovieEntry>());
+        let requests: Vec<_> = world
+            .resource_mut::<Messages<MovieRequest>>()
+            .drain()
+            .collect();
+        assert!(matches!(
+            requests.as_slice(),
+            [MovieRequest::Script(7, Some([3, 0, 0]))]
+        ));
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn requesting_a_movie_sets_its_unlock_flag_before_playback() {
@@ -688,11 +754,14 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn movie_completion_enters_new_game_only_after_success() {
-        for (new_game, complete, fail) in [
-            (true, false, false),
-            (true, true, false),
-            (false, true, false),
-            (true, false, true),
+        for (new_game, complete, fail, script) in [
+            (true, false, false, None),
+            (true, true, false, None),
+            (false, true, false, None),
+            (true, false, true, None),
+            (false, true, false, Some(Some([7, 1, 0]))),
+            (false, false, false, Some(None)),
+            (false, false, true, Some(None)),
         ] {
             let mut world = World::new();
             world.insert_resource(GameInstall {
@@ -716,6 +785,7 @@ mod tests {
             let _sender = (!fail).then_some(sender);
             world.insert_resource(MoviePlayback {
                 new_game,
+                script,
                 load: None,
                 playing: Some(Playing {
                     movie: Prepared {
@@ -748,6 +818,12 @@ mod tests {
             world.run_system_cached(drive).unwrap();
             let menu = world.resource::<MenuState>();
             assert_eq!(menu.enter_world, new_game && complete && !fail);
+            // A script movie resumes its world whether it ended or failed, never before.
+            assert_eq!(menu.resume_game, script.is_some() && (complete || fail));
+            assert_eq!(
+                world.contains_resource::<cyrus_world::lifecycle::SceneRequest>(),
+                script == Some(Some([7, 1, 0])) && complete
+            );
             assert_eq!(menu.movie.is_some(), !complete && !fail);
             assert_eq!(menu.unavailable.is_some(), fail);
             if fail {

@@ -283,7 +283,7 @@ impl GameplayGlobals {
 
     /// `QueueMovie`: movies five through ten play at once and empty the queue; others wait for
     /// the next world load. The comparison is unsigned, so negative values queue.
-    pub(super) fn queue_movie(&mut self, movie: i32) {
+    pub fn queue_movie(&mut self, movie: i32) {
         if (5..=10).contains(&(movie as u32)) {
             self.host_requests.play_movie = Some(movie);
             self.queued_movie = None;

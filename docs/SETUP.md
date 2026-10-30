@@ -380,8 +380,11 @@ visible error above the game.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Playing a
 movie unlocks its entry, saves keep the unlock flags and New Game clears them
-(preservation `docs/engine/movies.md`); movies that gameplay scripts queue are
-not played yet. Native Quit closes the book and exits. Browser Quit
+(preservation `docs/engine/movies.md`). A gameplay script's `QueueMovie` 5 through 10
+pauses the world behind the in-game book context, plays that cinematic and resumes
+the world (**Verified** natively through the control `queue_movie` command: A_RUINS1.SMK
+played to its last frame, then gameplay resumed). A queued movie plays between worlds
+the same way, before the next world loads (implemented, not run live). Native Quit closes the book and exits. Browser Quit
 attempts to close the tab; when the browser refuses, the menu remains usable.
 New Game enters the `WORLD.INI` starting world and marker. Load opens the installed page with paginated saved slots and restores the
 selected revision through the host session boundary. Save opens the authored

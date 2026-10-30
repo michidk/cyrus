@@ -34,6 +34,8 @@ pub struct MovieStatus {
 pub(super) enum MovieRequest {
     Menu(usize),
     NewGame,
+    /// A gameplay script's movie; the world resumes afterwards, loading `then_load` first if given.
+    Script(usize, Option<[i32; 3]>),
 }
 
 /// What the startup book does by itself once it exists, instead of waiting for a key.
@@ -123,6 +125,9 @@ pub struct MenuState {
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
     pub(super) enter_world: bool,
+    /// A script movie ended: the paused world resumes without the book.
+    #[serde(skip)]
+    pub(super) resume_game: bool,
     /// Movie unlock flags shown by the Movies page; the movie driver keeps them current.
     #[serde(skip)]
     pub(super) movie_unlocks: cyrus_game::MovieUnlocks,
@@ -599,6 +604,11 @@ pub(super) fn drive(
             }
         }
         menu.dirty = true;
+    }
+    if menu.resume_game {
+        menu.resume_game = false;
+        next.set(AppState::InGame);
+        return;
     }
     if menu.enter_world {
         menu.enter_world = false;

@@ -490,6 +490,16 @@ fn handle(
                     None => Err("script world is not prepared".into()),
                 }
             }
+            Command::QueueMovie { movie } => match script_actors
+                .as_mut()
+                .and_then(|actors| actors.current.as_mut())
+            {
+                Some(world) => {
+                    world.globals_mut().queue_movie(movie);
+                    Ok(json!({"queued": movie}))
+                }
+                None => Err("script world is not prepared".into()),
+            },
             Command::ScriptSummary { offset, limit } => match script_actors
                 .as_ref()
                 .and_then(|actors| actors.current.as_ref())

@@ -163,6 +163,11 @@ pub enum Command {
     },
     /// Stop every effect and voice clip; music keeps playing.
     StopSounds,
+    /// Call `QueueMovie(movie)` on the prepared world as a script would: 5 through 10 plays at once,
+    /// anything else is queued for the next world transition.
+    QueueMovie {
+        movie: i32,
+    },
     /// Inspect at most 64 logical script actors in the prepared world.
     Scripts {
         #[serde(default)]
