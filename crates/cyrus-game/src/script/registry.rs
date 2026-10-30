@@ -3004,7 +3004,8 @@ impl ScriptActors {
         Ok(())
     }
 
-    /// Apply New Game's lockout cleanup and combat-queue reset before world replacement.
+    /// Apply New Game's lockout cleanup, combat-queue reset and selected-player reset (CYRUS selected,
+    /// as the session initializer clears the swap state) before world replacement.
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {
         self.world_loop_outcome = None;
@@ -3015,9 +3016,11 @@ impl ScriptActors {
             let lockout = world.globals.lockout_player(0);
             apply_player_lockout(&mut world.actors, &mut world.activation, player, lockout);
             world.globals.combat_messages.reset();
+            world.globals.player_swapped = false;
         } else {
             self.globals.lockout_player(0);
             self.globals.combat_messages.reset();
+            self.globals.player_swapped = false;
         }
         self.discard_current_on_release = self.current.is_some();
         self.visited.clear();
@@ -7574,5 +7577,13 @@ mod selector_tests {
         reassert_player_update_exclusion(&mut actors, &globals);
         assert!(actors[0].control_state().unwrap().object_update_excluded);
         assert!(!actors[1].control_state().unwrap().object_update_excluded);
+    }
+
+    #[test]
+    fn new_game_returns_the_selected_player_to_cyrus() {
+        let mut registry = ScriptActors::default();
+        registry.globals.player_swapped = true;
+        registry.begin_new_game();
+        assert!(!registry.globals.player_swapped());
     }
 }
