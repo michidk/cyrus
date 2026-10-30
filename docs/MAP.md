@@ -215,6 +215,7 @@ module where it is defined and regenerate.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
 - `src/script/registry/point.rs` — Point navigation retains walking, direct visibility, held-node routes and command transitions.
 - `src/script/registry/point_tasks.rs` — The receiver's side of the point tasks: one ordinary turn step per `FaceAngle`/`FacePos`
+- `src/script/registry/prelight.rs` — Immutable world-entry actor lighting inputs, captured before ordinary updates.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/projectile.rs` — `projectileAI`: one flight step of a created projectile, following preservation's
