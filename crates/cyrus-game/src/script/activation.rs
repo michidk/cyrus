@@ -661,6 +661,10 @@ impl ActivationState {
     pub fn prompt(&self) -> Option<&str> {
         self.prompt.as_deref()
     }
+    #[doc(hidden)]
+    pub(super) fn set_owner_for_test(&mut self, owner: Option<ScriptActorId>) {
+        self.owner = owner;
+    }
 
     pub(super) fn clear_prompt_override(&mut self) {
         self.prompt_override = 0;

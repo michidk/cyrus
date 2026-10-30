@@ -18,7 +18,10 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let Some(keys) = inputs.quick_keys.filter(|keys| keys.sword || keys.health) else {
+        let Some(keys) = inputs
+            .quick_keys
+            .filter(|keys| keys.sword || keys.health || keys.use_selected)
+        else {
             return Ok(());
         };
         self.with_selected_host(inputs, random, sounds, |host| host.quick_keys(keys))
@@ -114,6 +117,15 @@ impl GameHost<'_, '_, '_, '_> {
         }
         if keys.health {
             self.quick_health()?;
+        }
+        // An activation prompt owner (a world object in reach) takes the key; the order between
+        // object activation and this use is not recovered from the original, so it stays
+        // conservative and leaves the key to the object.
+        if keys.use_selected
+            && self.registry.activation.owner().is_none()
+            && let Some(selected) = hud.selected_item()?
+        {
+            self.use_item(selected)?;
         }
         Ok(())
     }
