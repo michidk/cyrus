@@ -83,6 +83,21 @@ impl SlotStore {
         Ok(file)
     }
 
+    /// Slot candidates exist only while a publication holds the writer lock, so any candidate found
+    /// under the lock was left by a process that died before its rename; saves never read them.
+    fn remove_stale_candidates(&self) {
+        let Ok(entries) = std::fs::read_dir(&self.root) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(".cyrus-") && name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
     fn path(&self, slot: u16) -> Result<PathBuf> {
         ensure!(slot <= 299, "save slot {slot} outside 0..299");
         Ok(self.root.join(format!("{slot:03}.cyrus")))
@@ -229,6 +244,7 @@ impl SlotStore {
 
     pub(super) fn publish(&self, plan: SavePlan, document: &[u8]) -> Result<SlotMetadata> {
         let _lock = self.writer_lock()?;
+        self.remove_stale_candidates();
         let path = self.path(plan.slot)?;
         (|| -> Result<_> {
             ensure!(!document.is_empty(), "empty session document");
@@ -551,5 +567,19 @@ mod tests {
                 .contains(path.to_str().unwrap())
         );
         assert!(store.0.read(2, None).is_err());
+    }
+
+    #[test]
+    fn publishing_removes_candidates_left_by_a_crashed_writer_only() {
+        let store = Store::new();
+        std::fs::create_dir_all(&store.0.root).unwrap();
+        let stale = store.0.root.join(".cyrus-1234-7.tmp");
+        let unrelated = store.0.root.join("notes.tmp");
+        std::fs::write(&stale, b"partial").unwrap();
+        std::fs::write(&unrelated, b"keep").unwrap();
+        store.create("Valid", b"payload");
+        assert!(!stale.exists());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"keep");
+        assert_eq!(store.0.read(2, None).unwrap().0, b"payload");
     }
 }
