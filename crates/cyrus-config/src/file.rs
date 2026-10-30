@@ -19,8 +19,9 @@ pub fn read(path: &Path) -> Result<Option<Vec<u8>>> {
 }
 
 /// Replace an already encoded and validated local document with one rename.
-/// Sync the complete candidate before publication; pre-publication errors retain
-/// the accepted destination. Failed cleanup may leave an unaccepted candidate.
+/// Sync the complete candidate before publication and the directory after it on Unix;
+/// pre-publication errors retain the accepted destination. Failed cleanup may leave an
+/// unaccepted candidate.
 /// The game thread is the single writer for each destination.
 pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     let result = (|| -> Result<()> {
@@ -53,6 +54,12 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
             drop(file);
             std::fs::rename(&temporary, path)
                 .with_context(|| format!("publishing candidate {}", temporary.display()))?;
+            // Persist the rename itself; an error here means the replacement is published
+            // but its durability is unconfirmed. Windows exposes no directory sync.
+            #[cfg(unix)]
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .with_context(|| format!("syncing directory {}", parent.display()))?;
             Ok(())
         })();
         if publish.is_err() {
