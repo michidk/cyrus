@@ -73,6 +73,14 @@ continuations, then places both player records at the destination marker, follow
 preservation's [player entry contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#initial-player-animation-setup).
 Whole-session restoration retains the saved player pose.
 
+Verified: actor prelighting seals nonmoving static actors after fresh or retained
+entry initialization and before ordinary updates. It retains the resolved static
+model, integer map-unit translation and model-owned floating matrix. Snapshots
+rebuild that checkpoint from restored owners, following preservation's
+[entry checkpoint contract](https://github.com/michidk/redguard-preservation/blob/d500b0e/docs/engine/actor-prelighting.md).
+Missing legacy transform owners produce a contextual error instead of a guessed
+lighting pose.
+
 Automatic world scheduling prepares its logical environmental-effect pool from
 matching installed environment metadata before entry/model work. Pending metadata
 pauses model work, the simulation clock and the player idle counter; GPU readiness

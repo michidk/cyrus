@@ -61,11 +61,13 @@ pub(super) struct ModelState {
     /// Separate ledge support, retained across ordinary ground-owner clearing.
     pub ledge_support: Option<ScriptActorId>,
     pub static_radius: Option<f32>,
+    pub static_model: Option<String>,
     pub animation_radius: Option<f32>,
     pub collision_flags: Option<u8>,
     /// Stored map-unit coordinates survive loss of the current geometry record.
     /// None denotes an older snapshot that did not preserve this owner.
     pub position: Option<[f32; 3]>,
+    pub matrix: Option<[[f32; 3]; 3]>,
     pub current: Option<ModelPresentation>,
     pub weapon: Option<super::super::attachment::EquippedWeapon>,
 }
@@ -77,9 +79,11 @@ impl Default for ModelState {
             support: ModelSupportOwners::default(),
             ledge_support: None,
             static_radius: None,
+            static_model: None,
             animation_radius: None,
             collision_flags: None,
             position: Some([0.0; 3]),
+            matrix: None,
             current: None,
             weapon: None,
         }
@@ -90,6 +94,7 @@ impl ModelState {
     pub fn show_static(&mut self, pose: Pose) {
         let position = pose.position.map(|value| (value >> 8) as f32);
         self.position = Some(position);
+        self.matrix = Some(pose.matrix.0);
         if let Some(radius) = self.static_radius {
             self.current = Some(ModelPresentation {
                 position,
@@ -476,6 +481,9 @@ impl ScriptWorld {
         statics: &ActorModelCollision,
     ) -> Result<()> {
         self.require_model_identity(data)?;
+        if self.spatial.is_none() {
+            self.prepare_spatial()?;
+        }
         let mut radii = Vec::new();
         for (index, actor) in self.actors.iter().enumerate() {
             if actor
@@ -497,10 +505,37 @@ impl ScriptWorld {
                     self.world
                 ),
             };
-            radii.push((index, radius, statics.collision_flags(index)?));
+            let model = radius
+                .map(|_| {
+                    statics
+                        .loaded_model_name(index)
+                        .map(|name| name.map(str::to_owned))
+                })
+                .transpose()?
+                .flatten();
+            let position = (actor.attributes()[122] != 0)
+                .then(|| {
+                    self.spatial(self.id(index)?)
+                        .map(|spatial| spatial.local.position.map(|v| (v >> 8) as f32))
+                })
+                .transpose()?;
+            let matrix = self.spatial(self.id(index)?)?.local.matrix.0;
+            radii.push((
+                index,
+                radius,
+                model,
+                matrix,
+                position,
+                statics.collision_flags(index)?,
+            ));
         }
-        for (index, radius, flags) in radii {
+        for (index, radius, model, matrix, position, flags) in radii {
+            self.actors[index].model.matrix = Some(matrix);
             self.actors[index].model.static_radius = radius;
+            self.actors[index].model.static_model = model;
+            if let Some(position) = position {
+                self.actors[index].model.position = Some(position);
+            }
             self.actors[index].model.collision_flags = Some(flags);
             self.actors[index].model.prepared = true;
         }
@@ -711,6 +746,7 @@ impl ScriptWorld {
                 pose.position.map(|value| (value >> 8) as f32)
             };
             self.actors[index].model.position = Some(position);
+            self.actors[index].model.matrix = Some(pose.matrix.0);
             self.actors[index].model.current = radius.map(|radius| ModelPresentation {
                 position,
                 pose,
@@ -1334,12 +1370,21 @@ pub(super) struct ModelSnapshot {
     ledge_support: Option<(u64, usize)>,
     support_static: Option<usize>,
     static_radius: Option<u32>,
+    #[serde(default)]
+    static_model: Option<String>,
     animation_radius: Option<u32>,
     collision_flags: Option<u8>,
     #[serde(default)]
     position: Option<[u32; 3]>,
+    #[serde(default)]
+    matrix: Option<[[u32; 3]; 3]>,
     current: Option<ModelPresentationSnapshot>,
     weapon: Option<super::super::attachment::EquippedWeaponSnapshot>,
+}
+impl ModelSnapshot {
+    pub(super) fn has_static_model(&self) -> bool {
+        self.static_radius.is_some()
+    }
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ModelPresentationSnapshot {
@@ -1358,9 +1403,13 @@ impl ModelState {
             ledge_support: self.ledge_support.map(|id| (id.generation, id.index)),
             support_static: self.support.static_placement,
             static_radius: self.static_radius.map(f32::to_bits),
+            static_model: self.static_model.clone(),
             animation_radius: self.animation_radius.map(f32::to_bits),
             collision_flags: self.collision_flags,
             position: self.position.map(|position| position.map(f32::to_bits)),
+            matrix: self
+                .matrix
+                .map(|rows| rows.map(|row| row.map(f32::to_bits))),
             current: self
                 .current
                 .as_ref()
@@ -1470,9 +1519,21 @@ impl ModelState {
                 .transpose()?,
             support,
             static_radius: saved.static_radius.map(radius).transpose()?,
+            static_model: saved.static_model,
             animation_radius: saved.animation_radius.map(radius).transpose()?,
             collision_flags: saved.collision_flags,
             position,
+            matrix: saved
+                .matrix
+                .map(|rows| -> Result<_> {
+                    let matrix = rows.map(|row| row.map(f32::from_bits));
+                    ensure!(
+                        matrix.iter().flatten().all(|value| value.is_finite()),
+                        "saved model matrix invalid"
+                    );
+                    Ok(matrix)
+                })
+                .transpose()?,
             current,
         })
     }

@@ -676,6 +676,8 @@ pub struct WorldSnapshot {
     walk_nodes: Option<super::super::navigation::WalkNodeSnapshot>,
     next_combat_index: i32,
     ordinary_prepared: bool,
+    #[serde(default)]
+    actor_prelighting: Option<BTreeMap<usize, super::ActorPrelight>>,
     model_admission: Option<model::ModelAdmissionSnapshot>,
     map_updates: Vec<usize>,
     surface_veto: Option<bool>,
@@ -736,6 +738,11 @@ impl WorldSnapshot {
                 .map(super::super::navigation::WalkNodeReservations::snapshot),
             next_combat_index: world.next_combat_index,
             ordinary_prepared: world.ordinary_prepared,
+            actor_prelighting: world
+                .actor_prelighting
+                .as_ref()
+                .map(|_| world.actor_prelighting_inputs())
+                .transpose()?,
             model_admission: world
                 .model_admission
                 .as_ref()
@@ -917,6 +924,26 @@ impl WorldSnapshot {
         candidate.map_updates = self.map_updates;
         candidate.next_combat_index = self.next_combat_index;
         candidate.ordinary_prepared = self.ordinary_prepared;
+        if let Some(saved) = self.actor_prelighting {
+            ensure!(
+                saved == candidate.actor_prelighting_inputs()?,
+                "world {}: saved actor prelight checkpoint differs from restored owners",
+                self.world
+            );
+            for (&index, input) in &saved {
+                ensure!(
+                    sources
+                        .collision
+                        .actor_models
+                        .as_ref()
+                        .and_then(|models| models.instances.get(&index))
+                        .is_some_and(|model| model == input.model()),
+                    "world {} actor {index}: saved prelight model differs from installed source",
+                    self.world
+                );
+            }
+            candidate.actor_prelighting = Some(saved);
+        }
         candidate.surface_veto = self.surface_veto;
         ensure!(
             self.camera.is_some() == candidate.camera.is_some(),
@@ -1198,6 +1225,29 @@ pub struct LogicalSessionRestoreInputs<'a> {
     pub bios_tick: u32,
 }
 impl LogicalSessionSnapshot {
+    /// Destination actor-light inputs for hidden material preparation. These were
+    /// captured from saved model owners, never from the currently displayed world.
+    /// Older snapshots with eligible static actors require a new save.
+    pub fn actor_prelighting(&self) -> Result<BTreeMap<usize, super::ActorPrelight>> {
+        let current = self
+            .registry
+            .worlds
+            .iter()
+            .find(|world| world.world == self.registry.current)
+            .context("saved actor prelight world absent")?;
+        if let Some(inputs) = &current.actor_prelighting {
+            return Ok(inputs.clone());
+        }
+        ensure!(
+            !current.actors.iter().any(|actor| {
+                actor.attributes.get(122).copied().unwrap_or(0) != 0
+                    && actor.model.has_static_model()
+            }),
+            "world {}: legacy actor prelight checkpoint unavailable; save again",
+            current.world
+        );
+        Ok(BTreeMap::new())
+    }
     /// Saved enabled map lights (type-six placements, as `ScriptWorld::object_lights` projects)
     /// for off-live material preparation. Source and identity validation still belongs to the
     /// complete replacement plan.
@@ -1489,6 +1539,10 @@ impl ScriptActors {
                         })?;
                 }
             }
+        }
+        if replacement.model_resources_prepared() {
+            replacement.actor_prelighting = None;
+            replacement.prepare_actor_prelighting()?;
         }
         let mut globals = std::mem::take(&mut self.current.as_mut().unwrap().globals);
         let mut maintenance = std::mem::take(&mut globals.sound_maintenance);

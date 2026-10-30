@@ -74,6 +74,13 @@ impl ActorModelCollision {
         !self.instances.is_empty()
     }
 
+    /// Resolved initial static model key for an MPOB index. Unsupported geometry
+    /// remains an error; a successfully prepared model-less actor returns `None`.
+    pub fn loaded_model_name(&self, actor: usize) -> Result<Option<&str>> {
+        self.loaded_radius(actor)?;
+        Ok(self.instances.get(&actor).map(String::as_str))
+    }
+
     /// Original header radius in map units, before any actor shape radius scaling.
     pub fn radius(&self, actor: usize) -> Result<f32> {
         Ok(self.model(actor)?.radius)

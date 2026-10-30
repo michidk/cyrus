@@ -140,6 +140,10 @@ impl ScriptWorld {
             inputs.frame_scale.is_some(),
             "ordinary update requires frame_scale"
         );
+        self.prepare_ordinary_models(data, ticks, sounds)?;
+        if self.model_resources_prepared() {
+            self.prepare_actor_prelighting()?;
+        }
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
         super::reassert_player_update_exclusion(&mut self.actors, &self.globals);
         // The render lists and the rope system run before the shells and the ordinary actors.
@@ -148,7 +152,6 @@ impl ScriptWorld {
             i32::try_from(ticks).unwrap_or(i32::MAX),
             sounds,
         )?;
-        self.prepare_ordinary_models(data, ticks, sounds)?;
         self.update_shells(inputs, random, sounds, budget)?;
         let selected = self.ordinary_actors(view)?.to_vec();
         // Created objects (projectiles) read the world's geometry for their flight.
@@ -1299,6 +1302,7 @@ pub fn run_ordinary(
                 entry.as_deref().copied(),
                 &mut send_sound,
             )?;
+            world.prepare_actor_prelighting()?;
             if players.single().is_ok()
                 && let Some(hud) = hud.as_ref()
                 && let Some(index) = world.selected_player_index()

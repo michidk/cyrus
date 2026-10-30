@@ -10,6 +10,33 @@ pub use cyrus_assets::environment::TerrainLighting;
 use cyrus_assets::environment::{Environment, StaticLightingInstance};
 use std::sync::OnceLock;
 
+/// Prepared engine-space instance. Actor matrices already have their stored
+/// single precision; only authored MPSO matrices require fixed-point decoding.
+pub(crate) struct ModelLightingInstance {
+    pub position: [f32; 3],
+    pub matrix: [[f32; 3]; 3],
+}
+
+impl From<&StaticLightingInstance> for ModelLightingInstance {
+    fn from(instance: &StaticLightingInstance) -> Self {
+        Self {
+            position: instance.position.map(|value| value as f32),
+            matrix: std::array::from_fn(|row| {
+                std::array::from_fn(|col| instance.matrix[row * 3 + col] as f32 / 268_435_456.0)
+            }),
+        }
+    }
+}
+
+impl From<&cyrus_game::script::ActorPrelight> for ModelLightingInstance {
+    fn from(instance: &cyrus_game::script::ActorPrelight) -> Self {
+        Self {
+            position: instance.position(),
+            matrix: instance.matrix(),
+        }
+    }
+}
+
 fn normalize(normal: Vec3) -> Vec3 {
     static TABLE: OnceLock<[u32; 256]> = OnceLock::new();
     let table = TABLE.get_or_init(|| {
@@ -70,10 +97,28 @@ pub(crate) fn grid_face_normal(grid: &[[f32; 3]], side: usize, [a, b, c]: [usize
 /// World archive solids use the converted palette before lighting, as documented in
 /// <https://github.com/michidk/redguard-preservation/commit/dd46e20>.
 /// The returned solid RGB is in encoded byte units for the unbaked path.
+#[cfg(test)]
 pub(crate) fn model_mesh(
     mesh: &Mesh,
     extras: &str,
     bake: Option<(&Environment, &StaticLightingInstance)>,
+    world_palette: bool,
+) -> anyhow::Result<(Mesh, i32, Option<[u8; 3]>)> {
+    let bake =
+        bake.map(|(environment, instance)| (environment, ModelLightingInstance::from(instance)));
+    model_mesh_at(
+        mesh,
+        extras,
+        bake.as_ref()
+            .map(|(environment, instance)| (*environment, instance)),
+        world_palette,
+    )
+}
+
+pub(crate) fn model_mesh_at(
+    mesh: &Mesh,
+    extras: &str,
+    bake: Option<(&Environment, &ModelLightingInstance)>,
     world_palette: bool,
 ) -> anyhow::Result<(Mesh, i32, Option<[u8; 3]>)> {
     #[derive(serde::Deserialize)]
@@ -140,6 +185,14 @@ pub(crate) fn model_mesh(
     let mut private = mesh.clone();
     private.remove_attribute(Mesh::ATTRIBUTE_COLOR);
     if let Some((environment, instance)) = bake {
+        anyhow::ensure!(
+            instance
+                .position
+                .iter()
+                .chain(instance.matrix.iter().flatten())
+                .all(|value| value.is_finite()),
+            "model lighting instance transform is nonfinite"
+        );
         let Some(VertexAttributeValues::Float32x3(positions)) =
             mesh.attribute(Mesh::ATTRIBUTE_POSITION)
         else {
@@ -163,10 +216,8 @@ pub(crate) fn model_mesh(
             "nonfinite model lighting vertex or normal"
         );
         let instance = prelight::Instance {
-            position: instance.position.map(|v| v as f32),
-            matrix: std::array::from_fn(|row| {
-                std::array::from_fn(|col| instance.matrix[row * 3 + col] as f32 / 268_435_456.0)
-            }),
+            position: instance.position,
+            matrix: instance.matrix,
             radius: inputs.radius_fixed as f32 / 256.0,
         };
         let lights: Vec<_> = environment

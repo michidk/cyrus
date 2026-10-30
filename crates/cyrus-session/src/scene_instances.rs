@@ -329,6 +329,7 @@ impl SessionSceneInstances {
             clipping,
             camera.position(),
             &snapshot.logical.object_lights()?,
+            &snapshot.logical.actor_prelighting()?,
         )
     }
 

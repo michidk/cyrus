@@ -32,6 +32,7 @@ pub fn prepare_scene_materials(
     clipping: [f32; 2],
     camera_position: Vec3,
     object_lights: &[cyrus_assets::environment::LocalLight],
+    actor_prelighting: &std::collections::BTreeMap<usize, cyrus_game::script::ActorPrelight>,
 ) -> Result<()> {
     ensure!(
         camera_position.is_finite()
@@ -105,11 +106,32 @@ pub fn prepare_scene_materials(
                 .get::<Name>(node)
                 .is_some_and(|name| name.as_str() == "Terrain")
         });
-        let instance = ancestors.iter().find_map(|&node| {
+        let static_instance = ancestors.iter().find_map(|&node| {
             world
                 .get::<Name>(node)
                 .and_then(|name| environment.prelighting.instances.get(name.as_str()))
+                .map(crate::lighting::ModelLightingInstance::from)
         });
+        let actor = ancestors.iter().find_map(|&node| {
+            world
+                .get::<Name>(node)?
+                .as_str()
+                .strip_prefix("B_")?
+                .split_once('_')?
+                .0
+                .parse::<usize>()
+                .ok()
+        });
+        let instance = if !environment.prelighting.instances.is_empty()
+            && !environment.prelighting.lights.is_empty()
+            && let Some(index) = actor
+        {
+            actor_prelighting
+                .get(&index)
+                .map(crate::lighting::ModelLightingInstance::from)
+        } else {
+            static_instance
+        };
         if terrain && environment.terrain_lighting.is_some() {
             let mut fog = extension.clone();
             fog.water.y = 1.0;
@@ -147,7 +169,7 @@ pub fn prepare_scene_materials(
                             .map(|extras| extras.value.as_str())
                     }),
                     flat,
-                    instance,
+                    instance.as_ref(),
                     images,
                 )
                 .with_context(|| format!("replacement model {entity:?}"))?,
@@ -158,7 +180,7 @@ pub fn prepare_scene_materials(
             &extension,
             terrain,
             flat,
-            instance,
+            instance.as_ref(),
             geometry.as_ref().map_or(0, |g| g.radius),
             geometry.as_ref().and_then(|g| g.solid_rgb),
             geometry.as_ref().and_then(|g| g.attributes),

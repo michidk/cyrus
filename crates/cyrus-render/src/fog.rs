@@ -77,7 +77,7 @@ type MaterialCache = HashMap<
         AssetId<StandardMaterial>,
         i32,
         Option<[u8; 3]>,
-        Option<Entity>,
+        Option<(Entity, u64)>,
         Option<u8>,
         Option<u16>,
     ),
@@ -314,6 +314,7 @@ fn apply_scene_fog(
     hierarchy: (
         Query<&ChildOf>,
         Query<(), With<crate::persistence::StagedRenderRoot>>,
+        Query<&cyrus_game::script::ScriptBinding>,
     ),
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
     mut converted: Local<MaterialCache>,
@@ -336,7 +337,7 @@ fn apply_scene_fog(
         crate::lighting::runtime::LightView,
     ),
 ) {
-    let (parents, staged) = hierarchy;
+    let (parents, staged, actor_bindings) = hierarchy;
     let (
         mut previous,
         mut lights,
@@ -483,7 +484,7 @@ fn apply_scene_fog(
                 .insert(MeshMaterial3d(material));
             continue;
         }
-        let instance = std::iter::once(entity)
+        let static_instance = std::iter::once(entity)
             .chain(parents.iter_ancestors(entity))
             .find_map(|ancestor| {
                 names.get(ancestor).ok().and_then(|name| {
@@ -491,9 +492,68 @@ fn apply_scene_fog(
                         .prelighting
                         .instances
                         .get(name.as_str())
-                        .map(|instance| (ancestor, instance))
+                        .map(|instance| {
+                            (
+                                ancestor,
+                                0,
+                                crate::lighting::ModelLightingInstance::from(instance),
+                            )
+                        })
                 })
             });
+        let actor_binding = std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .find_map(|ancestor| {
+                actor_bindings
+                    .get(ancestor)
+                    .ok()
+                    .map(|binding| (ancestor, binding))
+            });
+        // Static actor geometry can arrive before the logical binding. Keep its
+        // source material until the entry checkpoint can be resolved.
+        let actor_geometry = std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|ancestor| {
+                names.get(ancestor).is_ok_and(|name| {
+                    name.as_str()
+                        .strip_prefix("B_")
+                        .and_then(|name| name.split_once('_'))
+                        .is_some_and(|(index, _)| index.parse::<usize>().is_ok())
+                })
+            });
+        if actor_geometry
+            && actor_binding.is_none()
+            && !environment.prelighting.instances.is_empty()
+            && !environment.prelighting.lights.is_empty()
+        {
+            continue;
+        }
+        let instance = if !environment.prelighting.instances.is_empty()
+            && !environment.prelighting.lights.is_empty()
+            && let Some((ancestor, binding)) = actor_binding
+        {
+            let Some(world) = retained_world.filter(|world| {
+                binding.actor.generation == world.generation()
+                    && light_owners
+                        .2
+                        .as_ref()
+                        .is_some_and(|request| binding.source == request.0)
+            }) else {
+                continue;
+            };
+            let Ok(input) = world.actor_prelight(binding.actor) else {
+                continue;
+            };
+            input.map(|input| {
+                (
+                    ancestor,
+                    world.generation(),
+                    crate::lighting::ModelLightingInstance::from(input),
+                )
+            })
+        } else {
+            static_instance
+        };
         let mut radius = 0;
         let mut solid_rgb = None;
         let mut attributes = None;
@@ -529,7 +589,7 @@ fn apply_scene_fog(
                                     .map(|extras| extras.value.as_str())
                             }),
                         flats.get(entity).ok(),
-                        instance.map(|(_, instance)| instance),
+                        instance.as_ref().map(|(_, _, instance)| instance),
                         &images,
                     )
                 });
@@ -564,7 +624,9 @@ fn apply_scene_fog(
                 handle.0.id(),
                 radius,
                 solid_rgb,
-                instance.map(|(entity, _)| entity),
+                instance
+                    .as_ref()
+                    .map(|(entity, generation, _)| (*entity, *generation)),
                 attributes,
                 flats.get(entity).ok().map(|flat| flat.alpha),
             ))
@@ -574,7 +636,7 @@ fn apply_scene_fog(
                     &extension,
                     terrain,
                     flats.get(entity).ok(),
-                    instance.map(|(_, instance)| instance),
+                    instance.as_ref().map(|(_, _, instance)| instance),
                     radius,
                     solid_rgb,
                     attributes,
@@ -598,7 +660,7 @@ fn model_material(
     extension: &FogExtension,
     terrain: bool,
     flat: Option<&crate::flat::Flat>,
-    instance: Option<&cyrus_assets::environment::StaticLightingInstance>,
+    instance: Option<&crate::lighting::ModelLightingInstance>,
     radius: i32,
     solid_rgb: Option<[u8; 3]>,
     attributes: Option<u8>,
@@ -635,12 +697,12 @@ fn model_material(
             ),
             lights: light_texture.clone(),
             placement: instance.map_or(Mat4::IDENTITY, |instance| {
-                let m = instance.matrix.map(|value| value as f32 / 268_435_456.0);
+                let m = instance.matrix;
                 Mat4::from_cols(
-                    Vec4::new(m[0], m[3], m[6], 0.0),
-                    Vec4::new(m[1], m[4], m[7], 0.0),
-                    Vec4::new(m[2], m[5], m[8], 0.0),
-                    Vec3::from_array(instance.position.map(|value| value as f32)).extend(1.0),
+                    Vec4::new(m[0][0], m[1][0], m[2][0], 0.0),
+                    Vec4::new(m[0][1], m[1][1], m[2][1], 0.0),
+                    Vec4::new(m[0][2], m[1][2], m[2][2], 0.0),
+                    Vec3::from_array(instance.position).extend(1.0),
                 )
             }),
             lighting: Vec4::new(
@@ -701,7 +763,7 @@ fn prepare_model_geometry<'a>(
     material_extras: Option<&str>,
     ancestry: impl IntoIterator<Item = &'a str>,
     flat: Option<&crate::flat::Flat>,
-    instance: Option<&cyrus_assets::environment::StaticLightingInstance>,
+    instance: Option<&crate::lighting::ModelLightingInstance>,
     images: &Assets<Image>,
 ) -> anyhow::Result<PreparedModelGeometry> {
     let mut chroma_key = Vec4::ZERO;
@@ -736,7 +798,7 @@ fn prepare_model_geometry<'a>(
             texture_scale = Vec4::new(u, v, layout.sampling_level() as f32, 0.0);
         }
     }
-    let (mut mesh, radius, solid_rgb) = crate::lighting::model_mesh(
+    let (mut mesh, radius, solid_rgb) = crate::lighting::model_mesh_at(
         original,
         extras,
         instance
@@ -1361,6 +1423,7 @@ mod tests {
                 [7.0, 3800.0],
                 Vec3::ZERO,
                 &destination.object_lights,
+                &Default::default(),
             )
             .is_err()
         );
@@ -1380,6 +1443,7 @@ mod tests {
             [7.0, 3800.0],
             Vec3::ZERO,
             &destination.object_lights,
+            &Default::default(),
         )
         .unwrap();
         validate_scene_materials(app.world(), &[staged_root]).unwrap();
@@ -1627,5 +1691,172 @@ mod tests {
                 .y,
             15200.0
         );
+    }
+}
+
+#[cfg(test)]
+mod actor_prelight_tests {
+    use super::*;
+
+    #[test]
+    fn installed_static_actor_binds_baked_rgb_to_private_mesh() -> anyhow::Result<()> {
+        use cyrus_assets::{install::GameInstall, native::Files};
+        use cyrus_game::script::ScriptWorld;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = GameInstall::open(&root) else {
+            eprintln!("skipped: no install (bound static actor prelighting)");
+            return Ok(());
+        };
+        let files = Files::open(&install)?;
+        let prepare = |name: &str| -> anyhow::Result<Vec<u8>> {
+            Ok(cyrus_assets::game::prepare(&files, name)?
+                .remove(name)
+                .unwrap())
+        };
+        let scripts = serde_json::from_slice(&prepare("TAVERN.scripts")?)?;
+        let animations = serde_json::from_slice(&prepare("TAVERN.animations")?)?;
+        let scene = cyrus_game::player::data::PlayerScene::decode(&prepare("TAVERN.player")?)?;
+        let models = cyrus_collision::actor_models::ActorModelCollision::new(
+            scene.collision.actor_models.as_ref().unwrap(),
+        )?;
+        let mut logical = ScriptWorld::prepare(&scripts, 80)?;
+        logical.prepare_model_resources(&animations, &models)?;
+        logical.prepare_actor_prelighting()?;
+        let inputs = std::collections::BTreeMap::from([(
+            15,
+            logical.actor_prelight(logical.id(15)?)?.unwrap().clone(),
+        )]);
+        let environment_bytes = prepare("TAVERN.environment")?;
+        let environment: Environment = serde_json::from_slice(&environment_bytes)?;
+        assert_eq!(environment.prelighting.instances.len(), 21);
+        assert_eq!(environment.prelighting.lights.len(), 10);
+        let glb = gltf::Gltf::from_slice(&prepare("TAVERN.glb")?)?;
+        let node = glb
+            .nodes()
+            .find(|node| node.name() == Some("B_015_FIRESND"))
+            .unwrap();
+        let primitive = node.mesh().unwrap().primitives().next().unwrap();
+        let read = |semantic| -> Vec<[f32; 3]> {
+            let accessor = primitive.get(&semantic).unwrap();
+            assert_eq!(accessor.data_type(), gltf::accessor::DataType::F32);
+            assert_eq!(accessor.dimensions(), gltf::accessor::Dimensions::Vec3);
+            let view = accessor.view().unwrap();
+            let bytes = glb.blob.as_ref().unwrap();
+            let start = view.offset() + accessor.offset();
+            (0..accessor.count())
+                .map(|i| {
+                    std::array::from_fn(|axis| {
+                        let offset = start + i * view.stride().unwrap_or(12) + axis * 4;
+                        f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
+                    })
+                })
+                .collect()
+        };
+        let mut mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, read(gltf::Semantic::Positions));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, read(gltf::Semantic::Normals));
+        let mut world = World::new();
+        world.init_resource::<Assets<Mesh>>();
+        world.init_resource::<Assets<StandardMaterial>>();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<Assets<SceneMaterial>>();
+        world.init_resource::<Assets<TerrainMaterial>>();
+        let original = world.resource_mut::<Assets<Mesh>>().add(mesh);
+        let material = world
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let root = world
+            .spawn((
+                Name::new("B_015_FIRESND"),
+                bevy::gltf::GltfExtras {
+                    value: node.extras().as_ref().unwrap().get().to_owned(),
+                },
+                Visibility::Hidden,
+            ))
+            .id();
+        let entity = world
+            .spawn((
+                ChildOf(root),
+                Mesh3d(original.clone()),
+                MeshMaterial3d(material),
+                bevy::gltf::GltfExtras {
+                    value: primitive.extras().as_ref().unwrap().get().to_owned(),
+                },
+            ))
+            .id();
+        let mut environments = Assets::<Environment>::default();
+        let environment_handle =
+            environments.add(serde_json::from_slice::<Environment>(&environment_bytes)?);
+        world.insert_resource(environments);
+        world.insert_resource(EnvironmentRequest(environment_handle));
+        world.insert_resource(Fidelity::default());
+        world.insert_resource(RenderDistance {
+            original: Some([7.0, 3800.0]),
+            override_far: None,
+        });
+        let mut schedule = Schedule::default();
+        schedule.add_systems(apply_scene_fog);
+        schedule.run(&mut world);
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_some(),
+            "unbound static actor converted before logical readiness"
+        );
+        assert!(world.get::<MeshMaterial3d<SceneMaterial>>(entity).is_none());
+        world
+            .entity_mut(root)
+            .insert(crate::persistence::StagedRenderRoot);
+        preparation::prepare_scene_materials(
+            &mut world,
+            &[root],
+            &environment,
+            Handle::<Environment>::default().id(),
+            &Fidelity::default(),
+            [7.0, 3800.0],
+            Vec3::ZERO,
+            &[],
+            &inputs,
+        )?;
+        assert!(world.get::<MeshMaterial3d<SceneMaterial>>(entity).is_some());
+        assert!(
+            world
+                .get::<MeshMaterial3d<StandardMaterial>>(entity)
+                .is_none()
+        );
+        let bound = &world.get::<Mesh3d>(entity).unwrap().0;
+        assert_ne!(bound.id(), original.id());
+        let meshes = world.resource::<Assets<Mesh>>();
+        assert!(
+            meshes
+                .get(&original)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR)
+                .is_none()
+        );
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(colors)) =
+            meshes.get(bound).unwrap().attribute(Mesh::ATTRIBUTE_COLOR)
+        else {
+            panic!("static actor has no baked RGB")
+        };
+        assert!(!colors.is_empty());
+        eprintln!(
+            "FIRESND first RGB {:?}, vertices {}",
+            colors[0],
+            colors.len()
+        );
+        assert!(
+            colors
+                .iter()
+                .all(|color| color.iter().all(|value| value.is_finite()))
+        );
+        Ok(())
     }
 }

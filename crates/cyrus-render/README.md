@@ -178,15 +178,17 @@ model RGB each frame, including retained static colors, using preservation's
 Their signed colors, quantized falloff and original static transforms survive
 native/browser preparation. Re-export environments for the required object-light
 records. Active light scripts are explicitly unsupported during preparation.
-**Verified:** [actor prelighting eligibility](https://github.com/michidk/redguard-preservation/blob/d1cbf68/docs/engine/actor-prelighting.md)
-requires nonzero `attr_non_moving` and the runtime static-model path. Actor baking
-remains unsupported until script initialization exposes the resolved model kind
-and prelighting-time eligibility and pose. **Unknown:** scripted light changes,
-actor lighting overrides and complete original-game pixel parity.
+**Verified:** [actor prelighting](https://github.com/michidk/redguard-preservation/blob/d500b0e/docs/engine/actor-prelighting.md)
+requires nonzero `attr_non_moving`, the runtime static-model path, admitted map
+lights and static placements. Live actor materials wait for the logical entry
+checkpoint; hidden session replacements consume the saved checkpoint before
+publication. Both bake private vertex RGB using the retained model translation
+and floating matrix. **Unknown:** actor lighting overrides and complete
+original-game pixel parity.
 **Verified:** matched BELLTOWR original/native/browser captures at 640×480 compare
 static wall and table lighting. Color/filtering differences remain; the candle
-appearance also differs. The inspection camera supplies region selection until
-the original follow-camera target is implemented.
+appearance also differs. The retained logical camera target selects the light
+region during gameplay; the inspection camera supplies the fallback.
 
 Placed MPSF flats use private, centered camera-facing meshes sized from exported
 source-image dimensions and scale. **Verified:** preservation's

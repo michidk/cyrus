@@ -44,6 +44,8 @@ pub(super) mod overlap;
 mod persistence;
 mod point;
 mod point_tasks;
+mod prelight;
+pub use prelight::ActorPrelight;
 mod probe;
 mod projectile;
 mod quick_keys;
@@ -585,6 +587,7 @@ pub struct ScriptWorld {
     walk_nodes: Option<super::navigation::WalkNodeReservations>,
     next_combat_index: i32,
     ordinary_prepared: bool,
+    actor_prelighting: Option<BTreeMap<usize, ActorPrelight>>,
     /// The model candidate list of the latest ordinary candidate gather. The original keeps one
     /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
     retained_candidates: cyrus_collision::candidates::CollisionCandidates,
@@ -1241,6 +1244,7 @@ impl ScriptWorld {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            actor_prelighting: None,
             retained_candidates: Default::default(),
             surface_veto: None,
             camera,
@@ -7397,6 +7401,7 @@ mod fighting_tests {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            actor_prelighting: None,
             retained_candidates: Default::default(),
             model_admission: None,
             map_updates: Vec::new(),
