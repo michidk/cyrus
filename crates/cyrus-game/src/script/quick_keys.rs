@@ -4,13 +4,19 @@ use bevy::prelude::*;
 /// Binding slots of the quick sword and quick health keys among the 15 menu control codes.
 const SWORD_SLOT: usize = 9;
 const HEALTH_SLOT: usize = 10;
+/// Binding slot of the activate/attack key (`key_d`).
+const ACTION_SLOT: usize = 7;
 
 /// Quick keys for the ordinary update's key handler. The sword key reads as held; the health key
-/// reads once per press, so a held key heals once.
+/// and the action key read once per press, so a held key heals or uses an item once.
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct QuickKeys {
     pub sword: bool,
     pub health: bool,
+    /// The activate/attack key went down this update: an unarmed player uses the selected item
+    /// (observed in the installed game: Activate draws the selected sabre, drinks a selected
+    /// potion once, and a held key does not repeat).
+    pub use_selected: bool,
 }
 
 /// The letter and modifier keys the `InKey` native reads, sampled under the same locks as the
@@ -132,6 +138,7 @@ pub(super) fn sample(
     let key = |slot: usize| crate::player::input::scan_key(bindings[slot]);
     quick.sword = key(SWORD_SLOT).is_some_and(|key| keys.pressed(key));
     quick.health = key(HEALTH_SLOT).is_some_and(|key| keys.just_pressed(key));
+    quick.use_selected = key(ACTION_SLOT).is_some_and(|key| keys.just_pressed(key));
 }
 
 #[cfg(test)]

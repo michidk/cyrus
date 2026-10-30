@@ -644,6 +644,12 @@ impl ScriptWorld {
         self.actors[id.index].attributes[attribute] = value;
     }
 
+    /// Test hook: set the actor that owns the pending activation prompt.
+    #[doc(hidden)]
+    pub fn set_activation_owner_for_test(&mut self, owner: Option<ScriptActorId>) {
+        self.activation.set_owner_for_test(owner);
+    }
+
     /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
     #[doc(hidden)]
     pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: u8, origin_y: i32) {

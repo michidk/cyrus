@@ -31511,6 +31511,7 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         quick_keys: Some(QuickKeys {
             sword: false,
             health: true,
+            use_selected: false,
         }),
         nominal_ticks: Some(1),
         frame_scale: Some(256),
@@ -31538,6 +31539,53 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         55,
         "nothing left to drink"
     );
+}
+
+#[test]
+fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owner() {
+    use cyrus_game::script::{QuickKeys, ScriptInputs};
+    let draw = |owner: bool| {
+        let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+        let player = world
+            .id(world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Player)
+                })
+                .unwrap())
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        let mut asset = inventory_asset(&[(1, 1)]);
+        asset.inventory.get_mut(&1).unwrap().item_type = 1;
+        asset.inventory.get_mut(&1).unwrap().weapon = true;
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        if owner {
+            world.set_activation_owner_for_test(Some(world.id(0).unwrap()));
+        }
+        let inputs = ScriptInputs {
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            quick_keys: Some(QuickKeys {
+                sword: false,
+                health: false,
+                use_selected: true,
+            }),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::default();
+        world
+            .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .living_state
+    };
+    assert_eq!(draw(false), 20, "the selected sabre is drawn");
+    assert_eq!(draw(true), 0, "an activation owner keeps the key");
 }
 
 #[test]

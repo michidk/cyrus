@@ -436,6 +436,18 @@ impl ScriptHud {
             .unwrap_or(0))
     }
 
+    /// The selected item, `None` while nothing is selected or the inventory is closed.
+    pub(super) fn selected_item(&self) -> Result<Option<u16>> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .and_then(super::inventory::Inventory::selected))
+    }
+
     pub(super) fn inventory_ready(&self) -> Result<bool> {
         let state = self.0.lock().expect("script HUD lock poisoned");
         if let Some(error) = &state.inventory_error {
