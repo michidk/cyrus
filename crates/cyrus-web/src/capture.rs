@@ -164,12 +164,21 @@ fn observe(
         js_sys::Reflect::set(&record, &"world".into(), &request.0.as_str().into())?;
         js_sys::Reflect::set(&record, &"view".into(), &view)?;
         js_sys::Reflect::set(&record, &"ready".into(), &ready.into())?;
-        // The first 64 script actors, only while a driver sets `__cyrusInspectScripts`; the
+        // At most 64 script actors, only while a driver sets `__cyrusInspectScripts`; the
         // browser has no control port, so acceptance drivers read this like the `scripts` command.
         if js_sys::Reflect::get(&window, &"__cyrusInspectScripts".into())?.is_truthy()
             && let Some(world) = scripts.as_ref().and_then(|actors| actors.current.as_ref())
         {
-            let text = world.inspect(0, 64).to_string();
+            let offset = js_sys::Reflect::get(&window, &"__cyrusInspectScriptsOffset".into())?
+                .as_f64()
+                .filter(|offset| {
+                    offset.is_finite()
+                        && *offset >= 0.0
+                        && *offset <= f64::from(u32::MAX)
+                        && offset.fract() == 0.0
+                })
+                .unwrap_or(0.0) as usize;
+            let text = world.inspect(offset, 64).to_string();
             js_sys::Reflect::set(&record, &"scripts".into(), &js_sys::JSON::parse(&text)?)?;
         }
         js_sys::Reflect::set(&window, &"__cyrusCapture".into(), &record)

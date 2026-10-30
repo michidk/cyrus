@@ -142,6 +142,9 @@ read-only `window.__cyrusCapture` observation after world entry, containing the
 requested world and live scene-space camera pose. It does not change simulation
 or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
 original/native/browser replay workflow and local artifact rules.
+With `window.__cyrusInspectScripts = true`, the observation includes a page of up
+to 64 script actors. Set `window.__cyrusInspectScriptsOffset` to a nonnegative
+32-bit integer to inspect later actors. Missing or invalid offsets use zero.
 
 F12 opens the shared cheat console while in a world. Cheat state restores from
 localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
