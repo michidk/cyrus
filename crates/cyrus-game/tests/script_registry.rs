@@ -33864,3 +33864,91 @@ fn mark_actor_dead_sets_the_state_is_dead_reads() {
     assert_eq!(world.actors()[0].attributes()[3], 0);
     assert!(world.mark_actor_dead(usize::MAX).is_err());
 }
+
+#[test]
+fn retained_world_places_player_roles_at_the_new_destination() {
+    use cyrus_game::script::{ScriptActorSource, ScriptActors, WorldSnapshotSources};
+    use cyrus_world::lifecycle::PreparedWorld;
+    let mut scripts = cache();
+    add_standalone_receivers(&mut scripts);
+    let (mut app, prepared, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    app.insert_resource(prepared.clone());
+    app.update();
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        world.prepare_spatial().unwrap();
+        let player = world.selected_player().unwrap();
+        world
+            .initialize_player_spatial(player, [100, 200, 300], [0, 128, 0])
+            .unwrap();
+        let logic = world.id(0).unwrap();
+        world
+            .advance(
+                logic,
+                ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+    }
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared);
+    app.update();
+    let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+    let world = actors.current.as_mut().unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.selected_player().unwrap();
+    world
+        .initialize_player_spatial(player, [400, 500, 600], [0, 768, 0])
+        .unwrap();
+    assert!(
+        actors
+            .restore_visited(&sources, &mut |_, _| Ok(()))
+            .unwrap()
+    );
+    let world = actors.current.as_mut().unwrap();
+    for (index, actor) in world.actors().iter().enumerate() {
+        if matches!(
+            actor.source,
+            ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+        ) {
+            let spatial = world.spatial(world.id(index).unwrap()).unwrap();
+            assert_eq!(spatial.local.position, [400, 500, 600]);
+            assert_eq!(spatial.local.angles, [0, 768, 0]);
+        }
+    }
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+    let logic = world.id(0).unwrap();
+    world
+        .advance(
+            logic,
+            ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [6]);
+}

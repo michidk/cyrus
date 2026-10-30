@@ -1435,6 +1435,7 @@ impl ScriptActors {
     /// Replace a freshly initialized entry with its retained logical world.
     /// The host clears shared RTX, dialogue and sample services synchronously;
     /// saved task counters and remembered slot numbers remain unchanged.
+    /// Player records use the freshly initialized destination pose after restoration.
     /// No dormant transport or dialogue owner is reconstructed.
     pub fn restore_visited(
         &mut self,
@@ -1458,12 +1459,37 @@ impl ScriptActors {
         };
         let snapshot = retained.snapshot(sources)?;
         let samples = (0..16).map(|slot| (slot, slot)).collect();
-        let replacement = snapshot.restore(
+        let destination = current
+            .selected_player()
+            .map(|player| current.spatial(player).map(|spatial| spatial.local))
+            .transpose()?;
+        let mut replacement = snapshot.restore(
             sources,
             current.generation(),
             current.globals.dialogue.as_ref(),
             &samples,
         )?;
+        // Temporary world restoration precedes destination placement (preservation player entry).
+        if let Some(destination) = destination {
+            let spatial = replacement
+                .spatial
+                .as_mut()
+                .context("revisit restored spatial state absent")?;
+            for (index, actor) in replacement.actors.iter().enumerate() {
+                if matches!(
+                    actor.source,
+                    ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+                ) {
+                    spatial
+                        .place_player(index, actor, destination.position, destination.angles, true)
+                        .with_context(|| {
+                            format!(
+                                "world {world_id} instance {index}: revisit destination placement"
+                            )
+                        })?;
+                }
+            }
+        }
         let mut globals = std::mem::take(&mut self.current.as_mut().unwrap().globals);
         let mut maintenance = std::mem::take(&mut globals.sound_maintenance);
         let result = maintenance.restore_world(&mut |stage| cleanup(stage, &mut globals), || {
