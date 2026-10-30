@@ -11,6 +11,10 @@ pub struct SceneRequest(pub String);
 /// authored `LoadWorld` does to re-enter a world at another marker. Removed when preparation starts.
 #[derive(Resource)]
 pub struct ReloadScene;
+/// A coordinated same-world restore has already published identity and animation
+/// inputs. Consume the next prepared-world change without announcing world entry.
+#[derive(Resource)]
+pub struct RestoredWorldIdentity(PreparedWorld);
 /// A host preparation failure, retained for the loading presentation and control.
 #[derive(Resource)]
 pub struct SceneLoadError(pub String);
@@ -33,7 +37,7 @@ pub struct PreparationProgress {
 #[derive(Resource)]
 pub struct WorldPreparationPending;
 /// A host has completed preparation; sidecar loading remains asynchronous.
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, PartialEq)]
 pub struct PreparedWorld {
     pub requested_name: String,
     /// Native preparation can resolve this immediately; browser metadata loads asynchronously.
@@ -46,6 +50,14 @@ pub struct PreparedWorld {
     pub environment_path: AssetPath<'static>,
 }
 impl PreparedWorld {
+    /// Publish prepared sources whose identity and animation inputs were already
+    /// restored by a coordinated session commit. A superseding preparation still
+    /// performs ordinary world entry.
+    pub fn queue_restored(self, commands: &mut Commands) {
+        commands.insert_resource(RestoredWorldIdentity(self.clone()));
+        commands.insert_resource(self);
+    }
+
     /// Cache URLs are chosen once by the host and retained for every consumer.
     pub fn from_cache(name: String, assets: &AssetServer) -> Self {
         Self {
@@ -79,10 +91,17 @@ fn commit(
     mut commands: Commands,
     prepared: Option<Res<PreparedWorld>>,
     mut current: ResMut<CurrentScene>,
+    restored: Option<Res<RestoredWorldIdentity>>,
 ) {
     let Some(prepared) = prepared else {
         return;
     };
+    if let Some(restored) = restored {
+        commands.remove_resource::<RestoredWorldIdentity>();
+        if restored.0 == *prepared {
+            return;
+        }
+    }
     if !prepared.is_changed() {
         return;
     }

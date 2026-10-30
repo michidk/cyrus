@@ -117,3 +117,47 @@ fn loaded_metadata_does_not_retrigger_world_change_consumers() {
     app.update();
     assert_eq!(app.world().resource::<Changes>().0, 1);
 }
+
+#[test]
+fn restored_identity_does_not_announce_another_world_entry() {
+    use cyrus_world::lifecycle::{RestoredWorldIdentity, WorldChange};
+    #[derive(Resource, Default)]
+    struct Changes(usize);
+    fn observe(current: Res<CurrentScene>, mut changes: ResMut<Changes>) {
+        if current.is_changed() {
+            changes.0 += 1;
+        }
+    }
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        AnimationPlugin,
+        WorldPlugin,
+    ))
+    .init_resource::<Changes>()
+    .add_systems(Update, observe.after(WorldChange));
+    let prepared = PreparedWorld::from_cache("FIRST".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(prepared.clone()).update();
+    assert_eq!(app.world().resource::<Changes>().0, 1);
+    prepared.queue_restored(&mut app.world_mut().commands());
+    app.world_mut().flush();
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Changes>().0, 1);
+    assert!(!app.world().contains_resource::<RestoredWorldIdentity>());
+    let prepared =
+        PreparedWorld::from_cache("SECOND".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(prepared).update();
+    assert_eq!(app.world().resource::<CurrentScene>().name, "SECOND");
+    assert_eq!(app.world().resource::<Changes>().0, 2);
+    let restored =
+        PreparedWorld::from_cache("SECOND".into(), app.world().resource::<AssetServer>());
+    restored.queue_restored(&mut app.world_mut().commands());
+    app.world_mut().flush();
+    let superseding =
+        PreparedWorld::from_cache("THIRD".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(superseding).update();
+    assert_eq!(app.world().resource::<CurrentScene>().name, "THIRD");
+    assert_eq!(app.world().resource::<Changes>().0, 3);
+}

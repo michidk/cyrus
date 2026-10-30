@@ -245,6 +245,14 @@ impl SamplePlaybackSnapshot {
 }
 
 impl SamplePlaybackCandidate {
+    /// Stop prepared samples for an original saved-world load. Remembered slot
+    /// numbers and allocation high-water marks remain valid, but no decoder resumes.
+    pub fn stop_all(&mut self) {
+        self.channels.samples.stop_matching(None, None);
+        self.channels.playing.clear();
+        self.playback.clear();
+    }
+
     /// Validate target existence and allocation freshness immediately before publication.
     pub fn validate_publication(&self, world: &World) -> anyhow::Result<()> {
         ensure!(

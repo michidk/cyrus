@@ -59,7 +59,11 @@ type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
 enum Phase {
     Capture(Option<SaveTarget>),
     Io(Io),
-    Prepare(Box<RuntimeSessionSnapshot>, Box<load_assets::LoadAssets>),
+    Prepare(
+        Box<RuntimeSessionSnapshot>,
+        Box<load_assets::LoadAssets>,
+        bool,
+    ),
     Commit,
 }
 #[derive(Resource, Default)]
@@ -224,7 +228,11 @@ impl Host {
                                 &snapshot,
                                 world.resource::<AssetServer>(),
                             )?;
-                            Ok(Some(Phase::Prepare(Box::new(snapshot), Box::new(assets))))
+                            Ok(Some(Phase::Prepare(
+                                Box::new(snapshot),
+                                Box::new(assets),
+                                true,
+                            )))
                         }
                         IoResult::Response(mut value) => {
                             value["pending"] = json!(false);
@@ -240,7 +248,7 @@ impl Host {
                                 &snapshot,
                                 world.resource::<AssetServer>(),
                             )?;
-                            Ok(Some(Phase::Prepare(snapshot, Box::new(assets))))
+                            Ok(Some(Phase::Prepare(snapshot, Box::new(assets), false)))
                         }
                     },
                     Err(mpsc::TryRecvError::Empty) => Ok(Some(Phase::Io(receiver))),
@@ -249,13 +257,16 @@ impl Host {
                     }
                 }
             }
-            Phase::Prepare(snapshot, mut assets) => {
+            Phase::Prepare(snapshot, mut assets, saved_game) => {
                 let Some(prepared) = assets.poll(&snapshot, world)? else {
-                    return Ok(Some(Phase::Prepare(snapshot, assets)));
+                    return Ok(Some(Phase::Prepare(snapshot, assets, saved_game)));
                 };
-                world
-                    .resource_mut::<SessionBoundary>()
-                    .load(*snapshot, prepared)?;
+                let mut boundary = world.resource_mut::<SessionBoundary>();
+                if saved_game {
+                    boundary.load_saved_game(*snapshot, prepared)?;
+                } else {
+                    boundary.load(*snapshot, prepared)?;
+                }
                 Ok(Some(Phase::Commit))
             }
             Phase::Commit => {

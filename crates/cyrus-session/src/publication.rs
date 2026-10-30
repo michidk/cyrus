@@ -13,7 +13,32 @@ impl RuntimeSessionCandidate {
     /// the represented owners; rendered preparation, revisit acceptance and host
     /// admission remain required before exposing a load action.
     pub fn commit(self, world: &mut World) -> Result<()> {
+        self.publish(world, false)
+    }
+
+    pub(super) fn publish(mut self, world: &mut World, saved_game: bool) -> Result<()> {
         self.validate_publication(world)?;
+        let same_world = saved_game
+            && world
+                .get_resource::<cyrus_world::lifecycle::CurrentScene>()
+                .is_some_and(|current| current.world == self.lifecycle.current.world);
+        if same_world {
+            self.lifecycle.prepared.requested_name.clone_from(
+                &world
+                    .resource::<cyrus_world::lifecycle::CurrentScene>()
+                    .name,
+            );
+        }
+        if saved_game {
+            self.dialogue.reset_saved_world(
+                self.logical
+                    .actors
+                    .current
+                    .as_mut()
+                    .context("saved game current world absent")?,
+                &mut self.samples,
+            )?;
+        }
         let entering = world.resource::<State<AppState>>().get() == &AppState::Menu;
         let old: Vec<_> = world
             .query_filtered::<Entity, Or<(
@@ -25,7 +50,10 @@ impl RuntimeSessionCandidate {
                 With<cyrus_render::camera::ViewCamera>,
             )>>()
             .iter(world)
-            .filter(|entity| Some(*entity) != self.camera_entity)
+            .filter(|entity| {
+                Some(*entity) != self.camera_entity
+                    && !(saved_game && world.get::<MusicPlayer>(*entity).is_some())
+            })
             .collect();
         let Self {
             sources,
@@ -109,9 +137,14 @@ impl RuntimeSessionCandidate {
             commands.entity(player.entity).insert((Player, placement));
             PlayerSceneRequest(player.scene).queue_restored(&mut commands, &lifecycle.prepared);
             commands.insert_resource(AnimationRequest(player.animation));
-            commands.insert_resource(lifecycle.prepared);
-            commands.insert_resource(lifecycle.current);
-            commands.insert_resource(lifecycle.request);
+            if same_world {
+                lifecycle.prepared.queue_restored(&mut commands);
+            } else {
+                commands.insert_resource(lifecycle.prepared);
+                commands.remove_resource::<cyrus_world::lifecycle::RestoredWorldIdentity>();
+                commands.insert_resource(lifecycle.current);
+                commands.insert_resource(lifecycle.request);
+            }
             commands.remove_resource::<PreparationProgress>();
             if let Some(error) = lifecycle.error {
                 commands.insert_resource(error);
@@ -127,7 +160,9 @@ impl RuntimeSessionCandidate {
             commands.insert_resource(runtime);
             commands.insert_resource(marker);
             commands.insert_resource(dialogue);
-            commands.insert_resource(music.music);
+            if !saved_game {
+                commands.insert_resource(music.music);
+            }
             if let Some(cheats) = cheats {
                 commands.queue(move |world: &mut World| {
                     cheats.publish(&mut world.resource_mut::<cyrus_game::cheats::Cheats>());
@@ -154,7 +189,7 @@ impl RuntimeSessionCandidate {
         world.resource_scope(|world, mut assets: Mut<Assets<Panned>>| {
             samples.queue(&mut Commands::new(&mut queue, world), &mut assets);
         });
-        if let Some((transport, settings)) = music.playback {
+        if let Some((transport, settings)) = music.playback.filter(|_| !saved_game) {
             let handle = world
                 .resource_mut::<Assets<MusicTransport>>()
                 .add(transport);

@@ -6,7 +6,10 @@ install parser or sockets are required.
 
 `PreparedWorld` retains host-selected cache references. `WorldPlugin` commits
 identity and animation inputs in `WorldChange`; game and presentation consume the
-same request. `CurrentScene.world` retains the resolved WORLD.INI ID separately from the
+same request. A coordinated same-world restore calls `PreparedWorld::queue_restored`
+to consume its prepared-world update without announcing another world entry.
+The restore owner has already published identity and animation inputs.
+`CurrentScene.world` retains the resolved WORLD.INI ID separately from the
 request name. `WorldMetadataStatus` reports animation metadata loading and
 errors; neither identity nor metadata readiness implies that graphics or player
 sidecars are ready.

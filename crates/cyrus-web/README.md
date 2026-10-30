@@ -25,7 +25,9 @@ The same diagnostic bridge accepts `{"type":"slots","id":4,"operation":{"type":"
 Slot operations are `list`, `create` with `description`, `overwrite` with
 `slot`, `revision` and `description`, and `load` or `delete` with `slot` and
 `revision`. Poll `result` as above. Creation and overwrite capture the current
-session. Load uses the same source preparation and exclusive commit as named loads.
+session. Load uses the same source preparation and exclusive commit as named loads, then
+applies original saved-world sample/dialogue cleanup and retains the live CD
+transport for ordinary world track selection.
 The separate `cyrus-save-slots` database publishes metadata and complete session
 text in one strict transaction. Listing reads metadata only, newest timestamp
 first with ascending slot numbers on ties. Creation allocates the first free

@@ -279,3 +279,12 @@ An eligible book owns `PausedGameplay` while its gameplay camera is suspended.
 Capture admits this menu context, retains the gameplay clock from book entry,
 and records each camera's pre-book activation instead of its temporary hidden state.
 Startup and terminal death books have no capture admission.
+
+`SessionBoundary::load_saved_game` applies the original saved-world audio cleanup
+at publication. It clears RTX/dialogue owners and stops sample transports while
+retaining native task counters and remembered handles. The next sound maintenance
+sample clears the restoration reset flag. A load into the current world preserves
+its scene request and live CD transport. A load into another world lets ordinary
+world music selection act on the live track. These rules follow preservation's
+`docs/engine/sound.md` and `docs/engine/music.md`. Named diagnostic `load` and
+candidate `commit` continue restoring exact source-decoder checkpoints.

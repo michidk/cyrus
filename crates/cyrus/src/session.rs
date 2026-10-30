@@ -410,7 +410,9 @@ pub(crate) fn poll(world: &mut World) {
         };
         if let Some(result) = result {
             state.worker = None;
-            match result.and_then(|prepared| submit(prepared, world)) {
+            match result
+                .and_then(|prepared| submit(prepared, world, state.slot_load || state.last_game))
+            {
                 Ok(()) => state.submitted = true,
                 Err(error) => state.result = Some(Err(error)),
             }
@@ -536,7 +538,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
     })
 }
 
-fn submit(prepared: PreparedLoad, world: &mut World) -> Result<()> {
+fn submit(prepared: PreparedLoad, world: &mut World, saved_game: bool) -> Result<()> {
     let server = world
         .get_resource::<AssetServer>()
         .context("native session asset server absent")?;
@@ -583,10 +585,14 @@ fn submit(prepared: PreparedLoad, world: &mut World) -> Result<()> {
             .track()
             .map(|track| server.load(format!("cache://music/{track:02}.wav"))),
     };
-    world
+    let mut boundary = world
         .get_resource_mut::<SessionBoundary>()
-        .context("native session boundary absent")?
-        .load(prepared.snapshot, assets)
+        .context("native session boundary absent")?;
+    if saved_game {
+        boundary.load_saved_game(prepared.snapshot, assets)
+    } else {
+        boundary.load(prepared.snapshot, assets)
+    }
 }
 
 #[cfg(test)]

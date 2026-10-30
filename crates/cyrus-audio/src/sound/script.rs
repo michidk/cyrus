@@ -2323,6 +2323,38 @@ pub struct RestoredDialogueAssets<'a> {
     pub hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
 }
 impl RuntimeDialogue {
+    /// Clear off-live saved-world sound owners in the original restoration order.
+    /// Native task counters and remembered handles are untouched. The next sound
+    /// maintenance sample clears the reset flag before ordinary object updates.
+    /// Follows preservation's engine/sound.md saved-world restoration contract.
+    pub fn reset_saved_world(
+        &mut self,
+        world: &mut cyrus_game::script::ScriptWorld,
+        samples: &mut super::persistence::SamplePlaybackCandidate,
+    ) -> anyhow::Result<()> {
+        use cyrus_game::script::SoundResetStage;
+        world.with_sound_maintenance(|world, maintenance| {
+            maintenance.restore_world(
+                &mut |stage| {
+                    match stage {
+                        SoundResetStage::ReleaseRtx => self.cache = Default::default(),
+                        SoundResetStage::ClearDialogue => anyhow::Context::context(
+                            world.globals_mut().dialogue_mut(),
+                            "saved world dialogue owner absent",
+                        )?
+                        .reset_active_lines(),
+                        SoundResetStage::StopSamples => samples.stop_all(),
+                        SoundResetStage::ClearNodeReservations => {
+                            anyhow::bail!("saved world requested periodic node cleanup")
+                        }
+                    }
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        })
+    }
+
     /// Capture retained dialogue preparation/cache state at an ordinary boundary.
     /// No loader is polled and no sample feedback or dialogue update is performed.
     pub fn snapshot(

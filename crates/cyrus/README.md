@@ -143,7 +143,10 @@ Preparation alone is not success. Only one native load may be pending, and its
 terminal result remains available across repeated polls. Acknowledge it with
 `session_load_result {acknowledge: true}` before another request. Capture commands reject while
 that load owns the boundary. The authored Load page uses this host to list the first nine slots and restore
-the selected revision. This does not establish original save eligibility. Installed rendered restoration and revisit
+the selected revision. Slot and retained-last-game loads clear saved sample/dialogue
+services and retain the live CD transport for ordinary world track selection,
+following preservation's sound and music restoration rules. Named diagnostic loads
+retain exact audio source checkpoints. This does not establish original save eligibility. Installed rendered restoration and revisit
 acceptance remain unfinished.
 
 Native diagnostic `session_slots {operation}` supports list, create, overwrite,

@@ -221,8 +221,8 @@ impl cyrus_game::cheats::CheatStore for CheatStore {
 #[test]
 fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, false, false)?;
-        exercise_runtime_session(true, from_menu, false, false)?;
+        exercise_runtime_session(false, from_menu, false, false, false)?;
+        exercise_runtime_session(true, from_menu, false, false, false)?;
     }
     Ok(())
 }
@@ -230,16 +230,24 @@ fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Resu
 #[test]
 fn asynchronous_load_waits_for_assets_and_preserves_live_state_on_rejection() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, true, false)?;
-        exercise_runtime_session(true, from_menu, true, false)?;
+        exercise_runtime_session(false, from_menu, true, false, false)?;
+        exercise_runtime_session(true, from_menu, true, false, false)?;
     }
     Ok(())
 }
 
 #[test]
 fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()> {
-    exercise_runtime_session(false, false, false, true)?;
-    exercise_runtime_session(false, false, true, true)
+    exercise_runtime_session(false, false, false, true, false)?;
+    exercise_runtime_session(false, false, true, true, false)
+}
+
+#[test]
+fn saved_game_load_clears_samples_and_keeps_the_live_cd_transport() -> Result<()> {
+    for from_menu in [false, true] {
+        exercise_runtime_session(false, from_menu, true, false, true)?;
+    }
+    Ok(())
 }
 
 fn exercise_runtime_session(
@@ -247,6 +255,7 @@ fn exercise_runtime_session(
     from_menu: bool,
     via_load: bool,
     with_effects: bool,
+    saved_game: bool,
 ) -> Result<()> {
     let mut scripts = scripts(vec![Operation::End { target: 0 }]);
     let mut player_script = scripts.actors["ACTOR"].clone();
@@ -1170,6 +1179,21 @@ fn exercise_runtime_session(
     let transform = *app.world().get::<Transform>(replacement).unwrap();
     let source = app.world().resource::<PlayerSceneRequest>().0.clone();
     if via_load {
+        if saved_game {
+            // Numeric and named requests can resolve to the same installed world.
+            app.world_mut()
+                .resource_mut::<cyrus_world::lifecycle::CurrentScene>()
+                .name = "17".into();
+            app.world_mut()
+                .resource_mut::<cyrus_world::lifecycle::SceneRequest>()
+                .0 = "17".into();
+            app.world_mut()
+                .resource_mut::<cyrus_world::lifecycle::PreparedWorld>()
+                .requested_name = "17".into();
+        }
+        if saved_game && from_menu {
+            app.insert_resource(State::new(cyrus_game::AppState::Menu));
+        }
         app.init_asset::<cyrus_assets::hud::HudAsset>();
         app.insert_resource(preferences);
         let hud_handle = app
@@ -1195,9 +1219,27 @@ fn exercise_runtime_session(
             dialogue: BTreeMap::new(),
             music: Some(audio_handle),
         };
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .load(saved.clone(), load_assets.clone())?;
+        let live_music = app
+            .world_mut()
+            .query_filtered::<(Entity, &AudioPlayer<MusicTransport>), With<MusicPlayer>>()
+            .single(app.world())?;
+        let live_music = (live_music.0, live_music.1.0.clone());
+        // Advance the live decoder beyond the stored checkpoint. A book load must
+        // retain this transport, whereas a diagnostic load replaces it.
+        let mut continued_music = resumed_music;
+        let mut expected_music = original_music;
+        for _ in 0..5 {
+            assert_eq!(continued_music.next(), expected_music.next());
+        }
+        if saved_game {
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .load_saved_game(saved.clone(), load_assets.clone())?;
+        } else {
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .load(saved.clone(), load_assets.clone())?;
+        }
         app.world_mut().run_schedule(Last);
         assert!(
             app.world_mut()
@@ -1218,6 +1260,7 @@ fn exercise_runtime_session(
                 &hud_handle,
                 serde_json::from_value(serde_json::to_value(&hud_asset)?)?,
             )?;
+        app.world_mut().clear_trackers();
         app.world_mut().run_schedule(Last);
         assert!(matches!(
             app.world_mut()
@@ -1227,6 +1270,50 @@ fn exercise_runtime_session(
             cyrus_session::SessionBoundaryResult::Committed
         ));
         assert!(app.world().get_entity(replacement).is_err());
+        if saved_game {
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_world::lifecycle::PreparedWorld>()
+                    .requested_name,
+                "17"
+            );
+            assert!(
+                !app.world()
+                    .get_resource_ref::<cyrus_world::lifecycle::CurrentScene>()
+                    .unwrap()
+                    .is_changed()
+            );
+            assert!(
+                !app.world()
+                    .get_resource_ref::<cyrus_world::lifecycle::SceneRequest>()
+                    .unwrap()
+                    .is_changed()
+            );
+            assert_eq!(
+                app.world_mut()
+                    .query::<&AudioPlayer<Panned>>()
+                    .iter(app.world())
+                    .count(),
+                0
+            );
+            let (entity, handle) = app
+                .world_mut()
+                .query_filtered::<(Entity, &AudioPlayer<MusicTransport>), With<MusicPlayer>>()
+                .single(app.world())?;
+            assert_eq!((entity, &handle.0), (live_music.0, &live_music.1));
+            assert_eq!(app.world().resource::<Music>().track, Some(2));
+            for _ in 0..29 {
+                assert_eq!(continued_music.next(), expected_music.next());
+            }
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            assert!(
+                actors
+                    .current
+                    .as_mut()
+                    .unwrap()
+                    .with_sound_maintenance(|_, maintenance| maintenance.reset())?
+            );
+        }
         let loaded_player = app
             .world_mut()
             .query_filtered::<Entity, With<Player>>()
@@ -1241,9 +1328,15 @@ fn exercise_runtime_session(
         let live_count = app.world_mut().query::<Entity>().iter(app.world()).count();
         let mut malformed = serde_json::to_value(&saved)?;
         malformed["dialogue"]["generation"] = 999.into();
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .load(serde_json::from_value(malformed)?, load_assets)?;
+        if saved_game {
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .load_saved_game(serde_json::from_value(malformed)?, load_assets)?;
+        } else {
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .load(serde_json::from_value(malformed)?, load_assets)?;
+        }
         app.world_mut().run_schedule(Last);
         assert!(
             app.world_mut()

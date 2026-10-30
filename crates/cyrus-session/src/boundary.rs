@@ -8,7 +8,7 @@ enum Request {
     CaptureLive,
     Capture(SessionWorldAssets, Handle<HudAsset>),
     Commit(Box<RuntimeSessionCandidate>),
-    Load(Box<crate::loading::SessionLoad>),
+    Load(Box<crate::loading::SessionLoad>, bool),
 }
 
 /// One outstanding operation, including its unread result. Callers prepare sources
@@ -66,9 +66,24 @@ impl SessionBoundary {
         snapshot: RuntimeSessionSnapshot,
         assets: crate::SessionLoadAssets,
     ) -> Result<()> {
-        self.submit(Request::Load(Box::new(crate::loading::SessionLoad::new(
-            snapshot, assets,
-        ))))
+        self.submit(Request::Load(
+            Box::new(crate::loading::SessionLoad::new(snapshot, assets)),
+            false,
+        ))
+    }
+
+    /// Load an original-style saved game. Sample/dialogue services are cleared;
+    /// the live CD transport continues and world setup selects a new track only
+    /// when the saved world differs. Diagnostic `load` retains exact checkpoints.
+    pub fn load_saved_game(
+        &mut self,
+        snapshot: RuntimeSessionSnapshot,
+        assets: crate::SessionLoadAssets,
+    ) -> Result<()> {
+        self.submit(Request::Load(
+            Box::new(crate::loading::SessionLoad::new(snapshot, assets)),
+            true,
+        ))
     }
 
     pub fn take_result(&mut self) -> Option<Result<SessionBoundaryResult>> {
@@ -117,14 +132,15 @@ fn execute(world: &mut World) {
         Request::Commit(candidate) => candidate
             .commit(world)
             .map(|()| SessionBoundaryResult::Committed),
-        Request::Load(mut load) => {
+        Request::Load(mut load, saved_game) => {
             let result = match load.poll(world) {
                 Ok(None) => {
-                    world.resource_mut::<SessionBoundary>().request = Some(Request::Load(load));
+                    world.resource_mut::<SessionBoundary>().request =
+                        Some(Request::Load(load, saved_game));
                     return;
                 }
                 Ok(Some(candidate)) => candidate
-                    .commit(world)
+                    .publish(world, saved_game)
                     .map(|()| SessionBoundaryResult::Committed),
                 Err(error) => Err(error),
             };
