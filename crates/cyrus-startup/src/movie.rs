@@ -537,7 +537,10 @@ pub(super) fn drive(
             bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
             bevy::asset::RenderAssetUsages::default(),
         );
-        if let Some(mut previous) = images.get_mut(&playing.image) {
+        // The default handle names the engine's shared fallback texture.
+        if playing.image == Handle::default() {
+            playing.image = images.add(image);
+        } else if let Some(mut previous) = images.get_mut(&playing.image) {
             *previous = image;
         } else {
             playing.image = images.add(image);
@@ -640,6 +643,101 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use cyrus_assets::movie::MovieSubtitle;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn movie_frames_publish_to_one_owned_image_without_changing_the_fallback() {
+        let mut world = World::new();
+        world.insert_resource(GameInstall {
+            root: Default::default(),
+        });
+        world.init_resource::<Messages<MovieRequest>>();
+        world.init_resource::<crate::LaunchRequest>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<Assets<StreamingAudio>>();
+        let fallback = Handle::<Image>::default();
+        let sentinel = Image::default();
+        world
+            .resource_mut::<Assets<Image>>()
+            .insert(&fallback, sentinel.clone())
+            .unwrap();
+        let sprite = world.spawn((StartupContent, Sprite::default())).id();
+        let mut menu = MenuState::default();
+        menu.movie = Some(MovieStatus {
+            name: "synthetic.smk".into(),
+            frame: 0,
+            frames: 3,
+            loading: true,
+        });
+        world.insert_resource(menu);
+        let (sender, receiver) = mpsc::channel();
+        world.insert_resource(MoviePlayback {
+            playing: Some(Playing {
+                movie: Prepared {
+                    source: cyrus_assets::movie::MovieInput::File(Default::default()),
+                    metadata: cyrus_assets::movie::MovieMetadata {
+                        definition: MovieDefinition {
+                            name: "synthetic.smk".into(),
+                            keys: Vec::new(),
+                            subtitles: Vec::new(),
+                        },
+                        frames: 3,
+                        frame_micros: 1000,
+                        has_audio: false,
+                        font: default(),
+                    },
+                },
+                decoder: Decoder {
+                    frames: Mutex::new(receiver),
+                    audio: None,
+                },
+                prefetched: Vec::new(),
+                image: default(),
+                audio: None,
+                elapsed: 0.0,
+                next_frame: 1,
+                started: false,
+                audio_started: false,
+            }),
+            ..default()
+        });
+        let mut owned = None;
+        for (index, rgba) in [[12, 34, 56, 255], [78, 90, 123, 255]]
+            .into_iter()
+            .enumerate()
+        {
+            let pixels = rgba.repeat(640 * 480);
+            sender.send(Ok((pixels.clone(), None))).unwrap();
+            world
+                .resource_mut::<Time<Real>>()
+                .advance_by(Duration::from_millis(index as u64));
+            world.run_system_cached(drive).unwrap();
+            let playing = world.resource::<MoviePlayback>().playing.as_ref().unwrap();
+            assert_eq!(playing.next_frame, index as u32 + 2);
+            let images = world.resource::<Assets<Image>>();
+            let unchanged = images.get(&fallback).unwrap();
+            assert!(
+                unchanged.data == sentinel.data,
+                "shared fallback pixels changed"
+            );
+            assert_eq!(unchanged.texture_descriptor, sentinel.texture_descriptor);
+            assert_ne!(playing.image, fallback);
+            assert!(playing.image.is_strong());
+            assert_eq!(world.get::<Sprite>(sprite).unwrap().image, playing.image);
+            if let Some(owned) = &owned {
+                assert_eq!(&playing.image, owned, "later frames must retain the image");
+            } else {
+                owned = Some(playing.image.clone());
+            }
+            let published = images.get(&playing.image).unwrap();
+            assert_eq!(published.data.as_ref().unwrap(), &pixels);
+            assert_eq!(published.width(), 640);
+            assert_eq!(published.height(), 480);
+            assert_eq!(images.len(), 2, "each movie owns only one image");
+        }
+    }
 
     #[test]
     fn ending_plays_movie_four_once_after_the_book_exists_and_stops_effects() {
