@@ -140,6 +140,7 @@ fn observe(
     ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
     scripts: Option<Res<cyrus_game::script::ScriptActors>>,
+    session: cyrus_session::SessionBoundaryInspection,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {
         return;
@@ -164,6 +165,13 @@ fn observe(
         js_sys::Reflect::set(&record, &"world".into(), &request.0.as_str().into())?;
         js_sys::Reflect::set(&record, &"view".into(), &view)?;
         js_sys::Reflect::set(&record, &"ready".into(), &ready.into())?;
+        if let Some(snapshot) = session.snapshot(
+            js_sys::Reflect::get(&window, &"__cyrusInspectSession".into())?.as_bool() == Some(true),
+        ) {
+            let text = serde_json::to_string(&snapshot)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            js_sys::Reflect::set(&record, &"session".into(), &js_sys::JSON::parse(&text)?)?;
+        }
         // At most 64 script actors, only while a driver sets `__cyrusInspectScripts`; the
         // browser has no control port, so acceptance drivers read this like the `scripts` command.
         if js_sys::Reflect::get(&window, &"__cyrusInspectScripts".into())?.is_truthy()

@@ -4,6 +4,111 @@ use anyhow::{Context, Result, ensure};
 use bevy::prelude::{App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, Resource, World};
 use cyrus_assets::hud::HudAsset;
 
+type StagedMetadata = (
+    Option<&'static bevy::prelude::WorldAssetRoot>,
+    bevy::prelude::Has<cyrus_render::persistence::StagedRenderRoot>,
+    bevy::prelude::Has<bevy::prelude::Camera>,
+);
+
+/// Read-only staging census. Counts are evaluated only when `snapshot` is called;
+/// inspecting does not advance preparation or consume the boundary result.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct SessionBoundaryInspection<'w, 's> {
+    boundary: Option<bevy::prelude::Res<'w, SessionBoundary>>,
+    server: Option<bevy::prelude::Res<'w, bevy::prelude::AssetServer>>,
+    staged: bevy::prelude::Query<
+        'w,
+        's,
+        StagedMetadata,
+        bevy::prelude::With<crate::staging::StagedSessionEntity>,
+    >,
+    cameras: bevy::prelude::Query<
+        'w,
+        's,
+        &'static bevy::prelude::Camera,
+        bevy::prelude::With<cyrus_render::camera::ViewCamera>,
+    >,
+}
+
+/// Diagnostic metadata only. Render roots exist after source resolution and before
+/// logical planning; their presence does not mean the replacement can publish.
+#[derive(Debug, serde::Serialize)]
+pub struct SessionBoundarySnapshot {
+    pub operation: &'static str,
+    pub staged_entities: usize,
+    pub staged_render_roots: usize,
+    pub staged_cameras: usize,
+    pub active_live_cameras: usize,
+    pub assets: Vec<SessionStagedAsset>,
+}
+
+/// Existing staged handle identity and the asset server's current load state.
+#[derive(Debug, serde::Serialize)]
+pub struct SessionStagedAsset {
+    pub path: Option<String>,
+    pub state: String,
+}
+
+impl SessionBoundaryInspection<'_, '_> {
+    /// Return metadata only for an explicit opt-in. Disabled inspection performs
+    /// no entity iteration or asset-state lookup.
+    pub fn snapshot(&self, requested: bool) -> Option<SessionBoundarySnapshot> {
+        if !requested {
+            return None;
+        }
+        let operation = match self.boundary.as_deref() {
+            Some(SessionBoundary {
+                request: Some(Request::Load(..)),
+                ..
+            }) => "load",
+            Some(SessionBoundary {
+                request: Some(Request::Commit(..)),
+                ..
+            }) => "commit",
+            Some(SessionBoundary {
+                request: Some(_), ..
+            }) => "capture",
+            Some(SessionBoundary {
+                result: Some(_), ..
+            }) => "result",
+            _ => "idle",
+        };
+        let mut snapshot = SessionBoundarySnapshot {
+            operation,
+            staged_entities: 0,
+            staged_render_roots: 0,
+            staged_cameras: 0,
+            active_live_cameras: self
+                .cameras
+                .iter()
+                .filter(|camera| camera.is_active)
+                .count(),
+            assets: Vec::new(),
+        };
+        for (asset, render_root, camera) in &self.staged {
+            snapshot.staged_entities += 1;
+            snapshot.staged_render_roots += usize::from(render_root);
+            snapshot.staged_cameras += usize::from(camera);
+            if let Some(asset) = asset {
+                snapshot.assets.push(SessionStagedAsset {
+                    path: self
+                        .server
+                        .as_ref()
+                        .and_then(|server| server.get_path(asset.0.id()))
+                        .map(|path| path.to_string()),
+                    state: self
+                        .server
+                        .as_ref()
+                        .map(|server| format!("{:?}", server.load_state(asset.0.id())))
+                        .unwrap_or_else(|| "Unavailable".into()),
+                });
+            }
+        }
+        snapshot.assets.sort_by(|a, b| a.path.cmp(&b.path));
+        Some(snapshot)
+    }
+}
+
 enum Request {
     CaptureLive,
     Capture(SessionWorldAssets, Handle<HudAsset>),
@@ -164,4 +269,73 @@ fn capture(
         .and_then(|assets| assets.get(hud))
         .context("session capture HUD asset absent")?;
     RuntimeSessionSnapshot::capture(world, &sources, hud)
+}
+
+#[cfg(test)]
+mod inspection_tests {
+    use super::*;
+    use bevy::ecs::system::SystemState;
+
+    #[test]
+    fn inspection_preserves_pending_request_and_unread_rejection() {
+        let mut app = App::new();
+        app.add_plugins(SessionBoundaryPlugin);
+        let mut inspection = SystemState::<SessionBoundaryInspection>::new(app.world_mut());
+        assert!(
+            inspection
+                .get(app.world())
+                .unwrap()
+                .snapshot(false)
+                .is_none()
+        );
+        assert_eq!(
+            inspection
+                .get(app.world())
+                .unwrap()
+                .snapshot(true)
+                .unwrap()
+                .operation,
+            "idle"
+        );
+        app.world_mut()
+            .resource_mut::<SessionBoundary>()
+            .capture_live()
+            .unwrap();
+        assert_eq!(
+            inspection
+                .get(app.world())
+                .unwrap()
+                .snapshot(true)
+                .unwrap()
+                .operation,
+            "capture"
+        );
+        assert!(!app.world().resource::<SessionBoundary>().is_idle());
+        app.update();
+        assert_eq!(
+            inspection
+                .get(app.world())
+                .unwrap()
+                .snapshot(true)
+                .unwrap()
+                .operation,
+            "result"
+        );
+        assert!(
+            app.world_mut()
+                .resource_mut::<SessionBoundary>()
+                .take_result()
+                .unwrap()
+                .is_err()
+        );
+        assert_eq!(
+            inspection
+                .get(app.world())
+                .unwrap()
+                .snapshot(true)
+                .unwrap()
+                .operation,
+            "idle"
+        );
+    }
 }

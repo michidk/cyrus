@@ -213,5 +213,59 @@ pub fn check_loaded_staging(
         app.world().get::<Transform>(untouched).unwrap().translation,
         Vec3::new(1.0, 2.0, 3.0)
     );
+    // A real asset-loader rejection must leave the live camera and remove the
+    // private roots. This stage is deliberately not a publishable session.
+    app.world_mut()
+        .entity_mut(untouched)
+        .insert((Camera3d::default(), cyrus_render::camera::ViewCamera));
+    let mut missing = prepared.clone();
+    missing.scene_path = "absent.glb".into();
+    let rejected = SessionSceneInstances::request(&hints, &missing, app.world_mut())?;
+    let mut inspection =
+        bevy::ecs::system::SystemState::<cyrus_session::SessionBoundaryInspection>::new(
+            app.world_mut(),
+        );
+    assert!(
+        inspection
+            .get(app.world())
+            .unwrap()
+            .snapshot(false)
+            .is_none()
+    );
+    let positive = inspection.get(app.world()).unwrap().snapshot(true).unwrap();
+    assert!(positive.staged_entities >= 2);
+    assert!(positive.staged_render_roots >= 1);
+    assert_eq!(positive.staged_cameras, 1);
+    assert_eq!(positive.active_live_cameras, 1);
+    assert!(positive.assets.iter().any(|asset| {
+        asset
+            .path
+            .as_deref()
+            .is_some_and(|path| path.starts_with("absent.glb"))
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let failure = loop {
+        app.update();
+        if let Err(error) = rejected.ready(app.world()) {
+            break error;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "missing GLTF did not reject"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+    assert!(failure.to_string().contains("session scene staging"));
+    rejected.discard(app.world_mut());
+    let cleaned = inspection.get(app.world()).unwrap().snapshot(true).unwrap();
+    assert_eq!(cleaned.staged_entities, 0);
+    assert_eq!(cleaned.staged_render_roots, 0);
+    assert_eq!(cleaned.staged_cameras, 0);
+    assert!(cleaned.assets.is_empty());
+    assert_eq!(cleaned.active_live_cameras, 1);
+    assert_eq!(
+        app.world().get::<Transform>(untouched).unwrap().translation,
+        Vec3::new(1.0, 2.0, 3.0)
+    );
     Ok(())
 }

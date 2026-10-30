@@ -146,6 +146,12 @@ With `window.__cyrusInspectScripts = true`, the observation includes a page of u
 to 64 script actors. Set `window.__cyrusInspectScriptsOffset` to a nonnegative
 32-bit integer to inspect later actors. Missing or invalid offsets use zero.
 
+With `window.__cyrusInspectSession = true`, capture observation also includes
+`session`: the pending boundary operation, hidden staging counts, active live
+camera count and staged asset paths/load states. Only the boolean `true` enables
+this census; the field is absent otherwise. Both capture mode and this explicit
+opt-in are required. This read-only metadata does not advance or cancel loading.
+
 F12 opens the shared cheat console while in a world. Cheat state restores from
 localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
 local state is absent. SYSTEM.INI startup defaults apply afterwards. `savecheats`

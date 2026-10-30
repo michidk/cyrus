@@ -288,3 +288,9 @@ its scene request and live CD transport. A load into another world lets ordinary
 world music selection act on the live track. These rules follow preservation's
 `docs/engine/sound.md` and `docs/engine/music.md`. Named diagnostic `load` and
 candidate `commit` continue restoring exact source-decoder checkpoints.
+
+`SessionBoundaryInspection` provides an opt-in read-only staging census: pending
+operation, private entity/render-root/camera counts, active live camera count, and
+existing staged asset paths/load states. Calling `snapshot(false)` performs no
+census. Hidden render roots identify source-ready render staging before logical
+planning, not a publishable replacement. Inspection never consumes a result.

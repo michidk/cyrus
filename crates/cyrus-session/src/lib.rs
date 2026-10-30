@@ -1,6 +1,9 @@
 //! Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.
 mod boundary;
-pub use boundary::{SessionBoundary, SessionBoundaryPlugin, SessionBoundaryResult};
+pub use boundary::{
+    SessionBoundary, SessionBoundaryInspection, SessionBoundaryPlugin, SessionBoundaryResult,
+    SessionBoundarySnapshot, SessionStagedAsset,
+};
 mod document;
 mod entities;
 mod lifecycle;
