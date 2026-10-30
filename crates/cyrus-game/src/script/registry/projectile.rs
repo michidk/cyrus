@@ -1,7 +1,7 @@
 //! `projectileAI`: one flight step of a created projectile, following preservation's
 //! engine/SOUP.md "projectileAI". Returns whether the projectile keeps flying.
 use super::GameHost;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
 
@@ -117,7 +117,7 @@ impl GameHost<'_, '_, '_, '_> {
             }
             let target = self.registry.id(index)?;
             let hit = self
-                .projectile_spheres(target, source.animations)?
+                .projectile_spheres(target)?
                 .into_iter()
                 .any(|(center, radius)| {
                     point_in_sphere(start, center, radius) || point_in_sphere(end, center, radius)
@@ -151,24 +151,10 @@ impl GameHost<'_, '_, '_, '_> {
         Ok(())
     }
 
-    /// The target's collision spheres in map units: its ordinary collision shape, each center
-    /// rotated by the target's orientation and added to its position. Vertex-bound RAVC spheres
-    /// are not modelled and refuse explicitly.
-    fn projectile_spheres(
-        &self,
-        target: super::ScriptActorId,
-        data: &cyrus_assets::animation::Animations,
-    ) -> Result<Vec<([i32; 3], i32)>> {
+    /// Contact spheres use the ordinary body shape. Optional RAFS descriptors are absent in
+    /// installed maps; vertex-bound RAVC volumes belong to a different collision owner.
+    fn projectile_spheres(&self, target: super::ScriptActorId) -> Result<Vec<([i32; 3], i32)>> {
         let actor = &self.registry.actors[target.index];
-        let ravc = data.actor(actor.name())?["ravc_count"]
-            .as_i64()
-            .unwrap_or(0);
-        ensure!(
-            ravc == 0,
-            "world {} instance {}: projectileAI hit test with RAVC spheres unsupported",
-            self.registry.world,
-            target.index
-        );
         if actor.attributes[56] != 0 {
             return Ok(Vec::new());
         }

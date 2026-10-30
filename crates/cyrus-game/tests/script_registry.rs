@@ -34543,3 +34543,151 @@ fn light_maintenance_keeps_hidden_ordinary_actor_phases_and_random_unchanged() {
     assert_eq!(actor.light_state(), before);
     assert_eq!(random.state(), 1);
 }
+
+#[test]
+fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes() {
+    use cyrus_assets::{
+        animation::{AnimationModel, Animations},
+        collision::ActorCollisionModels,
+    };
+    use cyrus_collision::actor_models::ActorModelCollision;
+    use cyrus_game::script::{PlayerCollisionSource, ScriptInputs};
+    for exclude_body in [false, true] {
+        let mut scripts = cache();
+        scripts.definition.attributes = (0..116).map(|i| format!("attr_{i}")).collect();
+        scripts.definition.functions.extend([
+            Function {
+                name: "projectileAI".into(),
+                param_count: 0,
+                kind: CallKind::Task,
+            },
+            Function {
+                name: "KillMe".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            },
+        ]);
+        let mut projectile = scripts.actors["LOGIC"].clone();
+        projectile.code_origin += 1000;
+        projectile.header_index += 100;
+        projectile.instances = 1;
+        projectile.namespace = None;
+        projectile.instance_variables = vec![vec![]];
+        projectile.program.variables = vec![];
+        projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+        projectile.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: wait(2, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("BALL".into(), projectile);
+        for (placement, z) in scripts.instances.iter_mut().zip([600, 800]) {
+            placement.object_type = 1;
+            placement.active = 1;
+            placement.map_position = [600, 20, z];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id,
+                "mpob_objects": scripts.instances.iter().map(|p| serde_json::json!({"script_name":p.actor,"object_type":1})).collect::<Vec<_>>(),
+                "actors":[{"script_name":"LOGIC", "model_load_path":"animation_table",
+                    "ravc_count":2,"raex":{"unknown_12":0,"v_vertex":0,"v_size":0},
+                    "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+                    "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+            models: BTreeMap::from([(
+                "BODY".into(),
+                AnimationModel {
+                    radius: Some(42.0),
+                    base_positions: vec![],
+                    base_normals: vec![],
+                    faces: vec![],
+                    corner_normals: vec![],
+                    encoding: "animated_i16".into(),
+                    positions: vec![vec![]],
+                    normals: vec![vec![]],
+                },
+            )]),
+            sections: Default::default(),
+            unsupported: Default::default(),
+        };
+        let models = ActorModelCollision::new(&ActorCollisionModels {
+            object_count: 2,
+            collision_flags: BTreeMap::from([(0, 0), (1, 0)]),
+            ..Default::default()
+        })
+        .unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        world.prepare_model_resources(&data, &models).unwrap();
+        let scene = ordinary_collision_scene(world.world, models);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        for id in ids {
+            world
+                .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+                .unwrap();
+            world
+                .prepare_ordinary_collision_shape(id, &data, &scene)
+                .unwrap();
+        }
+        world.refresh_model_presentations(&data, &ids).unwrap();
+        world
+            .set_actor_attribute(1, 56, u8::from(exclude_body))
+            .unwrap();
+        let origin = world.spatial(ids[0]).unwrap().local.position;
+        let ball = world.create_object(ids[0], "BALL", origin, [0; 3]).unwrap();
+        // Exercise initial task flight and its retained poll through ordinary created-object updates.
+        for _ in 0..2 {
+            world
+                .update_created(
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        player_collision: Some(PlayerCollisionSource {
+                            scene: &scene,
+                            animations: &data,
+                            view: [600, 600],
+                            actors: &ids,
+                        }),
+                        ..Default::default()
+                    },
+                    &mut Default::default(),
+                    &mut |_, _| Ok(()),
+                    100,
+                )
+                .unwrap();
+        }
+        let actor = &world.actors()[ball.index];
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+
+        assert_eq!(
+            world.spatial(ball).unwrap().local.position,
+            if exclude_body {
+                [600 << 8, 20 << 8, 1000 << 8]
+            } else {
+                origin
+            }
+        );
+        assert_eq!(actor.control_state().unwrap().killed, !exclude_body);
+    }
+}
