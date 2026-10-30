@@ -34911,3 +34911,276 @@ fn actor_prelight_entry_retains_loader_pose_and_restores_current_eligibility() -
     assert_eq!(restored.actor_prelight(restored.id(15)?)?, Some(&initial));
     Ok(())
 }
+
+#[test]
+fn logical_session_preserves_the_selected_rope_jump_latch() {
+    use cyrus_game::{
+        clock::SimulationClock,
+        player::input::{PlayerInput, PlayerToggles},
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        random::EngineRandom,
+        script::{
+            LogicalSessionRestoreInputs, LogicalSessionSnapshot, OrdinaryInputs,
+            PlayerControllerInput, ScriptActors, ScriptHud, ScriptInputs, WorldRestoreContext,
+            WorldSnapshotSources,
+        },
+    };
+    struct Store;
+    impl PreferenceStore for Store {
+        fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        scripts.updates.ropes_load = Some(true);
+        scripts.updates.rope = Some(cyrus_assets::script::RopeSettings {
+            jump_add: 64,
+            attach_angle: 0,
+        });
+    });
+    let player = world.selected_player().unwrap();
+    let index = player.index;
+    let groups = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap()["animation_groups"]
+        .as_array_mut()
+        .unwrap();
+    for group in [6, 84, 85] {
+        groups.push(
+            serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
+        );
+    }
+    // A stationary rope intersects the airborne fixture player's ordinary collision sphere.
+    data.metadata["ropes"] = serde_json::json!([{
+        "position": [-0.5, 0.3, (30.0 - 16777215.0 / 256.0) / 20.0],
+        "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
+        "length": 8, "static_model": "", "rope_model": "ROPELINK",
+        "unknown1": [0, 0, 0],
+    }]);
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    world.prepare_ropes(&data).unwrap();
+    world
+        .prepare_ordinary_collision_shape(player, &data, &scene)
+        .unwrap();
+    assert!(
+        !world
+            .ordinary_overlap_spheres(player, &data)
+            .unwrap()
+            .is_empty()
+    );
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = BTreeMap::from([(
+        scripts.world,
+        WorldSnapshotSources {
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        },
+    )]);
+    // Establish an airborne starting pose only. Attachment and its input latch must be
+    // created by the ordinary player update, rather than injected into the save.
+    let mut airborne =
+        serde_json::to_value(world.snapshot(&sources[&scripts.world]).unwrap()).unwrap();
+    airborne["actors"][index]["control"]["falling_state"] = 1.into();
+    airborne["actors"][index]["animation"] = serde_json::Value::Null;
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(airborne).unwrap(),
+        &sources[&scripts.world],
+        WorldRestoreContext {
+            generation: 2,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    world
+        .bind_animation(world.id(index).unwrap(), &data, 0)
+        .unwrap();
+    let tick = |world: &mut ScriptWorld, jump| {
+        let held = PlayerInput {
+            jump,
+            ..Default::default()
+        };
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        shell_execution: Some(false),
+                        player_controller: Some(PlayerControllerInput {
+                            held: &held,
+                            walk_mode: true,
+                            auto_defend: false,
+                        }),
+                        ..Default::default()
+                    },
+                },
+                &mut EngineRandom::from_state(42),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+    };
+    tick(&mut world, true);
+    assert!(
+        world.selected_player_on_rope(),
+        "ordinary airborne update must grab the rope"
+    );
+    assert_eq!(world.ropes()[0].attachments.len(), 1);
+    let asset = inventory_asset(&[]);
+    let preferences = Preferences::new(Store);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let clock = SimulationClock::new(scripts.clock).unwrap();
+    let random = EngineRandom::from_state(42);
+    let inputs = || LogicalSessionRestoreInputs {
+        sources: &sources,
+        last_generation: 10,
+        hud: &asset,
+        preferences: &preferences,
+        bios_tick: 100,
+    };
+    let samples: BTreeMap<u8, u8> = (0..16).map(|slot| (slot, slot)).collect();
+    let restore = |document: serde_json::Value| {
+        serde_json::from_value::<LogicalSessionSnapshot>(document)
+            .unwrap()
+            .plan(inputs())
+            .unwrap()
+            .finish(&samples)
+    };
+    for released_at_capture in [false, true] {
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        if released_at_capture {
+            tick(actors.current.as_mut().unwrap(), false);
+        }
+        let document = serde_json::to_value(
+            actors
+                .snapshot_session(
+                    &sources,
+                    &hud,
+                    &clock,
+                    &random,
+                    PlayerToggles {
+                        walk_mode: true,
+                        auto_defend: false,
+                    },
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        for (edit, expected) in [
+            (0, "attachment count"),
+            (1, "attachment count"),
+            (2, "invalid session attachment node"),
+            (3, "invalid session attachment node"),
+        ] {
+            let mut invalid = document.clone();
+            let world = &mut invalid["registry"]["worlds"][0];
+            match edit {
+                0 => world["actors"][index]["control"]["rope_attached"] = false.into(),
+                1 => {
+                    let duplicate = world["ropes"][0]["attachments"][0].clone();
+                    world["ropes"][0]["attachments"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(duplicate);
+                }
+                2 => world["ropes"][0]["attachments"][0][1] = 8.into(),
+                3 => world["ropes"][0]["attachments"][0][0] = 999.into(),
+                _ => unreachable!(),
+            }
+            let error = restore(invalid)
+                .err()
+                .expect("invalid owner must reject off-live");
+            assert!(format!("{error:#}").contains(expected), "{error:#}");
+        }
+        let mut legacy = document.clone();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("selected_rope_jump_latch");
+        let error = restore(legacy)
+            .err()
+            .expect("active legacy owner must reject");
+        assert!(format!("{error:#}").contains("legacy selected rope jump latch unavailable"));
+        let mut restored = restore(document.clone()).unwrap().actors.current.unwrap();
+        let mut uninterrupted = actors.current.take().unwrap();
+        let first_jump = !released_at_capture;
+        for live in [&mut uninterrupted, &mut restored] {
+            tick(live, first_jump);
+            assert!(live.selected_player_on_rope());
+            let control = live.actors()[index].control_state().unwrap();
+            assert_eq!((control.queued_motion, control.jump_selector), (0, 0));
+            assert_ne!(
+                movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
+                    ["current"][0]
+                    .as_u64(),
+                Some(85)
+            );
+            tick(live, false);
+            tick(live, true);
+            assert!(!live.selected_player_on_rope());
+            assert!(live.ropes()[0].attachments.is_empty());
+            let control = live.actors()[index].control_state().unwrap();
+            assert_eq!((control.queued_motion, control.jump_selector), (24, 24));
+            assert_eq!(
+                movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
+                    ["current"][0]
+                    .as_u64(),
+                Some(85)
+            );
+        }
+        let mut detached = ScriptActors::default();
+        detached.current = Some(restored);
+        let mut legacy_detached = serde_json::to_value(
+            detached
+                .snapshot_session(
+                    &sources,
+                    &hud,
+                    &clock,
+                    &random,
+                    PlayerToggles {
+                        walk_mode: true,
+                        auto_defend: false,
+                    },
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        legacy_detached
+            .as_object_mut()
+            .unwrap()
+            .remove("selected_rope_jump_latch");
+        assert!(
+            !restore(legacy_detached)
+                .unwrap()
+                .actors
+                .current
+                .unwrap()
+                .selected_player_on_rope()
+        );
+        // Return to a naturally attached fixture for the released-at-capture branch.
+        // The original held session still owns the grab, independently of the tested continuations.
+        world = restore(document).unwrap().actors.current.unwrap();
+    }
+}

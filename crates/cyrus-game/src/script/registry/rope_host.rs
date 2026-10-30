@@ -7,7 +7,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 
 /// Group requests the rope controls make.
@@ -32,7 +32,7 @@ pub(super) struct RopeProbe<'a> {
 }
 
 /// Retained state of the selected player's rope handling. The rope model itself is saved with the
-/// world snapshot; these transient input latches are rebuilt when the selected player is rebound.
+/// world snapshot. Main sessions also save the jump latch; other history is rebuilt on rebinding.
 #[derive(Clone, Debug, Default)]
 pub(super) struct PlayerRope {
     /// The rope the player last held; skipped while the 24-tick countdown (the runtime jump
@@ -75,6 +75,65 @@ fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
 }
 
 impl ScriptWorld {
+    // The main-save global latch is independent of per-world rope records. See preservation's
+    // SAVEGAME rope-jump-latch contract; temporary world revisits do not restore this owner.
+    pub(super) fn session_rope_jump_latch(&self) -> Result<bool> {
+        self.validate_session_rope_attachment()?;
+        Ok(self.player_rope.latch)
+    }
+
+    pub(super) fn restore_session_rope_jump_latch(&mut self, saved: Option<bool>) -> Result<()> {
+        let attached = self.validate_session_rope_attachment()?;
+        ensure!(
+            saved.is_some() || attached.is_none(),
+            "world {} actor {}: legacy selected rope jump latch unavailable; save again",
+            self.world,
+            attached.unwrap_or_default()
+        );
+        ensure!(
+            self.selected_player_index().is_some() || saved != Some(true),
+            "world {}: selected rope jump latch has no selected player",
+            self.world
+        );
+        // Legacy detached sessions retain their existing default-false migration.
+        self.player_rope.latch = saved.unwrap_or(false);
+        Ok(())
+    }
+
+    fn validate_session_rope_attachment(&self) -> Result<Option<usize>> {
+        let selected = self.selected_player_index();
+        let mut selected_count = 0;
+        for (rope_index, rope) in self.ropes.iter().enumerate() {
+            for attachment in &rope.attachments {
+                ensure!(
+                    attachment.actor < self.actors.len()
+                        && usize::try_from(attachment.node).is_ok_and(|node| node < rope.links),
+                    "world {} rope {rope_index} actor {}: invalid session attachment node {}",
+                    self.world,
+                    attachment.actor,
+                    attachment.node
+                );
+                if Some(attachment.actor) == selected {
+                    selected_count += 1;
+                }
+            }
+        }
+        if let Some(index) = selected {
+            let flagged = self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.rope_attached);
+            ensure!(
+                selected_count == usize::from(flagged),
+                "world {} actor {index}: selected rope attachment count {selected_count} disagrees with control flag {flagged}",
+                self.world
+            );
+            Ok(flagged.then_some(index))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Whether the selected player hangs on a rope; the movement stages skip while it does.
     pub fn selected_player_on_rope(&self) -> bool {
         self.selected_player_index()

@@ -1199,6 +1199,8 @@ impl RegistryRestorePlan<'_> {
 
 #[derive(Clone, Serialize, Deserialize)]
 /// Logical session document. Audio, presentation and host lifecycle are separate owners.
+/// Retains the selected rope jump latch independently of temporary world snapshots.
+/// Legacy documents without that owner are accepted only while the selected player is detached.
 pub struct LogicalSessionSnapshot {
     version: u32,
     registry: RegistrySnapshot,
@@ -1206,6 +1208,8 @@ pub struct LogicalSessionSnapshot {
     clock: crate::clock::ClockSnapshot,
     random: u32,
     toggles: crate::player::input::PlayerToggles,
+    #[serde(default)]
+    selected_rope_jump_latch: Option<bool>,
 }
 /// Fully validated logical resources, ready for the host's coordinated session commit.
 /// Constructing this value neither executes scripts nor replaces live resources.
@@ -1304,6 +1308,7 @@ impl LogicalSessionSnapshot {
 
     fn capture(
         registry: RegistrySnapshot,
+        selected_rope_jump_latch: bool,
         hud: &super::super::ScriptHud,
         clock: &crate::clock::SimulationClock,
         random: &crate::random::EngineRandom,
@@ -1312,6 +1317,7 @@ impl LogicalSessionSnapshot {
         Ok(Self {
             version: 1,
             registry,
+            selected_rope_jump_latch: Some(selected_rope_jump_latch),
             hud: hud.snapshot()?,
             clock: clock.snapshot(),
             random: random.state(),
@@ -1342,6 +1348,7 @@ impl LogicalSessionSnapshot {
         let random = crate::random::EngineRandom::from_state(self.random);
         let registry = self.registry.plan(sources, last_generation)?;
         Ok(LogicalSessionRestorePlan {
+            selected_rope_jump_latch: self.selected_rope_jump_latch,
             registry,
             hud,
             clock,
@@ -1353,6 +1360,7 @@ impl LogicalSessionSnapshot {
 
 /// Off-live logical assembly while the host prepares audio and presentation owners.
 pub struct LogicalSessionRestorePlan<'a> {
+    selected_rope_jump_latch: Option<bool>,
     registry: RegistryRestorePlan<'a>,
     hud: super::super::ScriptHud,
     clock: crate::clock::SimulationClock,
@@ -1386,8 +1394,12 @@ impl LogicalSessionRestorePlan<'_> {
 
     /// Consume bindings only after the owning audio service has prepared its replacement.
     pub fn finish(self, samples: &BTreeMap<u8, u8>) -> Result<LogicalSessionCandidate> {
+        let mut registry = self.registry.restore(samples)?;
+        registry
+            .current
+            .restore_session_rope_jump_latch(self.selected_rope_jump_latch)?;
         Ok(LogicalSessionCandidate {
-            actors: self.registry.restore(samples)?.into_registry(),
+            actors: registry.into_registry(),
             hud: self.hud,
             clock: self.clock,
             random: self.random,
@@ -1441,6 +1453,7 @@ impl ScriptActors {
             .context("session snapshot: no current world or world loading incomplete")?;
         LogicalSessionSnapshot::capture(
             RegistrySnapshot::capture(current, &self.visited, sources, self.error.clone())?,
+            current.session_rope_jump_latch()?,
             hud,
             clock,
             random,
