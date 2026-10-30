@@ -101,3 +101,11 @@ identity for no player-visible gain. **Inferred:** the observable result (no upd
 sound) is the same; only memory and one skipped table entry per update remain, a technical limit the
 faithful mode does not reproduce. A script holding a reference to a killed created object reaches a dead
 record, where the original reaches freed memory, which has no defined behaviour to match.
+
+## Book picture after the ending
+
+**Verified:** after the credits the original's book shows its left-page picture frame filled with a flat
+pink-red rectangle, with no gameplay snapshot. cyrus shows the book's empty parchment frame in the same
+state (it takes no snapshot when the ending starts). **Inferred:** the flat fill is the original's
+unpopulated picture buffer drawn through the book palette, not designed artwork, so cyrus does not
+reproduce the colour.
