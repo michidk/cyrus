@@ -557,16 +557,21 @@ impl ActorSpatial {
         Ok(())
     }
 
-    /// Refresh an ordinary unattached matrix using the retained angle snapshot.
+    /// Refresh an ordinary unattached matrix from its last published orientation.
+    /// Repeated refreshes in one update consume only new angle changes; the ordinary
+    /// update's angle snapshot remains available for axis locks and family deltas.
     pub fn refresh_transform(&mut self) -> Result<()> {
         ensure!(
             self.parent.is_none(),
             "attached matrices require a family refresh"
         );
+        let matrix_angles = self
+            .effective
+            .map_or(self.angle_history, |pose| pose.angles);
         match self.rotation_mode {
-            0 if self.local.angles == self.angle_history => {}
+            0 if self.local.angles == matrix_angles => {}
             0 => self.local.matrix.rotate(std::array::from_fn(|axis| {
-                self.local.angles[axis].wrapping_sub(self.angle_history[axis]) & 2047
+                self.local.angles[axis].wrapping_sub(matrix_angles[axis]) & 2047
             })),
             2 => self.local.matrix = Matrix::orientation(self.local.angles),
             mode => anyhow::bail!("actor rotation mode {mode} unsupported"),
@@ -1063,6 +1068,60 @@ mod tests {
             fallback_position: None,
             linked_position: Some(None),
         }
+    }
+
+    #[test]
+    fn repeated_refreshes_consume_rotation_once_and_preserve_axis_lock_snapshot() {
+        let mut actor = receiver([0; 3], vec![]);
+        actor.snapshot();
+        actor.local.angles[1] = 512;
+        actor.refresh_transform().unwrap();
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .transform([0, 0, 256])
+                .unwrap(),
+            [-256, 0, 0]
+        );
+        actor.refresh_transform().unwrap();
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .transform([0, 0, 256])
+                .unwrap(),
+            [-256, 0, 0]
+        );
+        assert_eq!(actor.angle_history, [0; 3]);
+
+        actor.local.angles[1] = 1024;
+        actor.refresh_transform().unwrap();
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .transform([0, 0, 256])
+                .unwrap(),
+            [0, 0, -256]
+        );
+        let mut attributes = [0; 256];
+        attributes[37] = 1;
+        actor.restore_axis_locks(&attributes).unwrap();
+        actor.refresh_transform().unwrap();
+        assert_eq!(actor.local.angles, [0; 3]);
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .transform([0, 0, 256])
+                .unwrap(),
+            [0, 0, 256]
+        );
     }
 
     #[test]

@@ -241,7 +241,7 @@ impl ScriptWorld {
                     .expect("validated control")
                     .living_state,
             ) {
-                return world.control_ledge_player(id, action, query, inputs, timing, sounds);
+                return world.control_ledge_player(id, query, inputs, timing, sounds);
             }
             // The drawing group and the scabbard-grip idle group return before turning.
             let group = world.actors[id.index]
@@ -398,42 +398,39 @@ impl ScriptWorld {
     }
 
     /// The controller in the ledge states. The jump key drops a hanging player through the hang
-    /// release (refused during the jump cooldown and the action inhibition). A sidestep while
-    /// hanging steps along the ledge; all other keys are ignored.
+    /// release (refused during the jump cooldown and the action inhibition). Plain left/right
+    /// shimmies without forward/backward input; forward requests a climb and backward releases.
+    /// Directional requests follow jump handling, per preservation's player controller rules.
     fn control_ledge_player(
         &mut self,
         id: super::ScriptActorId,
-        action: crate::player::controller::SheathedAction,
         query: super::ground::OrdinaryGroundQuery<'_>,
         inputs: super::ScriptInputs<'_>,
         timing: crate::clock::ClockStep,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        use crate::player::controller::SheathedAction;
         let held = inputs
             .player_controller
             .context("ledge controller input unavailable")?
             .held;
-        let control = self.actors[id.index]
+        if !self.actors[id.index]
             .control
             .as_ref()
-            .context("ledge controller control unavailable")?;
-        if control.living_state == 15
-            && let SheathedAction::Sidestep(strafe) = action
-        {
-            let function = match strafe {
-                super::super::locomotion::Strafe::Left => "MoveLeft",
-                super::super::locomotion::Strafe::Right => "MoveRight",
-            };
-            return self.step_player(id, function, inputs, sounds);
-        }
-        if !held.jump
-            || control.living_state != 15
-            || control.queued_motion != 0
-            || control.falling_state != 0
-            || self.globals.conditional_ticks()? != 0
+            .is_some_and(|control| control.living_state == 15)
         {
             return Ok(());
+        }
+        if !held.forward && !held.backward {
+            let function = if held.left {
+                Some("MoveLeft")
+            } else if held.right {
+                Some("MoveRight")
+            } else {
+                None
+            };
+            if let Some(function) = function {
+                self.step_player(id, function, inputs, sounds)?;
+            }
         }
         let environment = super::transition::ObstacleEnvironment {
             selected_player: Some(id),
@@ -453,7 +450,34 @@ impl ScriptWorld {
             fine_ticks,
             frame_scale: Some(timing.frame_scale),
         };
-        self.ledge_hang_release(id, query, environment, timing, sounds)?;
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("ledge controller control unavailable")?;
+        if held.jump
+            && control.living_state == 15
+            && control.queued_motion == 0
+            && control.falling_state == 0
+            && self.globals.conditional_ticks()? == 0
+        {
+            self.ledge_hang_release(id, query, environment, timing, sounds)?;
+        }
+        if held.forward
+            && self.actors[id.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.living_state == 15)
+        {
+            self.ledge_climb_request(id, query, environment, timing, sounds)?;
+        }
+        if held.backward
+            && self.actors[id.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.living_state == 15)
+        {
+            self.ledge_hang_release(id, query, environment, timing, sounds)?;
+        }
         Ok(())
     }
 

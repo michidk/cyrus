@@ -147,19 +147,15 @@ impl ScriptWorld {
     }
 
     /// The climb request: a class 3 record with room above (record byte 2) starts the climb.
-    fn ledge_climb_request(
+    pub(super) fn ledge_climb_request(
         &mut self,
-        ctx: &Transition<'_>,
+        id: ScriptActorId,
+        query: OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        timing: LedgeTiming,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<u8> {
-        let Transition {
-            id,
-            index,
-            query,
-            environment,
-            timing,
-            ..
-        } = *ctx;
+        let index = self.resolve(id)?;
         if environment.selected_player != Some(id)
             || self.actors[index].attributes[105] == 1
             || self.living(index) != 15
@@ -391,7 +387,7 @@ impl ScriptWorld {
             .context("ledge hang animation unavailable")?
             .playback
             .translation_suppressed();
-        if !suppressed {
+        if self.globals.locomotion_called & 3 != 0 && !suppressed {
             self.globals.selected_ledge_anchor = Some((point, record.heading));
             self.spatial
                 .as_mut()
@@ -403,7 +399,7 @@ impl ScriptWorld {
         let distance = self.query_ordinary_queued_clearance(id, query)?;
         let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
         if i64::from(distance) < (i64::from(extent) + 24) * 256 {
-            return self.ledge_climb_request(ctx, sounds);
+            return self.ledge_climb_request(id, query, environment, timing, sounds);
         }
         self.apply_ledge_hang_pose(ctx, &scan)?;
         self.actors[index].model.ledge_support = self.ledge_support_id(record.support)?;

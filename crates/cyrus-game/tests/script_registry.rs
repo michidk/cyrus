@@ -33866,6 +33866,80 @@ fn mark_actor_dead_sets_the_state_is_dead_reads() {
 }
 
 #[test]
+fn hanging_backward_releases_without_the_walk_key() {
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    {
+        let (scripts, world, mut data, scene) = player_walking_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({"group_index":56,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}));
+        let mut world =
+            replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+                saved["actors"][index]["control"]["living_state"] = 15.into();
+            });
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        let held = cyrus_game::player::input::PlayerInput {
+            backward: true,
+            ..Default::default()
+        };
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_game::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                    }),
+                    shell_execution: Some(false),
+                    fine_ticks: Some(0),
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[index].control_state().unwrap().living_state,
+            0
+        );
+        assert_eq!(
+            world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+            56
+        );
+    }
+}
+
+#[test]
 fn retained_world_places_player_roles_at_the_new_destination() {
     use cyrus_game::script::{ScriptActorSource, ScriptActors, WorldSnapshotSources};
     use cyrus_world::lifecycle::PreparedWorld;
