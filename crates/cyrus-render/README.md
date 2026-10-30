@@ -573,3 +573,10 @@ to its map-local source or loses its pose. Shared source meshes remain immutable
 Model snapshots require settled mesh frames. Replacement candidates compute private
 frame geometry off-live and publish it with the pose, without waiting for the next
 render update. Installed rendered continuation is still awaiting acceptance.
+
+**Verified:** runtime object-light cells use the driven camera's logical Q8 target before
+render glide, following preservation's [runtime object-light region](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/model-lighting.md#runtime-object-light-region).
+The scene and effect material paths share this selection. Inspection cameras and
+pending or mismatched camera publications use the rendered view. Off-live session
+material preparation keeps the supplied destination camera and does not read the
+current world's camera publication.

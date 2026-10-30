@@ -1,10 +1,56 @@
 //! Active authored object lights and quantized distance tables for model shaders.
+use bevy::ecs::system::SystemParam;
 use bevy::{
     asset::RenderAssetUsages,
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::environment::{Environment, LocalLight};
+
+/// Logical map-list view, with source identity checked before consuming camera publication.
+#[derive(SystemParam)]
+pub(crate) struct LightView<'w> {
+    drive: Option<Res<'w, cyrus_game::script::CameraDrive>>,
+    frame: Option<Res<'w, cyrus_game::script::CameraFrameState>>,
+    flycam: Option<Res<'w, crate::camera::FlycamSettings>>,
+    view: Option<Res<'w, cyrus_game::script::ScriptView>>,
+    request: Option<Res<'w, cyrus_world::animation::AnimationRequest>>,
+}
+
+impl LightView<'_> {
+    pub(crate) fn position(
+        &self,
+        rendered: Vec3,
+        current: Option<cyrus_game::script::camera::CameraPose>,
+    ) -> [i32; 2] {
+        if self.drive.as_ref().is_some_and(|drive| drive.enabled)
+            && !self.flycam.as_ref().is_some_and(|flycam| flycam.enabled)
+            && let Some(published) = self
+                .frame
+                .as_ref()
+                .and_then(|frame| frame.published.as_ref())
+            && current == Some(published.pose)
+            && self
+                .view
+                .as_ref()
+                .zip(self.request.as_ref())
+                .is_some_and(|(view, request)| view.source == request.0)
+        {
+            return [
+                published.pose.position[0] >> 8,
+                published.pose.position[2] >> 8,
+            ];
+        }
+        rendered_map_position(rendered)
+    }
+}
+
+fn rendered_map_position(position: Vec3) -> [i32; 2] {
+    [
+        (-f64::from(position.x) * 20.0).floor() as i32,
+        (f64::from(position.z) * 20.0 + 65535.99609375).floor() as i32,
+    ]
+}
 
 #[derive(Default)]
 pub(crate) struct RuntimeLights {
@@ -88,6 +134,7 @@ fn texture(lights: &[&LocalLight]) -> Image {
 }
 
 impl RuntimeLights {
+    /// Off-live preparation uses its supplied destination view, never a live camera resource.
     pub(crate) fn update(
         &mut self,
         source: AssetId<Environment>,
@@ -95,10 +142,18 @@ impl RuntimeLights {
         position: Vec3,
         images: &mut Assets<Image>,
     ) -> Handle<Image> {
-        let origin = region([
-            (-f64::from(position.x) * 20.0).floor() as i32,
-            (f64::from(position.z) * 20.0 + 65535.99609375).floor() as i32,
-        ]);
+        self.update_for_map_target(source, lights, rendered_map_position(position), images)
+    }
+
+    /// Select using whole map-unit X/Z before camera glide; staging can supply its saved view.
+    pub(crate) fn update_for_map_target(
+        &mut self,
+        source: AssetId<Environment>,
+        lights: &[LocalLight],
+        target: [i32; 2],
+        images: &mut Assets<Image>,
+    ) -> Handle<Image> {
+        let origin = region(target);
         if self.previous != Some((source, origin)) || self.previous_lights != lights {
             let image = texture(&selected(lights, origin));
             self.previous_lights = lights.to_vec();

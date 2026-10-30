@@ -288,6 +288,7 @@ fn capture(
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn draw(
     mut commands: Commands,
+    light_view: crate::lighting::runtime::LightView,
     timing: (
         Res<Time<Real>>,
         Option<Res<crate::presentation_clock::PresentationClock>>,
@@ -423,6 +424,15 @@ fn draw(
             live.flat_packets = packets;
             live.repaint = true;
         }
+        let lights = live.lights.update_for_map_target(
+            request.0.id(),
+            &world.object_lights(),
+            light_view.position(
+                camera.translation(),
+                world.camera().map(|camera| camera.current),
+            ),
+            &mut images,
+        );
         if !live.repaint {
             for slot in live.slots.iter().chain(&live.flat_slots) {
                 let transform =
@@ -446,12 +456,6 @@ fn draw(
             });
         }
         let fog = super::fog_extension(environment, &fidelity, clipping);
-        let lights = live.lights.update(
-            request.0.id(),
-            &world.object_lights(),
-            camera.translation(),
-            &mut images,
-        );
         let mut admitted = 0;
         for retained in &textures.effect_draws {
             let index = retained.slot;
@@ -594,9 +598,18 @@ mod tests {
         let environment: Environment = serde_json::from_slice(
             &cyrus_assets::game::prepare(&files, "START.environment")?["START.environment"],
         )?;
-        let scripts: Scripts = serde_json::from_slice(
+        let mut scripts: Scripts = serde_json::from_slice(
             &cyrus_assets::game::prepare(&files, "START.scripts")?["START.scripts"],
         )?;
+        // A boundary fixture isolates camera ownership while retaining the installed
+        // effect preparation, material binding and repaint systems.
+        let mut boundary_light = scripts.instances[0].clone();
+        boundary_light.object_type = 6;
+        boundary_light.map_position = [9216, 0, 9728];
+        boundary_light.light_radius = 100;
+        boundary_light.light_rgb = [255, 0, -255];
+        scripts.instances.push(boundary_light);
+        scripts.content_id = scripts.content_identity()?;
         let capacity = environment
             .effects
             .as_ref()
@@ -764,6 +777,83 @@ mod tests {
                     .snapshot_playback()?
             )?,
             before
+        );
+        use cyrus_game::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
+        let mut frame = CameraFrameState::default();
+        frame.published = Some(PublishedCamera {
+            pose: cyrus_game::script::camera::CameraPose {
+                position: [5120 * 256, 0, 10000 * 256],
+                angles: [0; 3],
+            },
+            render: cyrus_game::script::camera::RenderPose {
+                position: [5119.0, 0.0, 10000.0],
+                angles: [0; 3],
+            },
+            view_angles: [0; 3],
+        });
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial()?;
+            world.initialize_camera_pose(frame.published.unwrap().pose)?;
+        }
+        app.insert_resource(frame)
+            .insert_resource(CameraDrive { enabled: true })
+            .insert_resource(ScriptView {
+                source: animation.clone(),
+                position: [5118 * 256, 0, 10000 * 256],
+            });
+        let mut camera_query = app
+            .world_mut()
+            .query_filtered::<&mut GlobalTransform, With<ViewCamera>>();
+        *camera_query.single_mut(app.world_mut()).unwrap() =
+            GlobalTransform::from_translation(Vec3::new(
+                -5119.0 / 20.0,
+                0.0,
+                ((10000.0_f64 - 65535.99609375) / 20.0) as f32,
+            ));
+        // No repaint or new packet is requested. The already-bound image must follow the target.
+        assert!(!app.world().resource::<LiveEffects>().repaint);
+        app.world_mut().run_system_once(draw).unwrap();
+        let rows = |app: &App| {
+            let live = app.world().resource::<LiveEffects>();
+            let material = &live.slots[0].material;
+            let materials = app.world().resource::<Assets<SceneMaterial>>();
+            let image = &materials.get(material).unwrap().extension.lights;
+            let images = app.world().resource::<Assets<Image>>();
+            let image = images.get(image).unwrap();
+            image.data.as_ref().unwrap()[256 * 8 * 4..]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|bytes| f32::from_le_bytes(*bytes))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&app),
+            vec![9216.0, 0.0, 9728.0, 100.0, 255.0, 0.0, -255.0, 40.234375]
+        );
+        app.world_mut()
+            .resource_mut::<CameraFrameState>()
+            .published
+            .as_mut()
+            .unwrap()
+            .pose
+            .position[0] = 5119 * 256;
+        app.world_mut().run_system_once(draw).unwrap();
+        assert!(rows(&app).is_empty());
+        app.world_mut()
+            .resource_mut::<CameraFrameState>()
+            .published
+            .as_mut()
+            .unwrap()
+            .pose
+            .position[0] = 5120 * 256;
+        app.world_mut().resource_mut::<ScriptView>().source = Handle::default();
+        app.world_mut().run_system_once(draw).unwrap();
+        assert!(
+            rows(&app).is_empty(),
+            "a stale source cannot select the prior world's target"
         );
         let first: Vec<_> = app
             .world()

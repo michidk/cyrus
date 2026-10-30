@@ -263,7 +263,9 @@ impl Plugin for FogPlugin {
             ))
             .add_systems(
                 Update,
-                (apply_scene_fog, prepare_flat_compositing).after(crate::flat::PrepareFlats),
+                (apply_scene_fog, prepare_flat_compositing)
+                    .after(crate::flat::PrepareFlats)
+                    .after(cyrus_game::script::OrdinaryUpdates),
             );
     }
 }
@@ -331,6 +333,7 @@ fn apply_scene_fog(
             Option<Res<cyrus_world::animation::AnimationRequest>>,
             Option<Res<Assets<cyrus_assets::animation::Animations>>>,
         ),
+        crate::lighting::runtime::LightView,
     ),
 ) {
     let (parents, staged) = hierarchy;
@@ -343,6 +346,7 @@ fn apply_scene_fog(
         node_extras,
         flats,
         light_owners,
+        light_view,
     ) = runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
@@ -353,7 +357,7 @@ fn apply_scene_fog(
         .iter()
         .find_map(|(_, transform)| transform.map(|t| t.translation))
         .unwrap_or_default();
-    let retained_lights = light_owners
+    let retained_world = light_owners
         .0
         .as_ref()
         .zip(light_owners.1.as_ref())
@@ -366,14 +370,20 @@ fn apply_scene_fog(
                 light_owners.2.as_deref(),
                 light_owners.3.as_deref(),
             )
-            .then(|| current.object_lights())
+            .then_some(current)
         });
-    let light_texture = lights.update(
+    let retained_lights = retained_world.map(|current| current.object_lights());
+    let light_texture = lights.update_for_map_target(
         request.0.id(),
         retained_lights
             .as_deref()
             .unwrap_or(&environment.object_lights),
-        position,
+        light_view.position(
+            position,
+            retained_world
+                .and_then(|world| world.camera())
+                .map(|camera| camera.current),
+        ),
         &mut images,
     );
     for (mut projection, _) in &mut cameras {
@@ -931,6 +941,220 @@ mod tests {
             .environment_path = "NECRISLE.environment".into();
         app.update();
         assert!(height(&app) > 256);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn logical_camera_selects_bound_light_rows_before_render_glide() -> anyhow::Result<()> {
+        use cyrus_assets::{install::GameInstall, native::Files, script::Scripts};
+        use cyrus_game::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
+        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        use cyrus_world::lifecycle::PreparedWorld;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = GameInstall::open(&root) else {
+            eprintln!("skipped: no install (logical camera light region)");
+            return Ok(());
+        };
+        let files = Files::open(&install)?;
+        let mut scripts: Scripts = serde_json::from_slice(
+            &cyrus_assets::game::prepare(&files, "MGUILD.scripts")?["MGUILD.scripts"],
+        )?;
+        for light in scripts
+            .instances
+            .iter_mut()
+            .filter(|light| light.object_type == 6)
+        {
+            light.light_radius = 0;
+        }
+        scripts.instances[0].map_position = [9216, 0, 9728];
+        scripts.instances[0].light_radius = 100;
+        scripts.instances[0].light_rgb = [255, 0, -255];
+        scripts.content_id = scripts.content_identity()?;
+        let mut current = ScriptWorld::prepare(&scripts, 10)?;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Environment>();
+        let environment: Handle<Environment> = app
+            .world()
+            .resource::<AssetServer>()
+            .load("MGUILD.environment");
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .insert(
+                environment.id(),
+                Environment {
+                    effects: None,
+                    texture_scale: [1, 1],
+                    sky: None,
+                    background: [0; 3],
+                    clipping: [7.0, 3800.0],
+                    fog_table: [[0; 4]; 16],
+                    terrain_heights: None,
+                    water: None,
+                    terrain_lighting: None,
+                    model_lighting: cyrus_assets::environment::ModelLighting {
+                        ambient: [64.0; 3],
+                        directional: [0.0; 3],
+                        direction: [0.0, -1.0, 0.0],
+                    },
+                    prelighting: Default::default(),
+                    object_lights: vec![cyrus_assets::environment::LocalLight {
+                        position: [9216, 0, 9728],
+                        radius: 100,
+                        rgb: [255, 0, -255],
+                    }],
+                },
+            )?;
+        let mut animations = Assets::<cyrus_assets::animation::Animations>::default();
+        let source = animations.add(cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        });
+        let mut frame = CameraFrameState::default();
+        frame.published = Some(PublishedCamera {
+            pose: cyrus_game::script::camera::CameraPose {
+                position: [5120 * 256, 0, 10000 * 256],
+                angles: [0; 3],
+            },
+            render: cyrus_game::script::camera::RenderPose {
+                position: [5119.0, 0.0, 10000.0],
+                angles: [0; 3],
+            },
+            view_angles: [0; 3],
+        });
+        current.prepare_spatial()?;
+        current.initialize_camera_pose(frame.published.unwrap().pose)?;
+        let mut actors = ScriptActors::default();
+        actors.current = Some(current);
+        app.insert_resource(actors)
+            .insert_resource(animations)
+            .insert_resource(PreparedWorld {
+                requested_name: "MGUILD".into(),
+                world: Some(scripts.world),
+                animations: source.clone(),
+                scripts: Handle::default(),
+                player_path: "MGUILD.player".into(),
+                scene_path: "MGUILD.glb".into(),
+                environment_path: "MGUILD.environment".into(),
+            });
+        app.insert_resource(EnvironmentRequest(environment))
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<Assets<SceneMaterial>>()
+            .init_resource::<Assets<TerrainMaterial>>()
+            .init_resource::<Fidelity>()
+            .insert_resource(RenderDistance {
+                original: Some([7.0, 3800.0]),
+                override_far: None,
+            })
+            .insert_resource(CameraDrive { enabled: true })
+            .insert_resource(frame)
+            .insert_resource(cyrus_world::animation::AnimationRequest(source.clone()))
+            // The map-list view precedes this frame's camera update, so its position may differ.
+            .insert_resource(ScriptView {
+                source: source.clone(),
+                position: [5118 * 256, 0, 10000 * 256],
+            })
+            .add_systems(Update, apply_scene_fog);
+        app.world_mut().spawn((
+            ViewCamera,
+            Transform::from_xyz(
+                -5119.0 / 20.0,
+                0.0,
+                ((10000.0_f64 - 65535.99609375) / 20.0) as f32,
+            ),
+            Projection::Perspective(Default::default()),
+        ));
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+        let mut mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
+        let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let entity = app.world_mut().spawn((
+            MeshMaterial3d(material), Mesh3d(mesh),
+            bevy::gltf::GltfExtras {
+                value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
+            },
+        )).id();
+        let rows = |app: &App| {
+            let material = &app
+                .world()
+                .get::<MeshMaterial3d<SceneMaterial>>(entity)
+                .unwrap()
+                .0;
+            let materials = app.world().resource::<Assets<SceneMaterial>>();
+            let image = &materials.get(material).unwrap().extension.lights;
+            let images = app.world().resource::<Assets<Image>>();
+            let image = images.get(image).unwrap();
+            let data = image.data.as_ref().unwrap();
+            data[256 * 8 * 4..]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|bytes| f32::from_le_bytes(*bytes))
+                .collect::<Vec<_>>()
+        };
+        app.update();
+        assert_eq!(
+            rows(&app),
+            vec![9216.0, 0.0, 9728.0, 100.0, 255.0, 0.0, -255.0, 40.234375]
+        );
+        let expected_pose = app
+            .world()
+            .resource::<CameraFrameState>()
+            .published
+            .unwrap()
+            .pose;
+        let mut different_pose = expected_pose;
+        different_pose.position[0] = 5119 * 256;
+        let mut replacement = ScriptWorld::prepare(&scripts, 11)?;
+        replacement.prepare_spatial()?;
+        replacement.initialize_camera_pose(different_pose)?;
+        let original = app
+            .world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .replace(replacement);
+        app.update();
+        assert!(
+            rows(&app).is_empty(),
+            "same-scene replacement cannot consume the previous camera publication"
+        );
+        app.world_mut().resource_mut::<ScriptActors>().current = original;
+        // Source mismatch must not read a previous world's publication.
+        app.world_mut().resource_mut::<ScriptView>().source = Handle::default();
+        app.update();
+        assert!(rows(&app).is_empty());
+        app.world_mut().resource_mut::<ScriptView>().source = source;
+        app.insert_resource(crate::camera::FlycamSettings {
+            enabled: true,
+            ..default()
+        });
+        app.update();
+        assert!(rows(&app).is_empty());
+        app.world_mut()
+            .resource_mut::<crate::camera::FlycamSettings>()
+            .enabled = false;
+        app.update();
+        assert_eq!(rows(&app).len(), 8);
+        app.world_mut().resource_mut::<CameraDrive>().enabled = false;
+        app.update();
+        assert!(rows(&app).is_empty());
         Ok(())
     }
 
