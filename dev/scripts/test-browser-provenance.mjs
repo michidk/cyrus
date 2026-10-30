@@ -9,8 +9,14 @@ assert(process.env.CYRUS_PROVENANCE_CDP, 'set CYRUS_PROVENANCE_CDP');
 assert(process.env.CYRUS_PROVENANCE_HOST, 'set CYRUS_PROVENANCE_HOST to the test host reachable by Chromium');
 const files = {
   'index.html': '<!doctype html><link rel="stylesheet" href="loading.css"><script type="module" src="loader.js"></script>',
+  'sw.js': "self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));",
   'loading.css': 'body { background: black; }',
   'loader.js': `import './install.js'; import './game-assets.js'; import {start} from './pkg/cyrus-web.js';
+    if ('serviceWorker' in navigator) {
+      await navigator.serviceWorker.register('./sw.js');
+      await navigator.serviceWorker.ready;
+      window.cacheReady = true;
+    }
     await start(); const worker = new Worker('./asset-worker.js', {type:'module'});
     worker.onmessage = () => { window.ready = true; };`,
   'install.js': "import './local-install.js';",
@@ -32,7 +38,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', name.endsWith('.js') ? 'text/javascript' : name.endsWith('.wasm') ? 'application/wasm' : name.endsWith('.css') ? 'text/css' : 'text/html');
   res.end(bytes);
 });
-await new Promise(resolve => server.listen(0, '0.0.0.0', resolve));
+await new Promise(resolve => server.listen(Number(process.env.CYRUS_PROVENANCE_PORT || 0), '0.0.0.0', resolve));
 try {
   const url = `http://${process.env.CYRUS_PROVENANCE_HOST}:${server.address().port}/`;
   for (const stale of ['none', 'javascript', 'wasm']) {
@@ -46,14 +52,18 @@ try {
       const deadline = Date.now() + 10000;
       for (;;) {
         const value = await cdp.call('Runtime.evaluate', {expression: 'window.ready', returnByValue: true});
-        if (value.result.value) break;
+        if (value.result.value) {
+          const cache = await cdp.call('Runtime.evaluate', {expression: '!isSecureContext || window.cacheReady === true', returnByValue: true});
+          assert.equal(cache.result.value, true, 'secure startup must activate the service worker');
+          break;
+        }
         assert(Date.now() < deadline, 'synthetic page did not become ready');
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       if (stale !== 'none') await assert.rejects(observation.verify(), stale === 'javascript' ? /local-install.js/ : /loaded WASM/);
       else {
         const verified = await observation.verify();
-        assert.equal(Object.keys(verified.observed).length, Object.keys(files).length);
+        assert.equal(Object.keys(verified.observed).length, Object.keys(files).length - 1);
       }
       observation.stop();
       console.log(stale === 'none' ? 'Verified: page/worker code, WASM, HTML and CSS match build bytes' : `Verified: executed stale ${stale} is rejected`);

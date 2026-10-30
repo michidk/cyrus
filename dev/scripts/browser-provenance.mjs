@@ -76,7 +76,11 @@ export async function observeBrowserBuild(cdp, build, pageUrl) {
   await cdp.call('Network.enable');
   await cdp.call('Network.setCacheDisabled', { cacheDisabled: true });
   await cdp.call('Debugger.enable');
-  await cdp.call('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+  // Pausing a new service worker prevents registration readiness during application startup.
+  await cdp.call('Target.setAutoAttach', {
+    autoAttach: true, waitForDebuggerOnStart: true, flatten: true,
+    filter: [{type: 'service_worker', exclude: true}, {}],
+  });
   return {
     async verify() {
       while (pending.size) await Promise.all([...pending]);
