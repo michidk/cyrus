@@ -21,6 +21,20 @@ pub struct CameraDrive {
 pub struct PublishedCamera {
     pub pose: CameraPose,
     pub render: RenderPose,
+    /// Wrapped view orientation after this frame's shake sample. Reading it does not advance shake.
+    pub view_angles: [u16; 3],
+}
+
+impl PublishedCamera {
+    /// Sample once after the render step, using the ordinary world-loop frame for shake parity.
+    /// The logical and interpolated poses remain unchanged; only the retained shake level advances.
+    pub fn from_frame(camera: &mut crate::script::camera::CameraState, frame: u32) -> Self {
+        Self {
+            pose: camera.current,
+            render: camera.render,
+            view_angles: camera.shaken_angles(camera.render.angles, frame),
+        }
+    }
 }
 
 /// Driver state kept between frames: whether setup ran, the hit history and the published camera.
@@ -256,11 +270,11 @@ pub(super) fn end(
             }
             Ok(())
         })?;
-        let camera = world.camera.as_ref().expect("checked above");
-        Ok(PublishedCamera {
-            pose: camera.current,
-            render: camera.render,
-        })
+        let camera = world.camera.as_mut().expect("checked above");
+        Ok(PublishedCamera::from_frame(
+            camera,
+            world.globals.world_loop_frame,
+        ))
     })();
     state.hits = Some(hits);
     state.published = Some(result?);
@@ -290,6 +304,7 @@ mod tests {
                     position: [19.0, 20.0, 21.0],
                     angles: [22, 23, 24],
                 },
+                view_angles: [22, 23, 24],
             }),
             terrain: None,
         };

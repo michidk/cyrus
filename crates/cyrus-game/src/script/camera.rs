@@ -344,7 +344,10 @@ impl CameraState {
     /// shaking camera moves the first angle down by the shake level on even frames, halving the
     /// level, and up by it on odd frames. `frame` is the main loop's frame counter.
     pub fn view_angles(&mut self, frame: u32) -> [u16; 3] {
-        let mut angles = self.current.angles;
+        self.shaken_angles(self.current.angles, frame)
+    }
+
+    pub(crate) fn shaken_angles(&mut self, mut angles: [i32; 3], frame: u32) -> [u16; 3] {
         if self.shake != 0 {
             let shake = i32::from(self.shake);
             if frame & 1 == 0 {
@@ -1954,6 +1957,38 @@ pub fn sample_terrain(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn driven_frame_samples_shake_after_glide_and_restores_its_continuation() {
+        use crate::script::PublishedCamera;
+        let actor = super::super::ScriptActorId {
+            generation: 7,
+            index: 1,
+        };
+        let mut camera = CameraState::new(&CameraSettings::default(), actor, actor, 0).unwrap();
+        camera.current.angles = [100, 200, 300];
+        camera.render.angles = [64, 512, 0];
+        camera.add_shake();
+        let first = PublishedCamera::from_frame(&mut camera, 0);
+        assert_eq!(first.view_angles, [32, 512, 0]);
+        assert_eq!(first.pose.angles, [100, 200, 300]);
+        assert_eq!(first.render.angles, [64, 512, 0]);
+        assert_eq!(camera.shake, 16);
+
+        let saved = camera.snapshot();
+        let mut restored = CameraState::from_snapshot(saved, &|generation, index| {
+            Ok(super::super::ScriptActorId { generation, index })
+        })
+        .unwrap();
+        let second = PublishedCamera::from_frame(&mut restored, 1);
+        assert_eq!(second.view_angles, [80, 512, 0]);
+        assert_eq!(restored.shake, 16);
+        let third = PublishedCamera::from_frame(&mut restored, 2);
+        assert_eq!(third.view_angles, [48, 512, 0]);
+        assert_eq!(restored.shake, 8);
+        assert_eq!(restored.current.angles, [100, 200, 300]);
+        assert_eq!(restored.render.angles, [64, 512, 0]);
+    }
 
     #[test]
     fn present_glides_render_angles_without_mutating_published_pose() {

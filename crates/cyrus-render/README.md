@@ -26,7 +26,11 @@ with a capture synchronized to the same frame. The camera's pose update runs as 
 CAMERA actor's `cameraController` hook at that actor's slot in the update, and the
 driver adds only the render step. The driven camera's position feeds `ScriptView` and
 the map's terrain heights feed its terrain correction (retained-window terrain is
-ignored); roll and shake are not wired.
+ignored). **Verified:** the driven frame samples camera shake over the interpolated
+view angles in original world-loop parity, following preservation's
+[frame view angles](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#frame-view-angles-and-screen-shake).
+Render reads reuse that sample without advancing shake or changing the logical camera pose.
+The inactive roll-tilt mode remains unapplied.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition

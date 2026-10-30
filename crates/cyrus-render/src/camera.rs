@@ -129,11 +129,9 @@ fn flycam_controller(
 /// engine X axis mirrored, and the scene axes negate X and Y (**Inferred** from the camera
 /// orientation stage's angles for known offsets; the comparison with the original decides).
 pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Option<Transform> {
-    // The renderer consumes the interpolated render pose.  The logical pose may
-    // already have advanced to the next camera position while the render camera
-    // is still gliding toward it; using `pose.angles` here would make angle glide
-    // ineffective even though position glide is honored below.
-    let angles = camera.render.angles.map(|angle| (angle & 2047) as u16);
+    // The driver samples shake once over the interpolated angles. Render reads do not
+    // consume another impulse or feed the wobble back into the next frame's glide.
+    let angles = camera.view_angles;
     let forward = cyrus_world::transform::Matrix::orientation(angles)
         .transform([0, 0, 256])
         .ok()?;
@@ -337,6 +335,7 @@ mod tests {
                 position: [0.0, 0.0, 0.0],
                 angles: [0, 512, 0],
             },
+            view_angles: [0, 512, 0],
         };
         let transform = driven_view_transform(&camera).expect("valid camera pose");
         let expected = cyrus_world::transform::Matrix::orientation([0, 512, 0])
@@ -349,6 +348,51 @@ mod tests {
         )
         .normalize();
         assert!(transform.forward().dot(expected) > 0.999);
+    }
+
+    #[test]
+    fn driven_view_reuses_the_sampled_shake_without_changing_camera_poses() {
+        let published = cyrus_game::script::PublishedCamera {
+            pose: cyrus_game::script::camera::CameraPose {
+                position: [0; 3],
+                angles: [0; 3],
+            },
+            render: cyrus_game::script::camera::RenderPose {
+                position: [20.0, 40.0, 60.0],
+                angles: [64, 512, 0],
+            },
+            view_angles: [32, 512, 0],
+        };
+        let mut frame = cyrus_game::script::CameraFrameState::default();
+        frame.published = Some(published);
+        let mut app = App::new();
+        app.insert_resource(cyrus_game::script::CameraDrive { enabled: true })
+            .insert_resource(frame)
+            .add_systems(Update, drive_view_camera);
+        let entity = app
+            .world_mut()
+            .spawn((ViewCamera, Transform::default()))
+            .id();
+        let expected = cyrus_world::transform::Matrix::orientation([32, 512, 0])
+            .transform([0, 0, 256])
+            .unwrap();
+        let expected = Vec3::new(
+            expected[0] as f32,
+            -(expected[1] as f32),
+            expected[2] as f32,
+        )
+        .normalize();
+        for _ in 0..3 {
+            app.update();
+            let transform = app.world().get::<Transform>(entity).unwrap();
+            assert!(transform.forward().dot(expected) > 0.99999);
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_game::script::CameraFrameState>()
+                    .published,
+                Some(published)
+            );
+        }
     }
 
     #[test]
