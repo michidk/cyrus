@@ -117,7 +117,11 @@ impl GameHost<'_, '_, '_, '_> {
             }
             let target = self.registry.id(index)?;
             let hit = self
-                .projectile_spheres(target)?
+                .projectile_spheres(
+                    target,
+                    source.animations,
+                    source.scene.settings.post_collide_height,
+                )?
                 .into_iter()
                 .any(|(center, radius)| {
                     point_in_sphere(start, center, radius) || point_in_sphere(end, center, radius)
@@ -151,9 +155,14 @@ impl GameHost<'_, '_, '_, '_> {
         Ok(())
     }
 
-    /// Contact spheres use the ordinary body shape. Optional RAFS descriptors are absent in
-    /// installed maps; vertex-bound RAVC volumes belong to a different collision owner.
-    fn projectile_spheres(&self, target: super::ScriptActorId) -> Result<Vec<([i32; 3], i32)>> {
+    /// Optional RAFS descriptors are absent in installed maps; contact body selection is
+    /// independent of vertex-bound RAVC volumes.
+    fn projectile_spheres(
+        &self,
+        target: super::ScriptActorId,
+        data: &cyrus_assets::animation::Animations,
+        post_collide_height: u32,
+    ) -> Result<Vec<([i32; 3], i32)>> {
         let actor = &self.registry.actors[target.index];
         if actor.attributes[56] != 0 {
             return Ok(Vec::new());
@@ -161,8 +170,7 @@ impl GameHost<'_, '_, '_, '_> {
         let pose = self.registry.spatial(target)?.query_pose()?;
         // Centers are rotated at Q8 and offset by the Q8 position, then shifted back to map units.
         self.registry
-            .ordinary_collision_shape(target)?
-            .body
+            .contact_body_spheres(target, data, post_collide_height)?
             .iter()
             .take(MAXIMUM_SPHERES)
             .map(|sphere| {

@@ -28,11 +28,36 @@ pub struct OrdinaryCollisionShape {
 }
 
 #[derive(serde::Deserialize)]
-struct PrimaryBounds {
+struct MpszBounds {
     total_extent: [i32; 3],
     pos_extent: [i32; 3],
     neg_extent: [i32; 3],
     center_offset: [i32; 3],
+}
+
+fn mpsz_bounds(
+    data: &cyrus_assets::animation::Animations,
+    index: usize,
+    scale: i32,
+) -> Result<ActorBounds> {
+    let value = data.metadata["mpsz_entries"]
+        .as_array()
+        .and_then(|entries| entries.get(index))
+        .with_context(|| format!("ordinary collision MPSZ record {index} absent"))?;
+    let record: MpszBounds = serde_json::from_value(value.clone())
+        .with_context(|| format!("ordinary collision invalid MPSZ record {index}"))?;
+    ensure!(
+        record.center_offset == [0; 3],
+        "ordinary collision shifted MPSZ center unsupported"
+    );
+    for axis in 0..3 {
+        ensure!(
+            i64::from(record.pos_extent[axis]) + i64::from(record.neg_extent[axis])
+                == i64::from(record.total_extent[axis]),
+            "ordinary collision MPSZ record {index} axis {axis}: inconsistent total"
+        );
+    }
+    ActorBounds::new(record.pos_extent, record.neg_extent, scale)
 }
 
 impl ScriptWorld {
@@ -102,24 +127,7 @@ impl ScriptWorld {
             let bounds = if authored {
                 let primary = usize::try_from(primary)
                     .context("ordinary collision primary bounds index negative")?;
-                let value = data.metadata["mpsz_entries"]
-                    .as_array()
-                    .and_then(|entries| entries.get(primary))
-                    .context("ordinary collision primary MPSZ record absent")?;
-                let record: PrimaryBounds = serde_json::from_value(value.clone())
-                    .context("ordinary collision invalid MPSZ record")?;
-                ensure!(
-                    record.center_offset == [0; 3],
-                    "ordinary collision shifted MPSZ center unsupported"
-                );
-                for axis in 0..3 {
-                    ensure!(
-                        i64::from(record.pos_extent[axis]) + i64::from(record.neg_extent[axis])
-                            == i64::from(record.total_extent[axis]),
-                        "ordinary collision MPSZ axis {axis}: inconsistent total"
-                    );
-                }
-                ActorBounds::new(record.pos_extent, record.neg_extent, scale)?
+                mpsz_bounds(data, primary, scale)?
             } else {
                 let system_scale = scene
                     .collision
@@ -160,6 +168,69 @@ impl ScriptWorld {
         };
         self.actors[index].collision = Some(shape);
         Ok(())
+    }
+
+    /// Contact body spheres in map units, selected by the retained living group.
+    /// Preservation's player contact-body contract selects tertiary MPSZ only for
+    /// reaction/death class 2 with combat state. Ordinary support remains a separate owner.
+    pub(super) fn contact_body_spheres<'a>(
+        &'a self,
+        id: ScriptActorId,
+        data: &cyrus_assets::animation::Animations,
+        post_collide_height: u32,
+    ) -> Result<std::borrow::Cow<'a, [BodySphere]>> {
+        self.require_model_identity(data)?;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let primary = &self.ordinary_collision_shape(id)?.body;
+        let reaction = actor
+            .control
+            .as_ref()
+            .is_some_and(|control| control.combat.is_some())
+            && actor
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group())
+                .is_some_and(|group| cyrus_world::animation::group_class(group) == 2);
+        if !reaction {
+            return Ok(std::borrow::Cow::Borrowed(primary));
+        }
+        let definition = data.actor(actor.name())?;
+        let alternate = definition
+            .get("mpsz_bounds_1")
+            .map(|value| {
+                value
+                    .as_i64()
+                    .context("contact tertiary MPSZ index invalid")
+            })
+            .transpose()?;
+        let alternate = match alternate {
+            None | Some(-1) => return Ok(std::borrow::Cow::Borrowed(primary)),
+            Some(index) => usize::try_from(index).with_context(|| {
+                format!(
+                    "world {} instance {} actor {} contact mpsz_bounds_1 {index} invalid",
+                    self.world,
+                    id.index,
+                    actor.name()
+                )
+            })?,
+        };
+        let scale = definition["raex"]["unknown_12"]
+            .as_i64()
+            .context("contact RAEX radius scale absent")?;
+        let scale = i32::from(
+            i16::try_from(scale).context("contact RAEX radius scale outside signed word")?,
+        );
+        let body = mpsz_bounds(data, alternate, scale)
+            .and_then(|bounds| bounds.body_spheres(post_collide_height))
+            .with_context(|| {
+                format!(
+                    "world {} instance {index} actor {} contact mpsz_bounds_1 {alternate}",
+                    self.world,
+                    actor.name()
+                )
+            })?;
+        Ok(std::borrow::Cow::Owned(body))
     }
 
     pub fn ordinary_collision_shape(&self, id: ScriptActorId) -> Result<&OrdinaryCollisionShape> {

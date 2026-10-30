@@ -58,12 +58,15 @@ executable state, but allocator recycling and reuse across a long live session
 still require installed original/native/browser acceptance; the current public
 tests do not claim that parity.
 
-Projectile endpoint contact uses the target's prepared ordinary body spheres.
+Projectile endpoint contact selects the target's initialized body spheres.
 Verified: attribute 56 suppresses those spheres. Vertex-bound RAVC volumes belong to
 a separate overlap owner and do not block projectile contact. The optional RAFS
 descriptors are absent from installed maps; their distinction is documented in
 preservation's [sphere data contract](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md#rafs-actor-fsphere-data).
-Live impact parity and combat-specific body selection remain unverified.
+Verified: reaction/death class 2 selects the tertiary MPSZ body when combat state
+and that body exist; class 1 and absent tertiary bodies retain the ordinary shape,
+following preservation's [contact-body selection](https://github.com/michidk/redguard-preservation/blob/786f6c6/docs/engine/player.md#contact-body-shape-selection).
+Live installed impact parity remains unverified.
 
 Verified: revisiting a retained world restores its logical actors and script
 continuations, then places both player records at the destination marker, following

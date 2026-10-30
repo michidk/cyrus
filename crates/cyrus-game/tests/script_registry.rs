@@ -34552,7 +34552,15 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
     };
     use cyrus_collision::actor_models::ActorModelCollision;
     use cyrus_game::script::{PlayerCollisionSource, ScriptInputs};
-    for exclude_body in [false, true] {
+    for (exclude_body, target_x, group, combat, alternate, expected_hit) in [
+        (false, 600, 0, false, false, true),
+        (true, 600, 0, false, false, false),
+        (false, 620, 121, true, true, true),
+        (false, 620, 8, true, true, false),
+        (false, 620, 121, false, true, false),
+        (false, 620, 121, true, false, false),
+        (true, 620, 121, true, true, false),
+    ] {
         let mut scripts = cache();
         scripts.definition.attributes = (0..116).map(|i| format!("attr_{i}")).collect();
         scripts.definition.functions.extend([
@@ -34604,17 +34612,63 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
             placement.active = 1;
             placement.map_position = [600, 20, z];
         }
+        scripts.definition.functions.push(Function {
+            name: "PlayAnimation".into(),
+            param_count: 2,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Call {
+                        call: Call {
+                            function_id: u16::try_from(scripts.definition.functions.len() - 1)
+                                .unwrap(),
+                            kind: CallKind::Function,
+                            target: Object::Me,
+                            function: "PlayAnimation".into(),
+                            arguments: vec![
+                                Value::Integer { value: group },
+                                Value::Integer { value: 0 },
+                            ],
+                        },
+                    },
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        scripts.instances[1].map_position[0] = target_x;
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_14".into(), u8::from(combat));
         scripts.content_id = scripts.content_identity().unwrap();
         let data = Animations {
             version: 2,
             world: scripts.world,
             metadata: serde_json::json!({"script_content_id": scripts.content_id,
                 "mpob_objects": scripts.instances.iter().map(|p| serde_json::json!({"script_name":p.actor,"object_type":1})).collect::<Vec<_>>(),
-                "actors":[{"script_name":"LOGIC", "model_load_path":"animation_table",
+                "mpsz_entries":[{"total_extent":[48,48,48],"pos_extent":[24,24,24],
+                    "neg_extent":[24,24,24],"center_offset":[0,0,0]}],
+                "actors":[{"script_name":"LOGIC", "mpsz_bounds_1": if alternate {0} else {-1}, "model_load_path":"animation_table",
                     "ravc_count":2,"raex":{"unknown_12":0,"v_vertex":0,"v_size":0},
-                    "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+                    "raan_entries":[{"file_path":"BODY.3D","frame_count":3}],
                     "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
-                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                        {"group_index":8,"anim_id":1,"anim_type":0,
+                         "commands":[{"opcode":0,"frame_reference":1},{"opcode":2,"value":0}]},
+                        {"group_index":121,"anim_id":1,"anim_type":0,
+                         "commands":[{"opcode":0,"frame_reference":2},{"opcode":2,"value":0}]}]}]}),
             models: BTreeMap::from([(
                 "BODY".into(),
                 AnimationModel {
@@ -34624,8 +34678,8 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
                     faces: vec![],
                     corner_normals: vec![],
                     encoding: "animated_i16".into(),
-                    positions: vec![vec![]],
-                    normals: vec![vec![]],
+                    positions: vec![vec![], vec![], vec![]],
+                    normals: vec![vec![], vec![], vec![]],
                 },
             )]),
             sections: Default::default(),
@@ -34650,6 +34704,28 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
                 .prepare_ordinary_collision_shape(id, &data, &scene)
                 .unwrap();
         }
+        world
+            .advance(
+                ids[1],
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.animation_frame(ids[1]).unwrap(),
+            Some(match group {
+                8 => 1,
+                121 => 2,
+                _ => 0,
+            })
+        );
         world.refresh_model_presentations(&data, &ids).unwrap();
         world
             .set_actor_attribute(1, 56, u8::from(exclude_body))
@@ -34682,12 +34758,12 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
 
         assert_eq!(
             world.spatial(ball).unwrap().local.position,
-            if exclude_body {
+            if !expected_hit {
                 [600 << 8, 20 << 8, 1000 << 8]
             } else {
                 origin
             }
         );
-        assert_eq!(actor.control_state().unwrap().killed, !exclude_body);
+        assert_eq!(actor.control_state().unwrap().killed, expected_hit);
     }
 }
