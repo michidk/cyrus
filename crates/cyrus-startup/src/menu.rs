@@ -123,6 +123,9 @@ pub struct MenuState {
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
     pub(super) enter_world: bool,
+    /// Movie unlock flags shown by the Movies page; the movie driver keeps them current.
+    #[serde(skip)]
+    pub(super) movie_unlocks: cyrus_game::MovieUnlocks,
     pub preferences: Option<MenuPreferences>,
     pub entries: Vec<MenuItem>,
     pub selected: Option<usize>,
@@ -280,7 +283,10 @@ pub(super) fn register(app: &mut App) {
         .add_message::<bevy::input::keyboard::KeyboardInput>()
         .init_asset::<MenuAsset>()
         .init_asset_loader::<MenuLoader>()
-        .add_systems(OnEnter(AppState::Menu), (pause_cameras, setup))
+        .add_systems(
+            OnEnter(AppState::Menu),
+            (pause_cameras, setup, load_unlocks).chain(),
+        )
         .add_systems(OnEnter(AppState::InGame), restore_cameras)
         .add_systems(
             Update,
@@ -325,6 +331,10 @@ fn reset_for_new_game(commands: &mut Commands) {
         world
             .resource_mut::<cyrus_game::script::ScriptActors>()
             .begin_new_game();
+        // The session initializer reinitializes the movie table (preservation engine/movies.md).
+        if let Some(mut unlocks) = world.get_resource_mut::<cyrus_game::MovieUnlocks>() {
+            unlocks.reset();
+        }
         // The original stops every sound channel before its New Game initializer
         // (preservation engine/menu.md); world entry does not.
         world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
@@ -947,6 +957,8 @@ impl MenuState {
             .map(|(index, e)| {
                 let mut item = e.item.clone();
                 item.grayed |= self.main_entry_disabled(page, index);
+                // Entries for movies 1 through 14 stay hidden until their movie has played.
+                item.visible |= movie_entry_unlocked(page, item.action, self.movie_unlocks);
                 item
             })
             .collect();
@@ -1022,6 +1034,18 @@ fn cleanup(
     commands.remove_resource::<MenuState>();
     commands.remove_resource::<cyrus_game::PausedGameplay>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
+}
+
+/// Whether a Movies-page entry (actions 302 through 315, movies 1 through 14) has been unlocked.
+fn movie_entry_unlocked(page: u8, action: i32, unlocks: cyrus_game::MovieUnlocks) -> bool {
+    page == 3 && (302..=315).contains(&action) && unlocks.is_unlocked((action - 301) as usize)
+}
+
+/// The book starts from the session's movie unlock flags.
+fn load_unlocks(unlocks: Option<Res<cyrus_game::MovieUnlocks>>, menu: Option<ResMut<MenuState>>) {
+    if let (Some(unlocks), Some(mut menu)) = (unlocks, menu) {
+        menu.movie_unlocks = *unlocks;
+    }
 }
 
 #[derive(Component)]
@@ -1769,5 +1793,16 @@ mod tests {
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 2);
         menu.change_list_page(1);
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 10);
+    }
+
+    #[test]
+    fn movies_page_entries_unlock_with_their_movie_and_entry_one_is_never_gated() {
+        let mut unlocks = cyrus_game::MovieUnlocks::default();
+        assert!(!movie_entry_unlocked(3, 305, unlocks));
+        unlocks.unlock(4);
+        assert!(movie_entry_unlocked(3, 305, unlocks));
+        assert!(!movie_entry_unlocked(3, 304, unlocks));
+        assert!(!movie_entry_unlocked(2, 305, unlocks));
+        assert!(!movie_entry_unlocked(3, 301, unlocks));
     }
 }

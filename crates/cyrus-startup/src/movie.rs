@@ -231,6 +231,7 @@ pub(super) fn drive(
         ResMut<MoviePlayback>,
         ResMut<MenuState>,
         Res<super::LaunchRequest>,
+        Option<ResMut<cyrus_game::MovieUnlocks>>,
     ),
     input: (Res<Time<Real>>, Res<ButtonInput<KeyCode>>),
     rendering: (
@@ -245,7 +246,7 @@ pub(super) fn drive(
     let (mut commands, audio_players) = runtime;
     #[cfg(not(target_arch = "wasm32"))]
     let (mut sources, sinks) = audio;
-    let (mut playback, mut menu, launch) = state;
+    let (mut playback, mut menu, launch, mut unlocks) = state;
     let (mut images, mut sprite) = rendering;
     for request in requests.read() {
         if playback.load.is_some() || playback.playing.is_some() {
@@ -262,6 +263,11 @@ pub(super) fn drive(
             MovieRequest::Menu(index) => *index,
             MovieRequest::NewGame => 0,
         };
+        // Playing a movie sets its unlock flag before playback.
+        if let Some(unlocks) = unlocks.as_mut() {
+            unlocks.unlock(index);
+            menu.movie_unlocks = **unlocks;
+        }
         playback.new_game = matches!(request, MovieRequest::NewGame);
         // The CD pauses from the request, not the first frame, and resumes when the movie ends.
         commands.spawn(CinematicAudio);
@@ -651,6 +657,32 @@ mod tests {
         let menu = world.resource::<MenuState>();
         assert!(menu.enter_world && menu.movie.is_none());
         assert!(world.resource::<MoviePlayback>().load.is_none());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn requesting_a_movie_sets_its_unlock_flag_before_playback() {
+        bevy::tasks::IoTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let mut world = World::new();
+        world.insert_resource(GameInstall {
+            root: Default::default(),
+        });
+        world.init_resource::<Messages<MovieRequest>>();
+        world.init_resource::<crate::LaunchRequest>();
+        world.init_resource::<Time<Real>>();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<Assets<StreamingAudio>>();
+        world.init_resource::<MenuState>();
+        world.init_resource::<MoviePlayback>();
+        world.init_resource::<cyrus_game::MovieUnlocks>();
+        world
+            .resource_mut::<Messages<MovieRequest>>()
+            .write(MovieRequest::Menu(3));
+        world.run_system_cached(drive).unwrap();
+        assert!(world.resource::<cyrus_game::MovieUnlocks>().is_unlocked(3));
+        assert!(world.resource::<MenuState>().movie_unlocks.is_unlocked(3));
+        assert!(!world.resource::<cyrus_game::MovieUnlocks>().is_unlocked(2));
     }
 
     #[cfg(not(target_arch = "wasm32"))]

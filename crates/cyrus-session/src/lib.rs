@@ -74,6 +74,8 @@ pub struct RuntimeSessionSnapshot {
     dialogue: RuntimeDialogueSnapshot,
     music: MusicSnapshot,
     cheats: Option<cyrus_game::cheats::CheatSnapshot>,
+    #[serde(default)]
+    movie_unlocks: Option<u16>,
     hud: Option<HudPresentationSnapshot>,
     fidelity: Option<cyrus_game::fidelity::Fidelity>,
     presentation_clock: Option<PresentationClockSnapshot>,
@@ -105,6 +107,7 @@ pub struct RuntimeSessionPlan<'a> {
     dialogue: RuntimeDialogueSnapshot,
     music: MusicSnapshot,
     cheats: Option<cyrus_game::cheats::CheatSnapshot>,
+    movie_unlocks: Option<u16>,
     hud: Option<HudPresentationSnapshot>,
     fidelity: Option<cyrus_game::fidelity::Fidelity>,
     presentation_clock: Option<PresentationClockSnapshot>,
@@ -163,6 +166,7 @@ pub struct RuntimeSessionCandidate {
     dialogue: RuntimeDialogue,
     music: MusicCandidate,
     cheats: Option<cyrus_game::cheats::CheatReplacement>,
+    movie_unlocks: Option<cyrus_game::MovieUnlocks>,
     hud: Option<HudState>,
     fidelity: Option<cyrus_game::fidelity::Fidelity>,
     presentation_clock: Option<PresentationClock>,
@@ -507,6 +511,9 @@ impl RuntimeSessionSnapshot {
         };
         Ok(Self {
             version: 1,
+            movie_unlocks: world
+                .get_resource::<cyrus_game::MovieUnlocks>()
+                .map(|unlocks| unlocks.bits()),
             cheats: world
                 .get_resource::<cyrus_game::cheats::Cheats>()
                 .map(cyrus_game::cheats::Cheats::snapshot)
@@ -663,6 +670,7 @@ impl RuntimeSessionSnapshot {
             dialogue: self.dialogue,
             music: self.music,
             cheats: self.cheats,
+            movie_unlocks: self.movie_unlocks,
             hud: self.hud,
             fidelity: self.fidelity,
             presentation_clock: self.presentation_clock,
@@ -1008,6 +1016,7 @@ impl RuntimeSessionPlan<'_> {
             sources,
             source_identities: self.source_identities,
             cheats,
+            movie_unlocks: self.movie_unlocks.map(cyrus_game::MovieUnlocks::from_bits),
             fidelity: self.fidelity,
             lifecycle,
             scene,

@@ -42,6 +42,7 @@ impl RuntimeSessionCandidate {
             dialogue,
             music,
             cheats,
+            movie_unlocks,
             hud,
             fidelity,
             presentation_clock,
@@ -131,6 +132,9 @@ impl RuntimeSessionCandidate {
                 commands.queue(move |world: &mut World| {
                     cheats.publish(&mut world.resource_mut::<cyrus_game::cheats::Cheats>());
                 });
+            }
+            if let Some(unlocks) = movie_unlocks {
+                commands.insert_resource(unlocks);
             }
             if let Some(hud) = hud {
                 commands.insert_resource(hud);

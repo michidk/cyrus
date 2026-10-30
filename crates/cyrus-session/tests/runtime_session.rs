@@ -567,6 +567,10 @@ fn exercise_runtime_session(
     let mut cheats = cyrus_game::cheats::Cheats::new(CheatStore);
     cheats.execute("neversaydie", Some(42))?;
     app.insert_resource(cheats);
+    let mut unlocks = cyrus_game::MovieUnlocks::default();
+    unlocks.unlock(2);
+    unlocks.unlock(4);
+    app.insert_resource(unlocks);
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
     if with_effects {
         let missing = cyrus_session::SessionWorldAssets::from_loaded(
@@ -998,6 +1002,9 @@ fn exercise_runtime_session(
     app.world_mut()
         .resource_mut::<cyrus_game::cheats::Cheats>()
         .execute("neversaydie", Some(0))?;
+    app.world_mut()
+        .resource_mut::<cyrus_game::MovieUnlocks>()
+        .reset();
     if from_menu {
         app.world_mut()
             .insert_resource(State::new(cyrus_game::AppState::Menu));
@@ -1049,6 +1056,9 @@ fn exercise_runtime_session(
             .value("neversaydie"),
         Some(42)
     );
+    // Unlock flags travel with the saved game and replace the live ones.
+    let restored = *app.world().resource::<cyrus_game::MovieUnlocks>();
+    assert!(restored.is_unlocked(2) && restored.is_unlocked(4) && !restored.is_unlocked(3));
     if from_menu {
         assert!(
             app.world()
