@@ -289,6 +289,14 @@ world music selection act on the live track. These rules follow preservation's
 `docs/engine/sound.md` and `docs/engine/music.md`. Named diagnostic `load` and
 candidate `commit` continue restoring exact source-decoder checkpoints.
 
+Downstream audio queues stay with the live output backend. A same-world saved-game
+load retains the CD player and its queued output; it does not flush, seek or replay
+the saved CD cursor. Retiring sample players stops their future source output,
+but frames already mixed into the backend queue may still drain. Diagnostic
+checkpoint loads replace source decoders without capturing, rewinding or flushing
+that queue, so they do not promise sample-exact output continuity. Physical-device
+latency and queued frames are outside the session document.
+
 `SessionBoundaryInspection` provides an opt-in read-only staging census: pending
 operation, private entity/render-root/camera counts, active live camera count, and
 existing staged asset paths/load states. Calling `snapshot(false)` performs no
