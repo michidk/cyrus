@@ -133,6 +133,7 @@ impl ScriptWorld {
             "world {} ordinary update asset identity mismatch",
             self.world
         );
+        self.ordinary_updates += 1;
         let ticks = inputs
             .nominal_ticks
             .ok_or_else(|| anyhow::anyhow!("ordinary update requires nominal_ticks"))?;

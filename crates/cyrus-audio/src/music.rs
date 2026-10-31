@@ -44,6 +44,8 @@ use cyrus_assets::music::{cue_path, read_track, world_track};
 use cyrus_assets::sound::SoundSettings;
 use cyrus_world::lifecycle::{CurrentScene, SceneRequest};
 
+#[cfg(target_arch = "wasm32")]
+mod browser;
 mod checkpoint;
 pub use checkpoint::{MusicCandidate, MusicSnapshot, MusicTransport};
 
@@ -52,7 +54,13 @@ pub struct MusicPlugin;
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
         if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
+            #[cfg(not(target_arch = "wasm32"))]
             bevy::audio::AddAudioSource::add_audio_source::<MusicTransport>(app);
+            #[cfg(target_arch = "wasm32")]
+            {
+                app.init_asset::<MusicTransport>();
+                browser::register(app);
+            }
         }
         #[cfg(not(target_arch = "wasm32"))]
         let credits_track = credits_track.run_if(resource_exists::<GameInstall>);
@@ -295,13 +303,15 @@ fn finish_track(
     mut music: ResMut<Music>,
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
-    settings: Option<Res<SoundSettings>>,
+    (settings, fidelity): (
+        Option<Res<SoundSettings>>,
+        Option<Res<cyrus_game::fidelity::Fidelity>>,
+    ),
     (playing, movie): (
         Query<Entity, With<MusicPlayer>>,
         Query<(), With<crate::CinematicAudio>>,
     ),
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
 ) {
     let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {
         return;
@@ -362,9 +372,13 @@ fn apply_volume(
     settings: Res<SoundSettings>,
     mut music: ResMut<Music>,
     mut sinks: Query<&mut bevy::audio::AudioSink, With<MusicPlayer>>,
+    mut playback: Query<&mut PlaybackSettings, With<MusicPlayer>>,
 ) {
     if let Some(gain) = redbook_gain(settings.redbook_volume) {
         music.gain = gain;
+    }
+    for mut settings in &mut playback {
+        settings.volume = bevy::audio::Volume::Linear(music.gain);
     }
     for mut sink in &mut sinks {
         use bevy::audio::AudioSinkPlayback;
@@ -377,9 +391,13 @@ fn pause_track(
     settings: Option<Res<SoundSettings>>,
     movie: Query<(), With<crate::CinematicAudio>>,
     sinks: Query<&bevy::audio::AudioSink, With<MusicPlayer>>,
+    mut playback: Query<&mut PlaybackSettings, With<MusicPlayer>>,
 ) {
     use bevy::audio::AudioSinkPlayback;
     let paused = !movie.is_empty() || settings.is_some_and(|s| s.redbook_volume == 0);
+    for mut settings in &mut playback {
+        settings.paused = paused;
+    }
     for sink in &sinks {
         if paused && !sink.is_paused() {
             sink.pause();

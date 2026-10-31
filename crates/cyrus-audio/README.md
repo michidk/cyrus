@@ -34,6 +34,12 @@ player census. `Music::from_snapshot` validates caller-prepared installed bytes
 and returns an off-live `MusicCandidate` for coordinated session publication.
 `MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
 the sink, and queued starts receive the current drive gain and cinematic pause.
+Browser CD playback requests the browser's playback latency policy and uses one
+retained WebAudio buffer per live player, so loading
+and rendering on the main thread do not interrupt the track. Its checkpoint maps
+the audio render clock to the original interleaved source cursor. Preparation
+retains channel ordering even when a diagnostic checkpoint falls between stereo
+samples. Browser effects continue through the shared streaming backend.
 
 Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
 game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;
@@ -220,9 +226,10 @@ speaker inhibition; rendering only reads that selection. The configured keyboard
 key_a signal is sampled before Modern movement interpretation. Joystick input
 remains unsupported.
 
-The complete periodic reset and its selected-player inhibition stage remain
-unconnected. Automatic RTXp and ambient tasks therefore still report missing
-reset input; these adapters do not establish story or full dialogue acceptance.
+The ordinary host advances game-owned sound maintenance before model
+presentation and passes its reset state to ambient and dialogue tasks. Missing
+maintenance ownership remains an error. These services do not establish full
+story, dialogue or gameplay acceptance.
 
 `persistence::AudioRestoreBindings` validates the host's saved-to-replacement actor,
 world-generation and presentation-entity mappings once for audio reconstruction.

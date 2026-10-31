@@ -77,6 +77,7 @@ module where it is defined and regenerate.
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
+- `src/music/browser.rs` — Retained browser CD buffers, independent of main-thread streaming callbacks.
 - `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
 - `src/persistence.rs` — Explicit host-prepared identity bindings shared by restored audio owners.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their

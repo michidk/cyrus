@@ -2832,6 +2832,7 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

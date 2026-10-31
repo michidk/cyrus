@@ -43,6 +43,20 @@ impl PannedSnapshot {
         self.speed
     }
 
+    /// Rebase a stereo CD checkpoint to a browser-rendered frame boundary.
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn at_stereo_input_sample(mut self, input_samples: u64) -> Self {
+        self.input_samples = input_samples;
+        self.channel = (input_samples % 2) as u16;
+        self.right_bits = None;
+        self
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn input_samples(&self) -> u64 {
+        self.input_samples
+    }
+
     pub(crate) fn is_unscaled_loop(&self) -> bool {
         let unity = PcmScale::new(PcmWidth::Sixteen, 127, 256, 64);
         self.width == PcmWidth::Sixteen

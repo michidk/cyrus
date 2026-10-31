@@ -10,12 +10,28 @@ use serde::{Deserialize, Serialize};
 
 /// Prepared CD PCM with exact source-decoder progress. Drive gain stays on the
 /// sink; this wrapper applies unity scaling to the prepared stereo16 samples.
-#[derive(Asset, TypePath, Clone)]
-pub struct MusicTransport(Panned);
+#[derive(Asset, TypePath)]
+pub struct MusicTransport {
+    transport: Panned,
+    #[cfg(target_arch = "wasm32")]
+    clock: std::sync::atomic::AtomicU32,
+}
+impl Clone for MusicTransport {
+    fn clone(&self) -> Self {
+        Self::wrap(self.transport.clone())
+    }
+}
 impl MusicTransport {
+    fn wrap(transport: Panned) -> Self {
+        Self {
+            transport,
+            #[cfg(target_arch = "wasm32")]
+            clock: std::sync::atomic::AtomicU32::new(0),
+        }
+    }
     /// Validate a host-prepared stereo16 CD WAV without starting playback.
     pub fn new(source: AudioSource) -> Result<Self> {
-        Ok(Self(Panned::with_playback(
+        Ok(Self::wrap(Panned::with_playback(
             source,
             PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
             true,
@@ -25,16 +41,34 @@ impl MusicTransport {
 
     /// Immutable prepared bytes for the owning track, never serialized.
     pub fn source(&self) -> &AudioSource {
-        self.0.source()
+        self.transport.source()
     }
 
     /// The decoder owns looping; apply linear drive gain and pause to these settings.
     pub fn playback_settings(&self) -> PlaybackSettings {
-        self.0.playback_settings()
+        self.transport.playback_settings()
     }
 
     fn snapshot(&self) -> Result<PannedSnapshot> {
-        self.0.snapshot()
+        let snapshot = self.transport.snapshot()?;
+        #[cfg(target_arch = "wasm32")]
+        {
+            let clock = self.clock.load(std::sync::atomic::Ordering::Relaxed);
+            if clock != 0 {
+                return super::browser::snapshot(self.source(), snapshot, clock);
+            }
+        }
+        Ok(snapshot)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn browser_clock(&self) -> &std::sync::atomic::AtomicU32 {
+        &self.clock
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn initial_snapshot(&self) -> Result<PannedSnapshot> {
+        self.transport.snapshot()
     }
 
     fn from_snapshot(source: AudioSource, snapshot: PannedSnapshot) -> Result<Self> {
@@ -49,7 +83,7 @@ impl MusicTransport {
         } else {
             super::muted(&source).unwrap_or(source)
         };
-        Ok(Self(Panned::from_snapshot(
+        Ok(Self::wrap(Panned::from_snapshot(
             source,
             PcmWidth::Sixteen,
             snapshot,
@@ -59,7 +93,7 @@ impl MusicTransport {
 impl Decodable for MusicTransport {
     type Decoder = PannedDecoder;
     fn decoder(&self) -> Self::Decoder {
-        self.0.decoder()
+        self.transport.decoder()
     }
 }
 
@@ -165,5 +199,92 @@ impl Music {
             },
             playback,
         })
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(super) struct CdBuffer {
+    pub left: Vec<f32>,
+    pub right: Vec<f32>,
+    pub rate: u32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(super) fn cd_buffer(source: &AudioSource, initial: &PannedSnapshot) -> Result<CdBuffer> {
+    use anyhow::Context;
+    let mut reader = hound::WavReader::new(std::io::Cursor::new(&*source.bytes))
+        .context("browser CD buffer WAV metadata")?;
+    let spec = reader.spec();
+    ensure!(
+        spec.channels == 2
+            && spec.bits_per_sample == 16
+            && spec.sample_format == hound::SampleFormat::Int,
+        "browser CD buffer requires stereo16 PCM"
+    );
+    let samples = reader
+        .samples::<i16>()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("browser CD buffer PCM")?;
+    ensure!(
+        !samples.is_empty() && samples.len() % 2 == 0,
+        "browser CD buffer has incomplete frames"
+    );
+    let offset = initial.input_samples() as usize % samples.len();
+    let mut left = Vec::with_capacity(samples.len() / 2);
+    let mut right = Vec::with_capacity(samples.len() / 2);
+    for frame in 0..samples.len() / 2 {
+        left.push(f32::from(samples[(offset + frame * 2) % samples.len()]) / 32768.0);
+        right.push(f32::from(samples[(offset + frame * 2 + 1) % samples.len()]) / 32768.0);
+    }
+    Ok(CdBuffer {
+        left,
+        right,
+        rate: spec.sample_rate,
+    })
+}
+
+#[cfg(test)]
+mod buffer_tests {
+    use super::*;
+    use bevy::audio::Decodable;
+
+    #[test]
+    fn browser_buffer_and_render_cursor_continue_the_native_cd_transport() {
+        use cyrus_assets::audio::pcm_wav;
+        use rgpre::import::sfx::AudioType;
+        let pcm: Vec<_> = [16384i16, -16384, 8192, -8192, 32767, -32768]
+            .into_iter()
+            .flat_map(i16::to_le_bytes)
+            .collect();
+        let source = AudioSource {
+            bytes: pcm_wav(AudioType::Stereo16, 44100, &pcm).unwrap().into(),
+        };
+        for consumed in 0..18 {
+            let track = MusicTransport::new(source.clone()).unwrap();
+            let mut native = track.decoder();
+            native.by_ref().take(consumed).for_each(drop);
+            let initial = track.snapshot().unwrap();
+            let buffer = cd_buffer(&source, &initial).unwrap();
+            assert_eq!(buffer.rate, 44100);
+            let interleaved: Vec<_> = buffer
+                .left
+                .iter()
+                .zip(&buffer.right)
+                .flat_map(|(left, right)| [*left, *right])
+                .collect();
+            assert_eq!(native.by_ref().take(6).collect::<Vec<_>>(), interleaved);
+            let advanced = (initial.input_samples() + 4) % 6;
+            let saved = initial.at_stereo_input_sample(advanced);
+            let restored = MusicTransport::from_snapshot(source.clone(), saved).unwrap();
+            assert_eq!(
+                restored.decoder().take(8).collect::<Vec<_>>(),
+                interleaved
+                    .into_iter()
+                    .cycle()
+                    .skip(4)
+                    .take(8)
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 }
