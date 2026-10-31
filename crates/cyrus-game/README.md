@@ -58,7 +58,8 @@ executable state, but allocator recycling and reuse across a long live session
 still require installed original/native/browser acceptance; the current public
 tests do not claim that parity.
 
-Verified: `KillMe` clears both body and equipped-weapon presentation. `Resurrect`
+Verified: `KillMe` clears both body and equipped-weapon presentation. Later model
+and weapon publication skips killed receivers. `Resurrect`
 does not republish the removed geometry, following preservation's
 [lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
 

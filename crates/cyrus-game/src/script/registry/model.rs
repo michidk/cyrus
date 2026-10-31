@@ -615,6 +615,13 @@ impl ScriptWorld {
         self.require_model_identity(data)?;
         for &id in admitted {
             let index = self.resolve(id)?;
+            if self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.killed)
+            {
+                continue;
+            }
             self.actors[index].model.current = None;
             let actor = &self.actors[index];
             let control = actor.control.as_ref().with_context(|| {
@@ -1113,6 +1120,9 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("weapon attachment control unavailable")?;
+        if control.killed {
+            return Ok(());
+        }
         if control.combat.is_none() && actor.attributes[110] == 0 {
             return Ok(());
         }

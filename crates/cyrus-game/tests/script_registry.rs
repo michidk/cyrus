@@ -35289,6 +35289,26 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         world.equipped_weapon(id).unwrap().is_none(),
         "KillMe must release the independently rendered weapon"
     );
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    world
+        .refresh_actor_weapon_attachment(
+            id,
+            &data,
+            WeaponInputs {
+                selected_player: world.id(1).unwrap(),
+                item_system_ready: true,
+                shell_execution: false,
+            },
+        )
+        .unwrap();
+    assert!(
+        world.model_presentation(id).unwrap().is_none(),
+        "later publication must not recreate a killed receiver's body"
+    );
+    assert!(
+        world.equipped_weapon(id).unwrap().is_none(),
+        "later publication must not recreate a killed receiver's weapon"
+    );
     world
         .advance(
             id,
