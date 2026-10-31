@@ -8,7 +8,24 @@ use bevy::{
 use cyrus_assets::{animation::Animations, environment::Environment, script::Scripts};
 use cyrus_game::{player::data::PlayerScene, script::WorldSnapshotSources};
 use cyrus_world::lifecycle::PreparedWorld;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, Mutex},
+};
+
+type SourceKey = (
+    bevy::asset::AssetId<Scripts>,
+    bevy::asset::AssetId<Animations>,
+    bevy::asset::AssetId<PlayerScene>,
+    Option<bevy::asset::AssetId<Environment>>,
+);
+
+/// Source identities by world for capture and planning, valid while the same asset ids stay
+/// loaded. Hashing a world's decoded sources costs about a second, so captures reuse it.
+/// Assets can be edited in place (console environment edits), so publication never uses it:
+/// `live_sources` recomputes to detect changes since validation.
+#[derive(Clone, Default)]
+struct IdentityMemo(Arc<Mutex<BTreeMap<u32, (SourceKey, String)>>>);
 
 /// Retained cache references for worlds observed at a settled gameplay boundary.
 /// These are source assets only, not dormant gameplay or audio services.
@@ -16,6 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct SessionSourceCatalog {
     worlds: BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)>,
     environments: BTreeMap<u32, Handle<Environment>>,
+    identities: IdentityMemo,
 }
 
 impl SessionSourceCatalog {
@@ -78,6 +96,7 @@ impl SessionSourceCatalog {
                 })
                 .collect::<Result<_>>()?,
             worlds: prepared,
+            identities: self.identities.clone(),
         })
     }
 }
@@ -150,6 +169,7 @@ pub struct SessionWorldAssets {
     current: u32,
     worlds: BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)>,
     environments: BTreeMap<u32, Handle<Environment>>,
+    identities: IdentityMemo,
 }
 
 impl SessionWorldAssets {
@@ -187,6 +207,7 @@ impl SessionWorldAssets {
             current: snapshot.current_world(),
             environments,
             worlds,
+            identities: IdentityMemo::default(),
         })
     }
 
@@ -194,6 +215,7 @@ impl SessionWorldAssets {
         SessionSourceCatalog {
             worlds: self.worlds,
             environments: self.environments,
+            identities: self.identities,
         }
     }
 
@@ -270,6 +292,7 @@ impl SessionWorldAssets {
                     (id, (world, player))
                 })
                 .collect(),
+            identities: IdentityMemo::default(),
         })
     }
 
@@ -278,6 +301,23 @@ impl SessionWorldAssets {
     pub fn sources<'a>(
         &self,
         world: &'a World,
+    ) -> Result<Option<BTreeMap<u32, WorldSnapshotSources<'a>>>> {
+        self.resolve(world, true)
+    }
+
+    /// As `sources`, but every identity is computed from the live assets. Publication uses
+    /// this to detect a retained asset changed since it was memoized or validated.
+    pub(crate) fn live_sources<'a>(
+        &self,
+        world: &'a World,
+    ) -> Result<Option<BTreeMap<u32, WorldSnapshotSources<'a>>>> {
+        self.resolve(world, false)
+    }
+
+    fn resolve<'a>(
+        &self,
+        world: &'a World,
+        memoized: bool,
     ) -> Result<Option<BTreeMap<u32, WorldSnapshotSources<'a>>>> {
         let server = world
             .get_resource::<AssetServer>()
@@ -294,7 +334,9 @@ impl SessionWorldAssets {
         let environments = world.get_resource::<Assets<Environment>>();
         let mut result = BTreeMap::new();
         let mut pending = false;
+        let mut keys = BTreeMap::new();
         for (&id, (prepared, player)) in &self.worlds {
+            let player_id = player.id();
             for (owner, handle) in [
                 ("scripts", prepared.scripts.id().untyped()),
                 ("animations", prepared.animations.id().untyped()),
@@ -328,9 +370,22 @@ impl SessionWorldAssets {
                 scripts.world == id && animations.world == id && player.world == id,
                 "session source world {id}: decoded owner identity differs"
             );
+            let key: SourceKey = (
+                prepared.scripts.id(),
+                prepared.animations.id(),
+                player_id,
+                self.environments.get(&id).map(Handle::id),
+            );
+            let identity_memo = memoized
+                .then(|| self.identities.0.lock().ok())
+                .flatten()
+                .and_then(|memo| memo.get(&id).filter(|(known, _)| *known == key).cloned())
+                .map(|(_, identity)| identity);
+            keys.insert(id, key);
             result.insert(
                 id,
                 WorldSnapshotSources {
+                    identity_memo,
                     effects: environment.and_then(|environment| environment.effects.as_ref()),
                     player: Some(player),
                     scripts,
@@ -339,7 +394,20 @@ impl SessionWorldAssets {
                 },
             );
         }
-        Ok((!pending).then_some(result))
+        if pending {
+            return Ok(None);
+        }
+        // Fill once all sources are ready; a source that fails validation is left to the
+        // snapshot or plan checks, which report it with their own context.
+        for (id, source) in result.iter_mut().filter(|_| memoized) {
+            if source.identity_memo.is_none()
+                && let (Ok(identity), Ok(mut memo)) = (source.identity(), self.identities.0.lock())
+            {
+                memo.insert(*id, (keys[id], identity.clone()));
+                source.identity_memo = Some(identity);
+            }
+        }
+        Ok(Some(result))
     }
 
     /// Validated-source handles for current-world entity and service preparation.
@@ -384,7 +452,7 @@ pub(crate) fn validate_retained(
     world: &World,
 ) -> Result<()> {
     let sources = assets
-        .sources(world)?
+        .live_sources(world)?
         .context("session retained sources still loading")?;
     ensure!(
         identities(&sources)? == *expected,

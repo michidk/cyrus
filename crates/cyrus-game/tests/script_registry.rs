@@ -539,6 +539,7 @@ fn retained_world_rebinds_actors_after_service_cleanup_without_restarting_script
     let (mut app, prepared, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -582,6 +583,7 @@ fn retained_world_rebinds_actors_after_service_cleanup_without_restarting_script
             actors
                 .restore_visited(
                     &WorldSnapshotSources {
+                        identity_memo: None,
                         effects: None,
                         scripts: &wrong_scripts,
                         player: None,
@@ -670,6 +672,7 @@ fn retained_world_wait_task_continues_its_saved_invocation_counter() {
     let (mut app, prepared, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -6118,6 +6121,7 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
     world.refresh_model_presentations(&data, &[id]).unwrap();
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -7531,6 +7535,7 @@ fn overlap_response_fixture_edited(
     if living_state != 0 || !control_edits.is_empty() {
         let collision = Default::default();
         let sources = cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,
@@ -14886,6 +14891,7 @@ fn snapshot_marks_only_type_six_placements_as_map_lights() {
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -14921,6 +14927,7 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -15028,6 +15035,7 @@ fn type_four_object_light_survives_world_replacement() {
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -15085,6 +15093,7 @@ fn separate_light_cleanup_runs_with_tasks_disabled_and_uses_wrapping_byte_ticks(
         let (_, _, animations) = revisit_test_app(&scripts);
         let collision = cyrus_assets::collision::CollisionScene::default();
         let sources = WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,
@@ -17687,6 +17696,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             let globals = std::mem::take(world.globals_mut());
             let collision = Default::default();
             let sources = cyrus_game::script::WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts: &scripts,
@@ -18784,6 +18794,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         );
         let collision = cyrus_assets::collision::CollisionScene::default();
         let sources = cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,
@@ -19068,6 +19079,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         .unwrap();
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -19608,6 +19620,7 @@ fn current_combat_counter_query_uses_retained_slot_motion_and_idle_gate() {
     world.prepare_spatial().unwrap();
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -20168,6 +20181,7 @@ fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
     let (world, data, models) = static_model_fixture_at(scripts.clone(), Some(20.0), [10, 20, 30]);
     let scene = ordinary_collision_scene(world.world, models);
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -20721,6 +20735,7 @@ fn movement_fixture(
         .unwrap();
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -21307,6 +21322,7 @@ fn movement_snapshot(
     serde_json::to_value(
         world
             .snapshot(&cyrus_game::script::WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts,
@@ -21819,6 +21835,7 @@ fn sight_uses_attribute_selected_attached_then_linked_then_local_positions() {
     let (world, data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
     let scene = ordinary_collision_scene(world.world, models);
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -22040,6 +22057,7 @@ fn combat_decision_prefix_rebinds_target_and_continues_counter_with_live_sight()
     let (world, data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
     let scene = ordinary_collision_scene(world.world, models);
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -22166,6 +22184,7 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
     };
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -22768,6 +22787,7 @@ fn counter_fixture_timing(
         world = ScriptWorld::from_snapshot(
             serde_json::from_value(candidate).unwrap(),
             &cyrus_game::script::WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts: &scripts,
@@ -24047,6 +24067,7 @@ fn free_node_winning_map_and_reservations_survive_rebinding_and_reject_invalid_s
     assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 0)));
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -24144,6 +24165,7 @@ fn restore_navigation_owner(
     ScriptWorld::from_snapshot(
         serde_json::from_value(saved)?,
         &WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts,
@@ -24493,6 +24515,7 @@ fn perception_case(
     world.prepare_navigation(&data).unwrap();
     let scene = ordinary_collision_scene(world.world, models);
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -28409,6 +28432,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
         }
         let collision = cyrus_assets::collision::CollisionScene::default();
         let sources = cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,
@@ -28536,6 +28560,7 @@ fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
     assert_eq!(retained.geometry.retained_point, [2560, 5376, 7680]);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -28965,6 +28990,7 @@ fn replace_health_test_animation(
     let mut restored = ScriptWorld::from_snapshot(
         serde_json::from_value(saved).unwrap(),
         &WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts,
@@ -29749,6 +29775,7 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
         .unwrap();
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -30721,6 +30748,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 let collision = cyrus_assets::collision::CollisionScene::default();
                 let saved = world
                     .snapshot(&cyrus_game::script::WorldSnapshotSources {
+                        identity_memo: None,
                         effects: None,
                         player: None,
                         scripts: &scripts,
@@ -30738,6 +30766,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
                 let collision = Default::default();
                 let sources = WorldSnapshotSources {
+                    identity_memo: None,
                     effects: None,
                     player: None,
                     scripts: &scripts,
@@ -31233,6 +31262,7 @@ fn a_shell_started_after_preparation_survives_a_snapshot_roundtrip() {
     assert!(world.spawn_shell("ABSENT").is_err());
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -32306,6 +32336,7 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
     assert!(world.actors()[created.index].failure().is_none());
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -32352,6 +32383,7 @@ fn a_created_object_snapshot_rejects_an_out_of_range_creator_reference() {
     ));
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -33828,6 +33860,7 @@ fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
         let saved = serde_json::to_value(
             world
                 .snapshot(&WorldSnapshotSources {
+                    identity_memo: None,
                     effects: None,
                     player: None,
                     scripts: &scripts,
@@ -33951,6 +33984,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
     world = ScriptWorld::from_snapshot(
         serde_json::from_value(saved).unwrap(),
         &cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,
@@ -34079,6 +34113,7 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -34412,6 +34447,7 @@ fn retained_world_places_player_roles_at_the_new_destination() {
     let (mut app, prepared, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -34746,6 +34782,7 @@ fn light_maintenance_signed_phase_and_shared_random_continue_after_snapshot() {
     assert_eq!(random.state(), 1);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -35165,6 +35202,7 @@ fn actor_prelight_entry_retains_loader_pose_and_restores_current_eligibility() -
     world.prepare_actor_prelighting()?;
     assert_eq!(world.actor_prelight(actor)?, Some(&initial));
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         scripts: &scripts,
         animations: &animations,
         collision: &scene.collision,
@@ -35286,6 +35324,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
     let sources = BTreeMap::from([(
         scripts.world,
         WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: None,
             scripts: &scripts,

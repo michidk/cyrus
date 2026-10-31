@@ -577,12 +577,18 @@ pub struct WorldSnapshotSources<'a> {
     pub scripts: &'a Scripts,
     pub animations: &'a Animations,
     pub collision: &'a cyrus_assets::collision::CollisionScene,
+    /// `identity()` of exactly these inputs when the owner already computed it. Sources are
+    /// immutable once decoded, so an owner may reuse it; leave `None` to compute on demand.
+    pub identity_memo: Option<String>,
 }
 impl WorldSnapshotSources<'_> {
     /// Validate and fingerprint the complete decoded source set used by registry restore.
     /// Includes collision, optional player/effect content, scripts and animation.
     /// Absent effect inputs preserve the identity used by older pool-free documents.
     pub fn identity(&self) -> Result<String> {
+        if let Some(identity) = &self.identity_memo {
+            return Ok(identity.clone());
+        }
         struct Digest(blake3::Hasher);
         impl std::io::Write for Digest {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

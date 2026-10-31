@@ -4448,6 +4448,7 @@ fn world_snapshot_resumes_native_wait_without_replaying_body_or_changing_live_wo
     let data = animations(&scripts, false);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -4494,6 +4495,7 @@ fn world_snapshot_rejects_corrupt_family_and_changed_source_without_live_mutatio
     let data = animations(&scripts, false);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -4535,6 +4537,7 @@ fn world_snapshot_rejects_corrupt_family_and_changed_source_without_live_mutatio
     let mut changed = animations(&scripts, false);
     changed.sections.insert("changed".into(), vec![1]);
     let changed_sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -4568,6 +4571,7 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
         (
             17,
             WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts: &current_scripts,
@@ -4578,6 +4582,7 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
         (
             18,
             WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts: &visited_scripts,
@@ -4882,6 +4887,7 @@ fn world_snapshot_resumes_displayed_animation_and_native_completion_together() {
     );
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -4948,6 +4954,7 @@ fn world_snapshot_rejects_changed_player_settings_terrain_and_missing_source() {
     });
     let original = PlayerScene::decode(&serde_json::to_vec(&scene_document).unwrap()).unwrap();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: Some(&original),
         scripts: &scripts,
@@ -4971,6 +4978,7 @@ fn world_snapshot_rejects_changed_player_settings_terrain_and_missing_source() {
         *changed.pointer_mut(pointer).unwrap() = value;
         let changed = PlayerScene::decode(&serde_json::to_vec(&changed).unwrap()).unwrap();
         let changed_sources = WorldSnapshotSources {
+            identity_memo: None,
             effects: None,
             player: Some(&changed),
             scripts: &scripts,
@@ -4983,6 +4991,7 @@ fn world_snapshot_rejects_changed_player_settings_terrain_and_missing_source() {
         );
     }
     let absent = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &scripts,
@@ -5780,6 +5789,7 @@ fn backward_attribute_ramp_survives_task_passes_and_world_restoration() {
     let animation = counter_animations(&data);
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &data,
