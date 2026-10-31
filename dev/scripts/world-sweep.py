@@ -66,6 +66,9 @@ def main():
             try:
                 state = call({"type": "state"})
                 scripts = state.get("scripts") or {}
+                if state.get("scene") == world and scripts.get("state") == "Failed":
+                    print(f"{world}: script world failed during readiness: {scripts.get('error') or 'failure detail unavailable'}")
+                    return False
                 if (
                     state["state"] == "InGame"
                     and state.get("scene_ready")
@@ -137,7 +140,7 @@ def main():
             call({"type": "load_scene", "name": world})
             time.sleep(8)
         if not wait_ready(world):
-            print(f"{world}: not ready after {args.ready_timeout} s")
+            print(f"{world}: scene readiness failed")
             bad += 1
             continue
         for assignment in flags.get(world, []):

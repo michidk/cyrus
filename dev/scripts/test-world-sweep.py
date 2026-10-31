@@ -14,7 +14,7 @@ spec.loader.exec_module(sweep)
 
 
 class WorldSweepTests(unittest.TestCase):
-    def run_sweep(self, frames, generations=None, actors=False, script_error=False, console_error=False, flag=False, script_states=None):
+    def run_sweep(self, frames, generations=None, actors=False, script_error=False, console_error=False, flag=False, script_states=None, readiness_error=None):
         now = [0]
         frames = iter(frames)
         generations = iter(generations) if generations else None
@@ -31,7 +31,7 @@ class WorldSweepTests(unittest.TestCase):
                 if cmd["type"] == "state":
                     result = {"state": "InGame", "scene_ready": True, "scene": "START"}
                     if script_states:
-                        result["scripts"] = {"state": next(script_states, "Loaded")}
+                        result["scripts"] = {"state": next(script_states, "Loaded"), "error": readiness_error}
                     # Readiness does not sample game_seconds.
                     result["clock"] = {"game_seconds": now[0]}
                 elif cmd["type"] == "scripts":
@@ -108,6 +108,17 @@ class WorldSweepTests(unittest.TestCase):
     def test_scene_ready_waits_for_script_world_loaded(self):
         result, output = self.run_sweep([3, 4], script_states=iter(["Loading", "Loaded"]))
         self.assertEqual(result, 0, output)
+
+    def test_failed_script_world_reports_readiness_cause_before_polling_actors(self):
+        result, output = self.run_sweep(
+            [], script_states=iter(["Loading", "Failed"]),
+            readiness_error="CYRUS group 74: animation sound scene binding unavailable",
+        )
+        self.assertEqual(result, 1, output)
+        self.assertIn(
+            "START: script world failed during readiness: CYRUS group 74: animation sound scene binding unavailable",
+            output,
+        )
 
     def test_direct_scene_state_remains_compatible(self):
         result, output = self.run_sweep([3, 4])
