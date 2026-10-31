@@ -46,6 +46,12 @@ completes immediately after admission and its state writes; selected-player
 edge and hang services use the caller's receiver-bound collision geometry.
 Its contract follows preservation's `player.md#script-jump`.
 
+Verified: refused scripted directional steps retain body-response marks for
+forward and sideways movement, and a transition mark for backward movement.
+Player alignment consumes these marks when choosing its fallback. The auxiliary
+response bytes remain separate, following preservation's
+[directional refusal contract](https://github.com/michidk/redguard-preservation/pull/153).
+
 Installed `multitask PlayAnimation(10, 0)` calls retain a native animation request
 across main-thread loops and session restore. Function-form requests complete
 immediately. Other task-form operands remain explicitly unsupported.

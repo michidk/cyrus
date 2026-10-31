@@ -14362,12 +14362,24 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
         );
         assert_eq!(world.spatial(player).unwrap().local.position, position);
         assert_eq!(
-            world.actors()[index]
-                .control_state()
-                .unwrap()
-                .collision_response_auxiliary,
+            [
+                world.actors()[index]
+                    .control_state()
+                    .unwrap()
+                    .body_response_flags,
+                world.actors()[index]
+                    .control_state()
+                    .unwrap()
+                    .collision_transition_flags,
+            ],
             expected
         );
+        let control = world.actors()[index].control_state().unwrap();
+        assert_eq!(control.collision_response_auxiliary, [0, 0]);
+        assert!(cyrus_game::script::alignment::fallback_response(
+            control.body_response_flags,
+            control.collision_transition_flags
+        ));
     }
     world
         .finish_ordinary_script_response(player, Some(9))
@@ -14375,6 +14387,8 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
     let control = world.actors()[index].control_state().unwrap();
     assert_eq!(control.collision_response_age, 9);
     assert_eq!(control.collision_response_auxiliary, [0, 0]);
+    assert_eq!(control.body_response_flags, 0);
+    assert_eq!(control.collision_transition_flags, 0);
 }
 
 #[test]
@@ -20066,7 +20080,7 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
         world.actors()[id.index]
             .control_state()
             .unwrap()
-            .collision_response_auxiliary[0],
+            .body_response_flags,
         0x80
     );
     world.finish_ordinary_script_response(id, Some(1)).unwrap();
@@ -20074,7 +20088,7 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
         world.actors()[id.index]
             .control_state()
             .unwrap()
-            .collision_response_auxiliary[0],
+            .body_response_flags,
         0
     );
 }
@@ -20124,10 +20138,16 @@ fn directional_body_refusal_retains_markers_and_skips_support_without_translatio
         );
         assert_eq!(world.spatial(id).unwrap().local.position, saved);
         assert_eq!(
-            world.actors()[id.index]
-                .control_state()
-                .unwrap()
-                .collision_response_auxiliary,
+            [
+                world.actors()[id.index]
+                    .control_state()
+                    .unwrap()
+                    .body_response_flags,
+                world.actors()[id.index]
+                    .control_state()
+                    .unwrap()
+                    .collision_transition_flags,
+            ],
             markers
         );
     }
@@ -20317,7 +20337,7 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                     world.actors()[id.index]
                         .control_state()
                         .unwrap()
-                        .collision_response_auxiliary[0],
+                        .body_response_flags,
                     0
                 );
                 break;
@@ -20328,7 +20348,7 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                 world.actors()[id.index]
                     .control_state()
                     .unwrap()
-                    .collision_response_auxiliary[0],
+                    .body_response_flags,
                 0x80
             );
             assert_eq!(
@@ -21121,8 +21141,8 @@ fn synchronous_walk_forward_uses_live_body_refusal_without_creating_a_task() {
         world.actors()[0]
             .control_state()
             .unwrap()
-            .collision_response_auxiliary,
-        [0x80, 0]
+            .body_response_flags,
+        0x80
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }

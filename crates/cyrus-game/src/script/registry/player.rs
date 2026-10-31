@@ -855,12 +855,12 @@ impl ScriptWorld {
             self.query_player_forward_support(id, query, proposed, &mut movement.history, false);
         self.actors[index].player_movement = Some(movement);
         if matches!(result, Ok(false)) {
-            let (byte, mask) = direction.blocked_response();
-            self.actors[index]
-                .control
-                .as_mut()
-                .context("player step check control unavailable")?
-                .collision_response_auxiliary[byte] |= mask;
+            direction.mark_blocked_response(
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("player step check control unavailable")?,
+            );
         }
         result
     }

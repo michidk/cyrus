@@ -13,12 +13,12 @@ pub enum OrdinaryStepDirection {
 }
 
 impl OrdinaryStepDirection {
-    pub(super) fn blocked_response(self) -> (usize, u8) {
+    pub(super) fn mark_blocked_response(self, control: &mut super::ActorControlState) {
         match self {
-            Self::Forward => (0, 0x80),
-            Self::Left => (0, 0x20),
-            Self::Right => (0, 0x40),
-            Self::Backward => (1, 0x01),
+            Self::Forward => control.body_response_flags |= 0x80,
+            Self::Left => control.body_response_flags |= 0x20,
+            Self::Right => control.body_response_flags |= 0x40,
+            Self::Backward => control.collision_transition_flags |= 0x01,
         }
     }
 }
@@ -124,12 +124,12 @@ impl ScriptWorld {
             && !self.step_hazard(id, environment.selected_player, destination, obstacle())?
             && self.admit_ordinary_destination(id, destination, query, environment, sounds)?;
         if !clear {
-            let (byte, mask) = direction.blocked_response();
-            self.actors[index]
-                .control
-                .as_mut()
-                .context("directional step control unavailable")?
-                .collision_response_auxiliary[byte] |= mask;
+            direction.mark_blocked_response(
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("directional step control unavailable")?,
+            );
         }
         Ok(clear)
     }
