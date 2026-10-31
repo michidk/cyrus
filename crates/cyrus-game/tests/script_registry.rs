@@ -30433,20 +30433,29 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
         ScriptActorSource, ScriptInputs, ScriptStage,
     };
+    #[derive(Clone, Copy, Debug)]
+    enum Continuation {
+        Normal,
+        MoveReference,
+        MissingCollision,
+    }
+    use Continuation::*;
     // The receiver stands where the player does; the target is 8 map units ahead (+Z) and the
     // final heading (receiver heading 0 + angle 1024 + 1024) is the player's own, so no turn runs.
     // The pickup and parallel natives add their offsets unrotated; PlayerLineUp rotates them by the
     // reference heading plus the angle (half a turn here) and picks its mode from the distance.
-    for (function, lineup_distance, z_offset) in [
-        ("PlayerParallelLineUp", None, 2048),
-        ("PlayerPickupLineUp", None, 2048),
-        ("PlayerLineUp", Some(0), -2048),
-        ("PlayerLineUp", Some(6655), -2048),
-        ("PlayerLineUp", Some(6656), -2048),
-        ("PlayerLineUp", Some(i32::MAX), -2048),
-        ("PlayerLineUp", Some(i32::MAX), 2048),
+    'cases: for (function, lineup_distance, z_offset, continuation) in [
+        ("PlayerParallelLineUp", None, 2048, Normal),
+        ("PlayerPickupLineUp", None, 2048, Normal),
+        ("PlayerLineUp", Some(0), -2048, Normal),
+        ("PlayerLineUp", Some(6655), -2048, Normal),
+        ("PlayerLineUp", Some(6656), -2048, Normal),
+        ("PlayerLineUp", Some(i32::MAX), -2048, Normal),
+        ("PlayerLineUp", Some(i32::MAX), 2048, Normal),
+        ("PlayerLineUp", Some(i32::MAX), -2048, MoveReference),
+        ("PlayerLineUp", Some(i32::MAX), -8192, MissingCollision),
     ] {
-        let (scripts, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
@@ -30488,21 +30497,27 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
             })
             .collect();
         });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         let index = world
             .actors()
             .iter()
             .position(|actor| matches!(actor.source, ScriptActorSource::Player))
             .unwrap();
-        let player = world.id(index).unwrap();
-        let map = world.id(0).unwrap();
+        let mut player = world.id(index).unwrap();
+        let mut map = world.id(0).unwrap();
         let hud = cyrus_game::script::ScriptHud::default();
-        let actors = [player, map];
+        let mut actors = [player, map];
         let mut random = cyrus_game::random::EngineRandom::default();
         let mut positions = vec![];
         let mut crossed_distance_boundary = false;
         let distance = |world: &ScriptWorld| {
-            let player = world.spatial(player).unwrap().local.position;
-            let receiver = world.spatial(map).unwrap().local.position;
+            let player = world
+                .spatial(world.id(index).unwrap())
+                .unwrap()
+                .local
+                .position;
+            let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
             cyrus_game::script::rounded_distance(std::array::from_fn(|axis| {
                 player[axis] - receiver[axis]
             }))
@@ -30544,6 +30559,62 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 }),
                 ..Default::default()
             };
+            if matches!(continuation, MissingCollision) && round > 0 {
+                let position = world.spatial(player).unwrap().local.position;
+                let result = world.inspect(0, 1)["globals"]["lineup_result"].clone();
+                let outcome = world.advance(
+                    map,
+                    ScriptStage::Tasks,
+                    ScriptInputs {
+                        player_collision: None,
+                        ..inputs
+                    },
+                    Some(&mut |_, _| Ok(())),
+                    Some(&mut random),
+                    20,
+                );
+                let Err(error) = outcome else {
+                    assert_eq!(world.flags(), [12]);
+                    continue;
+                };
+                assert!(
+                    format!("{error:#}")
+                        .contains("collision geometry bound to the selected player")
+                );
+                assert_eq!(world.spatial(player).unwrap().local.position, position);
+                assert_eq!(world.inspect(0, 1)["globals"]["lineup_result"], result);
+                assert_eq!(world.flags(), [12]);
+                assert!(world.actors()[map.index].failure().is_some());
+                assert!(
+                    world
+                        .advance(
+                            map,
+                            ScriptStage::Tasks,
+                            inputs,
+                            Some(&mut |_, _| Ok(())),
+                            Some(&mut random),
+                            20
+                        )
+                        .is_err()
+                );
+                assert!(
+                    !world
+                        .run_player_native_hook(player, &mut |_| {
+                            panic!("failed alignment must not dispatch player input")
+                        })
+                        .unwrap()
+                );
+                world
+                    .player_step_clear(
+                        player,
+                        inputs.locomotion_geometry.unwrap().ground,
+                        cyrus_game::script::OrdinaryStepDirection::Forward,
+                    )
+                    .unwrap();
+                assert_eq!(world.spatial(player).unwrap().local.position, position);
+                assert_eq!(world.inspect(0, 1)["globals"]["lineup_result"], result);
+                continue 'cases;
+            }
             // The main thread runs the call once and resumes after the task completes.
             let stages: &[ScriptStage] = if round == 0 {
                 &[ScriptStage::Body(cyrus_script::Thread::Main)]
@@ -30583,6 +30654,36 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 assert_eq!(state["approach"], lineup_distance.unwrap() < 6656);
                 assert_eq!(state["reference"], 0);
             }
+            if matches!(continuation, MoveReference) && round == 0 {
+                use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+                let collision = Default::default();
+                let sources = WorldSnapshotSources {
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &data,
+                    collision: &collision,
+                };
+                let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+                let receiver = world.spatial(map).unwrap().local.position;
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([receiver[0], receiver[1], receiver[2] + 256]);
+                let generation = world.generation() + 1;
+                let globals = std::mem::take(world.globals_mut());
+                world = ScriptWorld::from_snapshot(
+                    serde_json::from_value(saved).unwrap(),
+                    &sources,
+                    WorldRestoreContext {
+                        generation,
+                        globals,
+                        samples: &BTreeMap::new(),
+                    },
+                )
+                .unwrap();
+                player = world.id(index).unwrap();
+                map = world.id(0).unwrap();
+                actors = [player, map];
+            }
             positions.push(world.spatial(player).unwrap().local.position);
             if world.flags() == [7] {
                 break;
@@ -30599,8 +30700,15 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 "equality mode must survive a later greater distance"
             );
         }
-        let receiver = world.spatial(map).unwrap().local.position;
+        let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
         let end = world.spatial(player).unwrap().local.position;
+        if matches!(continuation, MoveReference) {
+            assert_eq!([end[0], end[2]], [2560, 9984]);
+            assert_eq!(
+                world.actors()[map.index].runtime().unwrap().active_tasks(),
+                0
+            );
+        }
         let target_z = if function == "PlayerLineUp" {
             -z_offset
         } else {
