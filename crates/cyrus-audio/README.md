@@ -226,9 +226,10 @@ speaker inhibition; rendering only reads that selection. The configured keyboard
 key_a signal is sampled before Modern movement interpretation. Joystick input
 remains unsupported.
 
-The complete periodic reset and its selected-player inhibition stage remain
-unconnected. Automatic RTXp and ambient tasks therefore still report missing
-reset input; these adapters do not establish story or full dialogue acceptance.
+The ordinary host advances game-owned sound maintenance before model
+presentation and passes its reset state to ambient and dialogue tasks. Missing
+maintenance ownership remains an error. These services do not establish full
+story, dialogue or gameplay acceptance.
 
 `persistence::AudioRestoreBindings` validates the host's saved-to-replacement actor,
 world-generation and presentation-entity mappings once for audio reconstruction.
