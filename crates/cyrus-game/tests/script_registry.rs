@@ -30424,6 +30424,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         ("PlayerLineUp", Some(6655), -2048),
         ("PlayerLineUp", Some(6656), -2048),
         ("PlayerLineUp", Some(i32::MAX), -2048),
+        ("PlayerLineUp", Some(i32::MAX), 2048),
     ] {
         let (scripts, mut world, data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
@@ -30580,7 +30581,12 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         }
         let receiver = world.spatial(map).unwrap().local.position;
         let end = world.spatial(player).unwrap().local.position;
-        assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);
+        let target_z = if function == "PlayerLineUp" {
+            -z_offset
+        } else {
+            z_offset
+        };
+        assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + target_z]);
     }
 }
 
