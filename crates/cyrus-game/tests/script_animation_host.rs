@@ -1287,6 +1287,49 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
 }
 
 #[test]
+fn end_releases_only_its_activation_owner_without_consuming_prompt_or_holdoff() {
+    use cyrus_game::script::ActivationOverlay;
+    let (mut world, inputs) = activation_world("Activate");
+    activate_world(&mut world, &inputs);
+    let owner = world.id(1).unwrap();
+    assert_eq!(
+        world.activation().owner(),
+        Some(owner),
+        "the caller's End preserves a foreign owner"
+    );
+    world
+        .advance(
+            owner,
+            ScriptStage::Body(Thread::Interrupt),
+            cyrus_game::script::ScriptInputs {
+                activation: Some(&inputs),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.activation().owner(), None);
+    assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world.activation_overlay(&inputs, 22, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Prompt("Open".into())
+    );
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [1], "activation remains available after End");
+    assert_eq!(world.activation().owner(), Some(owner));
+}
+
+#[test]
 fn activation_requires_receiver_eligibility_and_matching_torch_state() {
     for (function, burning, expected) in [
         ("Activate", 0, 1),
@@ -1495,11 +1538,12 @@ fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
 }
 
 #[test]
-fn activation_owner_blocks_a_different_receiver_after_prompt_consumption() {
+fn activation_owner_blocks_a_different_receiver_until_its_end() {
     let (mut world, inputs) = activation_world("Activate");
     activate_world(&mut world, &inputs);
     world.activation_overlay(&inputs, 22, false, 24).unwrap();
     world.activation_overlay(&inputs, 0, false, 24).unwrap();
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
     world
         .advance(
             world.id(1).unwrap(),
@@ -1514,7 +1558,7 @@ fn activation_owner_blocks_a_different_receiver_after_prompt_consumption() {
         )
         .unwrap();
     assert_eq!(world.flags(), [0]);
-    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+    assert_eq!(world.activation().owner(), None);
     assert_eq!(world.activation().prompt(), None);
 }
 

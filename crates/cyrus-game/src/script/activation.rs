@@ -658,6 +658,12 @@ impl ActivationState {
     pub fn owner(&self) -> Option<ScriptActorId> {
         self.owner
     }
+    pub(super) fn release_owner(&mut self, receiver: ScriptActorId) {
+        if self.owner == Some(receiver) {
+            self.owner = None;
+        }
+    }
+
     pub fn prompt(&self) -> Option<&str> {
         self.prompt.as_deref()
     }

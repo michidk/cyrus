@@ -115,6 +115,11 @@ random values. Disabled records retain the inactivity cleanup path.
 Snapshots retain each channel's phase; the session retains the shared random state.
 This logical maintenance does not add ordinary actor lights to renderer submission.
 
+Verified: the production SOUP `End` notification releases activation ownership
+when the ending actor owns it, following preservation's
+[End contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#end-0x05).
+The pending prompt and activation holdoff survive this owner release.
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification

@@ -7232,6 +7232,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .with_context(|| format!("task source {} instruction {instruction} absent", origin.0))
     }
     fn end(&mut self, _: Thread) -> Result<()> {
+        self.registry.activation.release_owner(ScriptActorId {
+            generation: self.registry.generation,
+            index: self.index,
+        });
         let attributes = &self.registry.actors[self.index].attributes;
         self.registry.globals.group_sync.reset_user(
             self.index,
