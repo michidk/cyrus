@@ -30421,9 +30421,11 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         ("PlayerParallelLineUp", None, 2048),
         ("PlayerPickupLineUp", None, 2048),
         ("PlayerLineUp", Some(0), -2048),
+        ("PlayerLineUp", Some(6655), -2048),
+        ("PlayerLineUp", Some(6656), -2048),
         ("PlayerLineUp", Some(i32::MAX), -2048),
     ] {
-        let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+        let (scripts, mut world, data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
@@ -30476,6 +30478,16 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         let actors = [player, map];
         let mut random = cyrus_game::random::EngineRandom::default();
         let mut positions = vec![];
+        let mut crossed_distance_boundary = false;
+        let distance = |world: &ScriptWorld| {
+            let player = world.spatial(player).unwrap().local.position;
+            let receiver = world.spatial(map).unwrap().local.position;
+            cyrus_game::script::rounded_distance(std::array::from_fn(|axis| {
+                player[axis] - receiver[axis]
+            }))
+            .unwrap()
+        };
+        assert_eq!(distance(&world), 6656);
         // The player's own update has begun, as it has by the time a receiver's script runs.
         world.begin_player_movement_update(player, 0).unwrap();
         for round in 0..40 {
@@ -30532,6 +30544,24 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     )
                     .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
             }
+            if function == "PlayerLineUp" && world.flags() != [7] {
+                crossed_distance_boundary |= distance(&world) > lineup_distance.unwrap();
+                let collision = cyrus_assets::collision::CollisionScene::default();
+                let saved = world
+                    .snapshot(&cyrus_game::script::WorldSnapshotSources {
+                        effects: None,
+                        player: None,
+                        scripts: &scripts,
+                        animations: &data,
+                        collision: &collision,
+                    })
+                    .unwrap();
+                let saved = serde_json::to_value(saved).unwrap();
+                let state = &saved["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"];
+                assert_eq!(state["initialized"], true);
+                assert_eq!(state["approach"], lineup_distance.unwrap() < 6656);
+                assert_eq!(state["reference"], 0);
+            }
             positions.push(world.spatial(player).unwrap().local.position);
             if world.flags() == [7] {
                 break;
@@ -30542,6 +30572,12 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
             [7],
             "{function} {lineup_distance:?}: positions {positions:?}"
         );
+        if lineup_distance == Some(6656) {
+            assert!(
+                crossed_distance_boundary,
+                "equality mode must survive a later greater distance"
+            );
+        }
         let receiver = world.spatial(map).unwrap().local.position;
         let end = world.spatial(player).unwrap().local.position;
         assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);
