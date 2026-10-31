@@ -14322,6 +14322,62 @@ fn scripted_walk_steps_move_the_selected_player_through_the_support_check() {
 }
 
 #[test]
+fn selected_directional_refusal_marks_response_without_moving_the_player() {
+    use cyrus_game::script::{OrdinaryGroundQuery, OrdinaryStepDirection, ScriptActorSource};
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let position = [2560, 5120, 7680];
+    world.place_selected_player(position, 0).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    for (direction, expected) in [
+        (OrdinaryStepDirection::Forward, [0x80, 0]),
+        (OrdinaryStepDirection::Left, [0xa0, 0]),
+        (OrdinaryStepDirection::Right, [0xe0, 0]),
+        (OrdinaryStepDirection::Backward, [0xe0, 1]),
+    ] {
+        assert!(
+            !world
+                .player_step_clear(
+                    player,
+                    OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 4,
+                        sidedness: false,
+                    },
+                    direction
+                )
+                .unwrap(),
+            "{direction:?}"
+        );
+        assert_eq!(world.spatial(player).unwrap().local.position, position);
+        assert_eq!(
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .collision_response_auxiliary,
+            expected
+        );
+    }
+    world
+        .finish_ordinary_script_response(player, Some(9))
+        .unwrap();
+    let control = world.actors()[index].control_state().unwrap();
+    assert_eq!(control.collision_response_age, 9);
+    assert_eq!(control.collision_response_auxiliary, [0, 0]);
+}
+
+#[test]
 fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     use cyrus_collision::ground::SupportSource;
     use cyrus_game::script::{OrdinaryGroundQuery, ScriptActorSource};

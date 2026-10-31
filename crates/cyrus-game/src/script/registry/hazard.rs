@@ -12,6 +12,17 @@ pub enum OrdinaryStepDirection {
     Backward,
 }
 
+impl OrdinaryStepDirection {
+    pub(super) fn blocked_response(self) -> (usize, u8) {
+        match self {
+            Self::Forward => (0, 0x80),
+            Self::Left => (0, 0x20),
+            Self::Right => (0, 0x40),
+            Self::Backward => (1, 0x01),
+        }
+    }
+}
+
 /// Surface class of a contact normal's Y component (scale 256, negative up): 4 for floors,
 /// 2 for steep slopes, 8 for ceilings and 1 otherwise.
 pub(super) fn surface_class(normal_y: i32) -> u8 {
@@ -113,12 +124,7 @@ impl ScriptWorld {
             && !self.step_hazard(id, environment.selected_player, destination, obstacle())?
             && self.admit_ordinary_destination(id, destination, query, environment, sounds)?;
         if !clear {
-            let (byte, mask) = match direction {
-                OrdinaryStepDirection::Forward => (0, 0x80),
-                OrdinaryStepDirection::Left => (0, 0x20),
-                OrdinaryStepDirection::Right => (0, 0x40),
-                OrdinaryStepDirection::Backward => (1, 0x01),
-            };
+            let (byte, mask) = direction.blocked_response();
             self.actors[index]
                 .control
                 .as_mut()
