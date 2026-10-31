@@ -21,7 +21,9 @@ Consumes serialized `cyrus-assets::collision` records and Bevy math, without wor
 lifecycle, gameplay, rendering, an install parser or an audio backend.
 
 `StaticCollision` builds the spatial registry and supplies ordered candidates,
-body contacts and support queries. `TerrainGround`, `TerrainMaterial`, probes and
+body contacts and support queries. Static placement matrices use the authored
+row order for body and ground queries, following preservation's
+[MPSO matrix contract](https://michidk.github.io/redguard-preservation/formats/RGM.html#mpso-static-objects). `TerrainGround`, `TerrainMaterial`, probes and
 support history retain their existing units, traversal order and contextual errors.
 Player admission, movement and wall response remain in `cyrus-game`; original-file
 parsing and serialized collision export remain in preservation and `cyrus-assets`.
