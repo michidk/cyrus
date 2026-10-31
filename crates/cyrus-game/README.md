@@ -58,6 +58,10 @@ executable state, but allocator recycling and reuse across a long live session
 still require installed original/native/browser acceptance; the current public
 tests do not claim that parity.
 
+Verified: `KillMe` clears both body and equipped-weapon presentation. `Resurrect`
+does not republish the removed geometry, following preservation's
+[lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
+
 Projectile endpoint contact selects the target's initialized body spheres.
 Verified: attribute 56 suppresses those spheres. Vertex-bound RAVC volumes belong to
 a separate overlap owner and do not block projectile contact. The optional RAFS

@@ -5736,6 +5736,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             control.killed = true;
             control.death_selector = 8;
             self.registry.actors[self.index].model.current = None;
+            self.registry.actors[self.index].model.weapon = None;
             // The original frees the receiver's light and flat records, so a later call starts new ones.
             self.registry.actors[self.index].light = None;
             self.registry.actors[self.index].flat = None;

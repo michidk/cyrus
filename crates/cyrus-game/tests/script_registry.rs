@@ -35184,3 +35184,125 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
         world = restore(document).unwrap().actors.current.unwrap();
     }
 }
+
+#[test]
+fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
+    use cyrus_assets::animation::AnimationModel;
+    use cyrus_game::script::{ScriptInputs, WeaponInputs};
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.definition.functions.push(Function {
+        name: "Resurrect".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor
+        .attributes
+        .extend([("attr_14".into(), 1), ("attr_23".into(), 1)]);
+    actor.program.steps = BTreeMap::from([
+        (0, assign_call(1, 1, "KillMe", &[])),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 2 },
+            },
+        ),
+        (2, assign_call(3, 2, "Resurrect", &[])),
+        (
+            3,
+            Step {
+                next: 4,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.weapons.insert(
+        1,
+        weapon::Weapon {
+            hand_model: "HAND".into(),
+            hilt_model: "HILT".into(),
+            length: 17,
+        },
+    );
+    let (mut world, mut data, _) = static_model_fixture(scripts);
+    data.metadata["actors"][0] = serde_json::json!({
+        "script_name":"LOGIC", "model_load_path":"animation_table",
+        "raex":{"grip0":0,"grip1":1,"scabbard0":1,"scabbard1":0,"v_vertex":0,"v_size":0,"unknown_12":0},
+        "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+        "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]
+    });
+    data.metadata["mpob_objects"][0]["script_name"] = "LOGIC".into();
+    for name in ["BODY", "HAND", "HILT"] {
+        data.models.insert(
+            name.into(),
+            AnimationModel {
+                radius: Some(1.0),
+                base_positions: vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "animated_i16".into(),
+                positions: vec![vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]],
+                normals: vec![vec![]],
+            },
+        );
+    }
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    world
+        .refresh_actor_weapon_attachment(
+            id,
+            &data,
+            WeaponInputs {
+                selected_player: world.id(1).unwrap(),
+                item_system_ready: true,
+                shell_execution: false,
+            },
+        )
+        .unwrap();
+    assert!(world.model_presentation(id).unwrap().is_some());
+    assert_eq!(world.equipped_weapon(id).unwrap().unwrap().model, "HILT");
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(0),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    assert!(world.model_presentation(id).unwrap().is_none());
+    assert!(
+        world.equipped_weapon(id).unwrap().is_none(),
+        "KillMe must release the independently rendered weapon"
+    );
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(!world.actors()[0].control_state().unwrap().killed);
+    assert!(world.model_presentation(id).unwrap().is_none());
+    assert!(
+        world.equipped_weapon(id).unwrap().is_none(),
+        "Resurrect must not republish stale attachment geometry"
+    );
+}
