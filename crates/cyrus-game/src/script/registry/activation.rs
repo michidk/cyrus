@@ -75,8 +75,8 @@ pub(super) fn ordinary_inputs(
 
 impl ScriptWorld {
     /// Draw ordinary prompts from current actor and session state, using nominal ticks.
-    /// Inspection callers retain their explicit activation inputs. Alignment execution
-    /// remains unsupported; its unknown result prevents subsequent prompt admission.
+    /// Inspection callers retain their explicit activation inputs. An unavailable shared
+    /// alignment result prevents subsequent prompt admission.
     pub fn ordinary_activation_overlay(
         &mut self,
         hud: &ScriptHud,
