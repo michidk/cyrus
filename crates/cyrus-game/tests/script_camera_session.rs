@@ -286,6 +286,7 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
     };
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &data,
@@ -553,6 +554,7 @@ fn world_snapshot_resumes_an_object_pan_mid_flight() {
     };
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &data,
@@ -1280,6 +1282,7 @@ fn initialized_camera_and_both_player_roles_restore_their_spatial_state() {
     };
     let collision = Default::default();
     let sources = WorldSnapshotSources {
+        identity_memo: None,
         effects: None,
         player: None,
         scripts: &data,

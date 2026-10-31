@@ -891,6 +891,7 @@ impl OrdinaryContext<'_, '_> {
             .ok_or_else(|| anyhow::anyhow!("revisit player/collision source unavailable"))?;
         self.actors.restore_visited(
             &super::WorldSnapshotSources {
+                identity_memo: None,
                 effects: self
                     .prepared
                     .prepared_world

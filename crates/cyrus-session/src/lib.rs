@@ -191,7 +191,7 @@ impl RuntimeSessionCandidate {
             !world.contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>(),
             "session publication: world preparation is in flight"
         );
-        sources::validate_retained(&self.sources, &self.source_identities, world)?;
+        sources::validate_retained(&self.sources, &self.source_identities, world, true)?;
         validate_reader_boundary(world)?;
         ensure!(
             self.cheats.is_some() == world.contains_resource::<cyrus_game::cheats::Cheats>(),
@@ -720,7 +720,7 @@ impl RuntimeSessionPlan<'_> {
             actor_model_roots,
             environments,
         } = services;
-        sources::validate_retained(&sources, &self.source_identities, live_world)?;
+        sources::validate_retained(&sources, &self.source_identities, live_world, false)?;
         let (prepared, retained_player) = sources.current();
         ensure!(
             *retained_player == player.scene,

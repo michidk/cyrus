@@ -75,6 +75,7 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
         if function == "ShowMe" {
             let collision = Default::default();
             let sources = cyrus_game::script::WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 player: None,
                 scripts: &scripts,

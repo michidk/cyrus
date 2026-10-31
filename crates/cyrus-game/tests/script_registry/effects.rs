@@ -194,6 +194,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
             changed.images.get_mut(&0x2500).unwrap().alpha = 152;
             assert!(world.prepare_environment_effects(&changed).is_err());
             let sources = WorldSnapshotSources {
+                identity_memo: None,
                 effects: Some(&effects),
                 player: None,
                 scripts: &scripts,
@@ -201,6 +202,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 collision: &scene.collision,
             };
             let missing = WorldSnapshotSources {
+                identity_memo: None,
                 effects: None,
                 ..sources
             };
@@ -254,6 +256,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 .is_err()
             );
             let changed_sources = WorldSnapshotSources {
+                identity_memo: None,
                 effects: Some(&changed),
                 ..sources
             };

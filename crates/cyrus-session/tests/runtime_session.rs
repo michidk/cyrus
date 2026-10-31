@@ -303,6 +303,7 @@ fn exercise_runtime_session(
     let sources = BTreeMap::from([(
         17,
         WorldSnapshotSources {
+            identity_memo: None,
             effects: effects.as_ref(),
             player: Some(&scene),
             scripts: &scripts,
@@ -620,6 +621,7 @@ fn exercise_runtime_session(
     let shared_sources = BTreeMap::from([(
         17,
         WorldSnapshotSources {
+            identity_memo: None,
             effects: effects.as_ref(),
             player: Some(&scene),
             scripts: app
