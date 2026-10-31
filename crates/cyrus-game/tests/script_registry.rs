@@ -30438,6 +30438,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         Normal,
         MoveReference,
         MissingCollision,
+        KillReceiver,
     }
     use Continuation::*;
     // The receiver stands where the player does; the target is 8 map units ahead (+Z) and the
@@ -30454,6 +30455,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         ("PlayerLineUp", Some(i32::MAX), 2048, Normal),
         ("PlayerLineUp", Some(i32::MAX), -2048, MoveReference),
         ("PlayerLineUp", Some(i32::MAX), -8192, MissingCollision),
+        ("PlayerLineUp", Some(i32::MAX), -8192, KillReceiver),
     ] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
@@ -30470,7 +30472,14 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 .unwrap()
                 .attributes
                 .insert("attr_walk_speed".into(), 3);
-            scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            let kill_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: "KillMe".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+            program.steps = [
                 wait(
                     id,
                     function,
@@ -30496,6 +30505,34 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 )
             })
             .collect();
+            if matches!(continuation, KillReceiver) {
+                // The interrupt at zero kills the receiver while its main thread waits.
+                program.entry = 3;
+                program.steps = std::mem::take(&mut program.steps)
+                    .into_iter()
+                    .map(|(offset, mut step)| {
+                        step.next += 3;
+                        if let Operation::End { target } = &mut step.operation {
+                            *target += 3;
+                        }
+                        (offset + 3, step)
+                    })
+                    .collect();
+                program.steps.insert(
+                    0,
+                    Step {
+                        next: 1,
+                        operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                    },
+                );
+                program.steps.insert(
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Endint,
+                    },
+                );
+            }
         });
         data.metadata["markers"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
@@ -30635,6 +30672,49 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                         20,
                     )
                     .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+            }
+            if matches!(continuation, KillReceiver) && round == 0 {
+                assert_eq!(
+                    world.actors()[map.index].runtime().unwrap().active_tasks(),
+                    1
+                );
+                let position = world.spatial(player).unwrap().local.position;
+                let result = world.inspect(0, 1)["globals"]["lineup_result"].clone();
+                world
+                    .advance(
+                        map,
+                        ScriptStage::Body(Thread::Interrupt),
+                        inputs,
+                        Some(&mut |_, _| Ok(())),
+                        Some(&mut random),
+                        20,
+                    )
+                    .unwrap();
+                assert!(world.actors()[map.index].control_state().unwrap().killed);
+                assert_eq!(
+                    world.actors()[map.index].runtime().unwrap().active_tasks(),
+                    0
+                );
+                // Killed map records remain addressable, but their cancelled task cannot move
+                // the player or publish a successful lineup result on later task passes.
+                assert_eq!(world.id(map.index).unwrap(), map);
+                for _ in 0..3 {
+                    world
+                        .advance(
+                            map,
+                            ScriptStage::Tasks,
+                            inputs,
+                            Some(&mut |_, _| Ok(())),
+                            Some(&mut random),
+                            20,
+                        )
+                        .unwrap();
+                    assert_eq!(world.spatial(player).unwrap().local.position, position);
+                    assert_eq!(world.inspect(0, 1)["globals"]["lineup_result"], result);
+                    assert_eq!(world.flags(), [12]);
+                    assert!(world.actors()[map.index].failure().is_none());
+                }
+                continue 'cases;
             }
             if function == "PlayerLineUp" && world.flags() != [7] {
                 crossed_distance_boundary |= distance(&world) > lineup_distance.unwrap();
