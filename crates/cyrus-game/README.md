@@ -130,6 +130,12 @@ Verified: refused selected-player scripted directional checks retain the directi
 blocked response for collision-age maintenance without moving the player, following
 preservation's [walking support contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-forward-walk-support-checks).
 
+Verified: selected-player forward running in group 18 retains animation-owned
+movement after key release until the movement marker or idle transition stops it,
+following preservation's [release continuation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#continuation-after-input-release).
+The per-update called flag prevents a second movement step when the controller
+already moved the player.
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
