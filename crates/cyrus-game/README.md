@@ -60,7 +60,11 @@ Verified: the installed BAT slot retention follows preservation's
 
 Created-object records (including projectile records) retain their creator,
 namespace and execution order through snapshots. `KillMe` removes their
-executable state, but allocator recycling and reuse across a long live session
+executable state before a later created-object update can resume its main thread.
+Verified: a killed created receiver cannot resume after its cancelled PlayerLineUp
+or publish completion, following preservation's
+[killed-object removal order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killed-object-removal).
+Allocator recycling and reuse across a long live session
 still require installed original/native/browser acceptance; the current public
 tests do not claim that parity.
 

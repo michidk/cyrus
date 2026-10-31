@@ -30439,6 +30439,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         MoveReference,
         MissingCollision,
         KillReceiver,
+        KillCreatedReceiver,
     }
     use Continuation::*;
     // The receiver stands where the player does; the target is 8 map units ahead (+Z) and the
@@ -30456,6 +30457,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         ("PlayerLineUp", Some(i32::MAX), -2048, MoveReference),
         ("PlayerLineUp", Some(i32::MAX), -8192, MissingCollision),
         ("PlayerLineUp", Some(i32::MAX), -8192, KillReceiver),
+        ("PlayerLineUp", Some(i32::MAX), -8192, KillCreatedReceiver),
     ] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
@@ -30505,7 +30507,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 )
             })
             .collect();
-            if matches!(continuation, KillReceiver) {
+            if matches!(continuation, KillReceiver | KillCreatedReceiver) {
                 // The interrupt at zero kills the receiver while its main thread waits.
                 program.entry = 3;
                 program.steps = std::mem::take(&mut program.steps)
@@ -30543,8 +30545,15 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
             .unwrap();
         let mut player = world.id(index).unwrap();
         let mut map = world.id(0).unwrap();
+        if matches!(continuation, KillCreatedReceiver) {
+            let position = world.spatial(map).unwrap().local.position;
+            map = world.create_object(map, "LOGIC", position, [0; 3]).unwrap();
+        }
         let hud = cyrus_game::script::ScriptHud::default();
-        let mut actors = [player, map];
+        let mut actors = vec![player, world.id(0).unwrap()];
+        if matches!(continuation, KillCreatedReceiver) {
+            actors.push(map);
+        }
         let mut random = cyrus_game::random::EngineRandom::default();
         let mut positions = vec![];
         let mut crossed_distance_boundary = false;
@@ -30673,7 +30682,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     )
                     .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
             }
-            if matches!(continuation, KillReceiver) && round == 0 {
+            if matches!(continuation, KillReceiver | KillCreatedReceiver) && round == 0 {
                 assert_eq!(
                     world.actors()[map.index].runtime().unwrap().active_tasks(),
                     1
@@ -30695,6 +30704,19 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     world.actors()[map.index].runtime().unwrap().active_tasks(),
                     0
                 );
+                if matches!(continuation, KillCreatedReceiver) {
+                    for _ in 0..3 {
+                        world
+                            .update_created(inputs, &mut random, &mut |_, _| Ok(()), 20)
+                            .unwrap();
+                        assert!(world.actors()[map.index].runtime().is_none());
+                        assert!(world.actors()[map.index].failure().is_none());
+                        assert_eq!(world.spatial(player).unwrap().local.position, position);
+                        assert_eq!(world.inspect(0, 1)["globals"]["lineup_result"], result);
+                        assert_eq!(world.flags(), [12]);
+                    }
+                    continue 'cases;
+                }
                 // Killed map records remain addressable, but their cancelled task cannot move
                 // the player or publish a successful lineup result on later task passes.
                 assert_eq!(world.id(map.index).unwrap(), map);
@@ -30762,7 +30784,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 .unwrap();
                 player = world.id(index).unwrap();
                 map = world.id(0).unwrap();
-                actors = [player, map];
+                actors = vec![player, map];
             }
             positions.push(world.spatial(player).unwrap().local.position);
             if world.flags() == [7] {
