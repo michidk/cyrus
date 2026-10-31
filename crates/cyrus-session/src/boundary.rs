@@ -1,7 +1,11 @@
 //! Exclusive host requests after ordinary frame updates; storage stays host-owned.
 use crate::{RuntimeSessionCandidate, RuntimeSessionSnapshot, SessionWorldAssets};
 use anyhow::{Context, Result, ensure};
-use bevy::prelude::{App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, Resource, World};
+use bevy::{
+    log::{debug, info},
+    platform::time::Instant,
+    prelude::{App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, Resource, World},
+};
 use cyrus_assets::hud::HudAsset;
 
 type StagedMetadata = (
@@ -213,6 +217,7 @@ fn execute(world: &mut World) {
     let Some(request) = world.resource_mut::<SessionBoundary>().request.take() else {
         return;
     };
+    let started = Instant::now();
     let result = match request {
         Request::CaptureLive => {
             cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
@@ -227,7 +232,10 @@ fn execute(world: &mut World) {
                         .context("session capture bound HUD asset absent")?;
                     RuntimeSessionSnapshot::capture(world, &sources, hud)
                 })
-                .map(|snapshot| SessionBoundaryResult::Captured(Box::new(snapshot)))
+                .map(|snapshot| {
+                    info!("session capture: snapshot built in {:?}", started.elapsed());
+                    SessionBoundaryResult::Captured(Box::new(snapshot))
+                })
         }
         Request::Capture(sources, hud) => {
             cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
@@ -240,13 +248,20 @@ fn execute(world: &mut World) {
         Request::Load(mut load, saved_game) => {
             let result = match load.poll(world) {
                 Ok(None) => {
+                    debug!("session load: poll took {:?}", started.elapsed());
                     world.resource_mut::<SessionBoundary>().request =
                         Some(Request::Load(load, saved_game));
                     return;
                 }
-                Ok(Some(candidate)) => candidate
-                    .publish(world, saved_game)
-                    .map(|()| SessionBoundaryResult::Committed),
+                Ok(Some(candidate)) => {
+                    let polled = started.elapsed();
+                    let published = candidate.publish(world, saved_game);
+                    info!(
+                        "session load: final poll {polled:?}, publication {:?}",
+                        started.elapsed() - polled
+                    );
+                    published.map(|()| SessionBoundaryResult::Committed)
+                }
                 Err(error) => Err(error),
             };
             load.discard(world);

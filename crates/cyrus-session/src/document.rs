@@ -1,6 +1,7 @@
 //! Versioned UTF-8 document framing shared by native and browser storage.
 use crate::RuntimeSessionSnapshot;
 use anyhow::{Context, Result, ensure};
+use bevy::{log::info, platform::time::Instant};
 
 const HEADER: &[u8] = b"CYRUS-SESSION 1\n";
 const DIGEST_LEN: usize = 64;
@@ -14,6 +15,7 @@ impl RuntimeSessionSnapshot {
             self.version == 1,
             "session document snapshot version unsupported"
         );
+        let started = Instant::now();
         let payload = serde_json::to_vec(self).context("encode session document payload")?;
         let digest = blake3::hash(&payload).to_hex();
         let mut document = Vec::with_capacity(HEADER.len() + DIGEST_LEN + 1 + payload.len());
@@ -21,6 +23,11 @@ impl RuntimeSessionSnapshot {
         document.extend_from_slice(digest.as_bytes());
         document.push(b'\n');
         document.extend_from_slice(&payload);
+        info!(
+            "session document: encoded {} bytes in {:?}",
+            document.len(),
+            started.elapsed()
+        );
         Ok(document)
     }
 
@@ -29,6 +36,7 @@ impl RuntimeSessionSnapshot {
     /// `plan`, `finish`, and `commit` to validate sources, bindings and publication.
     /// Hosts enforce their storage/input size limits before supplying the bytes.
     pub fn decode_document(document: &[u8]) -> Result<Self> {
+        let started = Instant::now();
         let body = document
             .strip_prefix(HEADER)
             .context("session document format/version unsupported")?;
@@ -47,6 +55,11 @@ impl RuntimeSessionSnapshot {
         ensure!(
             snapshot.version == 1,
             "session document snapshot version unsupported"
+        );
+        info!(
+            "session document: decoded {} bytes in {:?}",
+            document.len(),
+            started.elapsed()
         );
         Ok(snapshot)
     }
