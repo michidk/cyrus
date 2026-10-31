@@ -446,14 +446,20 @@ pub(crate) fn identities(
         .collect()
 }
 
+/// `live` recomputes every identity from the assets; otherwise memoized identities are used,
+/// which is only an early consistency check until a live validation precedes publication.
 pub(crate) fn validate_retained(
     assets: &SessionWorldAssets,
     expected: &BTreeMap<u32, String>,
     world: &World,
+    live: bool,
 ) -> Result<()> {
-    let sources = assets
-        .live_sources(world)?
-        .context("session retained sources still loading")?;
+    let sources = if live {
+        assets.live_sources(world)?
+    } else {
+        assets.sources(world)?
+    }
+    .context("session retained sources still loading")?;
     ensure!(
         identities(&sources)? == *expected,
         "session retained source content differs from validated logical plan"
