@@ -587,6 +587,9 @@ pub struct ScriptWorld {
     walk_nodes: Option<super::navigation::WalkNodeReservations>,
     next_combat_index: i32,
     ordinary_prepared: bool,
+    /// Ordinary updates this logical world has executed. Observation only: never saved, and
+    /// zero again after a restore.
+    ordinary_updates: u64,
     actor_prelighting: Option<BTreeMap<usize, ActorPrelight>>,
     /// The model candidate list of the latest ordinary candidate gather. The original keeps one
     /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
@@ -1250,6 +1253,7 @@ impl ScriptWorld {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),
             surface_veto: None,
@@ -2886,6 +2890,10 @@ impl ScriptWorld {
     }
     pub fn actors(&self) -> &[ScriptActor] {
         &self.actors
+    }
+    /// Ordinary updates executed by this world since it was created or restored.
+    pub fn ordinary_updates(&self) -> u64 {
+        self.ordinary_updates
     }
     pub fn id(&self, index: usize) -> Result<ScriptActorId> {
         anyhow::ensure!(
@@ -7412,6 +7420,7 @@ mod fighting_tests {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),
             model_admission: None,
