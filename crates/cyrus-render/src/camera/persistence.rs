@@ -2,7 +2,8 @@
 use super::{FlycamSettings, FrameScene, InitialView, ViewCamera, projection::GameProjection};
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::{
-    Commands, Entity, PerspectiveProjection, Projection, Quat, Transform, Vec3, Vec4, With, World,
+    Commands, Entity, GlobalTransform, PerspectiveProjection, Projection, Quat, Transform, Vec3,
+    Vec4, With, World,
 };
 use serde::{Deserialize, Serialize};
 
@@ -178,11 +179,15 @@ impl CameraCandidate {
         self.transform.translation
     }
 
-    /// Queue onto the prepared camera entity during the complete session commit.
+    /// Queue onto the prepared standalone camera entity during the complete session commit.
     pub fn queue(self, commands: &mut Commands, entity: Entity) {
-        commands
-            .entity(entity)
-            .insert((ViewCamera, self.transform, self.projection));
+        // Session publication follows propagation; next Update readers need the saved world pose.
+        commands.entity(entity).insert((
+            ViewCamera,
+            self.transform,
+            GlobalTransform::from(self.transform),
+            self.projection,
+        ));
         if let Some(active) = self.active {
             commands.queue(move |world: &mut World| {
                 if let Some(mut camera) = world.get_mut::<bevy::prelude::Camera>(entity) {
@@ -214,6 +219,7 @@ mod tests {
         original.insert_resource(InitialView(Transform::from_xyz(11.0, 22.0, 33.0)));
         original.spawn((
             ViewCamera,
+            bevy::prelude::Camera3d::default(),
             Transform::from_xyz(17.0, -2.0, 93.0),
             Projection::custom(GameProjection::default()),
         ));
@@ -229,11 +235,18 @@ mod tests {
         );
         let replacement = saved.restore().unwrap();
         let mut fresh = World::new();
-        let camera = fresh.spawn_empty().id();
+        let camera = fresh.spawn(bevy::prelude::Camera3d::default()).id();
         let mut queue = bevy::ecs::world::CommandQueue::default();
         replacement.queue(&mut Commands::new(&mut queue, &fresh), camera);
         assert!(CameraSnapshot::capture(&fresh).unwrap().is_none());
         queue.apply(&mut fresh);
+        assert_eq!(
+            fresh.get::<bevy::prelude::GlobalTransform>(camera),
+            Some(&bevy::prelude::GlobalTransform::from(Transform::from_xyz(
+                17.0, -2.0, 93.0
+            ))),
+            "restored camera readers must observe the saved pose before transform propagation"
+        );
         assert_eq!(
             serde_json::to_vec(&CameraSnapshot::capture(&fresh).unwrap().unwrap()).unwrap(),
             bytes

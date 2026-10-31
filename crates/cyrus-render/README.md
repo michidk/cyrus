@@ -31,6 +31,11 @@ view angles in original world-loop parity, following preservation's
 [frame view angles](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#frame-view-angles-and-screen-shake).
 Render reads reuse that sample without advancing shake or changing the logical camera pose.
 The inactive roll-tilt mode remains unapplied.
+
+Session camera replacement publishes local and world transforms together. The first
+subsequent audio-listener update uses the restored camera pose before normal
+transform propagation runs again.
+
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition

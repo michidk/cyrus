@@ -246,8 +246,24 @@ fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()>
 fn saved_game_load_clears_samples_and_keeps_the_live_cd_transport() -> Result<()> {
     for from_menu in [false, true] {
         exercise_runtime_session(false, from_menu, true, false, true)?;
+        exercise_runtime_session(true, from_menu, true, false, true)?;
     }
     Ok(())
+}
+
+fn check_restored_listener(app: &mut App) {
+    use bevy::ecs::system::RunSystemOnce;
+    app.world_mut()
+        .run_system_once(cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>)
+        .expect("restored audio listener system must run");
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_audio::AudioListener>()
+            .0
+            .translation(),
+        Vec3::new(8.0, 9.0, 10.0),
+        "the first audio update must use the published camera pose"
+    );
 }
 
 fn exercise_runtime_session(
@@ -1129,6 +1145,7 @@ fn exercise_runtime_session(
             app.world().get::<Transform>(camera).unwrap().translation,
             Vec3::new(8.0, 9.0, 10.0)
         );
+        check_restored_listener(&mut app);
     }
     assert!(app.world().get::<Player>(replacement).is_some());
     assert_eq!(
@@ -1270,6 +1287,9 @@ fn exercise_runtime_session(
             cyrus_session::SessionBoundaryResult::Committed
         ));
         assert!(app.world().get_entity(replacement).is_err());
+        if with_camera {
+            check_restored_listener(&mut app);
+        }
         if saved_game {
             assert_eq!(
                 app.world()
