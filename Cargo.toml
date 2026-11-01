@@ -6,7 +6,7 @@ exclude = ["dev/vendor/smk", "dev/vendor/rodio"]
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-config", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 repository = "https://github.com/michidk/cyrus"
 
@@ -21,7 +21,7 @@ clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 smk = { version = "0.1", path = "dev/vendor/smk" }
 # Keep the browser-safe bitmap font generator until the published dependency supports WASM.
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "2abdce2db915f01bf7ab4ee67326ff5952f11edc" }
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "a77fe45d151b896c746d99a41e0d8a344a70509b" }
 cyrus-console = { path = "crates/cyrus-console" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }

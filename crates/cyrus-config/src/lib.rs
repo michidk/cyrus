@@ -20,7 +20,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod file;
 #[cfg(not(target_arch = "wasm32"))]
-pub use file::{read, write};
+pub use file::{create_dir_all, read, write};
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

@@ -46,7 +46,12 @@ Native document storage writes an exclusively created sibling candidate, syncs
 its complete bytes, then publishes it with one rename. Failed publication leaves
 the accepted destination intact and cleans up only that write's candidate.
 Callers own document validation. This shared byte-storage boundary does not yet
-provide gameplay saves or full restoration after a restart.
+establish complete gameplay continuation after a restart. Native save slots wrap
+session documents with revision-checked metadata and optional gameplay thumbnails.
+On Unix, publication and slot deletion sync the containing directory before
+reporting success. A directory-sync failure after publication or deletion means
+the change is visible but its crash durability is unconfirmed. Windows does not
+provide the same directory-sync guarantee through this storage boundary.
 
 Shared browser/CLI options use exactly the same names:
 
