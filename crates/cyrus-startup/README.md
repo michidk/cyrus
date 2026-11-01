@@ -138,7 +138,8 @@ written before this need re-export. The scroll textures take their colours from 
 reader does. The 640x480 reader picture fills the window height at 4:3 and the GPU stretches it with bilinear filtering; a native run at 640x480 is
 pixel-identical to the painted picture and one at 1024x768 matches that picture stretched by 1.6 (bilinear) within 0.3% of full scale.
 The original's 16-bit framebuffer quantisation is not reproduced, which leaves the scrolls about two levels per channel brighter than
-the original's. Browser-host pixels have not been compared. Rules follow the
+the original's. The browser host matches the native picture (a 640x480 CSS viewport at device scale 2 equals the picture stretched by 2 with
+bilinear filtering within 0.3% of full scale, lettering and scroll lighting present). Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).
 
 Available-save death entry presents the installed last-game dialog over a captured
