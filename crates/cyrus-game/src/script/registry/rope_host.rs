@@ -636,6 +636,16 @@ impl ScriptWorld {
             return Ok(());
         }
         let group = if up { GROUP_CLIMB_UP } else { GROUP_CLIMB_DOWN };
+        if up {
+            let playback = &self.actors[index]
+                .animation
+                .as_ref()
+                .context("rope climb animation unavailable")?
+                .playback;
+            if !repeats_climb_up_request(playback.current_group(), playback.exit_reached()) {
+                return Ok(());
+            }
+        }
         self.request_ordinary_group(id, group, false, ticks, sounds)
     }
 
@@ -822,6 +832,13 @@ impl ScriptWorld {
     }
 }
 
+/// Whether the climb-up helper requests group 82: always when another group is current, and again
+/// for the current group only while its exit marker is clear (preservation "Rope control while
+/// attached"). Climb down requests group 83 every update.
+fn repeats_climb_up_request(current: Option<u16>, exit_reached: bool) -> bool {
+    current != Some(GROUP_CLIMB_UP) || !exit_reached
+}
+
 /// The group a hanging player is promoted to, if any; see `promote_hanging_group`.
 fn hanging_group(pending: Option<u16>, direction: u8, pitch: u16) -> Option<u16> {
     if pending.is_some_and(|group| group != GROUP_HANG) {
@@ -846,6 +863,14 @@ mod tests {
         assert_eq!(hanging_group(None, 0, 5), Some(81));
         assert_eq!(hanging_group(None, 0, 0), None);
         assert_eq!(hanging_group(Some(82), 1, 5), None);
+    }
+
+    #[test]
+    fn climb_up_repeats_its_request_only_before_the_exit_marker() {
+        assert!(repeats_climb_up_request(Some(80), true));
+        assert!(repeats_climb_up_request(None, false));
+        assert!(repeats_climb_up_request(Some(82), false));
+        assert!(!repeats_climb_up_request(Some(82), true));
     }
 
     #[test]
