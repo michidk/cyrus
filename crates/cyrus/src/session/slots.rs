@@ -320,7 +320,23 @@ impl SlotStore {
         self.metadata(slot, Some(revision))?;
         let path = self.path(slot)?;
         std::fs::remove_file(&path)
-            .with_context(|| format!("deleting save slot {slot} {}", path.display()))
+            .with_context(|| format!("deleting save slot {slot} {}", path.display()))?;
+        self.sync_deletion(slot)
+    }
+
+    fn sync_deletion(&self, slot: u16) -> Result<()> {
+        #[cfg(not(unix))]
+        let _ = slot;
+        #[cfg(unix)]
+        File::open(&self.root)
+            .and_then(|directory| directory.sync_all())
+            .with_context(|| {
+                format!(
+                    "syncing deletion of save slot {slot} in {}",
+                    self.root.display()
+                )
+            })?;
+        Ok(())
     }
 
     /// Removes the reserved automatic save whatever its revision; an absent save is already removed.
@@ -331,7 +347,7 @@ impl SlotStore {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
                 Err(error).with_context(|| format!("discarding auto save {}", path.display()))
             }
-            _ => Ok(()),
+            _ => self.sync_deletion(1),
         }
     }
 }
