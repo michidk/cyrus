@@ -1139,6 +1139,7 @@ fn fighting_threshold_is_retained_and_part_of_content_identity() {
     );
 }
 
+#[cfg(feature = "parsers")]
 fn camera_ini(skip: Option<&str>) -> String {
     let modes = [
         "combat",
@@ -1201,6 +1202,7 @@ fn camera_ini(skip: Option<&str>) -> String {
 }
 
 #[test]
+#[cfg(feature = "parsers")]
 fn camera_settings_read_every_installed_key_and_reject_a_missing_one() {
     use cyrus_assets::script::CameraSettings;
     let parse = |skip| {
@@ -1250,6 +1252,7 @@ fn camera_settings_read_every_installed_key_and_reject_a_missing_one() {
 }
 
 #[test]
+#[cfg(feature = "parsers")]
 fn installed_system_ini_supplies_every_required_camera_setting() {
     use std::path::{Path, PathBuf};
     let root = std::env::var_os("REDGUARD_DIR")
