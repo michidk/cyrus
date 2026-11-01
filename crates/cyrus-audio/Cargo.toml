@@ -12,7 +12,7 @@ cyrus-world.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 blake3.workspace = true
-rodio = { version = "=0.22.2", default-features = false }
+rodio = { version = "=0.23.0", default-features = false }
 hound = "3.5"
 serde_json.workspace = true
 
