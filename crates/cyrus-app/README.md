@@ -26,6 +26,8 @@ Small presentation and launch helpers shared by the game and viewer.
   `AssetPlugin` starts.
 - `window` creates the common native/browser window configuration.
 - `EguiPlugin` installs the pinned adapter and its WebGL shader adjustment.
+  The adjustment removes the unsupported binding-array directive together with
+  its condition, preserving the following uniform type on non-bindless devices.
 - `loading::LoadingOverlayPlugin` displays `loading::LoadingProgress`. The caller
   owns progress, completion, and application state transitions. Native builds draw a Bevy
   overlay. Browser builds update the existing HTML overlay; pages using that
