@@ -185,6 +185,39 @@ pub(super) fn scale_colour(colour: [u8; 3], scale: u8) -> [u8; 3] {
     colour.map(|c| ((u32::from(c) * u32::from(scale) + 127) / 255) as u8)
 }
 
+/// Lighting inputs the reader sets for the scrolls, independent of the loaded world (preservation
+/// engine/hud.md, logbook scroll lighting): a white directional light along the normalised
+/// integer vector (11313, 11313, 16000), ambient 64 and two white local lights of radius 6400, all
+/// in the reader's view frame. Every colour is white, so one level stands for the three channels.
+const AMBIENT: f32 = 64.0;
+const DIRECTION: [f32; 3] = [11313.0, 11313.0, 16000.0];
+const STRENGTH: f32 = 255.0;
+const LOCAL_LIGHTS: [[f32; 3]; 2] = [[-390.0, 230.0, 600.0], [390.0, 230.0, 600.0]];
+const LOCAL_RADIUS: f32 = 6400.0;
+
+/// Light level (0 to 255) at one scroll corner: ambient plus the face brightness byte plus the
+/// directional term `max(0, -D.N) * S` plus each local light's `numerator / (q + 3d)` weighted by
+/// `max(0, -V.N)` (`V` the normalised vertex-to-light offset, `q` its squared length, `d` its
+/// length, numerator `(r^2 + 3r) / 256`), clamped to 255. `normal` is a unit vector in view space.
+fn reader_light(position: [f32; 3], normal: [f32; 3], brightness: u8) -> f32 {
+    let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let length = dot(DIRECTION, DIRECTION).sqrt();
+    let direction = DIRECTION.map(|c| c / length);
+    let mut level = AMBIENT + f32::from(brightness) + (-dot(direction, normal)).max(0.0) * STRENGTH;
+    let numerator = (LOCAL_RADIUS * LOCAL_RADIUS + 3.0 * LOCAL_RADIUS) / 256.0;
+    for light in LOCAL_LIGHTS {
+        let offset = [0, 1, 2].map(|axis| position[axis] - light[axis]);
+        let q = dot(offset, offset);
+        let d = q.sqrt();
+        if d == 0.0 {
+            continue;
+        }
+        let facing = (-dot(offset.map(|c| c / d), normal)).max(0.0);
+        level += facing * numerator / (q + 3.0 * d) * STRENGTH;
+    }
+    level.clamp(0.0, 255.0)
+}
+
 fn paint(
     artwork: &LogbookArtwork,
     book: &cyrus_game::logbook::Logbook,
@@ -247,30 +280,41 @@ fn paint(
     let (sin, cos) = (sample(rotation), sample(rotation + 512));
     let mut faces = Vec::new();
     for y in [-212., 200.] {
-        for face in &artwork.scroll.faces {
-            let vertices: Vec<_> = face
+        for (face_index, face) in artwork.scroll.faces.iter().enumerate() {
+            let (vertices, levels): (Vec<_>, Vec<_>) = face
                 .corners
                 .iter()
-                .map(|corner| {
+                .enumerate()
+                .map(|(index, corner)| {
                     let [x, py, z] = artwork.scroll.frames[0][corner.vertex];
                     // Second-axis quarter turn, then the reading screen's third-axis rotation.
                     let px = z - 324.;
                     let view_y = x * sin + py * cos + y;
                     let pz = 362. - x * cos + py * sin;
-                    [
-                        320. + px / pz * (320. / 0.788),
-                        240. + view_y / pz * (320. / 0.788),
-                        pz.recip(),
-                        corner.uv[0],
-                        corner.uv[1],
-                    ]
+                    let [nx, ny, nz] = artwork.scroll_normals[face_index][index];
+                    let level = reader_light(
+                        [px, view_y, pz],
+                        [nz, nx * sin + ny * cos, -nx * cos + ny * sin],
+                        artwork.scroll_brightness[face_index],
+                    );
+                    (
+                        [
+                            320. + px / pz * (320. / 0.788),
+                            240. + view_y / pz * (320. / 0.788),
+                            pz.recip(),
+                            corner.uv[0],
+                            corner.uv[1],
+                        ],
+                        level,
+                    )
                 })
-                .collect();
+                .unzip();
             for corner in 1..vertices.len() - 1 {
                 faces.push(MenuFace {
                     vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
                     texture: face.texture,
                     color: face.color,
+                    light: Some([levels[0], levels[corner], levels[corner + 1]]),
                 });
             }
         }
@@ -300,6 +344,27 @@ mod tests {
         assert_eq!(scale_colour([220, 164, 132], 125), [108, 80, 65]);
         assert_eq!(scale_colour([4, 4, 4], 0), [0, 0, 0]);
     }
+    #[test]
+    fn reader_light_sums_ambient_directional_and_local_terms_and_clamps() {
+        // Far from both local lights and facing away from the directional light, only the ambient
+        // level and the face brightness byte remain.
+        let far = [0.0, 0.0, 100_000.0];
+        assert_eq!(reader_light(far, [0.0, 0.0, 1.0], 0), 64.0);
+        assert_eq!(reader_light(far, [0.0, 0.0, 1.0], 20), 84.0);
+        // Facing the directional light: 64 + 255 * 16000 / |(11313, 11313, 16000)| (about 244.3),
+        // and 255 once a face brightness byte pushes it past the clamp.
+        let expected =
+            64.0 + 255.0 * 16000.0 / (2.0 * 11313.0_f32.powi(2) + 16000.0_f32.powi(2)).sqrt();
+        assert!((reader_light(far, [0.0, 0.0, -1.0], 0) - expected).abs() < 0.01);
+        assert_eq!(reader_light(far, [0.0, 0.0, -1.0], 40), 255.0);
+        // A vertex coincident with a local light takes no local term.
+        let on_light = reader_light([-390.0, 230.0, 600.0], [0.0, 0.0, 1.0], 0);
+        assert!((on_light - 64.0).abs() < 1.0, "{on_light}");
+        // A normal facing a nearby local light brightens it beyond the ambient level.
+        let lit = reader_light([-390.0, 230.0, 500.0], [0.0, 0.0, 1.0], 0);
+        assert!(lit > 100.0, "{lit}");
+    }
+
     #[test]
     fn installed_reader_exports_and_draws_both_targets_from_the_same_asset() {
         let root = std::env::var_os("REDGUARD_DIR")
@@ -354,6 +419,16 @@ mod tests {
         // Opt-in artifact for local original/native comparisons; never emitted by CI.
         if let Some(path) = std::env::var_os("CYRUS_LOGBOOK_CAPTURE") {
             top.save(path).unwrap();
+        }
+        // Opt-in rotated poses (the reader's third angle after Up taps) for the original lighting
+        // comparison; the scroll rows are free of text, so the entry text need not match.
+        if let Some(directory) = std::env::var_os("CYRUS_LOGBOOK_POSES") {
+            for rotation in [0, 1988, 1928] {
+                paint(&artwork, &book, rotation)
+                    .unwrap()
+                    .save(std::path::Path::new(&directory).join(format!("native-{rotation}.png")))
+                    .unwrap();
+            }
         }
     }
 }

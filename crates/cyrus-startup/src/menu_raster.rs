@@ -13,7 +13,7 @@ use image::{Rgba, RgbaImage};
 const WIDTH: usize = 640;
 const HEIGHT: usize = 480;
 
-// shortcut: book lighting and camera-plane clipping remain unsupported; add them after their rendering rules are recovered.
+// shortcut: the book's own lighting and camera-plane clipping remain unsupported (only faces that carry a light, the logbook scrolls, are lit); add them after their rendering rules are recovered.
 fn render(faces: &[MenuFace], textures: &[RgbaImage]) -> anyhow::Result<RgbaImage> {
     let mut image = RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba([0, 0, 0, 255]));
     render_into(&mut image, faces, textures)?;
@@ -65,7 +65,11 @@ pub(super) fn render_into(
                         .map(|i| triangle[i].2 * (weights[i] * triangle[i].1))
                         .sum::<Vec2>()
                         / inverse_z;
-                    sample(&textures[texture], uv)
+                    let mut texel = sample(&textures[texture], uv);
+                    if let Some(light) = face.light {
+                        texel = modulate(texel, (0..3).map(|i| weights[i] * light[i]).sum());
+                    }
+                    texel
                 } else {
                     Rgba(face.color)
                 };
@@ -78,6 +82,16 @@ pub(super) fn render_into(
         }
     }
     Ok(())
+}
+
+/// Texture times iterated colour: the interpolated lighting level becomes an integer `L` and each
+/// colour channel `T` becomes `floor(T * (L + 1) / 256)` (preservation's terrain texture
+/// combination, which the model draws share). Alpha is untouched.
+fn modulate(texel: Rgba<u8>, level: f32) -> Rgba<u8> {
+    let level = u32::from(level.clamp(0.0, 255.0) as u8) + 1;
+    let [r, g, b, a] = texel.0;
+    let lit = |t: u8| (u32::from(t) * level / 256) as u8;
+    Rgba([lit(r), lit(g), lit(b), a])
 }
 
 fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {
@@ -134,6 +148,7 @@ fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
                     vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
                     texture: face.texture,
                     color: face.color,
+                    light: None,
                 });
             }
         }
@@ -438,6 +453,46 @@ mod tests {
     }
 
     #[test]
+    fn lit_texture_is_floored_per_channel_and_unlit_stays_exact() {
+        assert_eq!(
+            modulate(Rgba([200, 100, 0, 255]), 255.0).0,
+            [200, 100, 0, 255]
+        );
+        assert_eq!(modulate(Rgba([200, 100, 0, 255]), 0.0).0, [0, 0, 0, 255]);
+        assert_eq!(
+            modulate(Rgba([200, 100, 50, 255]), 127.5).0,
+            [100, 50, 25, 255]
+        );
+        let texture = RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]));
+        let face = |light| MenuFace {
+            vertices: [
+                [0., 0., 1., 0., 0.],
+                [0., 8., 1., 0., 0.],
+                [8., 0., 1., 0., 0.],
+            ],
+            texture: Some(0),
+            color: [0; 4],
+            light,
+        };
+        let draw = |light| {
+            render(&[face(light)], std::slice::from_ref(&texture))
+                .unwrap()
+                .get_pixel(1, 1)
+                .0
+        };
+        assert_eq!(draw(None), [200, 100, 50, 255]);
+        assert_eq!(draw(Some([255.0; 3])), [200, 100, 50, 255]);
+        assert_eq!(draw(Some([0.0; 3])), [0, 0, 0, 255]);
+        // Corner levels interpolate across the face in screen space.
+        let ramp = render(
+            &[face(Some([0.0, 255.0, 255.0]))],
+            std::slice::from_ref(&texture),
+        )
+        .unwrap();
+        assert!(ramp.get_pixel(1, 1).0[0] < ramp.get_pixel(0, 6).0[0]);
+    }
+
+    #[test]
     fn back_of_a_turned_page_does_not_cover_its_visible_surface() {
         let faces = vec![
             MenuFace {
@@ -448,6 +503,7 @@ mod tests {
                 ],
                 texture: None,
                 color: [255, 0, 0, 255],
+                light: None,
             },
             MenuFace {
                 vertices: [
@@ -457,6 +513,7 @@ mod tests {
                 ],
                 texture: None,
                 color: [0, 0, 255, 255],
+                light: None,
             },
         ];
         let image = render(&faces, &[]).unwrap();

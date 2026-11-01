@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 pub struct LogbookArtwork {
     pub paper: MenuPicture,
     pub scroll: MenuModel,
+    /// Per scroll face, the normal of each corner that the engine lights: the vertex normal the
+    /// indirection table selects, or the face normal when that one is unusable. Absent in caches
+    /// written before the scroll was lit, which `validate` rejects.
+    #[serde(default)]
+    pub scroll_normals: Vec<Vec<[f32; 3]>>,
+    /// Per scroll face, the lighting brightness byte `(tex_hi * 4) & 255`.
+    #[serde(default)]
+    pub scroll_brightness: Vec<u8>,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
     /// Reader fonts: small normal, small selected, REDSEL, FONTNORM and `gui_low_font`.
@@ -133,6 +141,16 @@ impl LogbookArtwork {
             "logbook: SCROLL.3D has invalid frame, face or texture references"
         );
         anyhow::ensure!(
+            self.scroll_normals.len() == self.scroll.faces.len()
+                && self.scroll_brightness.len() == self.scroll.faces.len()
+                && self
+                    .scroll_normals
+                    .iter()
+                    .zip(&self.scroll.faces)
+                    .all(|(normals, face)| normals.len() == face.corners.len()),
+            "logbook: scroll lighting data absent from this cache; re-export the logbook"
+        );
+        anyhow::ensure!(
             self.textures.iter().all(|t| t.width > 0
                 && t.height > 0
                 && t.rgba.len() == usize::from(t.width) * usize::from(t.height) * 4),
@@ -162,6 +180,46 @@ impl LogbookArtwork {
         );
         Ok(())
     }
+}
+
+#[cfg(feature = "parsers")]
+/// Corner normals and brightness bytes the engine's model lighting reads for each face, following
+/// preservation's formats/models/3d.md: with an indirection table each face vertex, counted across
+/// the faces in order, selects its vertex normal; otherwise the vertex's own normal applies; an
+/// unusable (non-normal-length) normal falls back to the face normal. The brightness byte is the
+/// stored face byte shifted left two bits, low eight bits kept.
+fn scroll_shading(model: &rgpre::import::model3d::Model3DFile) -> (Vec<Vec<[f32; 3]>>, Vec<u8>) {
+    let mut counter = 0;
+    let mut normals = Vec::new();
+    for (face_index, face) in model.face_data.iter().enumerate() {
+        let face_normal = model
+            .face_normals
+            .get(face_index)
+            .map_or([0.0; 3], |n| [n.x, n.y, n.z]);
+        normals.push(
+            face.face_vertices
+                .iter()
+                .map(|corner| {
+                    let selected = if model.normal_indices.is_empty() {
+                        Some(corner.vertex_index as usize)
+                    } else {
+                        model.normal_indices.get(counter).map(|&i| i as usize)
+                    };
+                    counter += 1;
+                    selected
+                        .and_then(|index| model.vertex_normals.get(index))
+                        .filter(|n| (n.x * n.x + n.y * n.y + n.z * n.z).is_normal())
+                        .map_or(face_normal, |n| [n.x, n.y, n.z])
+                })
+                .collect(),
+        );
+    }
+    let brightness = model
+        .face_data
+        .iter()
+        .map(|face| face.tex_hi.wrapping_mul(4))
+        .collect();
+    (normals, brightness)
 }
 
 #[cfg(feature = "parsers")]
@@ -269,12 +327,15 @@ pub(crate) fn prepare(
         rgpre::import::keys_ini::KeysIni::parse(&crate::preparation::text(source, "KEYS.INI")?)
             .map_err(anyhow::Error::msg)?
             .control_codes();
+    let (scroll_normals, scroll_brightness) = scroll_shading(&model);
     let artwork = LogbookArtwork {
         paper: MenuPicture {
             width: paper.width,
             height: paper.height,
             rgba: paper.rgba,
         },
+        scroll_normals,
+        scroll_brightness,
         scroll: crate::startup::menu_export::export_model(model, [0.; 3], &references, &palette)?,
         textures,
         palette: palette.colors.to_vec(),
