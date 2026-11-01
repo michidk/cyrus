@@ -32046,6 +32046,51 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
 }
 
 #[test]
+fn compass_item_use_is_not_repeated_by_the_hud_for_the_same_press() {
+    use cyrus_game::script::{CompassUse, QuickKeys, ScriptInputs};
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(0, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    hud.select_item(0).unwrap();
+    let inputs = ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        quick_keys: Some(QuickKeys {
+            sword: false,
+            health: false,
+            use_selected: true,
+        }),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::default();
+    for expected in [true, false, true] {
+        world.globals_mut().end_item_use_attempt();
+        world
+            .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(
+            hud.inspect()["compass_on"],
+            expected,
+            "item use toggles once"
+        );
+        for _ in 0..3 {
+            assert_eq!(
+                hud.compass_input(true, CompassUse::Accepted),
+                expected,
+                "the HUD must not repeat an accepted item use while held"
+            );
+        }
+        assert_eq!(hud.compass_input(false, CompassUse::Blocked), expected);
+    }
+    assert_eq!(hud.inventory(None).unwrap().counts[&0], 1);
+}
+
+#[test]
 fn the_action_key_does_not_use_the_selected_item_on_a_rope() {
     use cyrus_game::script::{QuickKeys, ScriptInputs};
     let use_item = |rope: bool| {

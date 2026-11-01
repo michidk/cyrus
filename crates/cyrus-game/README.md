@@ -168,3 +168,7 @@ leaves playback unchanged, following preservation
 
 Verified: held-node facing turns toward the node without the coordinate-facing
 arrival snap, preserving the final approach heading before walking claims a node.
+
+Verified: accepted compass item use consumes the shared HUD press, so the later
+HUD input pass preserves the toggle. Releasing the action key rearms it,
+following preservation's [compass contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#compass).

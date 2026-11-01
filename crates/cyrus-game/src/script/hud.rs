@@ -421,6 +421,8 @@ impl ScriptHud {
     pub(super) fn toggle_compass(&self) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
         state.compass_on = !state.compass_on;
+        // The later HUD input pass observes this same accepted use.
+        state.use_consumed = true;
     }
 
     /// Selected record ID, independent of ownership or visibility; zero when closed.
