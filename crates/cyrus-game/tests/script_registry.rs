@@ -26852,7 +26852,12 @@ fn point_walking_continues_then_claims_or_releases_nodes_with_one_registration()
 #[test]
 fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_result() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
-    for (exited, heading) in [(false, 56), (true, 64)] {
+    for (exited, heading, distance, phase, movement_flags) in [
+        (false, 56, 4096, 2, 0x10),
+        (true, 64, 4096, 2, 0x10),
+        (false, 56, 128, 8, 0),
+        (true, 64, 128, 8, 0),
+    ] {
         let (world, scripts, data) = point_node_fixture(8);
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][0]["attributes"][15] = 8.into();
@@ -26862,9 +26867,10 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
         saved["actors"][0]["control"]["navigation"] =
             serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
         saved["actors"][0]["control"]["point_command"]["phase"] = 2.into();
-        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([256, 200, -3328]);
+        saved["spatial"]["actors"][0]["local"]["position"] =
+            serde_json::json!([256, 200, 768 - distance]);
         saved["spatial"]["actors"][0]["previous_local_position"] =
-            serde_json::json!([256, 200, -3328]);
+            serde_json::json!([256, 200, 768 - distance]);
         saved["spatial"]["actors"][0]["local"]["angles"][1] = 64.into();
         let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
         let id = world.id(0).unwrap();
@@ -26893,13 +26899,13 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
                 .unwrap()
                 .point_command
                 .phase,
-            2
+            phase
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().movement_flags,
-            0x10
+            movement_flags
         );
-        assert!(world.spatial(id).unwrap().local.position[2] > -3328);
+        assert!(world.spatial(id).unwrap().local.position[2] > 768 - distance);
     }
 }
 

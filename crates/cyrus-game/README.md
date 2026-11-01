@@ -165,3 +165,6 @@ Verified: point route initialization preserves current and pending animation pla
 so walking can continue while a new route is selected. The animation-stop operation
 leaves playback unchanged, following preservation
 [point initialization](https://github.com/michidk/redguard-preservation/pull/156).
+
+Verified: held-node facing turns toward the node without the coordinate-facing
+arrival snap, preserving the final approach heading before walking claims a node.

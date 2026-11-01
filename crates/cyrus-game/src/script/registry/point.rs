@@ -664,7 +664,7 @@ impl ScriptWorld {
                     .exit_reached();
                 if !exited {
                     let facing = self.point_facing_inputs(id, inputs)?;
-                    self.face_ordinary_point(
+                    self.face_held_node(
                         id,
                         destination,
                         facing,
@@ -713,8 +713,7 @@ impl ScriptWorld {
                     let sounds = sounds
                         .as_mut()
                         .context("point facing requires synchronous sounds")?;
-                    let facing =
-                        self.face_ordinary_point(id, destination, facing_inputs, sounds)?;
+                    let facing = self.face_held_node(id, destination, facing_inputs, sounds)?;
                     if facing == 0 {
                         let ticks = inputs
                             .nominal_ticks
@@ -743,7 +742,7 @@ impl ScriptWorld {
                     self.globals.native_command.point_phase = 8;
                 } else {
                     let facing_inputs = self.point_facing_inputs(id, inputs)?;
-                    let facing = self.face_ordinary_point(
+                    let facing = self.face_held_node(
                         id,
                         destination,
                         facing_inputs,
@@ -962,6 +961,22 @@ impl ScriptWorld {
             self.globals.native_command.point_phase = 0;
         }
         Ok(None)
+    }
+
+    /// Face an admitted held-node destination without the coordinate-facing arrival snap.
+    fn face_held_node(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        inputs: super::slope::OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let origin = self.spatial(id)?.local.position;
+        let heading = super::super::spatial::query_bearing(
+            destination[0].wrapping_sub(origin[0]),
+            destination[2].wrapping_sub(origin[2]),
+        );
+        self.face_ordinary_angle(id, heading, inputs, sounds)
     }
 
     pub(super) fn point_facing_inputs(
