@@ -69,7 +69,7 @@ fn description(value: &str) -> Result<()> {
 
 impl SlotStore {
     fn writer_lock(&self) -> Result<File> {
-        std::fs::create_dir_all(&self.root)?;
+        cyrus_config::create_dir_all(&self.root)?;
         let path = self.root.join(".writer-lock");
         let file = OpenOptions::new()
             .read(true)

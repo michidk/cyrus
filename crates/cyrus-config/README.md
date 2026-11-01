@@ -8,6 +8,13 @@ A leaf crate: no workspace dependencies; `directories` and `anyhow` on native ta
 crate that keeps local state asks it for a directory and goes through `read` and `write`, instead
 of spelling `game-config/...` or replacing files itself.
 
+On Unix, writes sync directory ancestry before publishing a document, so a first
+save also persists newly created directory links. Native stores that create their
+own directories use `create_dir_all` for the same guarantee. Ancestors must be
+readable and support directory syncing; a failure is reported before publication.
+The containing directory is synced again after the document rename. Other targets
+do not receive this Unix directory-sync guarantee.
+
 ```rust
 let settings = cyrus_config::config_dir().join("settings.toml");
 let cache = cyrus_config::cache_dir();

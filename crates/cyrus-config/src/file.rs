@@ -9,6 +9,31 @@ use std::{
 
 static NEXT_CANDIDATE: AtomicUsize = AtomicUsize::new(0);
 
+/// Create a local-state directory and persist its ancestry on Unix.
+/// Existing ancestors are synced too: a retry may follow an earlier failed sync.
+/// Directory access or sync failures are reported before callers publish state.
+pub fn create_dir_all(path: &Path) -> Result<()> {
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        path
+    };
+    std::fs::create_dir_all(path)
+        .with_context(|| format!("creating local state directory {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        let directory = path
+            .canonicalize()
+            .with_context(|| format!("resolving local state directory {}", path.display()))?;
+        for parent in directory.ancestors().skip(1) {
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .with_context(|| format!("syncing local state ancestor {}", parent.display()))?;
+        }
+    }
+    Ok(())
+}
+
 /// Only absence is missing state; unreadable files retain their path in the error.
 pub fn read(path: &Path) -> Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
@@ -26,7 +51,7 @@ pub fn read(path: &Path) -> Result<Option<Vec<u8>>> {
 pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     let result = (|| -> Result<()> {
         let parent = path.parent().context("local state path has no parent")?;
-        std::fs::create_dir_all(parent)?;
+        create_dir_all(parent)?;
         let (temporary, mut file) = loop {
             let temporary = parent.join(format!(
                 ".cyrus-{}-{}.tmp",
@@ -122,7 +147,7 @@ mod tests {
     #[test]
     fn complete_opaque_documents_replace_and_reopen_without_candidate_files() {
         let directory = Directory::new();
-        let path = directory.0.join("saves/session.json");
+        let path = directory.0.join("saves/nested/session.json");
         assert!(read(&path).unwrap().is_none());
         write(&path, b"previous\0document").unwrap();
         write(&path, b"replacement\xffdocument\0").unwrap();
