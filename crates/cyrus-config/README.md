@@ -15,6 +15,11 @@ readable and support directory syncing; a failure is reported before publication
 The containing directory is synced again after the document rename. Other targets
 do not receive this Unix directory-sync guarantee.
 
+Windows publishes the synced candidate with `MoveFileExW` replacement and
+write-through enabled. This requests completion of the move on disk before
+returning. Windows directory ancestry and deletion durability remain unverified;
+the write-through move does not establish those guarantees.
+
 ```rust
 let settings = cyrus_config::config_dir().join("settings.toml");
 let cache = cyrus_config::cache_dir();

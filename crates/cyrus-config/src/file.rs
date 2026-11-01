@@ -77,7 +77,7 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
             file.sync_all()
                 .with_context(|| format!("syncing candidate {}", temporary.display()))?;
             drop(file);
-            std::fs::rename(&temporary, path)
+            publish_candidate(&temporary, path)
                 .with_context(|| format!("publishing candidate {}", temporary.display()))?;
             // Persist the rename itself; an error here means the replacement is published
             // but its durability is unconfirmed. Windows exposes no directory sync.
@@ -93,6 +93,72 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
         publish
     })();
     result.with_context(|| format!("writing {}", path.display()))
+}
+
+#[cfg(not(windows))]
+fn publish_candidate(candidate: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(candidate, destination)
+}
+
+#[cfg(windows)]
+fn publish_candidate(candidate: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, replacement: *const u16, flags: u32) -> i32;
+    }
+
+    fn terminated_path(path: &Path) -> std::io::Result<Vec<u16>> {
+        let mut units: Vec<_> = path.as_os_str().encode_wide().collect();
+        if units.contains(&0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "local state path contains a null character",
+            ));
+        }
+        units.push(0);
+        Ok(units)
+    }
+
+    // Canonical paths preserve support for long Windows paths without requiring
+    // the replacement to exist yet.
+    let candidate = terminated_path(&candidate.canonicalize()?)?;
+    let parent = destination.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "destination has no parent",
+        )
+    })?;
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
+    let name = destination.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "destination has no file name",
+        )
+    })?;
+    let destination = terminated_path(&parent.canonicalize()?.join(name))?;
+    // MoveFileExW documents write-through as waiting for the move on disk.
+    // Do not allow cross-volume copying: the candidate shares the destination directory.
+    const REPLACE_EXISTING: u32 = 0x1;
+    const WRITE_THROUGH: u32 = 0x8;
+    // SAFETY: both UTF-16 paths are null-terminated and live throughout the call.
+    if unsafe {
+        MoveFileExW(
+            candidate.as_ptr(),
+            destination.as_ptr(),
+            REPLACE_EXISTING | WRITE_THROUGH,
+        )
+    } == 0
+    {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -121,6 +187,28 @@ mod tests {
         fn drop(&mut self) {
             std::fs::remove_dir_all(&self.0).unwrap();
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn replacement_supports_unicode_and_long_paths() {
+        let directory = Directory::new();
+        let mut parent = directory.0.clone();
+        for _ in 0..12 {
+            parent.push("long-save-directory");
+        }
+        // Create the ancestry using Windows' extended path namespace, so the
+        // test does not depend on the host's long-path policy.
+        let parent = directory
+            .0
+            .canonicalize()
+            .unwrap()
+            .join(parent.strip_prefix(&directory.0).unwrap());
+        let path = parent.join("保存-é.cyrus");
+        write(&path, b"accepted").unwrap();
+        write(&path, b"replacement").unwrap();
+        assert_eq!(read(&path).unwrap().unwrap(), b"replacement");
+        assert_eq!(std::fs::read_dir(parent).unwrap().count(), 1);
     }
 
     #[test]
