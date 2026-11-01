@@ -16,6 +16,10 @@ const GROUP_CLIMB_UP: u16 = 82;
 const GROUP_CLIMB_DOWN: u16 = 83;
 const GROUP_GRAB: u16 = 84;
 const GROUP_JUMP: u16 = 85;
+/// The hanging pose the idle request settles into, and the two poses the chain update promotes it to.
+const GROUP_HANG: u16 = 79;
+const GROUP_HANG_DIRECTED: u16 = 80;
+const GROUP_HANG_PITCHED: u16 = 81;
 /// The animation group whose first frame supplies the hand point of the grab.
 const GROUP_HAND: u64 = 79;
 /// Links searched below the requested one start this many before it.
@@ -451,7 +455,36 @@ impl ScriptWorld {
                 .local
                 .angles[1] = turned as u16;
         }
-        self.place_player_on_rope(id, rope_index, data)
+        self.place_player_on_rope(id, rope_index, data)?;
+        if !up && !down {
+            self.promote_hanging_group(id, rope_index, ticks, sounds)?;
+        }
+        Ok(())
+    }
+
+    /// The chain update's pose choice for a hanging selected player (preservation "Rope control
+    /// while attached"): with no group pending, or the plain hanging group, and neither Up nor Down
+    /// held, a rope with a nonzero direction byte requests group 80, otherwise group 81 while the
+    /// player is pitched.
+    fn promote_hanging_group(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let pending = self.actors[index]
+            .animation
+            .as_ref()
+            .context("rope hang: ordinary animation unavailable")?
+            .playback
+            .pending_group();
+        let pitch = self.spatial(id)?.local.angles[0];
+        match hanging_group(pending, self.ropes[rope_index].direction, pitch) {
+            Some(group) => self.request_ordinary_group(id, group, false, ticks, sounds),
+            None => Ok(()),
+        }
     }
 
     /// The link nearest below the player's hand, searched from eight links before `start`: the
@@ -789,9 +822,31 @@ impl ScriptWorld {
     }
 }
 
+/// The group a hanging player is promoted to, if any; see `promote_hanging_group`.
+fn hanging_group(pending: Option<u16>, direction: u8, pitch: u16) -> Option<u16> {
+    if pending.is_some_and(|group| group != GROUP_HANG) {
+        None
+    } else if direction != 0 {
+        Some(GROUP_HANG_DIRECTED)
+    } else if pitch != 0 {
+        Some(GROUP_HANG_PITCHED)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hanging_player_is_promoted_by_the_rope_direction_then_its_pitch() {
+        assert_eq!(hanging_group(None, 1, 0), Some(80));
+        assert_eq!(hanging_group(Some(79), 1, 0), Some(80));
+        assert_eq!(hanging_group(None, 0, 5), Some(81));
+        assert_eq!(hanging_group(None, 0, 0), None);
+        assert_eq!(hanging_group(Some(82), 1, 5), None);
+    }
 
     #[test]
     fn angle_differences_take_the_short_way_round() {
