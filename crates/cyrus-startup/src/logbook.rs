@@ -423,6 +423,14 @@ mod tests {
         // Opt-in rotated poses (the reader's third angle after Up taps) for the original lighting
         // comparison; the scroll rows are free of text, so the entry text need not match.
         if let Some(directory) = std::env::var_os("CYRUS_LOGBOOK_POSES") {
+            // The same single short entry the original comparison used, opened as the reader opens.
+            let single =
+                cyrus_game::logbook::Logbook::new(&["7,A short single entry.".into()]).unwrap();
+            assert_eq!(single.offset(), 0);
+            paint(&artwork, &single, 0)
+                .unwrap()
+                .save(std::path::Path::new(&directory).join("native-single.png"))
+                .unwrap();
             for rotation in [0, 1988, 1928] {
                 paint(&artwork, &book, rotation)
                     .unwrap()
