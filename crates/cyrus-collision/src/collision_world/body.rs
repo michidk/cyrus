@@ -1,5 +1,5 @@
 //! Primary mixed body collection retains original owners and stops at sixteen.
-use super::StaticCollision;
+use super::{StaticCollision, static_rotation};
 use crate::{
     actor_models::ActorModelCollision,
     candidates::{CandidateOwner, CollisionCandidates, ModelInstance},
@@ -7,7 +7,6 @@ use crate::{
     ground::{GroundSupport, SupportSource},
 };
 use anyhow::{Context, Result, ensure};
-use bevy::math::Mat3;
 use std::collections::BTreeMap;
 
 /// World integer contact after nearest-even conversion, before motion response.
@@ -184,9 +183,7 @@ impl StaticCollision {
                         .context("body candidate static geometry unavailable")?;
                     let pose = ModelPose::new(
                         placement.position.map(|value| value as f32),
-                        Mat3::from_cols_array(
-                            &placement.rotation.map(|value| value as f32 / 268_435_456.0),
-                        ),
+                        static_rotation(placement),
                     )?;
                     (
                         model.mesh.world_sphere_contacts(&pose, probe)?,

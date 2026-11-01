@@ -505,8 +505,7 @@ impl StaticCollision {
                 .get(&placement.model)
                 .context("body candidate model unavailable")?;
             let translation = Vec3::from_array(placement.position.map(|v| v as f32));
-            let placement_rotation =
-                Mat3::from_cols_array(&placement.rotation.map(|v| v as f32 / 268_435_456.0));
+            let placement_rotation = static_rotation(placement);
             let admitted = admitted_spheres(origin, rotation, spheres, placement, model.radius);
             for contact in model
                 .mesh
@@ -790,8 +789,7 @@ impl StaticCollision {
             .models
             .get(&placement.model)
             .context("ground candidate model unavailable")?;
-        let rotation =
-            Mat3::from_cols_array(&placement.rotation.map(|value| value as f32 / 268_435_456.0));
+        let rotation = static_rotation(placement);
         let pose = super::collision_mesh::ModelPose::new(
             placement.position.map(|value| value as f32),
             rotation,
@@ -911,6 +909,11 @@ impl StaticCollision {
     }
 }
 
+// MPSO stores row-major local-to-world entries; Bevy's constructor takes columns.
+fn static_rotation(placement: &StaticPlacement) -> Mat3 {
+    Mat3::from_cols_array(&placement.rotation.map(|value| value as f32 / 268_435_456.0)).transpose()
+}
+
 fn admitted_spheres(
     origin: Vec3,
     rotation: Mat3,
@@ -920,8 +923,7 @@ fn admitted_spheres(
 ) -> Vec<(Vec3, f32)> {
     let translation = Vec3::from_array(placement.position.map(|v| v as f32));
     let local_model = rotation.transpose() * (translation - origin);
-    let inverse =
-        Mat3::from_cols_array(&placement.rotation.map(|v| v as f32 / 268_435_456.0)).transpose();
+    let inverse = static_rotation(placement).transpose();
     spheres
         .iter()
         .filter_map(|&(center, radius)| {

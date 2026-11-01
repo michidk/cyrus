@@ -445,3 +445,84 @@ fn runtime_candidates_share_static_order_and_keep_live_model_identity_separate()
     assert_eq!(candidates.faces.len(), 1);
     assert_eq!(candidates.faces[0].owner, CandidateOwner::Static(1));
 }
+
+#[test]
+fn asymmetric_static_placement_uses_authored_row_major_rotation() {
+    use bevy::math::{Mat3, Vec3};
+    use cyrus_assets::collision::ActorCollisionModels;
+    use cyrus_collision::{
+        actor_models::ActorModelCollision,
+        candidates::{CandidateOwner, CollisionCandidates, FaceCandidate, ModelInstance},
+        collision_mesh::BodyProbe,
+        collision_world::{ResidualBodyQuery, StaticCandidates},
+    };
+    use std::collections::BTreeMap;
+
+    let mut scene = CollisionScene::default();
+    let mut floor = model(0);
+    floor.geometry.vertices = vec![
+        [-20.0, 0.0, 10.0],
+        [20.0, 0.0, 10.0],
+        [20.0, 0.0, 90.0],
+        [-20.0, 0.0, 90.0],
+    ];
+    floor.geometry.faces = vec![vec![0, 1, 2, 3]];
+    scene.models.insert("floor".into(), floor);
+    let mut placed = placement(0, [1000, 0, 1000], "floor");
+    placed.rotation = [0, 0, 268_435_456, 0, 268_435_456, 0, -268_435_456, 0, 0];
+    scene.placements.push(placed);
+    let world = StaticCollision::new(&scene).unwrap();
+    let statics = StaticCandidates {
+        faces: vec![0],
+        actors: vec![],
+    };
+    let mixed = CollisionCandidates {
+        faces: vec![FaceCandidate {
+            model: ModelInstance::StaticPlacement(0),
+            owner: CandidateOwner::Static(0),
+            collision_flags: 0,
+            candidate_type: 32,
+        }],
+        actors: vec![],
+    };
+    let actors = ActorModelCollision::new(&ActorCollisionModels::default()).unwrap();
+    for (x, expected) in [(1060, true), (940, false)] {
+        let position = [x * 256, -256, 1000 * 256];
+        let probe = GroundProbe::new(position, 0, 10).unwrap();
+        assert_eq!(
+            !world
+                .ground_contacts(&statics, &probe, true)
+                .unwrap()
+                .is_empty(),
+            expected
+        );
+        let contacts = world
+            .body_contacts(
+                &statics,
+                position,
+                Mat3::IDENTITY,
+                &[(Vec3::ZERO, 2.0)],
+                true,
+            )
+            .unwrap();
+        assert_eq!(!contacts.is_empty(), expected);
+        let spheres = [(Vec3::ZERO, 2.0)];
+        let contacts = world
+            .runtime_residual_body_contacts(
+                &mixed,
+                &actors,
+                &BTreeMap::new(),
+                ResidualBodyQuery {
+                    probe: BodyProbe {
+                        position,
+                        rotation: Mat3::IDENTITY,
+                        spheres: &spheres,
+                        sidedness: true,
+                    },
+                    excluded_candidate_type: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(!contacts.is_empty(), expected);
+    }
+}
