@@ -367,6 +367,11 @@ session snapshot and restore; journal and torch reset semantics remain unsupport
 Matched original/native/browser weapon-draw acceptance and gameplay walk-mode/auto-defend parity remain open. Native
 health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
 
+The inventory screen projects its pinned candle over the paused world HUD,
+including conditional visibility mode, and closing the screen clears the timer.
+The candle remains hidden for every nonzero lockout. Inventory candle animation
+cadence remains unverified.
+
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta
 caches, which require re-export for nonzero-frame playback. Installed Cyrus

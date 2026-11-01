@@ -959,7 +959,23 @@ fn update(
         .as_ref()
         .is_some_and(|screen| screen.inventory_open)
     {
-        // The inventory screen draws over the last world frame, HUD included.
+        // Inventory redraws the candle over the frozen world HUD.
+        state.candle_visible =
+            script_hud.advance_health_feedback(false, state.lockout, state.candle_mode, 0);
+        for (sprite, mut image, mut node, mut visibility) in &mut sprites {
+            if *sprite != HudSprite::Candle {
+                continue;
+            }
+            if state.candle_visible {
+                image.image = state.frames.candle[usize::from(state.candle.frame)].clone();
+                node.set_if_neq(place(hud.candle, hud.candle_size));
+            }
+            visibility.set_if_neq(if state.candle_visible {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
+        }
         return;
     }
     if compass
@@ -1961,6 +1977,87 @@ mod tests {
         prepare_script(&mut app, &[]);
         app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
         app
+    }
+
+    #[test]
+    fn inventory_projects_the_pinned_candle_over_the_paused_hud() {
+        let mut app = compass_app();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::ZERO,
+        ));
+        app.update();
+        app.world()
+            .resource::<cyrus_game::script::ScriptHud>()
+            .set_inventory_candle(false);
+        app.update();
+        assert!(!app.world().resource::<HudState>().candle_visible);
+        let candle_sprite = app
+            .world_mut()
+            .query::<(Entity, &HudSprite)>()
+            .iter(app.world())
+            .find(|(_, sprite)| **sprite == HudSprite::Candle)
+            .unwrap()
+            .0;
+        assert_eq!(
+            app.world().get::<Visibility>(candle_sprite),
+            Some(&Visibility::Hidden)
+        );
+        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
+        for lockout in [0, 1, 2, 0] {
+            app.world_mut().resource_mut::<ActivationInputs>().lockout = lockout;
+            app.update();
+            let frame = {
+                let mut state = app.world_mut().resource_mut::<HudState>();
+                state.notices = [24, 24];
+                state.frames.candle[usize::from(state.candle.frame)].clone()
+            };
+            app.world_mut()
+                .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+                .inventory_open = true;
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .set_inventory_candle(true);
+            app.update();
+            let state = app.world().resource::<HudState>();
+            assert_eq!(state.candle_visible, lockout == 0);
+            assert_eq!(state.notices, [24, 24]);
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_game::script::ScriptHud>()
+                    .health_feedback_ticks(),
+                50
+            );
+            assert_eq!(
+                app.world().get::<Visibility>(candle_sprite),
+                Some(&if lockout == 0 {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                })
+            );
+            if lockout == 0 {
+                assert_eq!(
+                    app.world().get::<ImageNode>(candle_sprite).unwrap().image,
+                    frame
+                );
+                assert_eq!(
+                    app.world().get::<Node>(candle_sprite),
+                    Some(&place([12, 8], [50, 98]))
+                );
+            }
+            app.world_mut()
+                .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+                .inventory_open = false;
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .set_inventory_candle(false);
+            app.update();
+            assert!(!app.world().resource::<HudState>().candle_visible);
+            assert_eq!(
+                app.world().get::<Visibility>(candle_sprite),
+                Some(&Visibility::Hidden)
+            );
+        }
     }
 
     #[test]
