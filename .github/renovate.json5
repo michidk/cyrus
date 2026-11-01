@@ -2,5 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>michidk/workflows//templates/presets/renovate"
+  ],
+  "packageRules": [
+    {
+      "description": "Follow the inspector port matching the workspace Bevy version.",
+      "matchPackageNames": ["bevy-inspector-egui"],
+      "followTag": "bevy-0.20"
+    }
   ]
 }
