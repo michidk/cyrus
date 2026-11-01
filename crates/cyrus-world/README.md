@@ -88,7 +88,10 @@ unsupported. These APIs do not establish matched original-game playback.
 and sums use software x87 extended intermediates and nearest-even stores and
 integer conversion, following preservation PR55. The shared rotation table also
 supplies player heading projection. Matrix arithmetic requires no renderer or
-host floating-point-mode changes.
+host floating-point-mode changes. Ordinary unattached incremental refresh uses
+`Matrix::rotate_unattached`, which rounds products before sums, following
+[preservation PR154](https://github.com/michidk/redguard-preservation/pull/154).
+Family composition retains the separate extended-product path.
 
 `Matrix::collision_orientation` rebuilds shape orientation from local angles,
 using the published collision matrix rather than retained presentation history.

@@ -18,7 +18,8 @@ pub fn rotation_sample(index: usize) -> f32 {
 }
 
 /// Row-major original actor matrix with single-precision stored components.
-/// Operations use nearest-even extended intermediates, per [preservation PR55].
+/// Composition and coordinate transforms use nearest-even extended intermediates,
+/// per [preservation PR55]. Ordinary unattached refresh rounds products separately.
 ///
 /// [preservation PR55]: https://github.com/michidk/redguard-preservation/pull/55
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -107,7 +108,22 @@ impl Matrix {
 
     /// Apply negative yaw, pitch, then roll, wrapping each angle to 1/2048 turns.
     /// Each axis reads the old row and stores each resulting component as f32.
-    pub fn rotate(&mut self, [pitch, yaw, roll]: [u16; 3]) {
+    pub fn rotate(&mut self, angles: [u16; 3]) {
+        self.rotate_with_products(angles, |a, b| (a * b).value);
+    }
+
+    /// Refresh an ordinary unattached actor using negative yaw, pitch, then roll.
+    /// Products round to f32 before each sum, per preservation's player rotation rules.
+    /// Family composition and closed-form builders have separate arithmetic contracts.
+    pub fn rotate_unattached(&mut self, angles: [u16; 3]) {
+        self.rotate_with_products(angles, |a, b| extended(stored((a * b).value)));
+    }
+
+    fn rotate_with_products(
+        &mut self,
+        [pitch, yaw, roll]: [u16; 3],
+        product: impl Fn(X87DoubleExtended, X87DoubleExtended) -> X87DoubleExtended,
+    ) {
         for (axis, angle) in [(1, yaw), (0, pitch), (2, roll)] {
             let index = usize::from(angle.wrapping_neg() & 2047);
             let sine = extended(rotation_sample(index));
@@ -116,18 +132,18 @@ impl Matrix {
                 let [x, y, z] = row.map(extended);
                 match axis {
                     1 => {
-                        let next_x = stored(((x * cosine).value - (z * sine).value).value);
-                        row[2] = stored(((z * cosine).value + (x * sine).value).value);
+                        let next_x = stored((product(x, cosine) - product(z, sine)).value);
+                        row[2] = stored((product(z, cosine) + product(x, sine)).value);
                         row[0] = next_x;
                     }
                     0 => {
-                        let next_y = stored(((y * cosine).value + (z * sine).value).value);
-                        row[2] = stored(((z * cosine).value - (y * sine).value).value);
+                        let next_y = stored((product(y, cosine) + product(z, sine)).value);
+                        row[2] = stored((product(z, cosine) - product(y, sine)).value);
                         row[1] = next_y;
                     }
                     _ => {
-                        let next_x = stored(((x * cosine).value + (y * sine).value).value);
-                        row[1] = stored(((y * cosine).value - (x * sine).value).value);
+                        let next_x = stored((product(x, cosine) + product(y, sine)).value);
+                        row[1] = stored((product(y, cosine) - product(x, sine)).value);
                         row[0] = next_x;
                     }
                 }

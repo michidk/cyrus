@@ -269,3 +269,44 @@ fn animated_vertex_conversion_scales_and_rounds_ties_even() {
         assert!(animation_vertex_q8(position).is_err());
     }
 }
+
+#[test]
+fn unattached_rotation_rounds_products_before_sums() {
+    // Verified ordinary yaw and pitch transitions; both use unchanged table samples.
+    let cases = [
+        (
+            [0, 1991, 0],
+            [
+                [1064785160, 3147691644, 3196327068],
+                [995104864, 1065352745, 3151928672],
+                [1048844282, 1002191984, 1064784958],
+            ],
+            [
+                [1065290951, 3147691644, 3182428804],
+                [999108910, 1065352745, 3150519791],
+                [1034948834, 1002191984, 1065290827],
+            ],
+        ),
+        (
+            [2038, 0, 0],
+            [
+                [1065353216, 0, 0],
+                [0, 1065282203, 1035745768],
+                [0, 3183229416, 1065282203],
+            ],
+            [
+                [1065353216, 0, 0],
+                [0, 1065321640, 1031481790],
+                [0, 3178965438, 1065321640],
+            ],
+        ),
+    ];
+    for (angles, initial, expected) in cases {
+        let mut matrix = Matrix(initial.map(|row| row.map(f32::from_bits)));
+        let mut extended = matrix;
+        matrix.rotate_unattached(angles);
+        extended.rotate(angles);
+        assert_eq!(matrix.0.map(|row| row.map(f32::to_bits)), expected);
+        assert_ne!(extended.0.map(|row| row.map(f32::to_bits)), expected);
+    }
+}
