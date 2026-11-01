@@ -53,6 +53,15 @@ reporting success. A directory-sync failure after publication or deletion means
 the change is visible but its crash durability is unconfirmed. Windows does not
 provide the same directory-sync guarantee through this storage boundary.
 
+Original `SAVEGAME.SAV` and per-world `.TSG` files are not supported load inputs.
+They use a different format from cyrus session documents. Preservation can read
+their containers, global flags and inventory records, but the complete original
+object/script state has no validated import mapping. A matching world number or
+successfully decoded inventory does not establish a compatible session. The load
+path rejects unsupported document/slot formats before session publication; it
+does not load a fresh world as a substitute. See
+[original-save compatibility](https://github.com/michidk/cyrus/issues/93).
+
 Shared browser/CLI options use exactly the same names:
 
 | CLI | Browser URL | Meaning |
