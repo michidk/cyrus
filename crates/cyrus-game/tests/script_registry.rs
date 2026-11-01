@@ -31925,6 +31925,51 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
 }
 
 #[test]
+fn the_action_key_does_not_use_the_selected_item_on_a_rope() {
+    use cyrus_game::script::{QuickKeys, ScriptInputs};
+    let use_item = |rope: bool| {
+        let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+        let player = world
+            .id(world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Player)
+                })
+                .unwrap())
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        // Flag bit four empties the item once it is used, which makes a use observable.
+        let mut asset = inventory_asset(&[(4, 1)]);
+        asset.inventory.get_mut(&4).unwrap().flags = 4;
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        hud.select_item(4).unwrap();
+        world.set_attribute_for_test(player, 3, 60);
+        world.globals_mut().initialize_selected_health_for_test(60);
+        world.set_rope_attached_for_test(player, rope);
+        let inputs = ScriptInputs {
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            quick_keys: Some(QuickKeys {
+                sword: false,
+                health: false,
+                use_selected: true,
+            }),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::default();
+        world
+            .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        hud.inventory(None).unwrap().counts[&4]
+    };
+    assert_eq!(use_item(false), 0, "the selected potion is used up");
+    assert_eq!(use_item(true), 1, "a player on a rope does not use it");
+}
+
+#[test]
 fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weapon() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {

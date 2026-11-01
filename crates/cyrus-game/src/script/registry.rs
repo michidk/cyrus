@@ -653,6 +653,16 @@ impl ScriptWorld {
         self.activation.set_owner_for_test(owner);
     }
 
+    /// Test hook: attach or release a logical actor on a rope without running the attach routine.
+    #[doc(hidden)]
+    pub fn set_rope_attached_for_test(&mut self, id: ScriptActorId, attached: bool) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .rope_attached = attached;
+    }
+
     /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
     #[doc(hidden)]
     pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: u8, origin_y: i32) {
