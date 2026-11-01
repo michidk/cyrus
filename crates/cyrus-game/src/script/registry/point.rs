@@ -606,7 +606,7 @@ impl ScriptWorld {
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
         if phase == 0 {
-            self.initialize_point_route(id, inputs, sounds)?;
+            self.initialize_point_route(id)?;
         } else if phase == 8 {
             if let Some(result) = self.advance_point_route(id, point, inputs)? {
                 return Ok(result);
@@ -776,17 +776,11 @@ impl ScriptWorld {
         Ok(1)
     }
 
-    /// Phase zero: release the held nodes, admit the default animation, then search for a free
-    /// node. A hit makes it the next node and selects phase one; a miss keeps phase zero and
-    /// leaves the receiver without a map.
-    fn initialize_point_route(
-        &mut self,
-        id: ScriptActorId,
-        inputs: ScriptInputs<'_>,
-        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
-    ) -> Result<()> {
+    /// Phase zero preserves playback while releasing held nodes and searching for a free node.
+    /// A hit makes it the next node and selects phase one; a miss leaves no map.
+    /// Preservation's point route initialization calls the animation-stop operation, a no-op.
+    fn initialize_point_route(&mut self, id: ScriptActorId) -> Result<()> {
         self.release_held_walk_nodes(id)?;
-        self.admit_point_default(id, inputs, sounds)?;
         self.release_held_walk_nodes(id)?;
         let found = self.nearest_free_walk_node(id)?;
         self.actors[id.index]

@@ -160,3 +160,8 @@ require `just gates`. Preserve successful checks when their inputs are unchanged
 Runtime changes also require the applicable headless, replay or original-game
 comparison. See [METHOD](../../docs/METHOD.md) and
 [SETUP](../../docs/SETUP.md) for the verification and launch workflows.
+
+Verified: point route initialization preserves current and pending animation playback,
+so walking can continue while a new route is selected. The animation-stop operation
+leaves playback unchanged, following preservation
+[point initialization](https://github.com/michidk/redguard-preservation/pull/156).

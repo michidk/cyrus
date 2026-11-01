@@ -25904,7 +25904,7 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
 fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_a_map() {
     use cyrus_game::script::ScriptInputs;
     for (position, hit) in [([0, 0, 0], true), ([90_000_000, 0, 90_000_000], false)] {
-        let (mut world, ..) = free_node_fixture(
+        let (mut world, scripts, data) = free_node_fixture(
             serde_json::json!([{"node_count":2,"walk_nodes":[walk_node([0,0,0]),walk_node([5,0,0])]}]),
             0,
             |saved| {
@@ -25912,6 +25912,8 @@ fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_
                 saved["actors"][0]["control"]["point_command"]["phase"] = 0.into();
             },
         );
+        let animation_before =
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"].clone();
         let id = world.id(0).unwrap();
         let result = world
             .move_ordinary_point(
@@ -25928,6 +25930,11 @@ fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_
             )
             .unwrap();
         assert_eq!(result, 1, "the wrapper stays pending");
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"],
+            animation_before,
+            "route initialization preserves current and pending playback"
+        );
         let control = world.actors()[0].control_state().unwrap();
         if hit {
             assert_eq!(control.navigation.map, Some(0));
