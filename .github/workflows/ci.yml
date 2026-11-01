@@ -1,6 +1,13 @@
 name: Test & Lint
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -24,6 +31,7 @@ jobs:
       matrix:
         os: [windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -42,6 +50,7 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -71,6 +80,7 @@ jobs:
   lints:
     name: Lints
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -109,6 +119,12 @@ jobs:
           python3 dev/scripts/test-cargo-wrapper.py
           node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
 
+      - name: Check surface audio
+        run: python3 -B dev/scripts/test-surface-audio.py
+
+      - name: Check portable core boundaries
+        run: dev/scripts/check-core-boundaries.sh
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check --color always
 
@@ -118,6 +134,7 @@ jobs:
   web:
     name: Browser build
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -134,16 +151,3 @@ jobs:
       # Proves the install/thread/socket code stays behind cfg(not(wasm32)).
       - name: Check both applications for wasm32
         run: cargo check -p cyrus-web -p cyrus-viewer -p cyrus-assets-worker --target wasm32-unknown-unknown
-
-  core:
-    name: Portable core boundaries
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Bevy's Linux libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-      - run: dev/scripts/check-core-boundaries.sh
