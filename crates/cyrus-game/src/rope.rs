@@ -163,6 +163,9 @@ pub struct Rope {
     pub previous_sum: i32,
     pub sounds: [i32; 3],
     pub attachments: Vec<Attachment>,
+    /// The selected player's hand-height link choice for the node below its own, computed by its
+    /// controls each update (actor index, link): the lowest node a downward step may reach.
+    pub down_limit: Option<(usize, i32)>,
     has_end_model: bool,
 }
 
@@ -229,6 +232,7 @@ impl Rope {
             previous_sum: 0,
             sounds: record.sounds,
             attachments: Vec::new(),
+            down_limit: None,
             has_end_model: record.has_end_model,
         }
     }

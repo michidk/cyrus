@@ -416,6 +416,19 @@ impl ScriptWorld {
                 self.climb(id, rope_index, data, false, ticks, probe, sounds)?;
             }
         }
+        let node = self.ropes[rope_index]
+            .attachments
+            .iter()
+            .find(|a| a.actor == index)
+            .map(|a| a.node)
+            .context("rope update: attachment unavailable")?;
+        let limit = self.rope_hand_link(id, rope_index, node + 1, data, probe)?;
+        self.ropes[rope_index].down_limit = Some((index, limit));
+        // The selected player's ordinary update repeats the key's climb group while attached,
+        // whether or not the climb helper's node bounds accepted it.
+        if let Some(group) = ordinary_climb_group(up, down, look) {
+            self.request_ordinary_group(id, group, false, ticks, sounds)?;
+        }
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
         let mut turned = heading;
         if self.player_rope.turn_rate != 0 {
@@ -671,6 +684,7 @@ impl ScriptWorld {
             .position(|a| a.actor == index)
             .context("rope release: attachment unavailable")?;
         let attachment = rope.attachments.remove(position);
+        rope.down_limit = None;
         let motion = i64::from(attachment.motion);
         let scale = i64::from(frame_scale.max(1));
         let speed = if rope.amplitude < 6 && motion.abs() < (scale * 0x1800) >> 8 {
@@ -832,6 +846,17 @@ impl ScriptWorld {
     }
 }
 
+/// The group the selected player's ordinary update requests while attached with the view key up:
+/// 83 for Down, otherwise 82 for Up (preservation "Rope control while attached").
+fn ordinary_climb_group(up: bool, down: bool, look: bool) -> Option<u16> {
+    match (look, down, up) {
+        (true, ..) => None,
+        (false, true, _) => Some(GROUP_CLIMB_DOWN),
+        (false, false, true) => Some(GROUP_CLIMB_UP),
+        _ => None,
+    }
+}
+
 /// Whether the climb-up helper requests group 82: always when another group is current, and again
 /// for the current group only while its exit marker is clear (preservation "Rope control while
 /// attached"). Climb down requests group 83 every update.
@@ -863,6 +888,15 @@ mod tests {
         assert_eq!(hanging_group(None, 0, 5), Some(81));
         assert_eq!(hanging_group(None, 0, 0), None);
         assert_eq!(hanging_group(Some(82), 1, 5), None);
+    }
+
+    #[test]
+    fn the_ordinary_update_requests_83_for_down_else_82_for_up_unless_look_is_held() {
+        assert_eq!(ordinary_climb_group(false, true, false), Some(83));
+        assert_eq!(ordinary_climb_group(true, true, false), Some(83));
+        assert_eq!(ordinary_climb_group(true, false, false), Some(82));
+        assert_eq!(ordinary_climb_group(false, false, false), None);
+        assert_eq!(ordinary_climb_group(true, true, true), None);
     }
 
     #[test]

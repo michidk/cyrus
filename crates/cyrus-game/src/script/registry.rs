@@ -1393,7 +1393,11 @@ impl ScriptWorld {
                         .and_then(|animation| animation.playback.current_group())
                         .map_or(0, i32::from)
                 },
-                |_, _, node| node,
+                // Only the selected player computes the limit; other attachments step freely.
+                |rope, actor, node| match rope.down_limit {
+                    Some((owner, limit)) if owner == actor => limit,
+                    _ => node,
+                },
             );
         }
         Ok(())
