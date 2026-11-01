@@ -16051,6 +16051,92 @@ fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
 }
 
 #[test]
+fn ordinary_heading_assignment_waits_for_the_next_model_matrix_refresh() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = heading_property_scripts(294, Object::Me);
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Property {
+            object: Object::Me,
+            reference: 294,
+        },
+        formula: Formula {
+            first: Value::Integer { value: 512 },
+            rest: vec![],
+        },
+    };
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (mut world, data, _) = static_model_fixture(scripts);
+    let id = world.id(0).unwrap();
+    world
+        .prepare_model_admission(&Default::default(), 0)
+        .unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let before = world.spatial(id).unwrap().local;
+    assert_eq!(before.angles[1], 1536);
+    world
+        .update_ordinary(
+            &data,
+            [0; 2],
+            OrdinaryInputs {
+                scripts: inputs,
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[id.index].failure().is_none(),
+        "{:?}",
+        world.actors()[id.index].failure()
+    );
+    let after = world.spatial(id).unwrap();
+    assert_eq!(after.local.angles[1], 512);
+    assert_eq!(after.local.matrix, before.matrix);
+    assert_eq!(after.angle_history[1], 1536);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let published = world.spatial(id).unwrap();
+    assert_eq!(published.local.angles[1], 512);
+    assert_ne!(published.local.matrix, before.matrix);
+    assert_eq!(published.effective.unwrap().angles[1], 512);
+}
+
+#[test]
 fn automatic_family_models_capture_master_before_ordinary_script_movement() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let (mut world, data) = family_model_fixture(0);

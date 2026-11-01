@@ -593,9 +593,6 @@ impl ScriptWorld {
                     )?;
                 }
                 self.restore_axis_locks(id)?;
-                if self.spatial(id)?.parent.is_none() {
-                    self.refresh_transform(id)?;
-                }
                 self.retain_ordinary_water_position(id)?;
                 if selected_player {
                     self.finish_player_movement_update(id)?;

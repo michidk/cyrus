@@ -136,6 +136,11 @@ following preservation's [release continuation contract](https://github.com/mich
 The per-update called flag prevents a second movement step when the controller
 already moved the player.
 
+Ordinary simulation restores axis locks without publishing unattached matrix changes.
+The next model-presentation phase refreshes the retained matrix; explicit orientation
+operations keep their own refresh behavior. **Verified:** preservation
+[ordinary publication contract](https://github.com/michidk/redguard-preservation/pull/155).
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
