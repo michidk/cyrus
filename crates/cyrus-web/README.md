@@ -144,7 +144,8 @@ or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
 original/native/browser replay workflow and local artifact rules.
 With `window.__cyrusInspectScripts = true`, the observation includes a page of up
 to 64 script actors. Set `window.__cyrusInspectScriptsOffset` to a nonnegative
-32-bit integer to inspect later actors. Missing or invalid offsets use zero.
+32-bit integer to inspect later actors. Missing or invalid offsets use zero. The same flag adds
+`script_hud` (the native `state` command's inventory counts and selected item).
 
 With `window.__cyrusInspectSession = true`, capture observation also includes
 `session`: the pending boundary operation, hidden staging counts, active live

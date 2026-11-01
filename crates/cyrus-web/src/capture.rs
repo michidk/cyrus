@@ -140,6 +140,7 @@ fn observe(
     ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
     scripts: Option<Res<cyrus_game::script::ScriptActors>>,
+    script_hud: Option<Res<cyrus_game::script::ScriptHud>>,
     session: cyrus_session::SessionBoundaryInspection,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {
@@ -188,6 +189,16 @@ fn observe(
                 .unwrap_or(0.0) as usize;
             let text = world.inspect(offset, 64).to_string();
             js_sys::Reflect::set(&record, &"scripts".into(), &js_sys::JSON::parse(&text)?)?;
+        }
+        // The script HUD (inventory counts, selected item) under the same opt-in, like `state`'s `script_hud`.
+        if js_sys::Reflect::get(&window, &"__cyrusInspectScripts".into())?.is_truthy()
+            && let Some(hud) = script_hud.as_ref()
+        {
+            js_sys::Reflect::set(
+                &record,
+                &"script_hud".into(),
+                &js_sys::JSON::parse(&hud.inspect().to_string())?,
+            )?;
         }
         js_sys::Reflect::set(&window, &"__cyrusCapture".into(), &record)
     })();
