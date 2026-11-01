@@ -182,6 +182,32 @@ impl LogbookArtwork {
     }
 }
 
+/// The 256-entry palette of a GXA file (its `BPAL` section holds 6-bit values, shifted left two
+/// bits for display), found by walking the file's sections: a four-byte tag, then a big-endian
+/// payload length, except for `END `.
+#[cfg(feature = "parsers")]
+fn gxa_palette(bytes: &[u8]) -> anyhow::Result<[[u8; 3]; 256]> {
+    let mut at = 0;
+    while at + 8 <= bytes.len() {
+        let length = u32::from_be_bytes(bytes[at + 4..at + 8].try_into()?) as usize;
+        let payload = at + 8;
+        if &bytes[at..at + 4] == b"BPAL" {
+            let table = bytes
+                .get(payload..payload + 768)
+                .filter(|_| length >= 768)
+                .ok_or_else(|| anyhow::anyhow!("logbook: LOGPAPER.GXA palette is truncated"))?;
+            return Ok(std::array::from_fn(|index| {
+                std::array::from_fn(|channel| table[index * 3 + channel] << 2)
+            }));
+        }
+        if &bytes[at..at + 4] == b"END " {
+            break;
+        }
+        at = payload + length;
+    }
+    anyhow::bail!("logbook: LOGPAPER.GXA has no palette")
+}
+
 #[cfg(feature = "parsers")]
 /// Corner normals and brightness bytes the engine's model lighting reads for each face, following
 /// preservation's formats/models/3d.md: with an indirection table each face vertex, counted across
@@ -239,7 +265,13 @@ pub(crate) fn prepare(
     let read = |path: &str| {
         crate::preparation::read(source, path).with_context(|| format!("logbook: {path}"))
     };
-    let paper = parse_gxa_file(&read("SYSTEM/LOGPAPER.GXA")?)?
+    let paper_bytes = read("SYSTEM/LOGPAPER.GXA")?;
+    // The reader draws the paper and the scrolls with the paper file's own palette, so the scroll
+    // textures take their colours from it, not from REDGUARD.COL.
+    let reader_palette = Palette {
+        colors: gxa_palette(&paper_bytes)?,
+    };
+    let paper = parse_gxa_file(&paper_bytes)?
         .frames
         .into_iter()
         .next()
@@ -266,7 +298,7 @@ pub(crate) fn prepare(
                     width: image.width,
                     height: image.height,
                     indices: image.pixel_data.clone(),
-                    rgba: image.decode_rgba(Some(&palette)),
+                    rgba: image.decode_rgba(Some(&reader_palette)),
                 });
             }
         }
@@ -388,6 +420,27 @@ mod credits_tests {
             CreditAlign::Left,
             "unknown letters stay left"
         );
+    }
+
+    #[cfg(feature = "parsers")]
+    #[test]
+    fn gxa_palette_is_found_by_walking_sections_and_widened_to_eight_bits() {
+        let mut file = Vec::new();
+        file.extend(b"BMHD");
+        file.extend(34u32.to_be_bytes());
+        file.extend([0u8; 34]);
+        file.extend(b"BPAL");
+        file.extend(768u32.to_be_bytes());
+        file.extend((0..768).map(|i| (i % 64) as u8));
+        file.extend(b"END ");
+        let palette = gxa_palette(&file).unwrap();
+        assert_eq!(palette[0], [0, 4, 8]);
+        assert_eq!(palette[1], [12, 16, 20]);
+        assert_eq!(palette[255][2], (767 % 64) as u8 * 4);
+        // No palette section, or a truncated one, is an explicit error.
+        assert!(gxa_palette(&file[..42]).is_err());
+        assert!(gxa_palette(b"END ").is_err());
+        assert!(gxa_palette(&file[..60]).is_err());
     }
 
     #[test]

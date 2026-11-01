@@ -134,7 +134,8 @@ journal new-game reset semantics and save integration remain unsupported. The tw
 lights them: its own ambient 64, a white directional light and two white local lights, independent of the world
 (preservation's [scroll lighting](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-scroll-lighting)),
 with corner levels interpolated across each face and the texture scaled by `floor(T * (L + 1) / 256)`; reader caches
-written before this need re-export. Pixel-exact filtering still needs fidelity work. Rules follow the
+written before this need re-export. The scroll textures take their colours from the paper file's own palette, as the original's
+reader does. Pixel-exact filtering still needs fidelity work. Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).
 
 Available-save death entry presents the installed last-game dialog over a captured
