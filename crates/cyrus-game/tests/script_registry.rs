@@ -31208,6 +31208,15 @@ fn block_message_handoff_gates_skip_unavailable_traversal_and_selected_death_que
 
 #[test]
 fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_list() {
+    check_scripted_item_use(false);
+}
+
+#[test]
+fn scripted_item_use_preserves_the_rope_association() {
+    check_scripted_item_use(true);
+}
+
+fn check_scripted_item_use(on_rope: bool) {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
@@ -31253,6 +31262,8 @@ fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_
         item.drop_use_items = vec![5];
     }
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let player = world.selected_player().unwrap();
+    world.set_rope_attached_for_test(player, on_rope);
     let map = world.id(0).unwrap();
     let inputs = |hud| ScriptInputs {
         hud: Some(hud),
@@ -31288,6 +31299,7 @@ fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_
         )
         .unwrap();
     assert!(world.actors().last().unwrap().failure().is_none());
+    assert_eq!(world.selected_player_on_rope(), on_rope);
 }
 
 fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
