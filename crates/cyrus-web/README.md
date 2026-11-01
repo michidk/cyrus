@@ -34,14 +34,13 @@ first with ascending slot numbers on ties. Creation allocates the first free
 manual slot from 2 through 299 inside the write transaction. Revision tokens reject
 stale overwrite, load and delete requests. Descriptions support 1–64 original input characters, including byte codes 11
 and 13 alongside printable ASCII. Other text is explicitly unsupported. Named diagnostic
-snapshots are unchanged. Reserved `quick_save` (slot 0) and `auto_save` (slot 1) operations capture the current session with fixed descriptions. F9 requests a quick save and an eligible paused death menu admits one autosave. These operations share the same atomic publication and revision checks as authored saves.
+snapshots are unchanged. Reserved `quick_save` (slot 0) and `auto_save` (slot 1) operations capture the current session with fixed descriptions. F9 requests a quick save. Quit from a world context publishes the reserved autosave when a gameplay thumbnail exists, or discards it while the death override is active. Quit waits for the storage result. These operations share the same atomic publication and revision checks as authored saves.
 Retained-save death confirmation can load an existing slot through this host
 without capture mode. Missing slots, stale revisions and failed restoration
 report errors and retain the live session. Browser slot diagnostics retain an admitted
 save selection before capture and a load selection before document decoding.
 Save preparation reads metadata without writing; publication rejects a changed
-planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists the
-first nine saves and restores the selected revision. The first Save page also uses this host for description editing and create/overwrite.
+planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists paginated saves and restores the selected revision. The authored Save page uses this host for description editing and create/overwrite.
 Slot metadata carries the optional gameplay thumbnail bytes (`null` when none was captured). Delete on an existing Load row asks
 for confirmation, removes the selected revision and refreshes the list.
 Run `testSessionStorage()` and `testSessionSlots()` from

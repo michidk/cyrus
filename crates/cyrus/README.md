@@ -142,12 +142,11 @@ installed current/visited worlds and service sources off-live. Poll
 Preparation alone is not success. Only one native load may be pending, and its
 terminal result remains available across repeated polls. Acknowledge it with
 `session_load_result {acknowledge: true}` before another request. Capture commands reject while
-that load owns the boundary. The authored Load page uses this host to list the first nine slots and restore
+that load owns the boundary. The authored Load page uses this host to list paginated slots and restore
 the selected revision. Slot and retained-last-game loads clear saved sample/dialogue
 services and retain the live CD transport for ordinary world track selection,
 following preservation's sound and music restoration rules. Named diagnostic loads
-retain exact audio source checkpoints. This does not establish original save eligibility. Installed rendered restoration and revisit
-acceptance remain unfinished.
+retain exact audio source checkpoints. Authored Save/Load actions apply the book's eligibility rules.
 
 Native diagnostic `session_slots {operation}` supports list, create, overwrite,
 load and delete. Poll `session_slots_result` and acknowledge its terminal result
@@ -158,5 +157,5 @@ files. Failed capture, preparation or publication does not replace accepted data
 Admitted save/load selections retain the last-save slot and description for death
 confirmation. Its Yes choice restores that slot through the shared atomic session
 boundary; missing or malformed saves report errors without starting a fresh world.
-The Load page consumes the same slot host; Save dialogs and save eligibility
-remain unavailable.
+The authored Save page uses the same slot host for description editing, creation
+and revision-checked overwrite. Slot metadata includes the captured gameplay thumbnail.

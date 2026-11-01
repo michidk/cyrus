@@ -102,8 +102,9 @@ percentage without a right-hand status message. Shared native/browser presentati
 uses that layout and leaves the remaining artwork untouched. See preservation
 [startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md)
-supplies the entry parser and loading layout. Saves, full story/gameplay
-initialization and progression unlocks remain unavailable.
+supplies the entry parser and loading layout. Save/Load uses the shared session
+boundary and the native or browser slot host. Full story/gameplay initialization
+and progression remain incomplete.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `menu.json` in the config directory or browser localStorage. It validates local state,
