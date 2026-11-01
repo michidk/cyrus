@@ -81,7 +81,10 @@ colors. The recovered background fact is [published in preservation](https://git
 
 **Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
 selected-corner mask, terrain-centered phase, quarter-shifted rotation table,
-and half-amplitude bias. Playback uses real elapsed time at the BIOS timer rate, preserving its clock across scenes.
+and half-amplitude bias. The shared rotation-table owner rounds lookup angles to
+single precision before sine, following the initialized table documented in
+[preservation PR154](https://github.com/michidk/redguard-preservation/pull/154).
+Playback uses real elapsed time at the BIOS timer rate, preserving its clock across scenes.
 It deforms private copies of exported terrain meshes and recomputes shared
 normals across materials. Re-export worlds to replace old water masks.
 

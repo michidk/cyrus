@@ -2,7 +2,8 @@
 //!
 //! Each case gives synthetic receiver attributes, pose and a world position, and the camera state
 //! the original left after its first invocation (selection, scripted words, request, offsets,
-//! published pose) and after the next invocation. The scene has no obstacles and no terrain.
+//! published pose) and after the next invocation. The orbit pose is inferred from the published
+//! candidate formula and initialized runtime table. The scene has no obstacles and no terrain.
 use anyhow::Result;
 use cyrus_game::script::{ScriptActorId, camera::*};
 
@@ -134,7 +135,7 @@ const CASES: &[Case] = &[
         nesting: 1,
         counter: 1,
         marks: (true, false, false),
-        pose: [-12786, 2299830, 11036],
+        pose: [-12786, 2299830, 11037],
         pose_angles: [1542, 268, 0],
         scratch: Record {
             position_offset: [6500, 500, -500],

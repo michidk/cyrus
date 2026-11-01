@@ -7580,10 +7580,19 @@ fn overlap_response_fixture_edited(
 #[test]
 fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() {
     use cyrus_game::script::OrdinaryOverlapMotion as Motion;
-    for (weight, other_weight, expected_actor, expected_other, actor_distance, other_distance) in [
-        (128, 128, 1025, 23039, 1535, 1535),
-        (128, 0, 1453, 21504, 1107, 0),
-        (0, 128, 2560, 22611, 0, 1107),
+    // Inferred from initialized quarter-turn residuals and stored forward translation.
+    for (
+        weight,
+        other_weight,
+        expected_actor,
+        expected_z,
+        expected_other,
+        actor_distance,
+        other_distance,
+    ) in [
+        (128, 128, 1025, 7679, 23039, 1535, 1535),
+        (128, 0, 1453, 7679, 21504, 1107, 0),
+        (0, 128, 2560, 7680, 22611, 0, 1107),
     ] {
         let (mut world, data) = overlap_response_fixture(weight, other_weight, 74);
         let id = world.id(0).unwrap();
@@ -7599,7 +7608,7 @@ fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() 
         );
         assert_eq!(
             world.spatial(id).unwrap().local.position,
-            [expected_actor, 5120, 7680]
+            [expected_actor, 5120, expected_z]
         );
         assert_eq!(
             world.spatial(other).unwrap().local.position,
@@ -13811,12 +13820,13 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         )
         .unwrap();
     let after = world.spatial(player).unwrap().local;
-    // Left steps a quarter turn off the heading: X moves, Z and the heading do not.
+    // Inferred: the initialized quarter-turn residual lowers stored Z by one Q8 unit.
+    // The sidestep preserves the heading.
     assert_ne!(
         after.position[0], before.position[0],
         "{before:?} -> {after:?}"
     );
-    assert_eq!(after.position[2], before.position[2]);
+    assert_eq!(after.position[2], before.position[2] - 1);
     assert_eq!(after.angles, before.angles);
     assert_eq!(
         world.actors()[index]

@@ -164,12 +164,18 @@ fn stored_sphere_transform_keeps_fractional_centers_and_extended_products() {
 }
 
 #[test]
-fn shared_rotation_table_retains_native_angle_precision_and_endpoint() {
+fn shared_rotation_table_matches_initialized_samples_and_endpoint() {
+    // Verified initialized runtime samples, per preservation PR154.
     for (index, bits) in [
-        (1, 0x3b49_0fc6),
+        (0, 0x0000_0000),
+        (1, 0x3b49_0fc5),
+        (2, 0x3bc9_0f87),
         (256, 0x3f35_04f3),
-        (1024, 0x3366_2a9a),
-        (2048, 0xb3e6_2a9a),
+        (512, 0x3f80_0000),
+        (513, 0x3f7f_ffb1),
+        (1024, 0x3422_2169),
+        (1536, 0xbf80_0000),
+        (2048, 0xb4a2_2169),
         (2560, 0x3f80_0000),
     ] {
         assert_eq!(rotation_sample(index).to_bits(), bits, "sample {index}");
