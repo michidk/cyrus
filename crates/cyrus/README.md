@@ -3,6 +3,10 @@
 The game executable. Parses arguments, finds the install, assembles the Bevy
 app from assets, world, game and presentation plugins, and runs it.
 
+Software render adapters use direct mesh drawing. Hardware adapters retain
+Bevy's indirect drawing selection. This changes renderer setup without changing
+world geometry or materials.
+
 ```sh
 cargo run -p cyrus -- --scene START         # window
 cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control server only

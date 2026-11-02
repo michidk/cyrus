@@ -384,6 +384,7 @@ module where it is defined and regenerate.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
+- `src/rendering.rs` — Native renderer configuration for software adapters.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.
 - `src/session/slots.rs` — Native slot envelopes: bounded metadata followed by an opaque session document.

@@ -14,6 +14,7 @@ mod cheats;
 mod console;
 mod debug;
 mod preferences;
+mod rendering;
 use bevy::prelude::*;
 use clap::Parser;
 use cyrus_game::GamePlugin;
@@ -204,6 +205,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins(
             DefaultPlugins
                 .set(cyrus_app::window("cyrus"))
+                .add_before::<bevy::pbr::PbrPlugin>(rendering::SoftwareRenderingPlugin)
                 .disable::<bevy::log::LogPlugin>(),
         );
     }
