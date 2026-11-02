@@ -12,11 +12,11 @@
       "allowedVersions": "=0.22.2"
     },
     {
-      "description": "Follow the inspector port matching the workspace Bevy version.",
+      "description": "Pinned to the fork bevy-0.20 port; its default branch tracks an older Bevy. Bump the rev by hand.",
       "matchPackageNames": [
         "bevy-inspector-egui"
       ],
-      "followTag": "bevy-0.20"
+      "enabled": false
     }
   ]
 }
