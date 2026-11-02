@@ -211,12 +211,39 @@ fn overlap_distance(factor: i32, mobility: i32, separation: i32) -> i32 {
 }
 
 impl ScriptWorld {
+    // The selected-player override changes response mobility, never the stored weight.
+    fn ordinary_overlap_weight(&self, id: ScriptActorId) -> Result<u8> {
+        if self.selected_player_index() == Some(id.index) {
+            let lineup = self.globals.lineup_result.with_context(|| {
+                format!(
+                    "world {} instance {}: overlap lineup result unavailable",
+                    self.world, id.index
+                )
+            })?;
+            let lockout = self.globals.lockout().with_context(|| {
+                format!(
+                    "world {} instance {}: overlap lockout unavailable",
+                    self.world, id.index
+                )
+            })?;
+            if lineup != 0 || lockout != 0 {
+                return Ok(0);
+            }
+        }
+        Ok(self.actors[id.index].attributes[6])
+    }
+
+    fn preserve_overlap_position(&self, id: ScriptActorId) -> bool {
+        self.selected_player_index() == Some(id.index)
+            && self.globals.lineup_result.is_some_and(|result| result != 0)
+    }
+
     /// Apply one admitted ordinary actor-pair overlap in the original pass order.
     /// Touch tells the caller to end that pass. Positions and contact state are
     /// authoritative logical state; retained model presentations are not refreshed.
     /// Grounded support states skip their current support actor after tiny contact.
-    /// Falling actors use the same weighted response; selected-player overrides
-    /// remain owned by their separate controller stage.
+    /// Falling actors use the same weighted response. Selected-player mobility
+    /// and rollback follow preservation's weighted actor overlap response rules.
     /// Admission follows preservation's [grounded overlap rules](https://github.com/michidk/redguard-preservation/commit/5c686bc).
     pub fn resolve_ordinary_actor_overlap(
         &mut self,
@@ -258,11 +285,15 @@ impl ScriptWorld {
         if separation >= 3 && self.landing_branch_applies(id, other)? {
             return self.land_on_actor(id, other);
         }
-        let response = ordinary_overlap_motion(
-            self.actors[id.index].attributes[6],
-            Some(self.actors[other.index].attributes[6]),
-            separation,
-        )?;
+        let response = if separation >= 3 {
+            ordinary_overlap_motion(
+                self.ordinary_overlap_weight(id)?,
+                Some(self.ordinary_overlap_weight(other)?),
+                separation,
+            )?
+        } else {
+            ordinary_overlap_motion(0, Some(0), separation)?
+        };
         if response == OrdinaryOverlapMotion::NoContact {
             return Ok(response);
         }
@@ -278,7 +309,9 @@ impl ScriptWorld {
         let mut other_position = self.spatial(other)?.local.position;
         match response {
             OrdinaryOverlapMotion::Rollback => {
-                actor_position = self.spatial(id)?.previous_local_position
+                if !self.preserve_overlap_position(id) {
+                    actor_position = self.spatial(id)?.previous_local_position;
+                }
             }
             OrdinaryOverlapMotion::Separate {
                 actor,
@@ -455,11 +488,17 @@ impl ScriptWorld {
             &self.ordinary_overlap_spheres(id, data)?,
             sphere,
         )?;
+        if separation == 0 {
+            return Ok(OrdinaryOverlapMotion::NoContact);
+        }
         let response =
-            ordinary_overlap_motion(self.actors[id.index].attributes[6], None, separation)?;
+            ordinary_overlap_motion(self.ordinary_overlap_weight(id)?, None, separation)?;
         let position = self.spatial(id)?.local.position;
         let position = match response {
-            OrdinaryOverlapMotion::Rollback => self.spatial(id)?.previous_local_position,
+            OrdinaryOverlapMotion::Rollback if !self.preserve_overlap_position(id) => {
+                self.spatial(id)?.previous_local_position
+            }
+            OrdinaryOverlapMotion::Rollback => position,
             OrdinaryOverlapMotion::Separate { actor, .. } => {
                 let heading = crate::player::motion::displacement_heading(
                     (f64::from(sphere.center[0]) - f64::from(position[0] >> 8)).trunc() as i64,

@@ -35888,3 +35888,268 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         "Resurrect must not republish stale attachment geometry"
     );
 }
+
+// Saved session owners establish the fixture without adding runtime setters.
+fn selected_overlap_fixture(
+    lineup: Option<i32>,
+    lockout: Option<u16>,
+    other_weight: u8,
+    offset: i32,
+) -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    use cyrus_game::{
+        clock::SimulationClock,
+        player::input::PlayerToggles,
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        random::EngineRandom,
+        script::{
+            LogicalSessionRestoreInputs, LogicalSessionSnapshot, ScriptActors, ScriptHud,
+            WorldSnapshotSources,
+        },
+    };
+    struct Store;
+    impl PreferenceStore for Store {
+        fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let (scripts, mut world, mut data, mut scene) = player_walking_fixture();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    world
+        .prepare_ordinary_collision_shape(player, &data, &scene)
+        .unwrap();
+    let collision = Default::default();
+    let sources = BTreeMap::from([(
+        scripts.world,
+        WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        },
+    )]);
+    let asset = inventory_asset(&[]);
+    let preferences = Preferences::new(Store);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let mut actors = ScriptActors::default();
+    actors.current = Some(world);
+    let mut saved = serde_json::to_value(
+        actors
+            .snapshot_session(
+                &sources,
+                &hud,
+                &SimulationClock::new(scripts.clock).unwrap(),
+                &EngineRandom::from_state(42),
+                PlayerToggles {
+                    walk_mode: true,
+                    auto_defend: false,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    saved["registry"]["globals"]["lineup_result"] = serde_json::to_value(lineup).unwrap();
+    saved["registry"]["globals"]["lockout"] = serde_json::to_value(lockout).unwrap();
+    let saved_world = &mut saved["registry"]["worlds"][0];
+    for (index, position, weight) in [
+        (player.index, [133632, 5120, 7680], 128),
+        (0, [133632, 5120, 7680 + offset * 256], other_weight),
+    ] {
+        saved_world["actors"][index]["attributes"][6] = weight.into();
+        let spatial = &mut saved_world["spatial"]["actors"][index];
+        spatial["local"]["position"] = serde_json::json!(position);
+        if spatial["effective"].is_object() {
+            spatial["effective"]["position"] = serde_json::json!(position);
+        }
+        spatial["previous_local_position"] =
+            serde_json::json!([position[0] - 256, position[1], position[2]]);
+    }
+    let mut world = serde_json::from_value::<LogicalSessionSnapshot>(saved)
+        .unwrap()
+        .plan(LogicalSessionRestoreInputs {
+            sources: &sources,
+            last_generation: 10,
+            hud: &asset,
+            preferences: &preferences,
+            bios_tick: 100,
+        })
+        .unwrap()
+        .finish(&(0..16).map(|slot| (slot, slot)).collect())
+        .unwrap()
+        .actors
+        .current
+        .unwrap();
+    let player = world.selected_player().unwrap();
+    world.refresh_model_presentations(&data, &[player]).unwrap();
+    let definition = scene.definition.take();
+    scene = static_overlap_scene(world.world);
+    scene.definition = definition;
+    scene.collision.placements[0].position = [574, 20, 30];
+    scene.static_collision =
+        cyrus_collision::collision_world::StaticCollision::new(&scene.collision).unwrap();
+    (world, data, scene)
+}
+
+#[test]
+fn selected_overlap_mobility_protects_both_pair_roles_without_changing_weights() {
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    for (lineup, lockout) in [(0, 0), (1, 0), (-1, 0), (0, 2), (1, 1)] {
+        for player_updates in [true, false] {
+            let (mut world, data, _) =
+                selected_overlap_fixture(Some(lineup), Some(lockout), 128, 50);
+            let player = world.selected_player().unwrap();
+            let other = world.id(0).unwrap();
+            let before = world.spatial(player).unwrap().local.position;
+            let (id, target) = if player_updates {
+                (player, other)
+            } else {
+                (other, player)
+            };
+            let response = world
+                .resolve_ordinary_actor_overlap(id, target, &data)
+                .unwrap();
+            let Motion::Separate { actor, other } = response else {
+                panic!("{response:?}")
+            };
+            if lineup != 0 || lockout != 0 {
+                assert_eq!(if player_updates { actor } else { other }, 0);
+                assert!(if player_updates { other } else { actor } > 0);
+                assert_eq!(world.spatial(player).unwrap().local.position, before);
+            } else {
+                assert!(actor > 0 && other > 0);
+                assert_ne!(world.spatial(player).unwrap().local.position, before);
+            }
+            assert_eq!(world.actors()[player.index].attributes()[6], 128);
+            assert_eq!(world.actors()[0].attributes()[6], 128);
+        }
+    }
+}
+
+#[test]
+fn selected_overlap_lineup_preserves_position_but_lockout_alone_rolls_back() {
+    use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    for (lineup, lockout) in [(1, 0), (-1, 2), (0, 1), (0, 2)] {
+        for static_contact in [false, true] {
+            let (mut world, data, scene) =
+                selected_overlap_fixture(Some(lineup), Some(lockout), 0, 50);
+            let player = world.selected_player().unwrap();
+            let current = world.spatial(player).unwrap().local.position;
+            let previous = world.spatial(player).unwrap().previous_local_position;
+            assert_ne!(current, previous);
+            let response = if static_contact {
+                let prepared = world
+                    .prepare_ordinary_collision_query(player, &scene, &data, [522, 30], &[player])
+                    .unwrap();
+                let candidate = ActorCandidate {
+                    owner: CandidateOwner::Static(0),
+                    model: Some(ModelInstance::StaticPlacement(0)),
+                    collision_flags: 1,
+                };
+                world
+                    .resolve_ordinary_static_overlap(player, &scene, &data, &prepared, &candidate)
+                    .unwrap()
+            } else {
+                world
+                    .resolve_ordinary_actor_overlap(player, world.id(0).unwrap(), &data)
+                    .unwrap()
+            };
+            assert_eq!(response, Motion::Rollback);
+            assert_eq!(
+                world.spatial(player).unwrap().local.position,
+                if lineup != 0 { current } else { previous }
+            );
+            assert_eq!(world.actors()[player.index].attributes()[6], 128);
+        }
+    }
+}
+
+#[test]
+fn selected_overlap_small_contacts_precede_unavailable_global_owners() {
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    let (mut world, data, _) = selected_overlap_fixture(None, None, 0, 52);
+    let player = world.selected_player().unwrap();
+    let other = world.id(0).unwrap();
+    assert_eq!(
+        world
+            .query_ordinary_actor_overlap(player, other, &data)
+            .unwrap(),
+        2
+    );
+    let position = world.spatial(player).unwrap().local.position;
+    assert_eq!(
+        world
+            .resolve_ordinary_actor_overlap(player, other, &data)
+            .unwrap(),
+        Motion::Touch
+    );
+    assert_eq!(world.spatial(player).unwrap().local.position, position);
+    for index in [player.index, other.index] {
+        assert_ne!(
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .body_response_flags
+                & 4,
+            0
+        );
+    }
+    let (mut world, data, _) = selected_overlap_fixture(None, Some(0), 128, 50);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    let error = world
+        .resolve_ordinary_actor_overlap(player, world.id(0).unwrap(), &data)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("overlap lineup result unavailable"));
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+}
+
+#[test]
+fn selected_overlap_protection_leaves_other_actor_rollback_and_unlocked_static_motion_intact() {
+    use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    let (mut world, data, _) = selected_overlap_fixture(Some(1), Some(0), 0, 50);
+    let player = world.selected_player().unwrap();
+    let other = world.id(0).unwrap();
+    let previous = world.spatial(other).unwrap().previous_local_position;
+    assert_eq!(
+        world
+            .resolve_ordinary_actor_overlap(other, player, &data)
+            .unwrap(),
+        Motion::Rollback
+    );
+    assert_eq!(world.spatial(other).unwrap().local.position, previous);
+
+    let (mut world, data, scene) = selected_overlap_fixture(Some(0), Some(0), 0, 50);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [522, 30], &[player])
+        .unwrap();
+    let candidate = ActorCandidate {
+        owner: CandidateOwner::Static(0),
+        model: Some(ModelInstance::StaticPlacement(0)),
+        collision_flags: 1,
+    };
+    assert_eq!(
+        world
+            .resolve_ordinary_static_overlap(player, &scene, &data, &prepared, &candidate)
+            .unwrap(),
+        Motion::Separate {
+            actor: 767,
+            other: 0
+        }
+    );
+    assert_ne!(world.spatial(player).unwrap().local.position, before);
+}

@@ -52,6 +52,13 @@ Player alignment consumes these marks when choosing its fallback. The auxiliary
 response bytes remain separate, following preservation's
 [directional refusal contract](https://github.com/michidk/redguard-preservation/pull/153).
 
+Verified: ordinary actor and actor-style static overlap give the selected player
+zero mobility while the shared alignment result or lockout word is nonzero,
+without changing its weight attribute. A nonzero alignment result also preserves
+its current position on rollback; lockout alone restores its previous position.
+The actor-pair override applies in either role, after small-contact handling,
+following preservation's [weighted overlap contract](https://github.com/michidk/redguard-preservation/blob/d86699d/docs/engine/player.md#weighted-actor-overlap-response).
+
 Installed `multitask PlayAnimation(10, 0)` calls retain a native animation request
 across main-thread loops and session restore. Function-form requests complete
 immediately. Other task-form operands remain explicitly unsupported.
