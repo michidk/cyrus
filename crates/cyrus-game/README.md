@@ -37,6 +37,11 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: ordinary falling resolves and stores the regained support's surface
+before landing damage. Water surfaces suppress fall damage; dry support retains
+the configured hurt and fatal thresholds, following preservation's
+[ordinary landing decision](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-landing-decision).
+
 The [script module documentation](src/script/mod.rs) describes SOUP state
 ownership, host services and internal responsibilities. Hosts integrate through
 `ScriptPlugin`, `ScriptInputs` and `run_ordinary`; unavailable services return

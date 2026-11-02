@@ -34213,16 +34213,27 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
 
 #[test]
 fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
+    ordinary_animated_fall_landing(false, false);
+}
+
+#[test]
+fn ordinary_update_resolves_landing_surface_before_fatal_damage() {
+    ordinary_animated_fall_landing(true, true);
+    ordinary_animated_fall_landing(false, true);
+}
+
+fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool) {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
     scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
-        death_height: 568,
-        hurt_height: 300,
+        death_height: if fatal_distance { 1 } else { 568 },
+        hurt_height: if fatal_distance { 0 } else { 300 },
         hurt_zap: 10,
         bounce_height: None,
     });
     scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+    attributes.insert("attr_3".into(), 100);
     attributes.insert("attr_1".into(), 4);
     attributes.insert("attr_32".into(), 32);
     for placement in &mut scripts.instances {
@@ -34239,14 +34250,14 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
         .unwrap();
     definition["model_load_path"] = "animation_table".into();
     definition["animation_groups"] =
-        serde_json::json!([0, 56, 57, 65].map(|group| serde_json::json!({
+        serde_json::json!([0, 56, 57, 65, 74].map(|group| serde_json::json!({
             "group_index":group,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
         })));
     world
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(id, 7).unwrap();
+    world.set_actor_surface(id, 0).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let start_y = world.spatial(id).unwrap().local.position[1];
@@ -34299,22 +34310,26 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
         world.actors()[id.index].control_state().unwrap().fall_timer,
         14
     );
-    // Terrain at the actor's height returns support: the fall ends without damage and
-    // the landing animation request clears the falling byte.
+    // Water suppresses damage even beyond the fatal threshold; dry support still applies it.
     let y_map = i16::try_from(world.spatial(id).unwrap().local.position[1] >> 8).unwrap();
     scene.terrain = Some(
         cyrus_collision::ground::TerrainGround::new(
             vec![y_map + 3; 256 * 256],
             vec![false; 256 * 256],
-            None,
+            Some(vec![if water { 0 } else { 1 }; 256 * 256]),
         )
         .unwrap(),
     );
-    let health_before = world.actors()[id.index].attributes()[3];
+    scene.collision.texture_surfaces = Some(Default::default());
+    assert_eq!(world.actor_surface(id).unwrap(), 0);
     step(&mut world, &scene);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.falling_state, 0);
-    assert_eq!(world.actors()[id.index].attributes()[3], health_before);
+    assert_eq!(world.actor_surface(id).unwrap(), if water { 4 } else { 0 });
+    assert_eq!(
+        world.actors()[id.index].attributes()[3],
+        if water || !fatal_distance { 100 } else { 0 }
+    );
 }
 
 #[test]
