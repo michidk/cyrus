@@ -11,27 +11,43 @@ fn initialize_web_world(mut picker: ResMut<WorldPicker>) {
 fn update_web_world(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    state: Res<State<cyrus_game::AppState>>,
+    state: (
+        Res<State<cyrus_game::AppState>>,
+        Option<Res<cyrus_startup::StartGame>>,
+    ),
     mut picker: ResMut<WorldPicker>,
+    mut flycam: Option<ResMut<cyrus_render::camera::FlycamSettings>>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
     authored: Option<(
         Res<cyrus_world::lifecycle::ReloadScene>,
         Res<cyrus_world::lifecycle::SceneRequest>,
     )>,
 ) {
+    let (state, entry) = state;
     if picker.current != current.name {
         picker.current.clone_from(&current.name);
         picker.selected.clone_from(&current.name);
     }
+    if let Some(requested) = picker.pending.take() {
+        if let Some(flycam) = flycam.as_mut() {
+            flycam.enabled = false;
+        }
+        commands.remove_resource::<cyrus_render::camera::InitialView>();
+        commands.insert_resource(cyrus_startup::WorldLoadRequest(requested));
+        return;
+    }
     // Script `LoadWorld` and console `load` raise `ReloadScene` with the request; the browser has
-    // no native preparation thread, so both swap the world caches like a picker selection.
+    // no native preparation thread, so authored transitions stage their destination caches.
     let authored = authored.map(|(_, request)| request.0.clone());
     if authored.is_some() {
         commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
     }
-    let Some(requested) = picker.pending.take().or(authored) else {
+    let Some(requested) = authored else {
         return;
     };
+    if *state.get() == cyrus_game::AppState::Loading || entry.is_some() {
+        return;
+    }
     let in_game = *state.get() == cyrus_game::AppState::InGame;
     if in_game {
         // The running world stays until every sidecar of the destination has loaded; a failure
@@ -203,6 +219,10 @@ mod tests {
         })
         .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()))
         .insert_resource(cyrus_render::camera::InitialView(Transform::IDENTITY))
+        .insert_resource(cyrus_render::camera::FlycamSettings {
+            enabled: true,
+            ..default()
+        })
         .insert_resource(WorldPicker {
             pending: requested.map(str::to_owned),
             ..default()
@@ -220,27 +240,22 @@ mod tests {
     }
 
     #[test]
-    fn in_game_world_selection_keeps_the_running_world_until_the_destination_loads() {
+    fn picker_selection_requests_shared_loading_instead_of_staging_a_live_swap() {
         let mut app = selection_app(Some("0"), false);
-        let retained = app
-            .world_mut()
-            .spawn(Name::new("retained session entity"))
-            .id();
         app.update();
-        assert!(app.world().get::<Name>(retained).is_some());
         assert_eq!(
-            app.world()
-                .resource::<cyrus_game::random::EngineRandom>()
-                .state(),
-            42
+            app.world().resource::<cyrus_startup::WorldLoadRequest>().0,
+            "0"
         );
-        // The selection is staged: input is held and the running world is untouched.
-        let staged = app.world().resource::<StagedWorld>();
-        assert_eq!(staged.requested, "0");
-        assert_eq!(staged.prepared.player_path.to_string(), "cache://0.player");
         assert!(
-            app.world()
-                .contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>()
+            !app.world()
+                .resource::<cyrus_render::camera::FlycamSettings>()
+                .enabled
+        );
+        assert!(!app.world().contains_resource::<StagedWorld>());
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_render::camera::InitialView>()
         );
         assert_eq!(
             app.world()
@@ -248,27 +263,14 @@ mod tests {
                 .0,
             "ISLAND"
         );
-        assert_eq!(
-            app.world()
-                .resource::<cyrus_world::lifecycle::PreparedWorld>()
-                .requested_name,
-            "ISLAND"
-        );
-        assert!(
-            app.world()
-                .contains_resource::<cyrus_render::camera::InitialView>()
-        );
         assert!(app.world().resource::<WorldPicker>().pending.is_none());
-        assert_eq!(
-            *app.world().resource::<State<cyrus_game::AppState>>().get(),
-            cyrus_game::AppState::InGame
-        );
     }
 
     #[test]
     fn a_destination_that_fails_to_load_reports_the_error_and_keeps_the_running_world() {
         // The unit app has no `cache` asset source, so every sidecar of the destination fails.
-        let mut app = selection_app(Some("0"), false);
+        let mut app = selection_app(None, true);
+        app.insert_resource(cyrus_world::lifecycle::SceneRequest("0".into()));
         for _ in 0..4 {
             app.update();
         }

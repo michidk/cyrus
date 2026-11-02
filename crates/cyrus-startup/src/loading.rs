@@ -32,10 +32,85 @@ struct WorldEntry<'w, 's> {
 }
 
 pub(super) fn register(app: &mut App) {
-    app.add_systems(Update, poll.run_if(in_state(AppState::Loading)))
+    app.add_systems(Update, begin_requested_world)
+        .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
+        .add_systems(OnExit(AppState::Loading), resume_world_cameras)
+        .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
         .add_systems(Update, super::fade::advance)
         .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
+}
+
+fn begin_requested_world(
+    mut commands: Commands,
+    request: Option<Res<super::WorldLoadRequest>>,
+    assets: (
+        Res<AssetServer>,
+        Res<Assets<MenuAsset>>,
+        ResMut<Assets<Image>>,
+    ),
+    mut startup: ResMut<StartupPresentation>,
+    mut next: ResMut<NextState<AppState>>,
+    state: Res<State<AppState>>,
+    time: Res<Time>,
+) {
+    let (assets, menus, mut images) = assets;
+    let Some(request) = request else { return };
+    if !matches!(state.get(), AppState::InGame | AppState::Menu) {
+        return;
+    }
+    if startup.menu == Handle::default() {
+        startup.menu = assets.load("cache://menu/book.menu");
+    }
+    let Some(book) = menus.get(&startup.menu) else {
+        if let Some(bevy::asset::LoadState::Failed(error)) =
+            assets.get_load_state(startup.menu.id())
+        {
+            let message = format!("World {} loading artwork: {error}", request.0);
+            error!("{message}");
+            commands.insert_resource(SceneLoadError(message));
+            commands.remove_resource::<super::WorldLoadRequest>();
+        }
+        return;
+    };
+    commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.0.clone()));
+    commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
+    commands.insert_resource(cyrus_game::player::placement::MarkerEntry::default());
+    commands.remove_resource::<super::WorldLoadRequest>();
+    commands.remove_resource::<cyrus_game::PauseBookEntry>();
+    commands.remove_resource::<cyrus_game::PausedGameplay>();
+    super::menu::begin_world_loading(
+        &mut commands,
+        &mut images,
+        &mut next,
+        book,
+        time.elapsed_secs_f64(),
+    );
+}
+
+#[derive(Component)]
+struct LoadingPausedCamera;
+
+fn suspend_world_cameras(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
+) {
+    for (entity, mut camera) in &mut cameras {
+        if camera.is_active {
+            camera.is_active = false;
+            commands.entity(entity).insert(LoadingPausedCamera);
+        }
+    }
+}
+
+fn resume_world_cameras(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &mut Camera), With<LoadingPausedCamera>>,
+) {
+    for (entity, mut camera) in &mut cameras {
+        camera.is_active = true;
+        commands.entity(entity).remove::<LoadingPausedCamera>();
+    }
 }
 
 fn poll(
@@ -317,6 +392,100 @@ fn cleanup(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
+        use cyrus_game::player::{Player, PlayerPlugin};
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+            eprintln!("skipped: no install (debug world loading)");
+            return;
+        };
+        let cache =
+            std::env::temp_dir().join(format!("cyrus-debug-loading-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        std::fs::remove_dir_all(cache).unwrap();
+        let artwork = book
+            .new_game
+            .loading
+            .iter()
+            .map(|picture| picture.rgba.clone())
+            .collect::<Vec<_>>();
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .insert_state(AppState::InGame)
+        .init_asset::<MenuAsset>()
+        .init_asset::<Image>()
+        .init_resource::<cyrus_game::fidelity::Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<cyrus_game::player::input::PlayerBindings>()
+        .add_plugins(PlayerPlugin)
+        .add_systems(Update, begin_requested_world)
+        .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
+        .add_systems(OnExit(AppState::Loading), resume_world_cameras);
+        let menu = app
+            .world_mut()
+            .resource_mut::<Assets<MenuAsset>>()
+            .add(book);
+        app.insert_resource(StartupPresentation { menu, ..default() });
+        let camera = app
+            .world_mut()
+            .spawn((Camera3d::default(), Camera::default()))
+            .id();
+        app.update();
+        let old_player = app
+            .world_mut()
+            .query_filtered::<Entity, With<Player>>()
+            .single(app.world())
+            .unwrap();
+        app.insert_resource(cyrus_game::player::placement::MarkerEntry {
+            marker: 9,
+            heading: 512,
+        });
+        app.insert_resource(super::super::WorldLoadRequest("START".into()));
+        app.update();
+        assert_eq!(
+            app.world().resource::<StartGame>().background.len(),
+            640 * 480 * 4
+        );
+        assert!(artwork.contains(&app.world().resource::<StartGame>().background));
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_world::lifecycle::SceneRequest>()
+                .0,
+            "START"
+        );
+        assert_eq!(
+            *app.world()
+                .resource::<cyrus_game::player::placement::MarkerEntry>(),
+            default()
+        );
+        app.update();
+        assert_eq!(
+            *app.world().resource::<State<AppState>>().get(),
+            AppState::Loading
+        );
+        assert!(app.world().get_entity(old_player).is_err());
+        assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::InGame);
+        app.update();
+        let new_player = app
+            .world_mut()
+            .query_filtered::<Entity, With<Player>>()
+            .single(app.world())
+            .unwrap();
+        assert_ne!(old_player, new_player);
+        assert!(app.world().get::<Camera>(camera).unwrap().is_active);
+    }
+
     #[test]
     fn world_loading_draws_only_the_bar_and_percentage() {
         let mut images = Assets::<Image>::default();

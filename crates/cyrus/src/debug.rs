@@ -13,15 +13,21 @@ fn initialize_native_worlds(
 #[cfg(not(target_arch = "wasm32"))]
 fn update_native_world(
     mut picker: ResMut<WorldPicker>,
+    mut flycam: Option<ResMut<cyrus_render::camera::FlycamSettings>>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
-    mut request: ResMut<cyrus_world::lifecycle::SceneRequest>,
+    request: Res<cyrus_world::lifecycle::SceneRequest>,
+    mut commands: Commands,
 ) {
     picker.current.clone_from(&current.name);
     if picker.selected.is_empty() {
         picker.selected.clone_from(&request.0);
     }
     if let Some(requested) = picker.pending.take() {
-        request.0 = requested;
+        if let Some(flycam) = flycam.as_mut() {
+            flycam.enabled = false;
+        }
+        commands.remove_resource::<cyrus_render::camera::InitialView>();
+        commands.insert_resource(cyrus_startup::WorldLoadRequest(requested));
     }
 }
 
@@ -75,9 +81,7 @@ mod tests {
         app.world_mut().resource_mut::<WorldPicker>().pending = Some("START".into());
         app.update();
         assert_eq!(
-            app.world()
-                .resource::<cyrus_world::lifecycle::SceneRequest>()
-                .0,
+            app.world().resource::<cyrus_startup::WorldLoadRequest>().0,
             "START"
         );
     }

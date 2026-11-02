@@ -579,6 +579,8 @@ Press F1 and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
+F1 world selections show the installed loading screen while the destination assets
+load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
 update supports bounded sheathed forward, backward and lateral movement; complete installed traversal

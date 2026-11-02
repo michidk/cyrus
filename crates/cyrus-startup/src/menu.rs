@@ -1114,8 +1114,6 @@ fn begin_world_entry(
     book: &MenuAsset,
     elapsed: f64,
 ) {
-    commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
-    commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
         book.new_game.world.to_string(),
     ));
@@ -1123,6 +1121,19 @@ fn begin_world_entry(
         marker: book.new_game.marker as usize,
         heading: 0,
     });
+    begin_world_loading(commands, images, next, book, elapsed);
+}
+
+pub(super) fn begin_world_loading(
+    commands: &mut Commands,
+    images: &mut Assets<Image>,
+    next: &mut NextState<AppState>,
+    book: &MenuAsset,
+    elapsed: f64,
+) {
+    commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
+    commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+    commands.remove_resource::<cyrus_world::lifecycle::PreparationProgress>();
     let variation = std::collections::hash_map::RandomState::new().hash_one(elapsed.to_bits())
         as usize
         % book.new_game.loading.len();

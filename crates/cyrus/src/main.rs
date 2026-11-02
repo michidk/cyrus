@@ -225,24 +225,25 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
                 .before(cyrus_audio::ApplyPreferences),
         );
         debug::register(&mut app);
-        if startup {
-            app.add_plugins(cyrus_startup::StartupPlugin);
-            let direct =
-                args.launch.new_game || args.launch.movie.is_some() || args.load_slot.is_some();
-            app.insert_resource(cyrus_startup::LaunchRequest::new(
-                args.launch.new_game,
-                args.launch.movie,
-                args.launch.skip_movies,
-            ));
-            let mut presentation = if args.launch.skip_startup || direct {
-                cyrus_startup::StartupPresentation::without_splash()
-            } else {
-                cyrus_startup::StartupPresentation::default()
-            };
-            presentation.splash = cyrus_startup::Splash::from_option(args.launch.splash.as_deref());
-            app.insert_resource(presentation);
+        app.add_plugins(cyrus_startup::StartupPlugin);
+        let direct = !startup
+            || args.launch.new_game
+            || args.launch.movie.is_some()
+            || args.load_slot.is_some();
+        app.insert_resource(cyrus_startup::LaunchRequest::new(
+            args.launch.new_game,
+            args.launch.movie,
+            args.launch.skip_movies,
+        ));
+        let mut presentation = if args.launch.skip_startup || direct {
+            cyrus_startup::StartupPresentation::without_splash()
         } else {
-            app.add_plugins((cyrus_startup::LogbookPlugin, cyrus_startup::OverlayPlugin));
+            cyrus_startup::StartupPresentation::default()
+        };
+        presentation.splash = cyrus_startup::Splash::from_option(args.launch.splash.as_deref());
+        app.insert_resource(presentation);
+        if !startup {
+            app.insert_resource(cyrus_startup::StartGame::default());
         }
     }
     if let Some(install) = install {

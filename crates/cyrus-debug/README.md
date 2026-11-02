@@ -22,7 +22,9 @@ Replace the pinned port when an upstream Bevy 0.20 release is available.
 Types without registered Bevy reflection cannot be edited by the inspector.
 
 Hosts populate `WorldPicker` and consume its pending selection; this crate does
-not read the install or browser DOM.
+not read the install or browser DOM. A world selection enters through the game's
+loading screen and player-entry lifecycle on native and browser hosts. It clears
+the inspection camera and enters the selected world at marker zero.
 
 Flycam starts disabled unless an explicit inspection view is supplied.
 Flycam leaves the player in place. Turning it off returns the camera to the

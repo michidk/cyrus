@@ -19,8 +19,15 @@ Native and browser hosts add `StartupPlugin`. `StartupPresentation::without_spla
 skips the splash while retaining preparation. `StartGame` selects world-entry
 loading presentation; `MenuState` exposes menu/control status and `QuitRequest`
 asks the browser host to close its tab. Native hosts also add `LoadingPlugin`;
-without startup presentation it retains direct/headless parser-coverage preload.
+without startup presentation it retains headless parser-coverage preload.
 Preparation results remain cyrus-assets types.
+
+Native and browser debug world selections submit `WorldLoadRequest`. They use the
+same installed loading artwork, progress and asset-readiness checks as New Game,
+then recreate the player and enter at marker zero with heading zero. The world
+camera pauses while the loading screen is visible. Selecting a world clears the
+inspection camera and returns to the gameplay camera. Native direct-scene launches
+also retain this loading lifecycle.
 
 The menu initializes the shared game clock from `MenuAsset.clock` when absent.
 Book motion and menu clock invocations follow changes in the host's BIOS-tick
@@ -44,7 +51,7 @@ persistence and world-entry playtests with an explicit install. See
 Default windowed startup plays the installed Windows Glide swoosh animation and decoded
 640×480 title image, then opens the book menu once required assets are ready.
 Native menu/HUD export begins after the title becomes visible. The full
-parser-coverage scan remains in direct/headless inspection launches.
+parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.
 The title uses the configured FNT font and documented bottom-label positions.
 The bottom-right red title label reports menu/HUD preparation, menu asset loading,
@@ -64,7 +71,7 @@ last-save selection. It suspends ordinary actor updates, disables world cameras,
 and applies the selected actor override to Save/Continue availability. Returning
 clears hit inhibition and the terminal outcome. Quit from a world context prepares
 reserved slot one (`Redguard AutoSave`) before closing, or removes it while the death
-override is active; Quit from the startup book does neither. Direct-scene hosts do not install this service.
+override is active; Quit from the startup book does neither. Windowed direct-scene launches also install this service.
 The shared `LastGameConfirmation` core applies the published Yes/No input ordering,
 context-three entry delay and release-before-return rules. Its CPU painter restores
 a supplied canonical capture for each redraw and uses installed MINIMENU artwork,

@@ -80,7 +80,12 @@ impl StartupPresentation {
     }
 }
 
-/// A fresh menu entry waits on the loading screen before entering its world.
+/// A debug world selection enters through the shared loading and player-entry lifecycle.
+/// Hosts provide a WORLD.INI ID or map stem. Inspection enters at marker zero, heading zero.
+#[derive(Resource)]
+pub struct WorldLoadRequest(pub String);
+
+/// A world entry waits on the loading screen before entering its world.
 #[derive(Resource, Default)]
 pub struct StartGame {
     /// Menu entry uses installed transition artwork; direct inspections use the title.
