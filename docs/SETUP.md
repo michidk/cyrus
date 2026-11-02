@@ -220,23 +220,27 @@ browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
-tags, either when pushed or dispatched from `main` with a `tag` input such as
-`v0.2.0`. Dispatching from `main` saves the build caches where the next release
-can restore them; caches saved by a tag-push run are visible only to that tag.
+tags, either when pushed or dispatched from the default branch with a `tag` input
+such as `v0.2.0`. A tag push dispatches the build on the default branch; every
+build still checks out the specified tag. This saves compiled dependencies in
+the default-branch cache scope so later releases can restore them. The tag-push
+run only dispatches; follow the separate dispatched `Release` run for build and
+publication results. The first run for a platform or changed toolchain can
+still need a full build.
 
-Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
-shared workspace version and lockfile, commit, and atomically push the commit
-and tag, then dispatch `Release` from `main` for that tag. It uses the built-in
-workflow token and needs no repository secret. Repeating a matching version/tag
-retries the release without another version commit. Alternatively, update the
-version and lockfile locally and push the version commit and tag.
+Run `Bump Version & Tag` on `main` with `auto`, `patch`, `minor`, or `major`.
+It updates the shared workspace version and lockfile, commits, and atomically
+pushes the commit and tag using the configured releaser App. The tag push
+triggers `Release`. To retry an existing tag, dispatch `Release` on the default
+branch with that tag as its input.
 
 `Release` checks that every workspace package matches the tag and runs lint and
 test gates in parallel while all platforms build. Both verification jobs reuse
 the matching CI caches. Nothing is published unless every job succeeds.
 Verification and native Linux builds remove preinstalled SDKs only when less than
 12 GiB is free; browser builds still free space for their additional swap. The macOS
-Intel build runs on an Apple Silicon runner. Browser release builds use two Cargo
+Intel build uses the Intel runner pool, independently of Apple Silicon capacity.
+Browser release builds use four Cargo
 jobs, extra swap, and the `wasm-release` profile (thin link-time optimization,
 16 codegen units) to stay within hosted-runner memory; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
