@@ -216,9 +216,13 @@ unformatted RTX text, original lifetime counters and header metadata.
 `ScriptSounds` starts prepared voices through the shared sample channels at
 header volume and centre pan from slot zero, then restores the general start
 index to six. Volume refresh uses the logical speaker's local Q8 position and
-retains centre pan. Disabled speech, text-only entries and channel exhaustion use
-text lifetime. Missing voice dependencies and looping voices report unsupported
-playback.
+retains centre pan. Verified: ordinary RTX lookup still starts an available voice
+when speech mode is disabled and retains its duration for the line's nominal
+lifetime, following preservation's
+[dialogue contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+Speech mode selects subsequent record maintenance. Text-only entries and channel
+exhaustion use text lifetime. Missing voice dependencies and looping voices report
+unsupported playback.
 
 The ordinary host retains a twenty-entry cache and lends `DialogueSource` to
 RTXp tasks. A cache miss returns pending until the entry and its audio dependency
