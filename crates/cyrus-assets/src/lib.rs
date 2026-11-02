@@ -16,7 +16,7 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-pub const CATALOG_VERSION: u32 = 27;
+pub const CATALOG_VERSION: u32 = 28;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +71,8 @@ pub enum Source {
     Effect(usize),
     Speech(usize),
     Splash(usize),
+    /// Complete rendered startup animation from the entry's DLL or DOS overlay.
+    SplashAnimation,
     World(u32),
     CdTrack(u32),
     CdMovie(String),
@@ -99,6 +101,7 @@ impl Entry {
     pub fn format_label(&self) -> &str {
         match self.source {
             Source::World(_) => "World previews",
+            Source::SplashAnimation => "Startup animations",
             Source::CdTrack(_) => "CD audio",
             _ if self
                 .path

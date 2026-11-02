@@ -42,6 +42,21 @@ pub(super) fn prepare<R: ReadAssets>(
             .collect(),
     };
     match &entry.source {
+        Source::SplashAnimation => {
+            let bytes = library.source.read(&entry.path)?;
+            let frames = crate::startup::splash::preview(
+                &bytes,
+                std::path::Path::new(&entry.path)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("dll")),
+                |done, total| library.source.progress(done, total, &entry.name),
+            )
+            .with_context(|| format!("{}: splash animation", entry.path))?;
+            preview.content = Content::Images { frames };
+            preview.frame_interval_ms = Some(1000.0 / 30.0);
+            preview.metadata = visual_metadata(&preview.content);
+            return Ok(preview);
+        }
         Source::Splash(index) => {
             let splash = import::glide_splash::parse_glide_splash(
                 &library.source.read("splash/glide2x_emu.ovl")?,

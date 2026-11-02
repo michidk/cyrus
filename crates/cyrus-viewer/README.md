@@ -40,7 +40,7 @@ boundaries to resize them. Details and References link related assets.
 
 | Preview | Tools |
 | --- | --- |
-| Images and fonts | Zoom, palettes, animation frames, glyph atlas |
+| Images and fonts | Zoom, palettes, animation frames, glyph atlas, Windows and DOS 3dfx splash playback |
 | Models | Shading, animation, normals, bounds, face picking, UV layout |
 | Worlds and terrain | Placements, navigation, heightmaps, materials, tile inspection |
 | Audio and movies | Playback, seeking, looping, volume, movie audio tracks and frame stepping |
@@ -50,6 +50,9 @@ boundaries to resize them. Details and References link related assets.
 Models and worlds use Orbit by default. Drag to rotate, right-drag to pan, and
 scroll to zoom. In Flycam, right-drag to look and use WASD to move, Q/E to move
 down/up, and Shift to move faster while the pointer is over the viewport.
+
+Search for **3dfx splash** under Images to play either installed startup animation,
+pause it, or step through its frames. The DOS overlay's individual splash textures remain available separately.
 
 Use the palette selector for associated world palettes. Without palette shows
 grayscale indices when no embedded colors are available. JSON views expose decoded

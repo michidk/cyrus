@@ -8,7 +8,7 @@ script caches; omitted limits remain unavailable.
 
 Player records retain optional effective installed `swim_depth` in map units for
 model-height displacement. Preparation replaces configured zero with 40; older
-records retain unknown depth. Catalog version 27 invalidates older generated caches.
+records retain unknown depth. Catalog version 28 invalidates older generated caches.
 Sound metadata retains the installed finite repetition count or unbounded
 playback; re-export older sound banks.
 
@@ -328,3 +328,7 @@ manager and static-angle conversion settings. Older script caches require re-exp
 
 Script cache schema 20 retains installed combat impact cues in content identity.
 Re-export older script caches before using combat contact responses.
+
+The viewer catalog exposes complete Windows and DOS 3dfx splash animations as
+timed image sequences, using the same rasterizers and Windows fade as startup.
+The DOS texture entries remain separate.

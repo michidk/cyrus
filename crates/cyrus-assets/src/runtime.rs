@@ -108,6 +108,24 @@ impl<R: ReadAssets> Library<R> {
                 ));
             }
         }
+        for (path, name) in [
+            ("3DfxSpl2.dll", "3dfx splash (Windows)"),
+            ("glide2x_emu.ovl", "3dfx splash (DOS)"),
+        ] {
+            if let Some(path) = geometry::find_name(&source, path) {
+                let file = source
+                    .manifest()
+                    .find(&path)
+                    .context("missing splash source")?;
+                catalog.entries.push(entry(
+                    &file.path,
+                    file.bytes,
+                    Category::Images,
+                    Source::SplashAnimation,
+                    name,
+                ));
+            }
+        }
         if let Some(file) = source.manifest().find("splash/glide2x_emu.ovl") {
             for index in 0..3 {
                 catalog.entries.push(entry(

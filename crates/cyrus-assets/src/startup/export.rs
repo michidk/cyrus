@@ -97,34 +97,12 @@ pub(crate) fn prepare_startup(
         anyhow::bail!("startup: {}: unsupported title dimensions", title);
     }
     output.remove(&stamp)?;
-    let final_image = super::raster::render(&splash, &splash.final_draws, 1.0);
-    let mut fade_images = [final_image.clone(), final_image];
-    for frame in 0..crate::SPLASH_FRAMES {
-        let image = if frame < splash.frames.len() {
-            let visibility = if frame < 24 {
-                0.0
-            } else {
-                ((frame - 24) as f32 / 8.0).min(1.0)
-            };
-            super::raster::render(&splash, &splash.frames[frame], visibility)
-        } else {
-            let step = frame - splash.frames.len();
-            let alpha = (102 * step.saturating_sub(1) / (2 * splash.frames_per_second as usize))
-                as f32
-                / 255.0;
-            let image = &mut fade_images[step % 2];
-            for pixel in image.pixels_mut() {
-                for channel in &mut pixel.0[..3] {
-                    *channel = (f32::from(*channel) * (1.0 - alpha)) as u8;
-                }
-            }
-            image.clone()
-        };
+    super::splash::windows_frames(&splash, |frame, image| {
         let path = directory.join(format!("splash-{frame:02}.png"));
         output
             .image(&path, &image)
-            .with_context(|| format!("startup: writing {}", path.display()))?;
-    }
+            .with_context(|| format!("startup: writing {}", path.display()))
+    })?;
     if let Some(bytes) = &overlay_bytes {
         let splash = parse_glide_splash(bytes).with_context(|| format!("startup: {overlay}"))?;
         for frame in 0..dos_frames {

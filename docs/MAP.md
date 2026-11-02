@@ -73,6 +73,7 @@ module where it is defined and regenerate.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
+- `src/startup/splash.rs` — Splash animation frames shared by startup and asset inspection.
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 

@@ -775,3 +775,115 @@ fn bsi_palette_references_follow_terrain_and_sky_usage() {
         }
     }
 }
+
+#[test]
+fn installed_splash_animations_have_complete_timed_frames() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (viewer splash animations)");
+        return;
+    }
+    let install = GameInstall::open(&root).unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let mut library = cyrus_assets::runtime::Library::open(files, |_, _, _| {}).unwrap();
+    for (name, count) in [("3dfx splash (Windows)", 150), ("3dfx splash (DOS)", 74)] {
+        let entry = library
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap_or_else(|| panic!("missing {name}"))
+            .clone();
+        assert_eq!(entry.category, Category::Images);
+        let preview = library.prepare(&entry.id, None).unwrap().preview;
+        preview.validate().unwrap();
+        assert!((preview.frame_interval_ms.unwrap() - 1000.0 / 30.0).abs() < 0.001);
+        struct Size(usize);
+        impl std::io::Write for Size {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 += bytes.len();
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut size = Size(0);
+        serde_json::to_writer(&mut size, &preview).unwrap();
+        assert!(
+            size.0 < 512 * 1024 * 1024,
+            "{name}: preview exceeds viewer loading limit"
+        );
+        let Content::Images { frames } = preview.content else {
+            panic!("{name}: no images")
+        };
+        assert_eq!(frames.len(), count);
+        assert!(
+            frames
+                .iter()
+                .all(|frame| (frame.width, frame.height) == (640, 480))
+        );
+        assert!(frames.iter().any(|frame| {
+            frame
+                .rgba
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel[..3] != [0, 0, 0])
+        }));
+        assert!(frames.windows(2).any(|pair| pair[0].rgba != pair[1].rgba));
+        if count == 150 {
+            assert!(
+                frames[0]
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|pixel| pixel[..3] == [0, 0, 0])
+            );
+            let brightness = |frame: &cyrus_assets::Picture| {
+                frame
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .flat_map(|pixel| &pixel[..3])
+                    .map(|channel| u64::from(*channel))
+                    .sum::<u64>()
+            };
+            assert!(brightness(&frames[149]) < brightness(&frames[89]));
+        }
+    }
+}
+
+#[test]
+fn splash_catalog_lists_only_present_variants_and_reports_invalid_data() {
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install/Redguard");
+    for dir in ["maps", "fxart"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    let support = root.parent().unwrap().join("DOSBOX");
+    std::fs::create_dir_all(&support).unwrap();
+    std::fs::write(support.join("3DfxSpl2.dll"), b"invalid splash").unwrap();
+    let files = cyrus_assets::native::Files::open(&GameInstall::open(&root).unwrap()).unwrap();
+    let mut library = cyrus_assets::runtime::Library::open(files, |_, _, _| {}).unwrap();
+    let animations: Vec<_> = library
+        .catalog
+        .entries
+        .iter()
+        .filter(|entry| matches!(entry.source, Source::SplashAnimation))
+        .cloned()
+        .collect();
+    assert_eq!(animations.len(), 1);
+    assert_eq!(animations[0].name, "3dfx splash (Windows)");
+    assert_eq!(animations[0].format_label(), "Startup animations");
+    let preview = library.prepare(&animations[0].id, None).unwrap().preview;
+    let Content::Unavailable { reason } = preview.content else {
+        panic!("invalid splash accepted")
+    };
+    assert!(reason.contains("splash/3DfxSpl2.dll"), "{reason}");
+}
