@@ -221,3 +221,7 @@ arrival snap, preserving the final approach heading before walking claims a node
 Verified: accepted compass item use consumes the shared HUD press, so the later
 HUD input pass preserves the toggle. Releasing the action key rearms it,
 following preservation's [compass contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#compass).
+
+Verified: slope turns publish the selected player's orientation matrix and angle history
+immediately through the shared turn service, following preservation's
+[ordinary slope response](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-slope-response).

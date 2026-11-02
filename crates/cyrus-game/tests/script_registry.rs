@@ -10706,6 +10706,32 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
         world.actors()[0].control_state().unwrap().sliding_distance,
         512
     );
+
+    // A backward slope turns the selected player and publishes its orientation immediately.
+    let backward = SelectedSupport::Primary {
+        source: SupportSource::Terrain,
+        support: GroundSupport {
+            height: 20.0,
+            normal: [200, -100, -200],
+        },
+    };
+    let before = world.spatial(id).unwrap().local.angles;
+    world
+        .resolve_ordinary_slope(
+            id,
+            Some(&backward),
+            query(),
+            inputs(Some(id)),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let spatial = world.spatial(id).unwrap();
+    assert_ne!(spatial.local.angles, before);
+    assert_eq!(spatial.angle_history, spatial.local.angles);
+    assert_eq!(
+        spatial.local.matrix,
+        cyrus_world::transform::Matrix::orientation(spatial.local.angles)
+    );
 }
 
 #[test]
