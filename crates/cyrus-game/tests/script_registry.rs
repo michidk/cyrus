@@ -32792,6 +32792,288 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
 }
 
 #[test]
+fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Result<()> {
+    use anyhow::{Context, ensure};
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
+        ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    for restore_before_cleanup in [false, true] {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+            scripts.lineup_distance = Some(i32::MAX);
+            scripts.definition.attributes[12] = "attr_walk_speed".into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("attr_walk_speed".into(), 3);
+            let lineup_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: "PlayerLineUp".into(),
+                param_count: 3,
+                kind: CallKind::Task,
+            });
+            let kill_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: "KillMe".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+            program.entry = 3;
+            program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Endint,
+                    },
+                ),
+                (
+                    3,
+                    Step {
+                        next: 4,
+                        operation: wait(
+                            lineup_id,
+                            "PlayerLineUp",
+                            CallKind::Task,
+                            vec![
+                                Value::Integer { value: 1024 },
+                                Value::Integer { value: 0 },
+                                Value::Integer { value: -2048 },
+                            ],
+                        ),
+                    },
+                ),
+                (
+                    4,
+                    Step {
+                        next: 5,
+                        operation: set_flag(7),
+                    },
+                ),
+                (
+                    5,
+                    Step {
+                        next: 6,
+                        operation: Operation::End { target: 3 },
+                    },
+                ),
+            ]);
+        });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        let player = world.selected_player().context("selected player")?;
+        let creator = world.id(0)?;
+        let receiver = world.create_object(creator, "LOGIC", [0; 3], [0; 3])?;
+        let actors = [player, creator, receiver];
+        let hud = cyrus_game::script::ScriptHud::default();
+        let prepared =
+            world.prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)?;
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            shell_execution: Some(false),
+            hud: Some(&hud),
+            player_collision: Some(PlayerCollisionSource {
+                scene: &scene,
+                animations: &data,
+                view: [10, 30],
+                actors: &actors,
+            }),
+            locomotion_geometry: Some(LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                environment: ObstacleEnvironment {
+                    selected_player: Some(player),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            }),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        world.begin_player_movement_update(player, 0)?;
+        world.advance(
+            receiver,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+        ensure!(
+            world.actors()[receiver.index]
+                .runtime()
+                .context("receiver runtime")?
+                .active_tasks()
+                == 1,
+            "alignment must be active before kill"
+        );
+        let before = world.inspect(receiver.index, 1);
+        let flags = world.flags().to_vec();
+        let position = world.spatial(player)?.local.position;
+        let result = before["globals"]["lineup_result"].clone();
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let active = serde_json::to_value(world.snapshot(&sources)?)?;
+        let task = &active["actors"][receiver.index]["tasks"]["tasks"][0]["state"]["LineUp"];
+        ensure!(
+            task["initialized"] == true && task["reference"] == receiver.index,
+            "created owner must retain its own initialized reference"
+        );
+        world.advance(
+            receiver,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+        ensure!(
+            world.actors()[receiver.index]
+                .control_state()
+                .context("control")?
+                .killed,
+            "independent interrupt did not kill receiver"
+        );
+        ensure!(
+            world.actors()[receiver.index]
+                .runtime()
+                .context("runtime before cleanup")?
+                .active_tasks()
+                == 0,
+            "kill retained task"
+        );
+
+        if restore_before_cleanup {
+            let globals = std::mem::take(world.globals_mut());
+            let saved = world.snapshot(&sources)?;
+            world = ScriptWorld::from_snapshot(
+                saved,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals,
+                    samples: &BTreeMap::new(),
+                },
+            )?;
+        }
+        let player = world
+            .selected_player()
+            .context("selected player after replacement")?;
+        let receiver = world.id(receiver.index)?;
+        for _ in 0..3 {
+            world.update_created(
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| panic!("killed receiver must not emit sounds"),
+                100,
+            )?;
+            ensure!(
+                world.actors()[receiver.index].runtime().is_none(),
+                "cleanup retained executable runtime"
+            );
+            ensure!(
+                world.actors()[receiver.index].failure().is_none(),
+                "killed receiver attempted a failing continuation"
+            );
+            ensure!(
+                world.spatial(player)?.local.position == position,
+                "killed receiver moved player"
+            );
+            ensure!(
+                world.inspect(receiver.index, 1)["globals"]["lineup_result"] == result,
+                "killed receiver published lineup completion"
+            );
+            ensure!(
+                world.flags() == flags,
+                "waiting main continuation executed after kill"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn created_object_killed_by_its_hook_does_not_run_main() {
+    use cyrus_game::script::ScriptInputs;
+    let mut scripts = cache();
+    let kill_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: "KillMe".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let template = scripts.actors.get_mut("LOGIC").unwrap();
+    template.native_hook = Some(Call {
+        function_id: kill_id,
+        function: "KillMe".into(),
+        target: Object::Me,
+        kind: CallKind::Function,
+        arguments: vec![],
+    });
+    template.program.steps.get_mut(&0).unwrap().operation = set_flag(7);
+    let (mut world, _, _) = static_model_fixture(scripts);
+    let creator = world.id(0).unwrap();
+    let receiver = world
+        .create_object(creator, "LOGIC", [0; 3], [0; 3])
+        .unwrap();
+    let flags = world.flags().to_vec();
+    world
+        .update_created(
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            20,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[receiver.index]
+            .control_state()
+            .unwrap()
+            .killed
+    );
+    assert!(world.actors()[receiver.index].runtime().is_none());
+    assert!(world.actors()[receiver.index].failure().is_none());
+    assert_eq!(
+        world.flags(),
+        flags,
+        "main ran after the hook killed its receiver"
+    );
+}
+
+#[test]
 fn a_created_object_snapshot_rejects_an_out_of_range_creator_reference() {
     use cyrus_game::script::{ScriptActorSource, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();

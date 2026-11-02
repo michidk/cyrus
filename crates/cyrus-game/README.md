@@ -76,6 +76,11 @@ and weapon publication skips killed receivers. `Resurrect`
 does not republish the removed geometry, following preservation's
 [lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
 
+Created-object updates discard an already killed receiver's executable runtime.
+A receiver killed by its ordinary hook also skips its main program. Saved killed
+continuations obey the same exclusion after restoration, following preservation's
+[created-object lifecycle](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#removal-of-killed-created-objects).
+
 Automatic selected-player weapon validation also releases the retained attachment
 when its item is no longer an owned weapon, so rendering cannot keep the old sword.
 

@@ -149,7 +149,11 @@ impl ScriptWorld {
             .collect();
         for index in created {
             let id = self.id(index)?;
-            let actor = &self.actors[index];
+            let actor = &mut self.actors[index];
+            if actor.control.as_ref().is_some_and(|control| control.killed) {
+                actor.runtime = None;
+                continue;
+            }
             if actor.runtime.is_none() || actor.failure().is_some() {
                 continue;
             }
@@ -163,7 +167,12 @@ impl ScriptWorld {
                     Some(random),
                     budget,
                 )?;
-                if self.updates.task_system {
+                if self.updates.task_system
+                    && !self.actors[index]
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| control.killed)
+                {
                     self.advance(
                         id,
                         ScriptStage::OrdinaryMain,
