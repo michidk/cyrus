@@ -90,8 +90,8 @@ fn publish_menu(menu: Option<Res<cyrus_startup::MenuState>>) {
         return;
     };
     let result = (|| -> Result<(), JsValue> {
-        let text = serde_json::to_string(&*menu)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let text =
+            serde_json::to_string(&*menu).map_err(|error| JsValue::from_str(&error.to_string()))?;
         js_sys::Reflect::set(&window, &"__cyrusMenu".into(), &js_sys::JSON::parse(&text)?)
             .map(|_| ())
     })();
