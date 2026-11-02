@@ -16,6 +16,10 @@ pub struct SoundBank {
     pub music: Option<MusicSettings>,
     /// `[system] sound`; when off no effect plays.
     pub enabled: bool,
+    /// `[dialog] dialog_use_speech`; required so browser record timing follows the install.
+    pub speech: bool,
+    /// `[dialog] dialog_print_text`; required so browser subtitles follow the install.
+    pub subtitles: bool,
     /// `[system] volume`; 256 when absent.
     pub master_volume: i32,
     /// `[system] sound_distance`; `None` when absent.

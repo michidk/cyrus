@@ -76,6 +76,8 @@ for (const audio of document.querySelectorAll('audio[data-passes]')) {
             .map_err(anyhow::Error::msg)?,
             music: Some(crate::music::settings_source(source)?),
             enabled: settings.effects,
+            speech: settings.speech,
+            subtitles: settings.subtitles,
             master_volume: settings.master_volume,
             sound_distance: settings.sound_distance,
         })?,

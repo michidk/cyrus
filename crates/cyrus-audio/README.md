@@ -10,6 +10,10 @@ install picker can stay open without initializing CD playback.
 Loaded sample playback entities carry `PannedGains`, shared with their active
 decoder. A volume/pan update affects subsequent stereo frames without restarting
 the sample. One-shots retain their start gains unless explicitly updated.
+The browser sound bank retains the install's speech and subtitle switches before
+saved book preferences are applied. Speech mode controls dialogue record lifetime
+maintenance; disabling it uses nominal text countdowns on both hosts.
+
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
 integer rounding before backend resampling. Rodio queue conversion starts after

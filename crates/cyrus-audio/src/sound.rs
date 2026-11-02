@@ -832,6 +832,8 @@ fn finish_bank(
     settings.master_volume = bank.master_volume;
     settings.sound_distance = bank.sound_distance;
     settings.effects = bank.enabled;
+    settings.speech = bank.speech;
+    settings.subtitles = bank.subtitles;
     if let Some(music) = &bank.music {
         settings.music = music.enabled;
         settings.redbook_volume = music.volume;

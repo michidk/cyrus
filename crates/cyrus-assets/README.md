@@ -1,5 +1,9 @@
 # cyrus-assets
 
+Catalog version 31 requires the installed speech and subtitle switches in browser
+sound banks. Older browser caches are prepared again so dialogue record timing
+and subtitle defaults follow `SYSTEM.INI` before saved book preferences apply.
+
 Script cache schema 29 retains the placement texture word of type-3 objects (the flat sprite records map loading creates), the installed rope jump-off speed and attach window, the installed falling-death limit in nominal ticks, the
 installed lineup distance in Q8 units, and the frame count of every installed texture bank
 image. It also lists the world's shell scripts (the debug shell unless SYSTEM.INI `final_version`
