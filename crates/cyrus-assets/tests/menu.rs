@@ -59,7 +59,23 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let sounds: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("sounds/bank.sounds")).unwrap()).unwrap();
     assert_eq!(sounds["effects"].as_array().unwrap().len(), 118);
+    assert_eq!(sounds["effects"][117]["repetitions"], 225);
     let bank: cyrus_assets::sound::SoundBank = serde_json::from_value(sounds.clone()).unwrap();
+    assert_eq!(
+        bank.effects[117].repetitions.remaining().unwrap().get(),
+        225
+    );
+    let prepared = cyrus_assets::audio::load_effect_bank(&install).unwrap();
+    assert_eq!(
+        prepared[117]
+            .as_ref()
+            .unwrap()
+            .repetitions
+            .remaining()
+            .unwrap()
+            .get(),
+        225
+    );
     assert_eq!(
         bank.surface_sounds,
         cyrus_assets::audio::read_surface_sounds(&install).unwrap()

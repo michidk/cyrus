@@ -8,7 +8,9 @@ script caches; omitted limits remain unavailable.
 
 Player records retain optional effective installed `swim_depth` in map units for
 model-height displacement. Preparation replaces configured zero with 40; older
-records retain unknown depth. Catalog version 26 invalidates older generated caches.
+records retain unknown depth. Catalog version 27 invalidates older generated caches.
+Sound metadata retains the installed finite repetition count or unbounded
+playback; re-export older sound banks.
 
 Validated portable animation, player, collision, environment, menu, HUD, movie and
 sound cache records. Data-only lookup and validation live with their serialized

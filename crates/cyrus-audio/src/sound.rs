@@ -1,8 +1,8 @@
 //! Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 //! 0-based index in the file, and voice clips from the `SYSTEM.INI`
 //! `rtx_filename` container, addressed by their 4-character RTX label. Each
-//! plays at its stored sample rate; effects loop when their loop flag is
-//! non-zero (preservation `docs/formats/SFX.md`, `docs/formats/RTX.md`).
+//! plays at its stored sample rate; effects retain the installed finite or
+//! unbounded repetition count (preservation `docs/formats/SFX.md`, `docs/formats/RTX.md`).
 //!
 //! Every start follows preservation `docs/engine/sound.md`: 16 channels taken
 //! from a start index and never stolen, a rate clamped to 512–44000 Hz, and the master volume. A
@@ -133,7 +133,7 @@ pub struct Effect {
     /// Original PCM sample width, 8 or 16 bits.
     pub bits_per_sample: u16,
     pub audio: Handle<AudioSource>,
-    pub looping: bool,
+    pub repetitions: SampleRepetitions,
     /// Header volume of non-positional starts, 0..=127.
     pub base_volume: u8,
     pub sample_rate: u32,
@@ -213,7 +213,7 @@ fn load_effects(
                     audio: audio.add(AudioSource {
                         bytes: effect.bytes.into(),
                     }),
-                    looping: effect.looping,
+                    repetitions: effect.repetitions,
                     base_volume: effect.base_volume,
                     sample_rate: effect.sample_rate,
                 })
@@ -298,7 +298,7 @@ struct Start {
     owner: Option<Owner>,
     effect: Option<i32>,
     audio: Handle<AudioSource>,
-    looping: bool,
+    repetitions: SampleRepetitions,
     volume: u8,
     pan: Option<u8>,
     speed: f32,
@@ -374,7 +374,7 @@ impl Channels {
                 effect: Some(cue.effect),
                 audio: effect.audio.clone(),
                 bits_per_sample: effect.bits_per_sample,
-                looping: effect.looping,
+                repetitions: effect.repetitions,
                 volume,
                 pan: Some(pan),
                 speed: playback_speed(effect.sample_rate, cue.rate_offset_hz),
@@ -417,7 +417,7 @@ impl Channels {
                             effect: Some(request.effect),
                             audio: effect.audio.clone(),
                             bits_per_sample: effect.bits_per_sample,
-                            looping: effect.looping,
+                            repetitions: effect.repetitions,
                             volume,
                             pan: Some(pan),
                             speed: playback_speed(effect.sample_rate, request.rate_offset_hz),
@@ -478,6 +478,16 @@ impl Channels {
                 .zip(mixer.sources.and_then(|sources| sources.get(&start.audio)))
                 .map(|(panned, source)| (panned, source, 64)),
         };
+        if panned_source.is_none()
+            && start.repetitions != SampleRepetitions::ONCE
+            && !start.repetitions.is_infinite()
+        {
+            warn!(
+                "sound: finite effect {:?} requires a prepared source transport",
+                start.effect
+            );
+            return None;
+        }
         let reservation = match self
             .samples
             .start(start.start_index, start.owner, start.effect)
@@ -488,7 +498,7 @@ impl Channels {
                 return None;
             }
         };
-        let playback = if start.looping {
+        let playback = if start.repetitions.is_infinite() {
             PlaybackSettings::LOOP
         } else {
             PlaybackSettings::DESPAWN
@@ -507,10 +517,10 @@ impl Channels {
             ),
             Some((panned, source, pan)) => {
                 let gains = PannedGains::new(width, start.volume, master, pan);
-                let transport = match Panned::with_playback(
+                let transport = match Panned::with_repetitions(
                     source.clone(),
                     gains.clone(),
-                    start.looping,
+                    start.repetitions,
                     start.speed,
                 ) {
                     Ok(transport) => transport,
@@ -568,7 +578,7 @@ impl Channels {
                 effect: i32::try_from(index).ok(),
                 audio: effect.audio.clone(),
                 bits_per_sample: effect.bits_per_sample,
-                looping: effect.looping,
+                repetitions: effect.repetitions,
                 volume: i32::from(effect.base_volume)
                     .wrapping_add(volume)
                     .clamp(0, 127) as u8,
@@ -752,7 +762,7 @@ fn play_requests(
                         effect: i32::try_from(*index).ok(),
                         audio: effect.audio.clone(),
                         bits_per_sample: effect.bits_per_sample,
-                        looping: effect.looping,
+                        repetitions: effect.repetitions,
                         volume,
                         pan,
                         speed: 1.0,
@@ -776,7 +786,7 @@ fn play_requests(
                         effect: None,
                         audio: clip.audio.clone(),
                         bits_per_sample: clip.bits_per_sample,
-                        looping: false,
+                        repetitions: SampleRepetitions::ONCE,
                         volume: clip.base_volume.min(127),
                         pan: None,
                         speed: 1.0,
@@ -845,7 +855,7 @@ fn finish_bank(
                 Some(Effect {
                     bits_per_sample: effect.bits_per_sample,
                     audio: audio.clone(),
-                    looping: effect.looping,
+                    repetitions: effect.repetitions,
                     base_volume: effect.base_volume,
                     sample_rate: effect.sample_rate,
                 })
@@ -1044,6 +1054,7 @@ impl PannedGains {
 }
 
 mod transport;
+pub use cyrus_assets::sound::SampleRepetitions;
 pub use transport::{Panned, PannedDecoder, PannedSnapshot};
 
 /// First `key=value` of `[section]` in INI text, matching section and key
@@ -1076,7 +1087,7 @@ mod ambient_tests {
         let effects = SoundEffects(vec![Some(Effect {
             bits_per_sample: 8,
             audio,
-            looping: false,
+            repetitions: SampleRepetitions::ONCE,
             base_volume: 64,
             sample_rate: 11025,
         })]);

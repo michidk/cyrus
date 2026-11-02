@@ -9,7 +9,7 @@ use cyrus_assets::{audio::pcm_wav, sound::SoundSettings};
 use cyrus_audio::{
     persistence::AudioRestoreBindings,
     sound::{
-        Effect, Panned, PlayingSound, SoundEffects, SoundPlugin, SoundRequest,
+        Effect, Panned, PlayingSound, SampleRepetitions, SoundEffects, SoundPlugin, SoundRequest,
         persistence::SamplePlaybackSnapshot,
     },
 };
@@ -17,6 +17,10 @@ use rgpre::import::sfx::AudioType;
 use std::collections::BTreeMap;
 
 fn fixture() -> Result<(App, AudioSource)> {
+    fixture_with_repetitions(SampleRepetitions::FOREVER)
+}
+
+fn fixture_with_repetitions(repetitions: SampleRepetitions) -> Result<(App, AudioSource)> {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
         .init_asset::<AudioSource>()
@@ -35,7 +39,7 @@ fn fixture() -> Result<(App, AudioSource)> {
     app.insert_resource(SoundEffects(vec![Some(Effect {
         bits_per_sample: 8,
         audio,
-        looping: true,
+        repetitions,
         base_volume: 100,
         sample_rate: 22050,
     })]));
@@ -49,7 +53,18 @@ fn fixture() -> Result<(App, AudioSource)> {
 
 #[test]
 fn sample_candidate_retains_decoder_progress_pause_and_live_pool_until_commit() -> Result<()> {
-    let (mut app, source) = fixture()?;
+    check_sample_candidate(SampleRepetitions::FOREVER)
+}
+
+#[test]
+fn finite_sample_candidate_retains_remaining_passes_after_wrap() -> Result<()> {
+    check_sample_candidate(SampleRepetitions::finite(
+        std::num::NonZeroU8::new(3).unwrap(),
+    ))
+}
+
+fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
+    let (mut app, source) = fixture_with_repetitions(repetitions)?;
     let (old_entity, handle) = app
         .world_mut()
         .query::<(Entity, &AudioPlayer<Panned>)>()
@@ -62,7 +77,7 @@ fn sample_candidate_retains_decoder_progress_pause_and_live_pool_until_commit() 
         .unwrap()
         .decoder();
     // An odd stereo output count retains the pending right sample of mono input.
-    for _ in 0..7 {
+    for _ in 0..13 {
         original.next().unwrap();
     }
     app.world_mut()
@@ -71,6 +86,9 @@ fn sample_candidate_retains_decoder_progress_pause_and_live_pool_until_commit() 
         .paused = true;
     let snapshot = SamplePlaybackSnapshot::capture(app.world_mut())?;
     let before = serde_json::to_value(&snapshot)?;
+    if !repetitions.is_infinite() {
+        assert_eq!(before["players"][0]["transport"]["repetitions"], 2);
+    }
     let replacement = app.world_mut().spawn_empty().id();
     let bindings = AudioRestoreBindings::new(&[], &[(old_entity.to_bits(), replacement)])?;
     let sources = BTreeMap::from([(

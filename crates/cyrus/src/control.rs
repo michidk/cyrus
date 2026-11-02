@@ -456,7 +456,7 @@ fn handle(
                                 effect,
                                 position: position.map(Vec3::from_array),
                             });
-                        Ok(json!({"effect": effect, "looping": loaded.looping}))
+                        Ok(json!({"effect": effect, "looping": loaded.repetitions != cyrus_assets::sound::SampleRepetitions::ONCE}))
                     }
                     None => Err(format!("sound effect {effect} is not loaded")),
                 }

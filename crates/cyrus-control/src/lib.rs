@@ -150,7 +150,7 @@ pub enum Command {
     },
     /// Skip the splash, retain required menu preparation behind the title, and stop at the menu.
     SkipStartup,
-    /// Play effect `effect` (0-based index in `MAIN.SFX`); looping effects play until stopped.
+    /// Play effect `effect` (0-based index in `MAIN.SFX`); effects retain their installed finite or unbounded repeat count.
     /// With `position` (world space, as in `state`) it attenuates with the camera's distance.
     PlaySound {
         effect: usize,

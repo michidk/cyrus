@@ -93,9 +93,47 @@ pub struct MusicSettings {
     pub world_tracks: std::collections::BTreeMap<u32, i32>,
 }
 
+/// Remaining complete passes, including the current pass. Zero means unbounded.
+/// SFX flag zero plays once; flag 255 selects unbounded repetition; other flags
+/// are finite counts (preservation `docs/formats/SFX.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SampleRepetitions(u8);
+impl SampleRepetitions {
+    pub const ONCE: Self = Self(1);
+    pub const FOREVER: Self = Self(0);
+
+    /// Interpret the parser's signed view as the original unsigned SFX byte.
+    pub const fn from_sfx_flag(flag: i8) -> Self {
+        match flag as u8 {
+            0 => Self::ONCE,
+            255 => Self::FOREVER,
+            count => Self(count),
+        }
+    }
+    pub const fn finite(count: std::num::NonZeroU8) -> Self {
+        Self(count.get())
+    }
+    /// None denotes unbounded repetition.
+    pub const fn remaining(self) -> Option<std::num::NonZeroU8> {
+        std::num::NonZeroU8::new(self.0)
+    }
+    pub const fn is_infinite(self) -> bool {
+        self.0 == 0
+    }
+    /// Remaining passes after EOF; None means playback has finished.
+    pub const fn after_pass(self) -> Option<Self> {
+        match self.0 {
+            0 => Some(self),
+            1 => None,
+            count => Some(Self(count - 1)),
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SoundEffect {
-    pub looping: bool,
+    pub repetitions: SampleRepetitions,
     pub sample_rate: u32,
     pub channels: u16,
     pub bits_per_sample: u16,
@@ -229,4 +267,29 @@ pub struct DialogueVoice {
 pub trait DialogueSamples {
     fn playing(&mut self, sample: u8) -> anyhow::Result<bool>;
     fn stop(&mut self, sample: u8) -> anyhow::Result<()>;
+}
+
+#[cfg(test)]
+mod repetition_tests {
+    use super::SampleRepetitions;
+
+    #[test]
+    fn installed_flags_preserve_finite_repeat_counts() {
+        assert_eq!(SampleRepetitions::from_sfx_flag(0), SampleRepetitions::ONCE);
+        assert_eq!(
+            SampleRepetitions::from_sfx_flag(-1),
+            SampleRepetitions::FOREVER
+        );
+        let tune = SampleRepetitions::from_sfx_flag(-31);
+        assert_eq!(tune.remaining().unwrap().get(), 225);
+        let mut passes = Some(tune);
+        for _ in 0..225 {
+            passes = passes.unwrap().after_pass();
+        }
+        assert_eq!(passes, None);
+        assert_eq!(
+            SampleRepetitions::FOREVER.after_pass(),
+            Some(SampleRepetitions::FOREVER)
+        );
+    }
 }

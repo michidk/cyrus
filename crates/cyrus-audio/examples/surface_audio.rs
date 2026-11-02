@@ -165,7 +165,9 @@ fn main() -> Result<()> {
                                 bytes: bytes.clone().into(),
                             },
                         ),
-                        looping: effect.loop_flag != 0,
+                        repetitions: cyrus_audio::sound::SampleRepetitions::from_sfx_flag(
+                            effect.loop_flag,
+                        ),
                         base_volume: effect.base_volume,
                         sample_rate: effect.sample_rate,
                     })
@@ -705,7 +707,7 @@ mod tests {
                                 bytes: bytes.clone().into(),
                             },
                         ),
-                        looping: false,
+                        repetitions: cyrus_audio::sound::SampleRepetitions::ONCE,
                         base_volume: 255,
                         sample_rate: 11025,
                     })

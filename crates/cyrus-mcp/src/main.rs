@@ -314,7 +314,7 @@ impl Cyrus {
     }
 
     #[tool(
-        description = "Play a sound effect from MAIN.SFX; looping effects play until stop_sounds."
+        description = "Play a sound effect from MAIN.SFX; effects retain their installed finite or unbounded repeat count."
     )]
     fn play_sound(
         &self,

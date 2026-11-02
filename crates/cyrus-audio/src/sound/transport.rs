@@ -1,5 +1,5 @@
 //! Exact source-decoder continuation, separate from backend/device output buffers.
-use super::{PannedGains, PcmScale, PcmWidth};
+use super::{PannedGains, PcmScale, PcmWidth, SampleRepetitions};
 use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::{AudioSource, Decodable, PlaybackSettings, Source},
@@ -26,7 +26,7 @@ pub struct PannedSnapshot {
     input_samples: u64,
     right_bits: Option<u32>,
     channel: u16,
-    looping: bool,
+    repetitions: SampleRepetitions,
     speed: f32,
 }
 impl PannedSnapshot {
@@ -34,9 +34,9 @@ impl PannedSnapshot {
     pub fn source_identity(&self) -> &str {
         &self.source_identity
     }
-    /// Whether EOF returns to the beginning before applying current gains.
-    pub fn looping(&self) -> bool {
-        self.looping
+    /// Remaining complete passes, including the current pass, or unbounded playback.
+    pub fn repetitions(&self) -> SampleRepetitions {
+        self.repetitions
     }
     /// Playback speed multiplier, applied by the host after decoding.
     pub fn speed(&self) -> f32 {
@@ -62,7 +62,7 @@ impl PannedSnapshot {
         self.width == PcmWidth::Sixteen
             && self.gains == unity
             && self.frame_gains == unity
-            && self.looping
+            && self.repetitions.is_infinite()
             && self.speed == 1.0
     }
 }
@@ -73,7 +73,7 @@ impl PannedSnapshot {
 pub struct Panned {
     source: AudioSource,
     gains: PannedGains,
-    looping: bool,
+    repetitions: SampleRepetitions,
     speed: f32,
     initial: Option<PannedSnapshot>,
     capture: Mutex<Capture>,
@@ -88,7 +88,7 @@ impl Clone for Panned {
         Self {
             source: self.source.clone(),
             gains: self.gains.clone(),
-            looping: self.looping,
+            repetitions: self.repetitions,
             speed: self.speed,
             initial: self.initial.clone(),
             capture: Mutex::default(),
@@ -108,10 +108,29 @@ impl Panned {
         looping: bool,
         speed: f32,
     ) -> Result<Self> {
+        Self::with_repetitions(
+            source,
+            gains,
+            if looping {
+                SampleRepetitions::FOREVER
+            } else {
+                SampleRepetitions::ONCE
+            },
+            speed,
+        )
+    }
+    /// Prepare the measured number of complete passes, or unbounded playback.
+    /// Finite EOF and remaining repetitions belong to this source decoder.
+    pub fn with_repetitions(
+        source: AudioSource,
+        gains: PannedGains,
+        repetitions: SampleRepetitions,
+        speed: f32,
+    ) -> Result<Self> {
         let result = Self {
             source,
             gains,
-            looping,
+            repetitions,
             speed,
             initial: None,
             capture: Mutex::default(),
@@ -170,7 +189,7 @@ impl Panned {
         snapshot: PannedSnapshot,
     ) -> Result<Self> {
         ensure!(
-            snapshot.version == 1,
+            snapshot.version == 2,
             "audio transport snapshot version {} is unsupported",
             snapshot.version
         );
@@ -197,7 +216,7 @@ impl Panned {
         let mut result = Self {
             source,
             gains,
-            looping: snapshot.looping,
+            repetitions: snapshot.repetitions,
             speed: snapshot.speed,
             initial: None,
             capture: Mutex::default(),
@@ -217,8 +236,12 @@ impl Panned {
         );
         let (channels, remaining) = validate_pcm_source(&self.source, self.gains.width)?;
         let inner = raw_decoder(&self.source)?;
+        let duration = self
+            .repetitions
+            .remaining()
+            .and_then(|passes| inner.total_duration()?.checked_mul(u32::from(passes.get())));
         ensure!(
-            !self.looping || remaining != 0,
+            self.repetitions == SampleRepetitions::ONCE || remaining != 0,
             "audio transport cannot loop an empty source"
         );
         let mut state = State {
@@ -231,7 +254,8 @@ impl Panned {
             channel: 0,
             input_samples: 0,
             sample_count: remaining,
-            looping: self.looping,
+            duration,
+            repetitions: self.repetitions,
             speed: self.speed,
         };
         if let Some(saved) = &self.initial {
@@ -357,13 +381,14 @@ struct State {
     channel: u16,
     input_samples: u64,
     sample_count: u64,
-    looping: bool,
+    duration: Option<std::time::Duration>,
+    repetitions: SampleRepetitions,
     speed: f32,
 }
 impl State {
     fn snapshot(&self) -> PannedSnapshot {
         PannedSnapshot {
-            version: 1,
+            version: 2,
             source_identity: self.source_identity.clone(),
             width: self.gains.width,
             gains: self.gains.snapshot(),
@@ -371,15 +396,13 @@ impl State {
             input_samples: self.input_samples,
             right_bits: self.right.map(f32::to_bits),
             channel: self.channel,
-            looping: self.looping,
+            repetitions: self.repetitions,
             speed: self.speed,
         }
     }
     fn input(&mut self) -> Option<f32> {
         if self.input_samples == self.sample_count {
-            if !self.looping {
-                return None;
-            }
+            self.repetitions = self.repetitions.after_pass()?;
             self.inner = raw_decoder(&self.source).expect("validated looping audio source");
             self.input_samples = 0;
             self.channel = 0;
@@ -422,20 +445,17 @@ impl Iterator for PannedDecoder {
             .0
             .lock()
             .expect("audio transport decoder lock poisoned");
-        if state.looping {
+        let Some(passes) = state.repetitions.remaining() else {
             return (0, None);
-        }
-        let lower = (state.sample_count - state.input_samples) as usize;
-        let upper = Some(lower);
-        if state.inner.channels().get() == 1 {
-            let pending = usize::from(state.right.is_some());
-            (
-                lower.saturating_mul(2).saturating_add(pending),
-                upper.and_then(|n| n.checked_mul(2)?.checked_add(pending)),
-            )
+        };
+        let remaining = state.sample_count * u64::from(passes.get()) - state.input_samples;
+        let remaining = if state.inner.channels().get() == 1 {
+            remaining * 2 + u64::from(state.right.is_some())
         } else {
-            (lower, upper)
-        }
+            remaining
+        };
+        let upper = usize::try_from(remaining).ok();
+        (upper.unwrap_or(usize::MAX), upper)
     }
 }
 impl Source for PannedDecoder {
@@ -465,10 +485,6 @@ impl Source for PannedDecoder {
             .0
             .lock()
             .expect("audio transport decoder lock poisoned");
-        if state.looping {
-            None
-        } else {
-            state.inner.total_duration()
-        }
+        state.duration
     }
 }
