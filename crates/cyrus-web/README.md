@@ -186,6 +186,14 @@ world, malformed request or invalid phase is rejected without changing the sky.
 Submit one request at a time and check its result. This inspection control is
 absent without `capture`; it does not reproduce original-session random order.
 
+For acceptance runs that need a state a drive-by player cannot reach, assign a JSON string to
+`window.__cyrusAcceptanceRequest` in capture mode: `{id, action: "place_player", x, y, z, heading}`
+(map units, as `scripts` reports them), `{id, action: "mark_dead", index}` (the script actor at
+`index`) or `{id, action: "add_item", item}`. They call the same world services as the native
+control commands of the same names. The request is consumed once while InGame and
+`window.__cyrusAcceptanceResult` reports `id`, `applied` and `error`. These helpers are diagnostic
+setup, not gameplay, and are absent without `capture`.
+
 The browser host selects `ViewCamera` for `cyrus_audio::follow_listener` before
 audio preferences and cue processing; rendering does not depend on audio.
 
