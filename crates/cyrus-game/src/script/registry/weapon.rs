@@ -665,6 +665,7 @@ mod tests {
             native_hook: None,
             combat_taunts: vec![],
             runtime: None,
+            created_retired: false,
             unavailable: None,
             attributes: vec![0; 256],
             surface: Some(0),

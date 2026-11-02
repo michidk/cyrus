@@ -563,6 +563,10 @@ impl ActorSnapshot {
         actor.animation = animation;
         actor.animation_failure = self.animation_failure;
         actor.update_failure = self.update_failure;
+        // Snapshots are taken outside invocation, so absent runtime identifies completed cleanup.
+        actor.created_retired = matches!(actor.source, ScriptActorSource::Created(_))
+            && actor.runtime.is_none()
+            && actor.control.as_ref().is_some_and(|control| control.killed);
         Ok(actor)
     }
 }

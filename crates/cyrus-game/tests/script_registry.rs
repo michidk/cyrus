@@ -172,6 +172,277 @@ fn cache() -> Scripts {
 }
 
 #[test]
+fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
+    use cyrus_game::script::ScriptInputs;
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.definition.references = vec!["angle.vy".into()];
+    scripts.instances[0].angles[1] = 111;
+    scripts.instances[1].angles[1] = 222;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.strings = vec!["logic".into()];
+    actor.program.entry = 3;
+    actor.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(1, "KillMe", CallKind::Function, vec![]),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Endint,
+            },
+        ),
+        (
+            3,
+            Step {
+                next: 4,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Read {
+                            place: Place::Property {
+                                object: Object::Named { string: 0 },
+                                reference: 0,
+                            },
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            4,
+            Step {
+                next: 5,
+                operation: Operation::End { target: 3 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity()?;
+    let mut world = ScriptWorld::prepare(&scripts, 1)?;
+    world.prepare_spatial()?;
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world.advance(
+        world.id(0)?,
+        ScriptStage::Body(Thread::Interrupt),
+        inputs,
+        Some(&mut |_, _| Ok(())),
+        None,
+        20,
+    )?;
+    world.update_created(
+        inputs,
+        &mut cyrus_game::random::EngineRandom::from_state(42),
+        &mut |_, _| Ok(()),
+        20,
+    )?;
+    world.advance(
+        world.id(1)?,
+        ScriptStage::Body(Thread::Main),
+        inputs,
+        None,
+        None,
+        20,
+    )?;
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), &[111]);
+    Ok(())
+}
+
+#[test]
+fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() -> anyhow::Result<()>
+{
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    for restore in [false, true] {
+        let mut scripts = cache();
+        scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
+        scripts.definition.references = vec!["angle.vy".into()];
+        let kill = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut actor = scripts.actors["LOGIC"].clone();
+        actor.instances = 1;
+        actor.code_origin += 1000;
+        actor.header_index += 100;
+        actor.namespace = Some("projectile".into());
+        actor.instance_variables = vec![vec![0]];
+        actor.program.strings = vec!["projectile".into()];
+        actor.program.entry = 3;
+        actor.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(kill, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::Assign {
+                        destination: Place::Local { index: 0 },
+                        formula: Formula {
+                            first: Value::Read {
+                                place: Place::Property {
+                                    object: Object::Named { string: 0 },
+                                    reference: 0,
+                                },
+                            },
+                            rest: vec![],
+                        },
+                    },
+                },
+            ),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: Operation::Endint,
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::Assign {
+                        destination: Place::Local { index: 0 },
+                        formula: Formula {
+                            first: Value::Read {
+                                place: Place::Property {
+                                    object: Object::Named { string: 0 },
+                                    reference: 0,
+                                },
+                            },
+                            rest: vec![],
+                        },
+                    },
+                },
+            ),
+            (
+                4,
+                Step {
+                    next: 5,
+                    operation: Operation::End { target: 3 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("PROJECTILE".into(), actor);
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity()?;
+        let (mut world, data, _) =
+            static_model_fixture_session(scripts.clone(), None, [10, 20, 30], false);
+        let creator = world.id(0)?;
+        let first = world.create_object(creator, "PROJECTILE", [0; 3], [0, 111, 0])?;
+        let reader = world.create_object(creator, "PROJECTILE", [0; 3], [0, 222, 0])?;
+        let inputs = ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        };
+        world.advance(
+            first,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )?;
+        assert_eq!(
+            world.actors()[first.index].runtime().unwrap().variables(),
+            &[111]
+        );
+        // The killed record remains allocated until the created-object pass retires it.
+        world.advance(
+            reader,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            None,
+            None,
+            20,
+        )?;
+        assert_eq!(
+            world.actors()[reader.index].runtime().unwrap().variables(),
+            &[111]
+        );
+        assert!(world.actors()[first.index].control_state().unwrap().killed);
+        world.update_created(
+            inputs,
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| Ok(()),
+            20,
+        )?;
+        assert!(world.actors()[first.index].runtime().is_none());
+        let fresh = world.create_object(creator, "PROJECTILE", [0; 3], [0, 333, 0])?;
+        if restore {
+            let collision = Default::default();
+            let sources = WorldSnapshotSources {
+                identity_memo: None,
+                effects: None,
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &collision,
+            };
+            let globals = std::mem::take(world.globals_mut());
+            let saved = world.snapshot(&sources)?;
+            world = ScriptWorld::from_snapshot(
+                saved,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals,
+                    samples: &BTreeMap::new(),
+                },
+            )?;
+        }
+        let fresh = world.id(fresh.index)?;
+        let error = world
+            .advance(
+                fresh,
+                ScriptStage::Body(Thread::Main),
+                inputs,
+                None,
+                None,
+                20,
+            )
+            .expect_err("retired named target must not return its old pose or a duplicate's pose");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("world 7")
+                && message.contains("projectile")
+                && message.contains(&format!(
+                    "retired created receiver {} PROJECTILE",
+                    first.index
+                ))
+                && message.contains("unsupported"),
+            "{message}"
+        );
+        assert_eq!(
+            world.actors()[fresh.index].runtime().unwrap().variables(),
+            &[0]
+        );
+        assert_eq!(world.flags(), &[12]);
+    }
+    Ok(())
+}
+
+#[test]
 fn created_objects_use_identifier_zero_and_first_namespace_registration_wins() {
     let mut scripts = cache();
     scripts.actors.get_mut("LOGIC").unwrap().namespace = None;

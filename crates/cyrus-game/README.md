@@ -76,6 +76,13 @@ and weapon publication skips killed receivers. `Resurrect`
 does not republish the removed geometry, following preservation's
 [lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
 
+Named lookup retains the first namespace registration after a created receiver
+loses its executable runtime. A lookup of that killed receiver reports an explicit
+unsupported error, including after restore; it does not select a later duplicate
+or expose the retained pose as live behavior. The namespace lifetime follows
+preservation's [registry contract](https://github.com/michidk/redguard-preservation/pull/160).
+The original's result when dereferencing the freed record remains Unknown.
+
 Created-object updates discard an already killed receiver's executable runtime.
 A receiver killed by its ordinary hook also skips its main program. Saved killed
 continuations obey the same exclusion after restoration, following preservation's

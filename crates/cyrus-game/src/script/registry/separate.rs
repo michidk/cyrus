@@ -152,6 +152,7 @@ impl ScriptWorld {
             let actor = &mut self.actors[index];
             if actor.control.as_ref().is_some_and(|control| control.killed) {
                 actor.runtime = None;
+                actor.created_retired = true;
                 continue;
             }
             if actor.runtime.is_none() || actor.failure().is_some() {
@@ -187,6 +188,7 @@ impl ScriptWorld {
             let actor = &mut self.actors[index];
             if actor.control.as_ref().is_some_and(|control| control.killed) {
                 actor.runtime = None;
+                actor.created_retired = true;
             }
             if let Err(error) = result {
                 actor.update_failure = Some(format!(

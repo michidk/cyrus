@@ -387,6 +387,8 @@ pub struct ScriptActor {
     native_hook: Option<Call>,
     combat_taunts: Vec<CombatTaunt>,
     runtime: Option<Runtime>,
+    /// Created-record cleanup completed; runtime may also be absent during an active call.
+    created_retired: bool,
     unavailable: Option<String>,
     attributes: Vec<u8>,
     control: Option<ActorControlState>,
@@ -457,6 +459,7 @@ impl ScriptActor {
                 .map(|template| template.combat_taunts.clone())
                 .unwrap_or_default(),
             runtime,
+            created_retired: false,
             unavailable,
             attributes: vec![0; 256],
             control: None,
@@ -1124,6 +1127,7 @@ impl ScriptWorld {
                     .map(|actor| actor.combat_taunts.clone())
                     .unwrap_or_default(),
                 runtime,
+                created_retired: false,
                 unavailable,
                 location_offsets: metadata
                     .map(|actor| actor.location_offsets.clone())
@@ -4518,7 +4522,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .ok()
                 .and_then(|identifier| self.registry.names.get(&identifier).copied()),
         };
-        index.with_context(|| format!("object target {target:?}: receiver absent"))
+        let index = index.with_context(|| format!("object target {target:?}: receiver absent"))?;
+        let actor = &self.registry.actors[index];
+        // Namespace registration outlives created-record removal; dereferencing it is unsupported.
+        anyhow::ensure!(
+            !matches!(target, Target::Named(_)) || !actor.created_retired,
+            "world {} object target {target:?}: retired created receiver {index} {} is unsupported",
+            self.registry.world,
+            actor.name()
+        );
+        Ok(index)
     }
 }
 enum PoseProperty {
@@ -7351,6 +7364,7 @@ mod fighting_tests {
                 native_hook: None,
                 combat_taunts: vec![],
                 runtime: None,
+                created_retired: false,
                 unavailable: None,
                 attributes: vec![0; 256],
                 control: Some(ActorControlState {
@@ -7506,6 +7520,7 @@ mod selector_tests {
             native_hook: None,
             combat_taunts: vec![],
             runtime: None,
+            created_retired: false,
             unavailable: None,
             attributes: vec![0; 256],
             control: Some(ActorControlState::default()),
