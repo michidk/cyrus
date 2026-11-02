@@ -16,7 +16,7 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-pub const CATALOG_VERSION: u32 = 28;
+pub const CATALOG_VERSION: u32 = 29;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,8 +71,8 @@ pub enum Source {
     Effect(usize),
     Speech(usize),
     Splash(usize),
-    /// Complete rendered startup animation from the entry's DLL or DOS overlay.
-    SplashAnimation,
+    /// A stored mesh within an original Glide splash DLL or overlay.
+    SplashMesh(usize),
     World(u32),
     CdTrack(u32),
     CdMovie(String),
@@ -94,14 +94,18 @@ impl Entry {
     pub fn is_member(&self) -> bool {
         matches!(
             self.source,
-            Source::Image(_) | Source::Model(_) | Source::Effect(_) | Source::Speech(_)
+            Source::Image(_)
+                | Source::Model(_)
+                | Source::Effect(_)
+                | Source::Speech(_)
+                | Source::Splash(_)
+                | Source::SplashMesh(_)
         )
     }
     /// Numbered texture banks share a format; derived previews are not source files.
     pub fn format_label(&self) -> &str {
         match self.source {
             Source::World(_) => "World previews",
-            Source::SplashAnimation => "Startup animations",
             Source::CdTrack(_) => "CD audio",
             _ if self
                 .path

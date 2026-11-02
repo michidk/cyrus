@@ -52,10 +52,18 @@ impl Files {
             {
                 paths.insert("splash/glide2x_emu.ovl".into(), path);
             }
-        }
-        if let Some(parent) = install.root.parent() {
-            let path = parent.join("DOSBOX/3DfxSpl2.dll");
-            if path.is_file() {
+            if let Some(path) = std::fs::read_dir(parent.join("DOSBOX"))
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.is_file()
+                        && path
+                            .file_name()
+                            .is_some_and(|name| name.eq_ignore_ascii_case("3DfxSpl2.dll"))
+                })
+            {
                 paths.insert("splash/3DfxSpl2.dll".into(), path);
             }
         }

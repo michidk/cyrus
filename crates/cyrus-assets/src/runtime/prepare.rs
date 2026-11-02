@@ -42,42 +42,6 @@ pub(super) fn prepare<R: ReadAssets>(
             .collect(),
     };
     match &entry.source {
-        Source::SplashAnimation => {
-            let bytes = library.source.read(&entry.path)?;
-            let frames = crate::startup::splash::preview(
-                &bytes,
-                std::path::Path::new(&entry.path)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("dll")),
-                |done, total| library.source.progress(done, total, &entry.name),
-            )
-            .with_context(|| format!("{}: splash animation", entry.path))?;
-            preview.content = Content::Images { frames };
-            preview.frame_interval_ms = Some(1000.0 / 30.0);
-            preview.metadata = visual_metadata(&preview.content);
-            return Ok(preview);
-        }
-        Source::Splash(index) => {
-            let splash = import::glide_splash::parse_glide_splash(
-                &library.source.read("splash/glide2x_emu.ovl")?,
-            )?;
-            let texture = splash
-                .textures
-                .get(*index)
-                .context("missing splash texture")?;
-            preview.content = Content::Images {
-                frames: vec![Picture {
-                    label: entry.name.clone(),
-                    width: texture.width,
-                    height: texture.height,
-                    rgba: texture.rgba.clone(),
-                    indices: None,
-                    embedded_palette: false,
-                }],
-            };
-            preview.metadata = visual_metadata(&preview.content);
-            return Ok(preview);
-        }
         Source::World(id) => {
             let world = geometry::world(&library.source, &id.to_string())?;
             let url = library.output(&entry.id, "glb");
@@ -117,6 +81,44 @@ pub(super) fn prepare<R: ReadAssets>(
     let path = &entry.path;
     let input = library.source_file(path)?;
     preview.content = match input.as_ref() {
+        Input::Splash(splash) => match entry.source {
+            Source::SplashMesh(index) => {
+                let mesh = splash.meshes.get(index).context("missing splash mesh")?;
+                let url = library.output(&entry.id, "glb");
+                library.publish(&url, &super::splash::mesh_glb(mesh)?)?;
+                let data = splash.mesh_metadata(index)?;
+                preview.metadata = Some(data.clone());
+                preview.details.push((
+                    "Appearance".into(),
+                    "Original object-space geometry; splash material effects are not applied."
+                        .into(),
+                ));
+                Content::Model {
+                    frames: vec![url],
+                    palettes: Vec::new(),
+                    data: Some(data),
+                }
+            }
+            Source::Splash(index) => {
+                let texture = splash
+                    .textures
+                    .get(index)
+                    .context("missing splash texture")?;
+                Content::Images {
+                    frames: vec![Picture {
+                        label: entry.name.clone(),
+                        width: texture.width,
+                        height: texture.height,
+                        rgba: texture.rgba.clone(),
+                        indices: None,
+                        embedded_palette: false,
+                    }],
+                }
+            }
+            _ => Content::Data {
+                value: splash.metadata(),
+            },
+        },
         Input::Bsi(archive) => {
             if let Source::Image(index) = entry.source {
                 let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
@@ -856,6 +858,7 @@ fn text_data(bytes: &[u8], path: &str) -> Result<Content> {
 
 /// Only the most recently used file is retained, including its archive index.
 pub(super) enum Input {
+    Splash(super::splash::Splash),
     Bsi(import::bsi::BsiIndex),
     Rob(import::rob::RobIndex),
     Sfx(import::sfx::SfxIndex),
@@ -864,6 +867,12 @@ pub(super) enum Input {
 }
 impl Input {
     pub(super) fn read(path: &str, source: &dyn ReadAssets) -> Result<Self> {
+        if super::splash::is_source(path) {
+            return Ok(Self::Splash(
+                super::splash::Splash::read(path, &source.read(path)?)
+                    .with_context(|| format!("{path}: splash contents"))?,
+            ));
+        }
         let mut file = AssetFile::open(source, path)?.without_read_ahead();
         Ok(match FileType::from_path(std::path::Path::new(path)) {
             Some(FileType::Bsi) => Self::Bsi(import::bsi::BsiIndex::read(&mut file)?),

@@ -777,89 +777,7 @@ fn bsi_palette_references_follow_terrain_and_sky_usage() {
 }
 
 #[test]
-fn installed_splash_animations_have_complete_timed_frames() {
-    let root = std::env::var_os("REDGUARD_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
-    if !root.join("RGFX.EXE").is_file() {
-        eprintln!("skipped: no install (viewer splash animations)");
-        return;
-    }
-    let install = GameInstall::open(&root).unwrap();
-    let files = cyrus_assets::native::Files::open(&install).unwrap();
-    let mut library = cyrus_assets::runtime::Library::open(files, |_, _, _| {}).unwrap();
-    for (name, count) in [("3dfx splash (Windows)", 150), ("3dfx splash (DOS)", 74)] {
-        let entry = library
-            .catalog
-            .entries
-            .iter()
-            .find(|entry| entry.name == name)
-            .unwrap_or_else(|| panic!("missing {name}"))
-            .clone();
-        assert_eq!(entry.category, Category::Images);
-        let preview = library.prepare(&entry.id, None).unwrap().preview;
-        preview.validate().unwrap();
-        assert!((preview.frame_interval_ms.unwrap() - 1000.0 / 30.0).abs() < 0.001);
-        struct Size(usize);
-        impl std::io::Write for Size {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0 += bytes.len();
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let mut size = Size(0);
-        serde_json::to_writer(&mut size, &preview).unwrap();
-        assert!(
-            size.0 < 512 * 1024 * 1024,
-            "{name}: preview exceeds viewer loading limit"
-        );
-        let Content::Images { frames } = preview.content else {
-            panic!("{name}: no images")
-        };
-        assert_eq!(frames.len(), count);
-        assert!(
-            frames
-                .iter()
-                .all(|frame| (frame.width, frame.height) == (640, 480))
-        );
-        assert!(frames.iter().any(|frame| {
-            frame
-                .rgba
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .any(|pixel| pixel[..3] != [0, 0, 0])
-        }));
-        assert!(frames.windows(2).any(|pair| pair[0].rgba != pair[1].rgba));
-        if count == 150 {
-            assert!(
-                frames[0]
-                    .rgba
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .all(|pixel| pixel[..3] == [0, 0, 0])
-            );
-            let brightness = |frame: &cyrus_assets::Picture| {
-                frame
-                    .rgba
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .flat_map(|pixel| &pixel[..3])
-                    .map(|channel| u64::from(*channel))
-                    .sum::<u64>()
-            };
-            assert!(brightness(&frames[149]) < brightness(&frames[89]));
-        }
-    }
-}
-
-#[test]
-fn splash_catalog_lists_only_present_variants_and_reports_invalid_data() {
+fn splash_files_are_indexed_as_original_model_archives() {
     let scratch = Scratch::new();
     let root = scratch.0.join("install/Redguard");
     for dir in ["maps", "fxart"] {
@@ -868,22 +786,81 @@ fn splash_catalog_lists_only_present_variants_and_reports_invalid_data() {
     std::fs::write(root.join("RGFX.EXE"), []).unwrap();
     let support = root.parent().unwrap().join("DOSBOX");
     std::fs::create_dir_all(&support).unwrap();
-    std::fs::write(support.join("3DfxSpl2.dll"), b"invalid splash").unwrap();
+    for name in ["3dfxSpl2.dll", "glide2x_emu.ovl"] {
+        std::fs::write(support.join(name), b"invalid source").unwrap();
+    }
     let files = cyrus_assets::native::Files::open(&GameInstall::open(&root).unwrap()).unwrap();
     let mut library = cyrus_assets::runtime::Library::open(files, |_, _, _| {}).unwrap();
-    let animations: Vec<_> = library
+    let entries: Vec<_> = library
         .catalog
         .entries
         .iter()
-        .filter(|entry| matches!(entry.source, Source::SplashAnimation))
+        .filter(|entry| entry.path.starts_with("splash/"))
         .cloned()
         .collect();
-    assert_eq!(animations.len(), 1);
-    assert_eq!(animations[0].name, "3dfx splash (Windows)");
-    assert_eq!(animations[0].format_label(), "Startup animations");
-    let preview = library.prepare(&animations[0].id, None).unwrap().preview;
-    let Content::Unavailable { reason } = preview.content else {
-        panic!("invalid splash accepted")
-    };
-    assert!(reason.contains("splash/3DfxSpl2.dll"), "{reason}");
+    assert_eq!(entries.len(), 2);
+    for entry in entries {
+        assert_eq!(entry.category, Category::Models);
+        assert!(matches!(entry.source, Source::Archive));
+        assert_eq!(entry.name, entry.path);
+        let error = library.expand(&entry.path).unwrap_err();
+        assert!(format!("{error:#}").contains(&entry.path));
+    }
+}
+
+#[test]
+fn installed_splash_meshes_and_textures_are_original_file_members() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (splash model members)");
+        return;
+    }
+    let install = GameInstall::open(&root).unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let mut library = cyrus_assets::runtime::Library::open(files, |_, _, _| {}).unwrap();
+    for (name, meshes, textures) in [("3DfxSpl2.dll", 74, 2), ("glide2x_emu.ovl", 3, 3)] {
+        let path = cyrus_assets::runtime::geometry::find_name(&library.source, name).unwrap();
+        library.expand(&path).unwrap();
+        let members: Vec<_> = library
+            .catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.path == path && entry.is_member())
+            .cloned()
+            .collect();
+        assert_eq!(members.len(), meshes + textures);
+        assert_eq!(
+            members
+                .iter()
+                .filter(|entry| entry.category == Category::Models)
+                .count(),
+            meshes
+        );
+        for entry in members {
+            let prepared = library.prepare(&entry.id, None).unwrap();
+            prepared.preview.validate().unwrap();
+            assert!(prepared.preview.frame_interval_ms.is_none());
+            match prepared.preview.content {
+                Content::Model { frames, .. } => {
+                    assert_eq!(frames.len(), 1);
+                    let bytes = &prepared.files[&frames[0]];
+                    assert_eq!(&bytes[..4], b"glTF");
+                    let size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+                    let document: serde_json::Value =
+                        serde_json::from_slice(&bytes[20..20 + size]).unwrap();
+                    assert!(document["accessors"][0]["count"].as_u64().unwrap() > 0);
+                    assert!(document["accessors"][2]["count"].as_u64().unwrap() > 0);
+                    assert!(
+                        document
+                            .get("animations")
+                            .is_none_or(|value| value.as_array().unwrap().is_empty())
+                    );
+                }
+                Content::Images { frames } => assert_eq!(frames.len(), 1),
+                content => panic!("{}: unexpected {content:?}", entry.name),
+            }
+        }
+    }
 }

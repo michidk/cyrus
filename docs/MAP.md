@@ -55,6 +55,7 @@ module where it is defined and regenerate.
 - `src/runtime/geometry.rs` — Geometry built from original file bytes, without filesystem access.
 - `src/runtime/palettes.rs` — Palette and texture relationships derived from installed world and model references.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
+- `src/runtime/splash.rs` — Original splash-file members and object-space mesh presentation through preservation.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — World script caches and validated installed clock/update settings.
 - `src/script/combat.rs` — Prepared combat moves with authored omissions retained explicitly.
@@ -73,7 +74,6 @@ module where it is defined and regenerate.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
-- `src/startup/splash.rs` — Splash animation frames shared by startup and asset inspection.
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 

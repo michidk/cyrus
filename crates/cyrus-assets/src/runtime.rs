@@ -9,6 +9,7 @@ mod definitions;
 pub mod geometry;
 mod palettes;
 mod prepare;
+mod splash;
 
 /// A preview and generated media. These bytes are runtime results, never build inputs.
 pub struct Prepared {
@@ -108,32 +109,18 @@ impl<R: ReadAssets> Library<R> {
                 ));
             }
         }
-        for (path, name) in [
-            ("3DfxSpl2.dll", "3dfx splash (Windows)"),
-            ("glide2x_emu.ovl", "3dfx splash (DOS)"),
-        ] {
-            if let Some(path) = geometry::find_name(&source, path) {
+        for name in ["3DfxSpl2.dll", "glide2x_emu.ovl"] {
+            if let Some(path) = geometry::find_name(&source, name) {
                 let file = source
                     .manifest()
                     .find(&path)
-                    .context("missing splash source")?;
+                    .context("missing splash file")?;
                 catalog.entries.push(entry(
-                    &file.path,
+                    &path,
                     file.bytes,
-                    Category::Images,
-                    Source::SplashAnimation,
-                    name,
-                ));
-            }
-        }
-        if let Some(file) = source.manifest().find("splash/glide2x_emu.ovl") {
-            for index in 0..3 {
-                catalog.entries.push(entry(
-                    &file.path,
-                    file.bytes,
-                    Category::Images,
-                    Source::Splash(index),
-                    &format!("Splash texture {index}"),
+                    Category::Models,
+                    Source::Archive,
+                    &path,
                 ));
             }
         }
@@ -202,6 +189,7 @@ impl<R: ReadAssets> Library<R> {
                     )
                 })
                 .collect(),
+            prepare::Input::Splash(splash) => splash.members(),
             prepare::Input::File(_) => anyhow::bail!("{path}: not an indexed archive"),
         };
         for (category, source, name) in members {
