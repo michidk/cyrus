@@ -18,6 +18,10 @@ pub fn register(app: &mut App) {
             PostUpdate,
             observe.run_if(in_state(cyrus_game::AppState::InGame)),
         );
+        app.add_systems(
+            PostUpdate,
+            publish_menu.run_if(in_state(cyrus_game::AppState::Menu)),
+        );
     }
 }
 
@@ -75,6 +79,24 @@ fn sync_sky(
     })();
     if let Err(error) = result {
         error!("browser sky capture request: {error:?}");
+    }
+}
+
+/// The book menu's state (page, selected entry, entries, running movie) on `window.__cyrusMenu`,
+/// like the native `state` command's `menu`, so a browser driver can see where the selection is
+/// before it sends keys. Only while the app is in its menu state.
+fn publish_menu(menu: Option<Res<cyrus_startup::MenuState>>) {
+    let (Some(window), Some(menu)) = (web_sys::window(), menu) else {
+        return;
+    };
+    let result = (|| -> Result<(), JsValue> {
+        let text = serde_json::to_string(&*menu)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        js_sys::Reflect::set(&window, &"__cyrusMenu".into(), &js_sys::JSON::parse(&text)?)
+            .map(|_| ())
+    })();
+    if let Err(error) = result {
+        error!("browser menu observation: {error:?}");
     }
 }
 

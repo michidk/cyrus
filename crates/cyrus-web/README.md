@@ -194,6 +194,10 @@ control commands of the same names. The request is consumed once while InGame an
 `window.__cyrusAcceptanceResult` reports `id`, `applied` and `error`. These helpers are diagnostic
 setup, not gameplay, and are absent without `capture`.
 
+In capture mode, while the book menu is up, `window.__cyrusMenu` mirrors the native `state` command's
+`menu` (page, selected entry index, entries, running movie), refreshed every frame, so a driver can wait for
+the selection and page it needs before sending keys.
+
 The browser host selects `ViewCamera` for `cyrus_audio::follow_listener` before
 audio preferences and cue processing; rendering does not depend on audio.
 
