@@ -13,8 +13,12 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|control| control.combat.as_ref())
             .context("target combat unavailable")?;
-        let slot = usize::try_from(combat.retained_action_indices[1])
-            .context("negative target attack slot")?;
+        let slot = usize::try_from(combat.retained_action_indices[1]).with_context(|| {
+            format!(
+                "negative target attack slot: world {} instance {} action {} retained {:?}",
+                self.world, target.index, combat.action, combat.retained_action_indices
+            )
+        })?;
         let motion = usize::try_from(combat.decision.move_selector)
             .context("negative target motion selector")?;
         self.combat_attack(target, slot)?
