@@ -136,8 +136,18 @@ and simulation checkpoint. Existing audio continues. Native control state expose
 unchanged. The reader draws styles 0 to 4 and 6 to 9 of preservation's
 [reader style table](https://github.com/michidk/redguard-preservation/pull/114) with its pixel
 wrap and constant colour factor (styles 1 and 2 use page-palette colours); style 5, which the
-original never initialises, draws nothing but keeps its place in the layout. Manual entry editing
-remains unsupported. New Game deletes the stored journal; saved sessions retain accepted text,
+original never initialises, draws nothing but keeps its place in the layout.
+Manual-entry presentation reads the game-owned text and cursor phase, restores the reader
+frame, and draws the installed mini-menu artwork and REDSEL styles. Its display-copy
+wrapping includes the underscore cursor and preserves CR/VT bytes without drawing symbols.
+A CR advances the dialog text pen by one pixel, following the
+[preserved spacing rule](https://github.com/michidk/redguard-preservation/pull/161).
+`LogbookPlugin` registers the shared menu cache type and loader, including when used without
+`StartupPlugin`; repeated registration preserves loaded menu assets.
+The game owns all editing, submission, cancellation and persistence. The native and browser
+hosts share the painter, which follows the
+[preserved dialog rules](https://github.com/michidk/redguard-preservation/pull/159).
+New Game deletes the stored journal; saved sessions retain accepted text,
 duplicate-tag history and pending notification state through the game-owned journal snapshot.
 The two scrolls are lit as the original's reader
 lights them: its own ambient 64, a white directional light and two white local lights, independent of the world

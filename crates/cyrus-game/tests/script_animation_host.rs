@@ -6088,3 +6088,64 @@ fn walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll(
         0
     );
 }
+
+#[test]
+fn manual_journal_append_persists_style_and_controls_without_changing_tags() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: Some("[\"7,Earlier\"]".into()),
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&hud_asset(), &preferences);
+    hud.append_manual_entry("AB\rCD\x0bEF").unwrap();
+    assert_eq!(hud.entries().unwrap(), ["7,Earlier", "9,AB\rCD\x0bEF"]);
+    let snapshot = serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap();
+    assert_eq!(snapshot["seen"], serde_json::json!([]));
+    assert_eq!(snapshot["notification"], true);
+    let stored: Vec<String> = serde_json::from_str(&writes.lock().unwrap()[0]).unwrap();
+    assert_eq!(stored, hud.entries().unwrap());
+    let reloaded = ScriptHud::default();
+    reloaded.configure(
+        &hud_asset(),
+        &Preferences::new(LogStore {
+            load: Some(writes.lock().unwrap()[0].clone()),
+            fail_save: false,
+            writes: std::sync::Arc::default(),
+        }),
+    );
+    assert_eq!(reloaded.entries().unwrap(), stored);
+    for text in ["", "\n", "Ω", &"X".repeat(65)] {
+        assert!(hud.append_manual_entry(text).is_err());
+    }
+    assert_eq!(writes.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn manual_journal_failed_write_preserves_entries_and_notification() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let writes = std::sync::Arc::default();
+    let hud = ScriptHud::default();
+    hud.configure(
+        &hud_asset(),
+        &Preferences::new(LogStore {
+            load: Some("[\"7,Earlier\"]".into()),
+            fail_save: true,
+            writes: std::sync::Arc::clone(&writes),
+        }),
+    );
+    let before = serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap();
+    assert!(
+        hud.append_manual_entry("NEW")
+            .unwrap_err()
+            .to_string()
+            .contains("manual logbook entry write")
+    );
+    assert_eq!(
+        serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap(),
+        before
+    );
+    assert!(writes.lock().unwrap().is_empty());
+}

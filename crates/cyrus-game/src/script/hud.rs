@@ -513,6 +513,18 @@ impl ScriptHud {
             .to_vec())
     }
 
+    /// Persist one accepted manual entry through the existing journal owner.
+    /// Failed writes leave accepted entries and notification unchanged.
+    pub fn append_manual_entry(&self, text: &str) -> Result<()> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .journal
+            .as_mut()
+            .context("script HUD journal unavailable")?
+            .append_manual(text)
+    }
+
     /// Capture accepted text, duplicate tags and pending notification without effects.
     /// Unconfigured or malformed local journal state cannot be saved.
     pub fn snapshot_journal(&self) -> Result<super::JournalSnapshot> {

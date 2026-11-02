@@ -4,7 +4,10 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
-use cyrus_assets::{logbook::LogbookArtwork, menu::MenuFace};
+use cyrus_assets::{
+    logbook::LogbookArtwork,
+    menu::{ConfirmationArtwork, MenuAsset, MenuFace},
+};
 use cyrus_game::{AppState, logbook::LogbookScreen};
 use image::RgbaImage;
 
@@ -31,7 +34,17 @@ impl AssetLoader for Loader {
     }
 }
 #[derive(Resource)]
-struct Artwork(Handle<LogbookArtwork>);
+struct Artwork {
+    reader: Handle<LogbookArtwork>,
+    menu: Handle<MenuAsset>,
+}
+#[derive(PartialEq, Eq)]
+struct ReaderFrame {
+    offset: u32,
+    rotation: i32,
+    entry: Option<String>,
+    cursor: bool,
+}
 #[derive(Component)]
 struct Panel;
 #[derive(Component)]
@@ -41,6 +54,7 @@ struct Page;
 pub struct LogbookPlugin;
 impl Plugin for LogbookPlugin {
     fn build(&self, app: &mut App) {
+        super::menu::register_assets(app);
         app.init_asset::<LogbookArtwork>()
             .init_asset_loader::<Loader>()
             .init_resource::<LogbookScreen>()
@@ -50,7 +64,10 @@ impl Plugin for LogbookPlugin {
     }
 }
 fn setup(mut commands: Commands, server: Res<AssetServer>) {
-    commands.insert_resource(Artwork(server.load("cache://logbook/reader.logbook")));
+    commands.insert_resource(Artwork {
+        reader: server.load("cache://logbook/reader.logbook"),
+        menu: server.load("cache://menu/book.menu"),
+    });
     commands
         .spawn((
             Panel,
@@ -95,14 +112,16 @@ fn draw(
     server: Res<AssetServer>,
     artwork: Res<Artwork>,
     assets: Res<Assets<LogbookArtwork>>,
+    menus: Res<Assets<MenuAsset>>,
     mut screen: ResMut<LogbookScreen>,
     mut images: ResMut<Assets<Image>>,
     mut panels: Query<&mut Visibility, With<Panel>>,
     mut pages: Query<&mut ImageNode, With<Page>>,
-    mut previous: Local<Option<(u32, i32)>>,
+    mut previous: Local<Option<ReaderFrame>>,
 ) {
-    let Some(artwork_data) = assets.get(&artwork.0) else {
-        if let Some(bevy::asset::LoadState::Failed(error)) = server.get_load_state(&artwork.0) {
+    let Some(artwork_data) = assets.get(&artwork.reader) else {
+        if let Some(bevy::asset::LoadState::Failed(error)) = server.get_load_state(&artwork.reader)
+        {
             screen.ready = false;
             screen.error = Some(format!("logbook artwork: {error}"));
         }
@@ -124,8 +143,13 @@ fn draw(
         *previous = None;
         return;
     }
-    let pose = (screen.offset, screen.rotation);
-    if *previous == Some(pose)
+    let pose = ReaderFrame {
+        offset: screen.offset,
+        rotation: screen.rotation,
+        entry: screen.manual_entry().map(str::to_owned),
+        cursor: screen.manual_entry_cursor_visible(),
+    };
+    if previous.as_ref() == Some(&pose)
         && pages
             .single()
             .is_ok_and(|page| page.image != Handle::default())
@@ -135,7 +159,26 @@ fn draw(
     let Some(book) = screen.book.as_ref() else {
         return;
     };
-    match paint(artwork_data, book, screen.rotation) {
+    let dialog = if pose.entry.is_some() {
+        let Some(menu) = menus.get(&artwork.menu) else {
+            if let Some(bevy::asset::LoadState::Failed(error)) =
+                server.get_load_state(&artwork.menu)
+            {
+                screen.error = Some(format!("logbook entry artwork: {error}"));
+            }
+            return;
+        };
+        Some(&menu.confirmation)
+    } else {
+        None
+    };
+    let painted = paint(artwork_data, book, screen.rotation).map(|mut pixels| {
+        if let (Some(text), Some(dialog)) = (&pose.entry, dialog) {
+            paint_entry(&mut pixels, dialog, text, pose.cursor);
+        }
+        pixels
+    });
+    match painted {
         Ok(pixels) => {
             let image = Image::new(
                 Extent3d {
@@ -164,6 +207,116 @@ fn draw(
             screen.open = false;
             screen.waiting_for_release = true;
         }
+    }
+}
+
+/// Display-copy wrapping follows preservation's manual-entry dialog rules. CR/VT stay bytes;
+/// only spaces selected by the original's character-offset scan become visible line breaks.
+fn entry_display(text: &str, cursor: bool) -> String {
+    let mut display = text.as_bytes().to_vec();
+    if cursor {
+        display.push(b'_');
+    }
+    let mut index = 13;
+    while index + 1 < display.len() {
+        if display[index] == b' ' {
+            display[index] = b'\n';
+            index += 14;
+        } else {
+            index += 1;
+        }
+    }
+    // The game-owned editor guarantees ASCII, including its CR/VT insertions.
+    display.into_iter().map(char::from).collect()
+}
+
+/// Paints over a freshly restored opaque reader frame, never over a previous dialog redraw.
+/// Layout, font styles and backing alpha follow preservation's manual logbook entry section.
+fn paint_entry(image: &mut RgbaImage, artwork: &ConfirmationArtwork, text: &str, cursor: bool) {
+    let picture = &artwork.picture;
+    for y in 140..=(140 + u32::from(picture.height)).min(479) {
+        for x in 175..=(175 + u32::from(picture.width)).min(639) {
+            entry_pixel(image, x as i32, y as i32, [10; 3], 125);
+        }
+    }
+    for y in 0..u32::from(picture.height) {
+        for x in 0..u32::from(picture.width) {
+            let at = ((y * u32::from(picture.width) + x) * 4) as usize;
+            let pixel = &picture.rgba[at..at + 4];
+            entry_pixel(
+                image,
+                x as i32 + 175,
+                y as i32 + 140,
+                [pixel[0], pixel[1], pixel[2]],
+                pixel[3],
+            );
+        }
+    }
+    let font = &artwork.font;
+    let mut line = |text: &str, x: i32, y: i32, style: usize| {
+        let [scale, alpha] = artwork.styles[style];
+        let mut pen = x;
+        let mut row = y;
+        for ch in text.bytes() {
+            if ch == b'\n' {
+                pen = x;
+                row += i32::from(font.line_height);
+                if row >= 640 {
+                    break;
+                }
+                continue;
+            }
+            // CR has no visible width, but keeps the shared wrap and one-pixel advance.
+            let width = if ch == b'\r' {
+                0
+            } else if let Some(glyph) = font.glyph(ch) {
+                i32::from(glyph.width)
+            } else {
+                continue;
+            };
+            if pen + width > 450 {
+                pen = x;
+                row += i32::from(font.line_height);
+                if row >= 640 {
+                    break;
+                }
+            }
+            if ch == b'\r' {
+                pen += 1;
+                continue;
+            }
+            for (offset, shadow) in [(1, true), (0, false)] {
+                font.draw_char(ch, [pen + offset, row + offset], |x, y, index| {
+                    let colour = if shadow {
+                        [0; 3]
+                    } else {
+                        scale_colour(font.colour(index), scale)
+                    };
+                    let alpha = if shadow {
+                        (u16::from(alpha) * 200 / 256) as u8
+                    } else {
+                        alpha
+                    };
+                    entry_pixel(image, x, y, colour, alpha);
+                });
+            }
+            pen += font.advance(ch);
+        }
+    };
+    line("Log Entry", 320 - font.width("Log Entry") / 2, 170, 0);
+    line(&entry_display(text, cursor), 200, 200, 1);
+}
+
+fn entry_pixel(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
+    if !(0..640).contains(&x) || !(0..480).contains(&y) {
+        return;
+    }
+    let pixel = image.get_pixel_mut(x as u32, y as u32);
+    let alpha = u32::from(alpha);
+    for channel in 0..3 {
+        pixel[channel] =
+            ((u32::from(colour[channel]) * alpha + u32::from(pixel[channel]) * (255 - alpha) + 127)
+                / 255) as u8;
     }
 }
 
@@ -338,6 +491,264 @@ fn paint(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    fn standalone_asset_app(files: &[(String, Vec<u8>)], menu_first: bool) -> App {
+        use bevy::asset::io::{
+            AssetSourceBuilder,
+            memory::{Dir, MemoryAssetReader},
+        };
+        let directory = Dir::default();
+        for (path, bytes) in files {
+            directory.insert_asset(std::path::Path::new(path), bytes.clone());
+        }
+        let mut app = App::new();
+        app.register_asset_source(
+            "cache",
+            AssetSourceBuilder::new(move || {
+                Box::new(MemoryAssetReader {
+                    root: directory.clone(),
+                })
+            }),
+        )
+        .add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .init_state::<AppState>()
+        .init_asset::<Image>();
+        if menu_first {
+            super::super::menu::register(&mut app);
+        }
+        app.add_plugins(LogbookPlugin);
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::InGame);
+        app.update();
+        app
+    }
+
+    #[test]
+    fn standalone_logbook_requests_typed_menu_and_reports_invalid_cache_without_panicking() {
+        let mut app = standalone_asset_app(
+            &[("menu/book.menu".into(), b"invalid menu".to_vec())],
+            false,
+        );
+        let handle = app.world().resource::<Artwork>().menu.clone();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            app.update();
+            if let Some(bevy::asset::LoadState::Failed(error)) = app
+                .world()
+                .resource::<AssetServer>()
+                .get_load_state(&handle)
+            {
+                assert!(error.to_string().contains("menu/book.menu"), "{error}");
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "typed menu load did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn installed_standalone_logbook_loads_menu_and_shared_registration_preserves_it() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match cyrus_assets::install::GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let mut files = cyrus_assets::game::prepare(&source, "menu/book.menu").unwrap();
+        files.extend(cyrus_assets::game::prepare(&source, "logbook/reader.logbook").unwrap());
+        let files = files.into_iter().collect::<Vec<_>>();
+        for menu_first in [false, true] {
+            let mut app = standalone_asset_app(&files, menu_first);
+            let handle = app.world().resource::<Artwork>().menu.clone();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            loop {
+                app.update();
+                if app
+                    .world()
+                    .resource::<Assets<MenuAsset>>()
+                    .get(&handle)
+                    .is_some()
+                    && app.world().resource::<LogbookScreen>().ready
+                {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "standalone artwork load did not finish"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<MenuAsset>>()
+                    .get(&handle)
+                    .unwrap()
+                    .version,
+                cyrus_assets::menu::MENU_VERSION
+            );
+            if !menu_first {
+                super::super::menu::register(&mut app);
+            }
+            super::super::menu::register_assets(&mut app);
+            assert!(
+                app.world()
+                    .resource::<Assets<MenuAsset>>()
+                    .get(&handle)
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn entry_display_wraps_a_copy_and_counts_the_cursor_without_replacing_controls() {
+        let text = "ABCDEFGHIJKLM ";
+        assert_eq!(entry_display(text, false), text);
+        assert_eq!(entry_display(text, true), "ABCDEFGHIJKLM\n_");
+        assert_eq!(text, "ABCDEFGHIJKLM ");
+        assert_eq!(entry_display("F\u{b}G\rH", true), "F\u{b}G\rH_");
+        assert_eq!(
+            entry_display(&"A".repeat(64), true),
+            format!("{}_", "A".repeat(64))
+        );
+        assert_eq!(
+            entry_display("ABCDEFGHIJKLM NOPQRSTUVWXYZ ABCDEFGHIJKLM N", false),
+            "ABCDEFGHIJKLM\nNOPQRSTUVWXYZ\nABCDEFGHIJKLM\nN"
+        );
+    }
+
+    #[test]
+    fn entry_painter_places_text_and_cursor_and_restores_the_reader() {
+        let font = cyrus_text::Font {
+            start: 32,
+            line_height: 8,
+            glyphs: vec![
+                cyrus_text::Glyph {
+                    enabled: true,
+                    width: 1,
+                    height: 1,
+                    offset: [0, 0],
+                    pixels: vec![1],
+                };
+                96
+            ],
+            palette: vec![[0; 3], [63; 3]],
+        };
+        let artwork = ConfirmationArtwork {
+            picture: cyrus_assets::menu::MenuPicture {
+                width: 2,
+                height: 2,
+                rgba: vec![0; 16],
+            },
+            font,
+            styles: [[128, 255], [255, 255]],
+        };
+        let background = RgbaImage::from_pixel(640, 480, image::Rgba([100, 100, 100, 255]));
+        let mut entry = background.clone();
+        paint_entry(&mut entry, &artwork, "A", true);
+        assert_eq!(entry.get_pixel(200, 200).0, [252, 252, 252, 255]);
+        assert_eq!(entry.get_pixel(202, 200).0, [252, 252, 252, 255]);
+        assert_eq!(entry.get_pixel(311, 170).0, [126, 126, 126, 255]);
+        assert_eq!(entry.get_pixel(177, 142).0, [56, 56, 56, 255]);
+        assert_eq!(entry.get_pixel(178, 142).0, [100, 100, 100, 255]);
+        let mut hidden = background.clone();
+        paint_entry(&mut hidden, &artwork, "A", false);
+        assert_eq!(hidden.get_pixel(202, 200).0, [100, 100, 100, 255]);
+        assert_eq!(hidden.get_pixel(201, 201).0, [22, 22, 22, 255]);
+        assert_eq!(hidden.get_pixel(202, 202).0, [100, 100, 100, 255]);
+        let mut controls = background.clone();
+        paint_entry(&mut controls, &artwork, "F\u{b}GH", false);
+        let mut plain = background.clone();
+        paint_entry(&mut plain, &artwork, "FGH", false);
+        assert_eq!(controls, plain);
+        let mut carriage_return = background.clone();
+        paint_entry(&mut carriage_return, &artwork, "H\rI", false);
+        assert_eq!(carriage_return.get_pixel(200, 200).0, [252, 252, 252, 255]);
+        assert_eq!(carriage_return.get_pixel(202, 200).0, [100, 100, 100, 255]);
+        assert_eq!(carriage_return.get_pixel(203, 200).0, [252, 252, 252, 255]);
+        assert_eq!(background.get_pixel(175, 140).0, [100, 100, 100, 255]);
+        let mut wide = artwork;
+        wide.font.glyphs[usize::from(b'A' - b' ')].width = 14;
+        wide.font.glyphs[usize::from(b'A' - b' ')].pixels = vec![1; 14];
+        let mut wrapped = background.clone();
+        paint_entry(&mut wrapped, &wide, &"A".repeat(64), false);
+        for y in [200, 208, 216, 224] {
+            assert_eq!(wrapped.get_pixel(200, y).0, [252, 252, 252, 255]);
+            assert_eq!(wrapped.get_pixel(438, y).0, [252, 252, 252, 255]);
+            assert_eq!(wrapped.get_pixel(440, y).0, [100, 100, 100, 255]);
+        }
+        wide.font.glyphs[usize::from(b'A' - b' ')].width = 249;
+        wide.font.glyphs[usize::from(b'A' - b' ')].pixels = vec![1; 249];
+        let mut carriage_return_wrap = background.clone();
+        paint_entry(&mut carriage_return_wrap, &wide, "A\r\rB", false);
+        assert_eq!(
+            carriage_return_wrap.get_pixel(200, 208).0,
+            [100, 100, 100, 255]
+        );
+        assert_eq!(
+            carriage_return_wrap.get_pixel(201, 208).0,
+            [252, 252, 252, 255]
+        );
+    }
+
+    #[test]
+    fn installed_entry_painter_uses_portable_menu_artwork() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match cyrus_assets::install::GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let files = cyrus_assets::game::prepare(&source, "menu/book.menu").unwrap();
+        let menu: MenuAsset = serde_json::from_slice(&files["menu/book.menu"]).unwrap();
+        menu.validate().unwrap();
+        let background = std::env::var_os("CYRUS_LOGBOOK_ENTRY_BACKGROUND").map_or_else(
+            || RgbaImage::from_pixel(640, 480, image::Rgba([100, 100, 100, 255])),
+            |path| image::open(path).unwrap().into_rgba8(),
+        );
+        assert_eq!(background.dimensions(), (640, 480));
+        for (name, text) in [
+            ("empty", ""),
+            ("ac", "AC"),
+            ("de", "DE"),
+            ("vt", "F\u{b}G"),
+            ("cr", "H\rI"),
+            ("fg", "FG"),
+            ("hi", "HI"),
+            (
+                "boundary",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB",
+            ),
+        ] {
+            for cursor in [false, true] {
+                let mut pixels = background.clone();
+                paint_entry(&mut pixels, &menu.confirmation, text, cursor);
+                assert_ne!(pixels, background);
+                assert_eq!(pixels.get_pixel(0, 0), background.get_pixel(0, 0));
+                // Optional exact painter output for retained original-dialog comparisons.
+                if let Some(directory) = std::env::var_os("CYRUS_LOGBOOK_ENTRY_CAPTURES") {
+                    pixels
+                        .save(std::path::Path::new(&directory).join(format!("{name}-{cursor}.png")))
+                        .unwrap();
+                }
+            }
+        }
+    }
+
     #[test]
     fn glyph_colour_scales_by_the_constant_factor() {
         assert_eq!(scale_colour([220, 164, 132], 255), [220, 164, 132]);

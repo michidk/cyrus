@@ -139,6 +139,33 @@ impl Journal {
         };
     }
 
+    /// Append an accepted manual style-9 record without touching AddLog duplicate tags.
+    /// Persistence succeeds before accepted entries or the notification change.
+    /// Follows preservation's manual logbook entry contract.
+    pub fn append_manual(&mut self, text: &str) -> Result<()> {
+        anyhow::ensure!(
+            !text.is_empty()
+                && text.len() <= 64
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_graphic() || matches!(byte, b' ' | b'\r' | 11)),
+            "manual logbook entry: expected 1 to 64 supported ASCII bytes"
+        );
+        let mut entries = self.entries()?.to_vec();
+        entries.push(format!("9,{text}"));
+        self.store
+            .as_ref()
+            .context("local logbook store unavailable")?
+            .save(
+                PreferenceKey::Logbook,
+                &serde_json::to_string_pretty(&entries)?,
+            )
+            .context("manual logbook entry write")?;
+        self.entries = Ok(entries);
+        self.notification = true;
+        Ok(())
+    }
+
     /// Apply AddLog's ordered tag retention and installed-text lookup.
     /// Failed writes preserve accepted entries and notification, but retain the tag.
     pub fn add_log(&mut self, tag: i32) -> Result<()> {

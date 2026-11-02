@@ -16,6 +16,15 @@ Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
 
+The logbook reader owns its manual-entry dialog state and keyboard focus. Installed action C
+opens an empty byte editor; presentation reads `LogbookScreen::manual_entry()` and
+`manual_entry_cursor_visible()`. Acceptance appends a style-9 journal record through the
+existing host store before refreshing the reader at newest text. Cancellation leaves the
+journal unchanged. Editing retains the original 64-byte cap, ASCII uppercasing and shifted
+CR/VT controls. Cursor phase starts hidden and toggles only on changed sampled BIOS ticks
+divisible by six, without replaying skipped ticks. These rules follow preservation's manual
+logbook contract. Native and browser hosts share the editor and persisted journal owner.
+
 ## Module guide
 
 | Module | Responsibility |

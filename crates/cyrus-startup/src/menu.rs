@@ -280,14 +280,28 @@ impl AssetLoader for MenuLoader {
     }
 }
 
+#[derive(Resource)]
+struct MenuAssetsRegistered;
+
+/// Register the shared cache type and loader without replacing assets held by another plugin.
+pub(super) fn register_assets(app: &mut App) {
+    if app.world().contains_resource::<MenuAssetsRegistered>() {
+        return;
+    }
+    if !app.world().contains_resource::<Assets<MenuAsset>>() {
+        app.init_asset::<MenuAsset>();
+    }
+    app.init_asset_loader::<MenuLoader>()
+        .insert_resource(MenuAssetsRegistered);
+}
+
 pub(super) fn register(app: &mut App) {
+    register_assets(app);
     app.init_resource::<cyrus_game::preferences::Preferences>()
         .init_resource::<super::SaveLoadHost>()
         .init_resource::<LaunchRequest>()
         .add_message::<MovieRequest>()
         .add_message::<bevy::input::keyboard::KeyboardInput>()
-        .init_asset::<MenuAsset>()
-        .init_asset_loader::<MenuLoader>()
         .add_systems(
             OnEnter(AppState::Menu),
             (pause_cameras, setup, load_unlocks).chain(),
