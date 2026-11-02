@@ -476,7 +476,7 @@ pub fn draw(
                     let index = matching[index];
                     let e = &catalog.entries[index];
                     let label = if matches!(e.source, cyrus_assets::Source::Archive) {
-                        format!("{}\nOpen archive →", e.path)
+                        format!("{}\nOpen archive", e.path)
                     } else {
                         format!("{}\n{}", e.name, e.path)
                     };
