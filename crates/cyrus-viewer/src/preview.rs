@@ -5,7 +5,7 @@ use crate::{
 };
 use bevy::{
     audio::{AudioSinkPlayback, Volume},
-    camera::{Viewport, primitives::Aabb},
+    camera::{Viewport, primitives::Aabb, visibility::RenderLayers},
     gltf::GltfLoaderSettings,
     image::{ImageAddressMode, ImageSamplerDescriptor},
     prelude::*,
@@ -26,6 +26,7 @@ pub fn setup(mut commands: Commands) {
     commands.spawn((
         Camera2d,
         PrimaryEguiContext,
+        RenderLayers::none(),
         Camera {
             order: 1,
             clear_color: ClearColorConfig::None,

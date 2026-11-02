@@ -50,6 +50,13 @@ boundaries to resize them. Details and References link related assets.
 Models and worlds use Orbit by default. Drag to rotate, right-drag to pan, and
 scroll to zoom. In Flycam, right-drag to look and use WASD to move, Q/E to move
 down/up, and Shift to move faster while the pointer is over the viewport.
+Shading, edges, normals, bounds, and UV display settings persist when switching
+models. Face selections clear when the selected asset changes.
+
+`system/gui.anm` opens as a collection of GUI images without playback controls.
+Its button designs and parchment artwork also appear in `system/gui.lbm`, linked
+under References. See the [format documentation](https://github.com/michidk/redguard-preservation/pull/163)
+for the relationship between these files.
 
 Under Models, open `3DfxSpl2.dll` or `glide2x_emu.ovl` to inspect their original
 stored meshes and textures. Meshes use authored object-space geometry with generic

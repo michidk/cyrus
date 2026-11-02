@@ -269,6 +269,22 @@ fn installed_preservation_images_prepare_pixels_and_animation_timing() {
         let output = library.prepare(&entry.id, None).unwrap();
         let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
         preview.validate().unwrap();
+        if path.eq_ignore_ascii_case("system/gui.anm") {
+            assert!(preview.frame_interval_ms.is_none());
+            assert!(
+                !preview
+                    .details
+                    .iter()
+                    .any(|(key, _)| key == "Frames per second")
+            );
+            let lbm = library
+                .catalog
+                .entries
+                .iter()
+                .find(|entry| entry.path.eq_ignore_ascii_case("system/gui.lbm"))
+                .unwrap();
+            assert!(preview.related.contains(&lbm.id));
+        }
         let Content::Images { frames } = preview.content else {
             panic!("{path}: {:?}", preview.content)
         };
@@ -319,7 +335,8 @@ fn installed_preservation_images_prepare_pixels_and_animation_timing() {
             assert_eq!(metadata["record_sizes"].as_array().unwrap().len(), 26);
             assert!(metadata["loop_delta_bytes"].as_u64().unwrap() > 0);
             assert!(metadata.get("pixels").is_none());
-            assert_eq!(preview.frame_interval_ms, Some(100.));
+            assert_eq!(preview.frame_interval_ms, None);
+            assert!(metadata["frame_interval_ms"].is_null());
             assert_ne!(frames[0].rgba, frames[1].rgba);
         } else {
             assert_eq!(preview.frame_interval_ms, None);

@@ -156,15 +156,17 @@ impl Viewer {
         self.data_text.clear();
         self.preview = Some(preview);
     }
-    /// Starts a new selection: per-asset state resets, browsing and camera preferences persist.
+    /// Starts a new selection; browsing, camera and mesh display preferences persist.
     pub fn begin_selection(&mut self, index: usize, entry: &cyrus_assets::Entry, archive: bool) {
-        let keep = std::mem::take(self);
+        let mut keep = std::mem::take(self);
+        keep.mesh_inspection.clear_selection();
         let palette = if keep.catalog.as_ref().is_some_and(|c| c.palettes.is_empty()) {
             ImagePalette::Indices
         } else {
             ImagePalette::Catalog(0)
         };
         *self = Self {
+            mesh_inspection: keep.mesh_inspection,
             catalog: keep.catalog,
             format: keep.format,
             search: if archive { String::new() } else { keep.search },
@@ -860,7 +862,11 @@ fn image_view(
     if viewer
         .selected
         .and_then(|index| catalog?.entries.get(index))
-        .is_some_and(|entry| entry.path.eq_ignore_ascii_case("system/pointers.bmp"))
+        .is_some_and(|entry| {
+            ["system/pointers.bmp", "system/gui.anm"]
+                .iter()
+                .any(|path| entry.path.eq_ignore_ascii_case(path))
+        })
     {
         sprite_sheet_view(ui, ctx, viewer, frames);
         return;
@@ -1655,7 +1661,7 @@ mod tests {
     }
 
     #[test]
-    fn changing_assets_clears_inspection_and_track_selection() {
+    fn changing_assets_preserves_mesh_display_settings_and_clears_asset_selection() {
         let entry = serde_json::from_value(serde_json::json!({
             "id": "next", "name": "next.wld", "path": "maps/next.wld",
             "category": "Models", "format": "WLD", "source": "File", "bytes": 0, "error": null
@@ -1668,11 +1674,29 @@ mod tests {
         };
         viewer.terrain_inspection.open = true;
         viewer.mesh_inspection.uv = true;
+        viewer.mesh_inspection.vertex_normals = true;
+        viewer.mesh_inspection.face_normals = true;
+        viewer.mesh_inspection.bounds = true;
+        viewer.mesh_inspection.subobjects = true;
+        viewer.mesh_inspection.stride = 16;
+        viewer.mesh_inspection.normal_length = 0.03;
+        viewer.mesh_inspection.pending_pick = Some(Vec2::ONE);
+        viewer.shading = Shading::Unlit;
+        viewer.edges = true;
         viewer.begin_selection(0, &entry, false);
         assert_eq!(viewer.selected_cell, None);
         assert_eq!(viewer.movie_audio_track, Some(0));
         assert!(!viewer.terrain_inspection.open);
-        assert!(!viewer.mesh_inspection.uv);
+        assert!(viewer.mesh_inspection.uv);
+        assert!(viewer.mesh_inspection.vertex_normals);
+        assert!(viewer.mesh_inspection.face_normals);
+        assert!(viewer.mesh_inspection.bounds);
+        assert!(viewer.mesh_inspection.subobjects);
+        assert_eq!(viewer.mesh_inspection.stride, 16);
+        assert_eq!(viewer.mesh_inspection.normal_length, 0.03);
+        assert_eq!(viewer.mesh_inspection.pending_pick, None);
+        assert_eq!(viewer.shading, Shading::Unlit);
+        assert!(viewer.edges);
     }
     #[test]
     fn large_json_keeps_complete_data_without_laying_out_every_line() {
@@ -1739,59 +1763,61 @@ mod tests {
     }
 
     #[test]
-    fn pointer_sheet_shows_every_image_without_animation_controls() {
-        let catalog: Catalog = serde_json::from_value(serde_json::json!({
+    fn image_collections_show_every_image_without_animation_controls() {
+        for (path, format) in [("SYSTEM/POINTERS.BMP", "BMP"), ("SYSTEM/GUI.ANM", "ANM")] {
+            let catalog: Catalog = serde_json::from_value(serde_json::json!({
             "version": cyrus_assets::CATALOG_VERSION, "generation": "test", "palettes": [],
-            "entries": [{"id": "pointers", "name": "pointers.bmp", "path": "SYSTEM/POINTERS.BMP",
-                "category": "Images", "format": "BMP", "source": "File", "bytes": 0, "error": null}]
+            "entries": [{"id": "pointers", "name": path, "path": path,
+                "category": "Images", "format": format, "source": "File", "bytes": 0, "error": null}]
         }))
         .unwrap();
-        let pictures = (0..30)
-            .map(|index| cyrus_assets::Picture {
-                label: format!("Frame {index}"),
-                width: 16,
-                height: 16,
-                rgba: vec![255; 16 * 16 * 4],
-                indices: None,
-                embedded_palette: false,
-            })
-            .collect::<Vec<_>>();
-        let mut viewer = Viewer {
-            selected: Some(0),
-            ..default()
-        };
-        let ctx = egui::Context::default();
-        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            ui.set_max_width(320.);
-            image_view(ui, &ctx, &mut viewer, Some(&catalog), &pictures, &[]);
-        });
-        output.textures_delta.clear();
-        let labels = output
-            .shapes
-            .iter()
-            .filter_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) => Some(text.galley.text()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for label in ["Image 1", "Image 15", "Image 30"] {
-            assert!(labels.contains(&label), "missing {label}");
-        }
-        for label in ["Play", "Loop", "Frame", "Frame time"] {
-            assert!(
-                !labels.contains(&label),
-                "unexpected animation control {label}"
-            );
-        }
-        assert_eq!(viewer.picture_textures.len(), 30);
-        for shape in &output.shapes {
-            if let egui::Shape::Text(text) = &shape.shape
-                && text.galley.text().starts_with("Image ")
-            {
+            let pictures = (0..30)
+                .map(|index| cyrus_assets::Picture {
+                    label: format!("Frame {index}"),
+                    width: 16,
+                    height: 16,
+                    rgba: vec![255; 16 * 16 * 4],
+                    indices: None,
+                    embedded_palette: false,
+                })
+                .collect::<Vec<_>>();
+            let mut viewer = Viewer {
+                selected: Some(0),
+                ..default()
+            };
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.set_max_width(320.);
+                image_view(ui, &ctx, &mut viewer, Some(&catalog), &pictures, &[]);
+            });
+            output.textures_delta.clear();
+            let labels = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text.galley.text()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            for label in ["Image 1", "Image 15", "Image 30"] {
+                assert!(labels.contains(&label), "missing {label}");
+            }
+            for label in ["Play", "Loop", "Frame", "Frame time"] {
                 assert!(
-                    text.pos.x + text.galley.size().x <= 320.,
-                    "image label leaves the grid"
+                    !labels.contains(&label),
+                    "unexpected animation control {label}"
                 );
+            }
+            assert_eq!(viewer.picture_textures.len(), 30);
+            for shape in &output.shapes {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.text().starts_with("Image ")
+                {
+                    assert!(
+                        text.pos.x + text.galley.size().x <= 320.,
+                        "image label leaves the grid"
+                    );
+                }
             }
         }
     }

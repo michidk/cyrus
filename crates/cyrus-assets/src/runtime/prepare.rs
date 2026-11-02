@@ -292,14 +292,30 @@ pub(super) fn prepare<R: ReadAssets>(
             }
             Some(FileType::Anm) => {
                 let animation = import::anm::parse_anm_file(bytes)?;
+                let gui_images = path.eq_ignore_ascii_case("system/gui.anm");
                 preview.metadata = Some(
-                    json!({"declared_frame_count":animation.declared_frame_count,"display_frame_count":animation.frames.len(),"frames_per_second":animation.frames_per_second,"frame_interval_ms":1000. / f64::from(animation.frames_per_second),"last_delta_valid":animation.last_delta_valid,"pages":animation.pages,"record_sizes":animation.records.iter().map(|record|record.len()).collect::<Vec<_>>(),"loop_delta_bytes":animation.loop_delta.map(|record|record.len()),"frames":animation.frames.iter().map(|frame|json!({"width":frame.width,"height":frame.height,"transparent_index":frame.transparent_index})).collect::<Vec<_>>(),"palette":animation.frames.first().map(|frame|frame.palette.as_slice())}),
+                    json!({"declared_frame_count":animation.declared_frame_count,"display_frame_count":animation.frames.len(),"frames_per_second":animation.frames_per_second,"frame_interval_ms":(!gui_images).then_some(1000. / f64::from(animation.frames_per_second)),"last_delta_valid":animation.last_delta_valid,"pages":animation.pages,"record_sizes":animation.records.iter().map(|record|record.len()).collect::<Vec<_>>(),"loop_delta_bytes":animation.loop_delta.map(|record|record.len()),"frames":animation.frames.iter().map(|frame|json!({"width":frame.width,"height":frame.height,"transparent_index":frame.transparent_index})).collect::<Vec<_>>(),"palette":animation.frames.first().map(|frame|frame.palette.as_slice())}),
                 );
-                preview.frame_interval_ms = Some(1000. / f64::from(animation.frames_per_second));
-                preview.details.push((
-                    "Frames per second".into(),
-                    animation.frames_per_second.to_string(),
-                ));
+                if gui_images {
+                    preview
+                        .details
+                        .push(("Images".into(), animation.frames.len().to_string()));
+                    preview.related.extend(
+                        library
+                            .catalog
+                            .entries
+                            .iter()
+                            .filter(|entry| entry.path.eq_ignore_ascii_case("system/gui.lbm"))
+                            .map(|entry| entry.id.clone()),
+                    );
+                } else {
+                    preview.frame_interval_ms =
+                        Some(1000. / f64::from(animation.frames_per_second));
+                    preview.details.push((
+                        "Frames per second".into(),
+                        animation.frames_per_second.to_string(),
+                    ));
+                }
                 Content::Images {
                     frames: animation
                         .frames

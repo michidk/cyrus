@@ -41,6 +41,12 @@ struct Selection {
     positions: [Vec3; 3],
     uvs: Option<[[f32; 2]; 3]>,
 }
+impl State {
+    pub fn clear_selection(&mut self) {
+        self.pending_pick = None;
+        self.selected = None;
+    }
+}
 pub fn controls(ui: &mut egui::Ui, state: &mut State, metadata: Option<&serde_json::Value>) {
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut state.vertex_normals, "Vertex normals");
@@ -382,6 +388,26 @@ pub fn uv_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clearing_selected_face_keeps_diagnostic_preferences() {
+        let mut state = State {
+            bounds: true,
+            uv: true,
+            pending_pick: Some(Vec2::ONE),
+            selected: Some(Selection {
+                entity: Entity::PLACEHOLDER,
+                triangle: 3,
+                positions: [Vec3::ZERO, Vec3::X, Vec3::Y],
+                uvs: None,
+            }),
+            ..Default::default()
+        };
+        state.clear_selection();
+        assert!(state.selected.is_none());
+        assert!(state.pending_pick.is_none());
+        assert!(state.bounds);
+        assert!(state.uv);
+    }
     #[test]
     fn picking_rejects_misses_and_hits_both_sides() {
         let triangle = [Vec3::ZERO, Vec3::X, Vec3::Y];
