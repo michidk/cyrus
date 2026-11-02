@@ -909,7 +909,7 @@ impl WorldSnapshot {
             actor
                 .tasks
                 .validate_actor_references(|reference| {
-                    rebind(self.generation, reference as usize)?;
+                    candidate.resolve(rebind(self.generation, reference as usize)?)?;
                     ensure!(
                         Some(reference as usize) != selected_player,
                         "lineup reference is the selected player"

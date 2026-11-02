@@ -31339,6 +31339,43 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
                 Value::Integer { value: -2048 },
             ],
         );
+        let kill_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut created = scripts.actors["LOGIC"].clone();
+        created.code_origin += 1000;
+        created.header_index += 100;
+        created.instances = 1;
+        created.namespace = None;
+        created.instance_variables = vec![vec![0]];
+        created.program.entry = 3;
+        created.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::Endint,
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::End { target: 3 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("REFERENCE".into(), created);
     });
     data.metadata["markers"] = serde_json::json!([]);
     data.metadata["walk_node_maps"] = serde_json::json!([]);
@@ -31394,6 +31431,49 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
         )
         .unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let retired_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+    world
+        .advance(
+            retired_reference,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    world
+        .update_created(inputs, &mut random, &mut |_, _| Ok(()), 20)
+        .unwrap();
+    let live_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+    let pending_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+
+    world
+        .advance(
+            pending_reference,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    assert!(world.actors()[live_reference.index].runtime().is_some());
+    assert!(
+        world.actors()[pending_reference.index]
+            .control_state()
+            .unwrap()
+            .killed
+    );
+    assert!(world.actors()[pending_reference.index].runtime().is_some());
+    assert!(world.actors()[retired_reference.index].runtime().is_none());
+    assert!(world.spatial(retired_reference).is_err());
     let before = world.inspect(0, 64);
     let collision = Default::default();
     let sources = BTreeMap::from([(
@@ -31444,6 +31524,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
     for (reference, expected) in [
         (9999, "stale or absent saved owner"),
         (player.index, "lineup reference is the selected player"),
+        (retired_reference.index, "retired created receiver"),
     ] {
         let mut invalid = saved.clone();
         invalid["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
@@ -31491,6 +31572,16 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
         restore(nonselected).is_ok(),
         "the unselected player role remains a valid reference"
     );
+    for reference in [live_reference, pending_reference] {
+        let mut valid = saved.clone();
+        valid["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+            reference.index.into();
+        let restored =
+            restore(valid).expect("allocated created references remain valid until cleanup");
+        let world = restored.actors.current.unwrap();
+        assert!(world.spatial(world.id(reference.index).unwrap()).is_ok());
+        assert_eq!(registry.current.as_ref().unwrap().inspect(0, 64), before);
+    }
     let restored = restore(saved.clone()).unwrap();
     let restored_world = restored.actors.current.unwrap();
     assert_eq!(restored_world.generation(), 101);

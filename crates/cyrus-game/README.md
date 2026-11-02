@@ -89,7 +89,9 @@ killed map records remain addressable. Retained records stay available to bounde
 diagnostics and snapshot storage. Logical variable identifiers do not establish
 parity with the original's raw actor references.
 Restore rejects a created executable saved without runtime and without its killed
-flag, before returning the replacement world.
+flag, before returning the replacement world. Retained lineup task references also
+reject retired created receivers before replacement; allocated live and pending-kill
+references remain valid.
 
 Created-object updates discard an already killed receiver's executable runtime.
 A receiver killed by its ordinary hook also skips its main program. Saved killed
