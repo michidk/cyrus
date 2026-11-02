@@ -254,15 +254,22 @@ fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
         20,
     )?;
     assert!(world.actors()[0].control_state().unwrap().killed);
+    let killed = world.id(0)?;
+    assert_eq!(world.spatial(killed)?.query_pose()?.angles[1], 111);
+    world.set_actor_surface(killed, 7)?;
+    assert_eq!(world.actor_surface(killed)?, 7);
     assert_eq!(world.actors()[1].runtime().unwrap().variables(), &[111]);
     Ok(())
 }
 
 #[test]
-fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() -> anyhow::Result<()>
-{
+fn retired_created_references_are_unsupported_without_promoting_duplicates() -> anyhow::Result<()> {
     use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
-    for restore in [false, true] {
+    for (restore, target) in [false, true].into_iter().flat_map(|restore| {
+        [Object::Named { string: 0 }, Object::Local { index: 1 }]
+            .into_iter()
+            .map(move |target| (restore, target))
+    }) {
         let mut scripts = cache();
         scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
         scripts.definition.references = vec!["angle.vy".into()];
@@ -277,7 +284,8 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
         actor.code_origin += 1000;
         actor.header_index += 100;
         actor.namespace = Some("projectile".into());
-        actor.instance_variables = vec![vec![0]];
+        actor.instance_variables = vec![vec![0, 0]];
+        actor.program.variables = vec![0, 0];
         actor.program.strings = vec!["projectile".into()];
         actor.program.entry = 3;
         actor.program.steps = BTreeMap::from([
@@ -297,7 +305,7 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
                         formula: Formula {
                             first: Value::Read {
                                 place: Place::Property {
-                                    object: Object::Named { string: 0 },
+                                    object: target.clone(),
                                     reference: 0,
                                 },
                             },
@@ -322,7 +330,7 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
                         formula: Formula {
                             first: Value::Read {
                                 place: Place::Property {
-                                    object: Object::Named { string: 0 },
+                                    object: target.clone(),
                                     reference: 0,
                                 },
                             },
@@ -365,7 +373,7 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
         )?;
         assert_eq!(
             world.actors()[first.index].runtime().unwrap().variables(),
-            &[111]
+            &[111, 0]
         );
         // The killed record remains allocated until the created-object pass retires it.
         world.advance(
@@ -378,9 +386,12 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
         )?;
         assert_eq!(
             world.actors()[reader.index].runtime().unwrap().variables(),
-            &[111]
+            &[111, 0]
         );
         assert!(world.actors()[first.index].control_state().unwrap().killed);
+        assert_eq!(world.spatial(first)?.query_pose()?.angles[1], 111);
+        world.set_actor_surface(first, 7)?;
+        assert_eq!(world.actor_surface(first)?, 7);
         world.update_created(
             inputs,
             &mut cyrus_game::random::EngineRandom::from_state(42),
@@ -388,6 +399,12 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
             20,
         )?;
         assert!(world.actors()[first.index].runtime().is_none());
+        world.update_created(
+            inputs,
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| Ok(()),
+            20,
+        )?;
         let fresh = world.create_object(creator, "PROJECTILE", [0; 3], [0, 333, 0])?;
         if restore {
             let collision = Default::default();
@@ -431,7 +448,41 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
                 },
             )?;
         }
+        let first = world.id(first.index)?;
         let fresh = world.id(fresh.index)?;
+        assert_eq!(world.spatial(fresh)?.query_pose()?.angles[1], 333);
+        let before = world.inspect(0, 64);
+        for result in [
+            world.spatial(first).map(|_| ()),
+            world.set_actor_surface(first, 9),
+            world.snapshot_spatial(first),
+            world.advance(
+                first,
+                ScriptStage::Body(Thread::Main),
+                inputs,
+                None,
+                None,
+                20,
+            ),
+            world
+                .create_object(first, "PROJECTILE", [0; 3], [0; 3])
+                .map(|_| ()),
+        ] {
+            let error =
+                result.expect_err("direct access to a retired created receiver is unsupported");
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("world 7")
+                    && message.contains(&format!(
+                        "retired created receiver {} PROJECTILE",
+                        first.index
+                    ))
+                    && message.contains("unsupported"),
+                "{message}"
+            );
+        }
+        assert_eq!(world.inspect(0, 64), before);
+
         let error = world
             .advance(
                 fresh,
@@ -441,11 +492,11 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
                 None,
                 20,
             )
-            .expect_err("retired named target must not return its old pose or a duplicate's pose");
+            .expect_err("retired target must not return its old pose or a duplicate's pose");
         let message = format!("{error:#}");
         assert!(
             message.contains("world 7")
-                && message.contains("projectile")
+                && message.contains("object target")
                 && message.contains(&format!(
                     "retired created receiver {} PROJECTILE",
                     first.index
@@ -455,7 +506,7 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
         );
         assert_eq!(
             world.actors()[fresh.index].runtime().unwrap().variables(),
-            &[0]
+            &[0, 0]
         );
         assert_eq!(world.flags(), &[12]);
     }
@@ -34436,7 +34487,13 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
             .unwrap();
         let actor = &world.actors()[ball.index];
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
-        positions.push(world.spatial(ball).unwrap().local.position);
+        // The final killed pose is retained for diagnostics, not live access.
+        positions.push(
+            serde_json::from_value::<[i32; 3]>(
+                world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"].clone(),
+            )
+            .unwrap(),
+        );
         if actor.control_state().unwrap().killed {
             break;
         }
@@ -34564,7 +34621,14 @@ fn projectile_ai_stops_at_a_wall_contact() {
                 .unwrap();
             let actor = &world.actors()[ball.index];
             assert!(actor.failure().is_none(), "{:?}", actor.failure());
-            path.push(world.spatial(ball).unwrap().local.position);
+            // The contact pose remains in diagnostic storage after cleanup.
+            path.push(
+                serde_json::from_value::<[i32; 3]>(
+                    world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"]
+                        .clone(),
+                )
+                .unwrap(),
+            );
             if actor.control_state().unwrap().killed {
                 break;
             }
@@ -36154,7 +36218,10 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
 
         assert_eq!(
-            world.spatial(ball).unwrap().local.position,
+            serde_json::from_value::<[i32; 3]>(
+                world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"].clone(),
+            )
+            .unwrap(),
             if !expected_hit {
                 [600 << 8, 20 << 8, 1000 << 8]
             } else {

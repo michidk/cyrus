@@ -82,6 +82,12 @@ unsupported error, including after restore; it does not select a later duplicate
 or expose the retained pose as live behavior. The namespace lifetime follows
 preservation's [registry contract](https://github.com/michidk/redguard-preservation/pull/160).
 The original's result when dereferencing the freed record remains Unknown.
+Direct actor-handle reads, mutations and execution also reject a retired created
+receiver. Logical variable targets use the same lifetime check, including after
+restore. Pending-kill receivers remain accessible until created-object cleanup;
+killed map records remain addressable. Retained records stay available to bounded
+diagnostics and snapshot storage. Logical variable identifiers do not establish
+parity with the original's raw actor references.
 Restore rejects a created executable saved without runtime and without its killed
 flag, before returning the replacement world.
 

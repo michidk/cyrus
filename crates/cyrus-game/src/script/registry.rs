@@ -2801,6 +2801,14 @@ impl ScriptWorld {
             self.world,
             actor.index
         );
+        let receiver = &self.actors[actor.index];
+        anyhow::ensure!(
+            !receiver.created_retired,
+            "world {} retired created receiver {} {} is unsupported",
+            self.world,
+            actor.index,
+            receiver.name()
+        );
         Ok(actor.index)
     }
     /// Bounded diagnostics carry logical state, never installed bytecode.
@@ -2913,6 +2921,8 @@ impl ScriptWorld {
     pub fn ordinary_updates(&self) -> u64 {
         self.ordinary_updates
     }
+    /// Handle for an indexed record, including records retained for diagnostics after cleanup.
+    /// Operations on a retired created receiver return an unsupported error.
     pub fn id(&self, index: usize) -> Result<ScriptActorId> {
         anyhow::ensure!(
             index < self.actors.len(),
@@ -4502,7 +4512,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn target_index(&self, target: &Target) -> Result<usize> {
         let index = match target {
-            Target::Me => return Ok(self.index),
+            Target::Me => Some(self.index),
             Target::Named(name) => self.registry.names.values().copied().find(|&index| {
                 self.registry.actors[index]
                     .namespace
@@ -4515,23 +4525,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
-            // Object encoding 0x0A names an actor through a local variable.  The
-            // variable stores the actor's signed 16-bit runtime identifier; the
-            // registry already owns the authoritative identifier-to-slot map.
+            // Logical variable targets use runtime identifiers; original raw actor
+            // references are not represented by this mapping.
             Target::Variable(value) => i16::try_from(*value)
                 .ok()
                 .and_then(|identifier| self.registry.names.get(&identifier).copied()),
         };
         let index = index.with_context(|| format!("object target {target:?}: receiver absent"))?;
-        let actor = &self.registry.actors[index];
-        // Namespace registration outlives created-record removal; dereferencing it is unsupported.
-        anyhow::ensure!(
-            !matches!(target, Target::Named(_)) || !actor.created_retired,
-            "world {} object target {target:?}: retired created receiver {index} {} is unsupported",
-            self.registry.world,
-            actor.name()
-        );
-        Ok(index)
+        self.registry
+            .resolve(self.registry.id(index)?)
+            .with_context(|| format!("object target {target:?}"))
     }
 }
 enum PoseProperty {
