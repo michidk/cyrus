@@ -5,10 +5,7 @@ pub(super) use timing::EffectDrawClock;
 
 use super::{EffectDraw, EffectDrawView, SceneMaterial, TextureAnimations};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
-use bevy::{
-    camera::visibility::{NoFrustumCulling, VisibilitySystems},
-    prelude::*,
-};
+use bevy::{camera::visibility::NoFrustumCulling, prelude::*};
 use cyrus_assets::environment::Environment;
 use cyrus_game::{AppState, fidelity::Fidelity, script::ScriptActors};
 use cyrus_world::lifecycle::PreparedWorld;
@@ -67,7 +64,7 @@ pub(super) fn register(app: &mut App) {
         .add_systems(
             PostUpdate,
             draw.after(super::texture::TextureSystems::Request)
-                .after(VisibilitySystems::CheckVisibility),
+                .before(bevy::asset::AssetEventSystems),
         );
 }
 

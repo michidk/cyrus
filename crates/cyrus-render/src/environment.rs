@@ -45,7 +45,8 @@ impl Plugin for EnvironmentPlugin {
                 crate::water::animate_water
                     .after(TransformSystems::Propagate)
                     .after(bevy::camera::CameraUpdateSystems)
-                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate)
+                    .before(bevy::asset::AssetEventSystems),
             );
     }
 }

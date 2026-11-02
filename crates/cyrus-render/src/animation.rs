@@ -4,8 +4,8 @@ use bevy::camera::primitives::MeshAabb;
 use bevy::gltf::GltfExtras;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::{
-    AssetId, Assets, ChildOf, Commands, Component, Entity, Handle, Mesh, Mesh3d, Name, Query, Res,
-    ResMut, error,
+    AssetId, Assets, ChildOf, Commands, Component, Entity, Handle, IntoScheduleConfigs, Mesh,
+    Mesh3d, Name, Query, Res, ResMut, error,
 };
 use cyrus_assets::animation::{AnimationModel, Animations};
 use cyrus_world::animation::{AnimationPose, AnimationRequest};
@@ -426,6 +426,9 @@ impl PreparedModelFrames {
 pub struct AnimationRenderPlugin;
 impl bevy::prelude::Plugin for AnimationRenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_systems(bevy::prelude::PostUpdate, apply_poses);
+        app.add_systems(
+            bevy::prelude::PostUpdate,
+            apply_poses.before(bevy::asset::AssetEventSystems),
+        );
     }
 }

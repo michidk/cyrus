@@ -10,7 +10,7 @@ use crate::{
 };
 use anyhow::ensure;
 use bevy::{
-    camera::visibility::{NoFrustumCulling, RenderLayers, VisibilitySystems},
+    camera::visibility::{NoFrustumCulling, RenderLayers},
     gltf::GltfExtras,
     mesh::{MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues},
     prelude::*,
@@ -40,13 +40,16 @@ pub(super) fn register(app: &mut App) {
         .add_systems(
             PostUpdate,
             prepare
-                .after(VisibilitySystems::CheckVisibility)
-                .after(crate::animation::apply_poses),
+                .after(TransformSystems::Propagate)
+                .after(bevy::camera::CameraUpdateSystems)
+                .after(crate::animation::apply_poses)
+                .before(bevy::asset::AssetEventSystems),
         )
         .add_systems(
             PostUpdate,
             sync_draw_transforms
-                .after(VisibilitySystems::CheckVisibility)
+                .after(TransformSystems::Propagate)
+                .after(crate::script_transform::apply)
                 .before(prepare),
         );
 }
@@ -899,6 +902,28 @@ mod tests {
                 .unwrap()
                 .count_vertices(),
             6
+        );
+        // Drain initial creation before checking a new camera move's notification.
+        app.update();
+        app.update();
+        let mut mesh_events = bevy::ecs::message::MessageCursor::<AssetEvent<Mesh>>::default();
+        mesh_events.clear(app.world().resource::<Messages<AssetEvent<Mesh>>>());
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<ViewCamera>>()
+            .single(app.world())
+            .unwrap();
+        app.world_mut()
+            .get_mut::<Transform>(camera)
+            .unwrap()
+            .translation
+            .x = 0.001;
+        app.update();
+        assert!(
+            mesh_events
+                .read(app.world().resource::<Messages<AssetEvent<Mesh>>>())
+                .any(|event| matches!(event, AssetEvent::Modified { id } if *id == draw_mesh.id())),
+            "camera-dependent geometry must reach render extraction in the same frame"
         );
         let projected_before = app
             .world()

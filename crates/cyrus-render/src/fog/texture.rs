@@ -168,7 +168,11 @@ pub(super) fn register(app: &mut App) {
             PostUpdate,
             advance
                 .in_set(TextureSystems::Request)
-                .after(VisibilitySystems::CheckVisibility)
+                .after(VisibilitySystems::VisibilityPropagate)
+                .after(crate::water::animate_water)
+                .after(crate::script_transform::apply)
+                .after(crate::animation::apply_poses)
+                .before(bevy::asset::AssetEventSystems)
                 .run_if(|logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
                     !logbook.is_some_and(|screen| screen.suspended())
                 }),

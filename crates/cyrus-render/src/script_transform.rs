@@ -14,7 +14,8 @@ impl Plugin for ScriptTransformPlugin {
             PostUpdate,
             apply
                 .after(TransformSystems::Propagate)
-                .before(VisibilitySystems::CheckVisibility),
+                .before(VisibilitySystems::CheckVisibility)
+                .before(bevy::asset::AssetEventSystems),
         );
     }
 }
@@ -69,7 +70,7 @@ fn visibility(
 }
 
 #[derive(Component)]
-struct AppliedScriptTransform;
+pub(crate) struct AppliedScriptTransform;
 
 /// Converts original axes to rgpre scene axes without decomposing the matrix.
 /// Position truncation precedes conversion, per preservation's family-render rules.
@@ -103,7 +104,7 @@ type Hierarchy<'w, 's> = Query<
 
 // Bound roots and ordinary descendants have different component requirements.
 #[allow(clippy::type_complexity)]
-fn apply(
+pub(crate) fn apply(
     mut commands: Commands,
     actors: Option<Res<ScriptActors>>,
     nodes: Query<

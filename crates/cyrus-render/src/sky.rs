@@ -136,7 +136,10 @@ impl Plugin for SkyPlugin {
         embedded_asset!(app, "sky.wesl");
         app.init_resource::<SkyScrollSync>()
             .add_plugins(MaterialPlugin::<SkyMaterial>::default())
-            .add_systems(PostUpdate, animate_sky);
+            .add_systems(
+                PostUpdate,
+                animate_sky.before(bevy::asset::AssetEventSystems),
+            );
     }
 }
 

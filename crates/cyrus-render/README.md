@@ -60,6 +60,10 @@ Model lighting, compositing, palette-key and texture parameters share one unifor
 buffer; sky parameters share another. This keeps both materials within the Windows
 WebGL fragment binding budget.
 
+Camera-dependent terrain, model clipping, animation meshes and effect assets update
+before Bevy publishes asset changes for rendering. The camera and prepared geometry
+therefore reach the renderer in the same frame.
+
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses
 apply in PostUpdate. Cinematic presentation is owned by cyrus-startup.
