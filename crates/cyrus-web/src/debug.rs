@@ -109,6 +109,7 @@ fn commit_staged_world(
     mut commands: Commands,
     assets: Res<AssetServer>,
     staged: Option<Res<StagedWorld>>,
+    current: Res<cyrus_world::lifecycle::CurrentScene>,
 ) {
     use bevy::asset::LoadState;
     let Some(staged) = staged else {
@@ -123,6 +124,8 @@ fn commit_staged_world(
                 commands.remove_resource::<StagedWorld>();
                 commands.remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
                 commands.insert_resource(cyrus_world::lifecycle::SceneLoadError(message));
+                commands
+                    .insert_resource(cyrus_world::lifecycle::SceneRequest(current.name.clone()));
                 return;
             }
             Some(LoadState::Loaded) => {}
