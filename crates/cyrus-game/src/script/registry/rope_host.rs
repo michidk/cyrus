@@ -720,6 +720,7 @@ impl ScriptWorld {
         control.rope_attached = false;
         control.rope_speed = speed;
         control.jump_selector = 24;
+        self.player_rope.last_rope = Some(rope_index);
         Ok(())
     }
 

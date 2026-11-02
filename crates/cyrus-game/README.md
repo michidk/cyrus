@@ -125,8 +125,9 @@ from per-world rope records, following preservation's
 [saved global owner contract](https://github.com/michidk/redguard-preservation/blob/8f692dd2e2c9a9ea86a20a7eb74c7acac7cef39f/docs/formats/SAVEGAME.md#rope-jump-latch).
 A legacy session with an active selected-player rope attachment and no latch is
 rejected before replacement; a legacy detached session defaults the latch to false.
-Temporary world revisits do not restore this session owner. Other rope controller
-history and complete original load-policy parity remain unverified.
+Temporary world revisits do not restore this session owner. Jump release remembers
+the released rope for its cooldown even after restoring an attachment. Other rope
+controller history and complete original load-policy parity remain unverified.
 
 Verified: actor prelighting seals nonmoving static actors after fresh or retained
 entry initialization and before ordinary updates. It retains the resolved static

@@ -36436,6 +36436,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     scene: Some(&scene),
                     scripts: ScriptInputs {
                         nominal_ticks: Some(1),
+                        fine_ticks: Some(8),
                         frame_scale: Some(256),
                         shell_execution: Some(false),
                         player_controller: Some(PlayerControllerInput {
@@ -36566,6 +36567,15 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     .as_u64(),
                 Some(85)
             );
+            for _ in 0..2 {
+                tick(live, false);
+                assert!(
+                    !live.selected_player_on_rope(),
+                    "jump cooldown must prevent regrabbing the released rope after restore"
+                );
+                assert!(live.ropes()[0].attachments.is_empty());
+                assert!(live.actors()[index].control_state().unwrap().jump_selector > 0);
+            }
         }
         let mut detached = ScriptActors::default();
         detached.current = Some(restored);
