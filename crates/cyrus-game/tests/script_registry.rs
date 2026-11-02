@@ -399,8 +399,28 @@ fn named_retired_created_objects_are_unsupported_without_promoting_duplicates() 
                 animations: &data,
                 collision: &collision,
             };
-            let globals = std::mem::take(world.globals_mut());
             let saved = world.snapshot(&sources)?;
+            let mut invalid = serde_json::to_value(&saved)?;
+            invalid["actors"][first.index]["control"]["killed"] = false.into();
+            let before = world.inspect(0, 64);
+            let error = ScriptWorld::from_snapshot(
+                serde_json::from_value(invalid)?,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals: Default::default(),
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .err()
+            .expect("an executable created actor cannot lose runtime before killed cleanup");
+            assert!(
+                format!("{error:#}")
+                    .contains("created actor executable absent without killed cleanup"),
+                "{error:#}"
+            );
+            assert_eq!(world.inspect(0, 64), before);
+            let globals = std::mem::take(world.globals_mut());
             world = ScriptWorld::from_snapshot(
                 saved,
                 &sources,

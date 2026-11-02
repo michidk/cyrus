@@ -82,6 +82,8 @@ unsupported error, including after restore; it does not select a later duplicate
 or expose the retained pose as live behavior. The namespace lifetime follows
 preservation's [registry contract](https://github.com/michidk/redguard-preservation/pull/160).
 The original's result when dereferencing the freed record remains Unknown.
+Restore rejects a created executable saved without runtime and without its killed
+flag, before returning the replacement world.
 
 Created-object updates discard an already killed receiver's executable runtime.
 A receiver killed by its ordinary hook also skips its main program. Saved killed

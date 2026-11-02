@@ -448,6 +448,14 @@ impl ActorSnapshot {
                 ScriptActorSource::Shell(_) | ScriptActorSource::Created(_)
             );
         ensure!(
+            !finished_separate
+                || actor.runtime.is_none()
+                || !matches!(actor.source, ScriptActorSource::Created(_))
+                || self.control.as_ref().is_some_and(|control| control.killed),
+            "saved actor {}: created actor executable absent without killed cleanup",
+            self.name
+        );
+        ensure!(
             (self.runtime.is_some() == actor.runtime.is_some() || finished_separate)
                 && self.unavailable == actor.unavailable,
             "saved actor {}: executable availability differs",
