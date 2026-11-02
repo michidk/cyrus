@@ -37109,3 +37109,78 @@ fn selected_overlap_protection_leaves_other_actor_rollback_and_unlocked_static_m
     );
     assert_ne!(world.spatial(player).unwrap().local.position, before);
 }
+
+#[test]
+fn created_effects_maintain_before_scripts_and_preserve_hidden_phases_after_restore() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    for restore in [false, true] {
+        for hidden in [false, true] {
+            let mut calls: Vec<(&str, &[i32])> = vec![
+                ("Light", &[256, 100]),
+                ("LightFlicker", &[18, 1]),
+                ("LightSize", &[8, 1]),
+                ("FlatAnimate", &[129, 1, 1]),
+            ];
+            if hidden {
+                calls.push(("HideMe", &[]));
+            }
+            let mut scripts = light_maintenance_scripts(4, 1, &calls);
+            scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
+            let (scripts, mut world, data) = light_maintenance_world(scripts);
+            world.prepare_spatial().unwrap();
+            let created = world
+                .create_object(world.id(0).unwrap(), "LOGIC", [0; 3], [0; 3])
+                .unwrap();
+            let inputs = ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            };
+            let mut random = cyrus_game::random::EngineRandom::from_state(1);
+            world
+                .update_created(inputs, &mut random, &mut |_, _| Ok(()), 100)
+                .unwrap();
+            let first_flat = world.actors()[created.index].flat_state().unwrap();
+            let first_light = world.actors()[created.index].light_state().unwrap();
+            assert_eq!(first_flat["frame"], 0);
+            assert_eq!(random.state(), 1, "new effects wait for the next update");
+            if restore {
+                let collision = Default::default();
+                let sources = WorldSnapshotSources {
+                    identity_memo: None,
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &data,
+                    collision: &collision,
+                };
+                let saved = world.snapshot(&sources).unwrap();
+                let globals = std::mem::take(world.globals_mut());
+                world = ScriptWorld::from_snapshot(
+                    saved,
+                    &sources,
+                    WorldRestoreContext {
+                        generation: 2,
+                        globals,
+                        samples: &BTreeMap::new(),
+                    },
+                )
+                .unwrap();
+            }
+            world
+                .update_created(inputs, &mut random, &mut |_, _| Ok(()), 100)
+                .unwrap();
+            let actor = &world.actors()[created.index];
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            if hidden {
+                assert_eq!(actor.flat_state().unwrap(), first_flat);
+                assert_eq!(actor.light_state().unwrap(), first_light);
+                assert_eq!(random.state(), 1);
+            } else {
+                assert_eq!(actor.flat_state().unwrap()["frame"], 1);
+                assert_ne!(actor.light_state().unwrap(), first_light);
+                assert_eq!(random.state(), 2524885223);
+            }
+        }
+    }
+}

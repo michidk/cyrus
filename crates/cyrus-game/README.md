@@ -93,6 +93,11 @@ flag, before returning the replacement world. Retained lineup task references al
 reject retired created receivers before replacement; allocated live and pending-kill
 references remain valid.
 
+Verified: visible created objects maintain retained lights and flats before script
+dispatch, following preservation's [ordinary maintenance contract](https://github.com/michidk/redguard-preservation/pull/160).
+Script-created effects first advance on the next eligible update; hidden created
+objects retain their phases without consuming modulation random values.
+
 Created-object updates discard an already killed receiver's executable runtime.
 A receiver killed by its ordinary hook also skips its main program. Saved killed
 continuations obey the same exclusion after restoration, following preservation's

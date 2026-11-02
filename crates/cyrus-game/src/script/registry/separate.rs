@@ -160,6 +160,14 @@ impl ScriptWorld {
             }
             self.snapshot_spatial(id)?;
             let result = (|| -> Result<()> {
+                if !self.actors[index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.hidden)
+                {
+                    self.actors[index].maintain_light(inputs.nominal_ticks.unwrap(), random)?;
+                    self.actors[index].maintain_flat(inputs.nominal_ticks.unwrap());
+                }
                 self.advance(
                     id,
                     ScriptStage::OrdinaryHook,
