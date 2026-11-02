@@ -169,11 +169,15 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
                 .context("hit sender combat unavailable")?;
-            let motion = self.current_combat_motion(sender)?;
-            (
-                combat.strength,
-                motion.damage.context("hit motion damage unavailable")?,
-            )
+            // A negative attack slot reads damage zero, as the original's damage reader does.
+            let damage = if combat.retained_action_indices[1] < 0 {
+                0
+            } else {
+                self.current_combat_motion(sender)?
+                    .damage
+                    .context("hit motion damage unavailable")?
+            };
+            (combat.strength, damage)
         };
         let armor = self.actors[receiver_index]
             .control
