@@ -16,6 +16,10 @@ Bring your own GOG install. cyrus ships no game data.
 > cyrus is early in development. Startup presentation and world viewing work,
 > but a complete gameplay and fidelity playthrough has not been accepted.
 
+## Watch cyrus v0.5.0
+
+[![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/hqdefault.jpg)](https://youtu.be/pG4tS6XbdIw)
+
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.

@@ -32,6 +32,8 @@
   .tagline { font-size: 1.35rem; margin: 0 0 6px; }
   .sub { color: var(--text-muted); margin: 0; }
   .note { margin: 24px 0 32px; padding-left: 16px; border-left: 3px solid var(--gold-muted); }
+  .video { margin-bottom: 32px; }
+  .video iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; }
   .downloads { padding: 28px; background: var(--burgundy); color: var(--parchment-light); border-top: 3px solid var(--gold-muted); }
   .downloads h2 { margin: 0 0 6px; color: var(--gold-pale); }
   .downloads h2 + h2, .downloads .download-grid + h2 { margin-top: 28px; }
@@ -88,6 +90,12 @@
   cyrus reads your install and includes no game files.</p>
 
   <p class="note">Early development. Worlds, menus, and movies are available to explore; full gameplay is not yet supported.</p>
+
+  <section class="video" aria-labelledby="video-heading">
+    <h2 id="video-heading">Watch cyrus v0.5.0</h2>
+    <iframe src="https://www.youtube-nocookie.com/embed/pG4tS6XbdIw" title="Cyrus v0.5.0 - The Elder Scrolls Adventures: Redguard (1998) Remade in Rust" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+    <p><a href="https://youtu.be/pG4tS6XbdIw">Watch on YouTube</a></p>
+  </section>
 
   <section class="downloads" aria-labelledby="download-heading">
     <h2 id="download-heading">Download cyrus</h2>
