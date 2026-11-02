@@ -16,13 +16,9 @@ Bring your own GOG install. cyrus ships no game data.
 > cyrus is early in development. Startup presentation and world viewing work,
 > but a complete gameplay and fidelity playthrough has not been accepted.
 
-## Watch cyrus v0.5.0
-
-[![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/hqdefault.jpg)](https://youtu.be/pG4tS6XbdIw)
-
-## Watch the cyrus editor
-
-[![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/hqdefault.jpg)](https://youtu.be/B1s0oL_fFGU)
+| Watch cyrus v0.5.0 | Watch the cyrus editor |
+| --- | --- |
+| [![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg)](https://youtu.be/pG4tS6XbdIw) | [![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg)](https://youtu.be/B1s0oL_fFGU) |
 
 ## What works today
 
