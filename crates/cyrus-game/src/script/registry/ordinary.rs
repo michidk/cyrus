@@ -59,6 +59,26 @@ pub struct OrdinaryInputs<'a> {
 }
 
 impl ScriptWorld {
+    /// Literal RTX-family labels from installed scripts, including dormant shells.
+    /// Asset readiness must not insert ordinary updates between authored lines.
+    /// Dynamic operands retain their existing demand-driven lookup path.
+    pub fn dialogue_labels(&self) -> Vec<[u8; 4]> {
+        self.task_calls
+            .values()
+            .filter(|call| {
+                ["RTX", "RTXp", "rtxAnim", "RTXpAnim", "AmbientRtx"]
+                    .iter()
+                    .any(|name| call.function.eq_ignore_ascii_case(name))
+            })
+            .filter_map(|call| match call.arguments.first() {
+                Some(cyrus_script::program::Value::Integer { value }) => Some(value.to_le_bytes()),
+                _ => None,
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
     pub(super) fn prepare_ordinary_models(
         &mut self,
         data: &Animations,
@@ -997,6 +1017,16 @@ impl OrdinaryContext<'_, '_> {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect()
+    }
+
+    /// Authored literal dialogue labels to prepare before ordinary simulation.
+    /// This does not resolve dynamic operands or change task/cache/sample state.
+    pub fn dialogue_labels(&self) -> Vec<[u8; 4]> {
+        self.actors
+            .current
+            .as_ref()
+            .map(ScriptWorld::dialogue_labels)
+            .unwrap_or_default()
     }
 
     /// Current logical world identity, used to reject expired audio ownership.

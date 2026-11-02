@@ -37318,3 +37318,74 @@ fn created_effects_maintain_before_scripts_and_preserve_hidden_phases_after_rest
         }
     }
 }
+
+#[test]
+fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
+    let mut scripts = wait_cache(vec![
+        wait(
+            4,
+            "RTX",
+            CallKind::Task,
+            vec![Value::Integer {
+                value: i32::from_le_bytes(*b"BETA"),
+            }],
+        ),
+        wait(
+            5,
+            "RTXpAnim",
+            CallKind::Task,
+            vec![
+                Value::Integer {
+                    value: i32::from_le_bytes(*b"ALFA"),
+                },
+                Value::Integer { value: 0 },
+                Value::Integer { value: 0 },
+                Value::Integer { value: 0 },
+            ],
+        ),
+        wait(
+            4,
+            "RTX",
+            CallKind::Task,
+            vec![Value::Integer {
+                value: i32::from_le_bytes(*b"BETA"),
+            }],
+        ),
+        wait(
+            4,
+            "RTX",
+            CallKind::Task,
+            vec![Value::Read {
+                place: Place::Local { index: 0 },
+            }],
+        ),
+        wait(
+            1,
+            "Wait",
+            CallKind::Task,
+            vec![Value::Integer {
+                value: i32::from_le_bytes(*b"NOPE"),
+            }],
+        ),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions.extend([
+        Function {
+            name: "RTX".into(),
+            param_count: 1,
+            kind: CallKind::Task,
+        },
+        Function {
+            name: "RTXpAnim".into(),
+            param_count: 4,
+            kind: CallKind::Task,
+        },
+    ]);
+    scripts.instances.clear();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let before = world.inspect(0, 64);
+    assert_eq!(world.dialogue_labels(), vec![*b"ALFA", *b"BETA"]);
+    assert_eq!(world.dialogue_labels(), vec![*b"ALFA", *b"BETA"]);
+    assert_eq!(world.inspect(0, 64), before);
+}

@@ -229,3 +229,8 @@ following preservation's [compass contract](https://github.com/michidk/redguard-
 Verified: slope turns publish the selected player's orientation matrix and angle history
 immediately through the shared turn service, following preservation's
 [ordinary slope response](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-slope-response).
+
+Ordinary hosts can read literal RTX-family labels from the prepared script call
+table before simulation begins. This includes dormant script definitions and
+leaves actor tasks, random state, dialogue records and sample allocation unchanged.
+Dynamic label operands are resolved only when their script calls execute.

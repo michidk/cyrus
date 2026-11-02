@@ -110,13 +110,38 @@ impl DialoguePreparation {
         clips: &Assets<DialogueClip>,
         #[cfg(not(target_arch = "wasm32"))] install: Option<&cyrus_assets::install::GameInstall>,
     ) -> Result<std::task::Poll<DialogueClip>> {
+        let result = self.read_requested(
+            label,
+            server,
+            clips,
+            #[cfg(not(target_arch = "wasm32"))]
+            install,
+        );
+        if let Err(error) = &result {
+            self.requests
+                .insert(label, DialogueRequest::Failed(format!("{error:#}")));
+        }
+        result
+    }
+
+    fn read_requested(
+        &mut self,
+        label: [u8; 4],
+        server: &AssetServer,
+        clips: &Assets<DialogueClip>,
+        #[cfg(not(target_arch = "wasm32"))] install: Option<&cyrus_assets::install::GameInstall>,
+    ) -> Result<std::task::Poll<DialogueClip>> {
         use std::task::Poll;
         let key = label
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
         let path = format!("cache://dialogue/{key}.dialogue");
-        let pending = self.requests.len();
+        let pending = self
+            .requests
+            .values()
+            .filter(|request| !matches!(request, DialogueRequest::Failed(_)))
+            .count();
         if let std::collections::hash_map::Entry::Vacant(entry) = self.requests.entry(label) {
             ensure!(
                 pending < 20,
@@ -232,6 +257,38 @@ mod tests {
             let server = app.world().resource::<AssetServer>().clone();
             let handle = server.load("cache://dialogue/54455354.dialogue");
             let mut preparation = DialoguePreparation::default();
+            for index in 0..25u8 {
+                preparation.requests.insert(
+                    [index, 0, 0, 0],
+                    DialogueRequest::Failed("unreached script label unavailable".into()),
+                );
+            }
+            let Err(missing) = preparation.read(
+                *b"MISS",
+                &server,
+                app.world().resource::<Assets<DialogueClip>>(),
+                None,
+            ) else {
+                panic!("missing install must fail");
+            };
+            assert!(format!("{missing:#}").contains("install unavailable"));
+            let saved = preparation.snapshot(&server).unwrap();
+            let mut restored = DialoguePreparation::from_snapshot(
+                saved,
+                &std::collections::BTreeMap::new(),
+                &server,
+                app.world().resource::<Assets<DialogueClip>>(),
+            )
+            .unwrap();
+            let Err(missing_again) = restored.read(
+                *b"MISS",
+                &server,
+                app.world().resource::<Assets<DialogueClip>>(),
+                None,
+            ) else {
+                panic!("retained missing install must fail");
+            };
+            assert_eq!(format!("{missing:#}"), format!("{missing_again:#}"));
             preparation
                 .requests
                 .insert(*b"TEST", DialogueRequest::Loading(handle));
@@ -273,7 +330,7 @@ mod tests {
                         );
                         assert_eq!(clip.entry.text, "Prepared voice");
                         assert!(
-                            preparation.requests.is_empty(),
+                            !preparation.requests.contains_key(b"TEST"),
                             "consumed preparation must release its root handle"
                         );
                         break;
@@ -347,7 +404,12 @@ impl DialoguePreparation {
         clips: &Assets<DialogueClip>,
     ) -> Result<Self> {
         ensure!(
-            snapshot.requests.len() <= 20,
+            snapshot
+                .requests
+                .iter()
+                .filter(|(_, failure)| failure.is_none())
+                .count()
+                <= 20,
             "saved dialogue preparation exceeds capacity"
         );
         let mut requests = std::collections::HashMap::new();

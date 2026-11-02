@@ -845,7 +845,7 @@ impl ScriptSounds<'_, '_> {
         let source = CachedDialogueSource {
             state: RefCell::new((self, cache, read)),
             hud,
-            taunts: &[],
+            prepared_clips: &[],
         };
         update(&source)
     }
@@ -863,13 +863,13 @@ impl ScriptSounds<'_, '_> {
         hud: &cyrus_assets::hud::HudAsset,
         read: &mut dyn FnMut([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
         sound_reset: Option<bool>,
-        taunts: &[super::dialogue::DialogueClip],
+        prepared_clips: &[super::dialogue::DialogueClip],
     ) {
         let generation = context.generation();
         let source = CachedDialogueSource {
             state: RefCell::new((self, cache, read)),
             hud,
-            taunts,
+            prepared_clips,
         };
         let ambient = DialogueAmbient {
             source: &source,
@@ -1180,7 +1180,7 @@ struct CachedDialogueSource<'a, 'w, 's> {
         DialogueReader<'a>,
     )>,
     hud: &'a cyrus_assets::hud::HudAsset,
-    taunts: &'a [super::dialogue::DialogueClip],
+    prepared_clips: &'a [super::dialogue::DialogueClip],
 }
 
 impl std::fmt::Debug for CachedDialogueSource<'_, '_, '_> {
@@ -1201,7 +1201,20 @@ impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
         let mut state = self.state.borrow_mut();
         let (sounds, cache, read) = &mut *state;
         sounds
-            .cached_dialogue_line(cache, label, &mut **read, self.hud, text_width)
+            .cached_dialogue_line(
+                cache,
+                label,
+                |label| match self
+                    .prepared_clips
+                    .iter()
+                    .find(|clip| clip.entry.label == label)
+                {
+                    Some(clip) => Ok(Poll::Ready(clip.clone())),
+                    None => read(label),
+                },
+                self.hud,
+                text_width,
+            )
             .map(|line| line.map(Some))
     }
 
@@ -1265,7 +1278,7 @@ impl cyrus_game::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '
     fn prepare(&mut self, label: [u8; 4], speech: bool, width: Option<u32>) -> anyhow::Result<()> {
         self.clip = Some(
             self.source
-                .taunts
+                .prepared_clips
                 .iter()
                 .find(|clip| clip.entry.label == label)
                 .ok_or_else(|| {
@@ -1325,7 +1338,7 @@ pub struct RuntimeDialogue {
     hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
     cache: cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
     preparation: super::dialogue::DialoguePreparation,
-    taunts: Vec<super::dialogue::DialogueClip>,
+    prepared_clips: Vec<super::dialogue::DialogueClip>,
     torch_channel: Option<u8>,
 }
 
@@ -1339,8 +1352,8 @@ struct DialogueAssets<'w> {
     install: Option<Res<'w, cyrus_assets::install::GameInstall>>,
 }
 
-/// Combat taunt clips prepared concurrently while a world waits for its taunt catalogue.
-const TAUNT_PREPARATIONS_IN_FLIGHT: usize = 8;
+/// Installed clips prepared concurrently before ordinary simulation.
+const DIALOGUE_PREPARATIONS_IN_FLIGHT: usize = 8;
 
 fn scoped_ordinary(
     In(phase): In<cyrus_game::script::OrdinaryPhase>,
@@ -1367,7 +1380,7 @@ fn scoped_ordinary(
             hud,
             cache,
             preparation,
-            taunts,
+            prepared_clips,
             torch_channel,
         } = &mut *dialogue.runtime;
         if context.has_pending_revisit() {
@@ -1394,7 +1407,7 @@ fn scoped_ordinary(
         }
         if *prepared_generation != generation {
             preparation.clear();
-            taunts.clear();
+            prepared_clips.clear();
             *torch_channel = None;
             *prepared_generation = generation;
         }
@@ -1419,16 +1432,16 @@ fn scoped_ordinary(
         let mut ready = true;
         let mut in_flight = 0;
         for label in context.combat_taunt_labels() {
-            if taunts.iter().any(|clip| clip.entry.label == label) {
+            if prepared_clips.iter().any(|clip| clip.entry.label == label) {
                 continue;
             }
             match read(label) {
-                Ok(Poll::Ready(clip)) => taunts.push(clip),
+                Ok(Poll::Ready(clip)) => prepared_clips.push(clip),
                 Ok(Poll::Pending) => {
                     ready = false;
                     in_flight += 1;
                     // Prepare several clips at once, well below the twenty-request retention limit.
-                    if in_flight == TAUNT_PREPARATIONS_IN_FLIGHT {
+                    if in_flight == DIALOGUE_PREPARATIONS_IN_FLIGHT {
                         break;
                     }
                 }
@@ -1436,6 +1449,27 @@ fn scoped_ordinary(
                     context.report_error(format!("ordinary combat taunt {label:?}: {error:#}"));
                     return;
                 }
+            }
+        }
+        if !ready {
+            return;
+        }
+        for label in context.dialogue_labels() {
+            if prepared_clips.iter().any(|clip| clip.entry.label == label) {
+                continue;
+            }
+            match read(label) {
+                Ok(Poll::Ready(clip)) => prepared_clips.push(clip),
+                Ok(Poll::Pending) => {
+                    ready = false;
+                    in_flight += 1;
+                    if in_flight == DIALOGUE_PREPARATIONS_IN_FLIGHT {
+                        break;
+                    }
+                }
+                // Unreached scripts can name absent entries. Preparation retains
+                // their error; the actual invocation reports it if reached.
+                Err(_) => {}
             }
         }
         if !ready {
@@ -1475,7 +1509,7 @@ fn scoped_ordinary(
             hud,
             &mut read,
             *sound_reset,
-            taunts,
+            prepared_clips,
         );
     } else {
         // Reset ownership remains with game maintenance; absent ownership is not
@@ -2200,15 +2234,29 @@ mod dialogue_tests {
         use cyrus_game::script::{CombatTauntSource, DialogueSource, ScriptActorId};
         let hud = dialogue_test_hud();
         let mut cache = cyrus_assets::sound::DialogueCache::default();
-        let mut read = |label| {
-            assert_eq!(label, *b"TEST");
-            Ok(Poll::Ready(clip.0.clone()))
-        };
+        let mut read = |_| anyhow::bail!("prepared dialogue must not request another load");
         let source = CachedDialogueSource {
             state: RefCell::new((&mut sounds, &mut cache, &mut read)),
             hud: &hud,
-            taunts: std::slice::from_ref(&clip.0),
+            prepared_clips: std::slice::from_ref(&clip.0),
         };
+        let Poll::Ready(Some(line)) = source
+            .player_line(
+                *b"TEST",
+                ScriptActorId {
+                    generation: 1,
+                    index: 0,
+                },
+                150,
+            )
+            .unwrap()
+        else {
+            panic!("prefetched dialogue must be admitted synchronously");
+        };
+        assert_eq!(
+            (line.text.as_str(), line.sample, line.lifetime),
+            ("Hi", Some(0), 128)
+        );
         source
             .with_playback(&mut |playback| {
                 playback.prepare(*b"TEST", true, Some(150))?;
@@ -2321,7 +2369,8 @@ pub struct RuntimeDialogueSnapshot {
     hud_bound: bool,
     cache: cyrus_assets::sound::DialogueCacheSnapshot<super::dialogue::DialogueClipSnapshot>,
     preparation: super::dialogue::DialoguePreparationSnapshot,
-    taunts: Vec<super::dialogue::DialogueClipSnapshot>,
+    #[serde(rename = "taunts")]
+    prepared_clips: Vec<super::dialogue::DialogueClipSnapshot>,
 }
 
 /// Prepared installed dialogue assets. Construction never requests or loads assets.
@@ -2379,8 +2428,8 @@ impl RuntimeDialogue {
             hud_bound: self.hud.is_some(),
             cache: self.cache.snapshot(|clip| clip.snapshot(audio_sources))?,
             preparation: self.preparation.snapshot(server)?,
-            taunts: self
-                .taunts
+            prepared_clips: self
+                .prepared_clips
                 .iter()
                 .map(|clip| clip.snapshot(audio_sources))
                 .collect::<anyhow::Result<_>>()?,
@@ -2415,21 +2464,21 @@ impl RuntimeDialogue {
             },
         )?;
         let mut labels = std::collections::BTreeSet::new();
-        let taunts = saved
-            .taunts
+        let prepared_clips = saved
+            .prepared_clips
             .into_iter()
             .map(|entry| {
                 ensure!(
                     labels.insert(entry.entry.label),
-                    "saved dialogue taunt label duplicated"
+                    "saved prepared dialogue label duplicated"
                 );
                 let installed = Context::context(
                     assets.clips.get(&entry.entry.label),
-                    "saved taunt asset absent",
+                    "saved prepared dialogue asset absent",
                 )?;
                 ensure!(
                     serde_json::to_value(&entry.entry)? == serde_json::to_value(&installed.entry)?,
-                    "saved taunt payload differs from installed entry"
+                    "saved prepared dialogue payload differs from installed entry"
                 );
                 restore_clip(entry)
             })
@@ -2457,7 +2506,7 @@ impl RuntimeDialogue {
                 assets.server,
                 assets.loaded,
             )?,
-            taunts,
+            prepared_clips,
             torch_channel: None,
         })
     }
@@ -2465,13 +2514,13 @@ impl RuntimeDialogue {
 
 impl RuntimeDialogueSnapshot {
     /// Installed labels needed before replacement construction. Includes retained
-    /// cache payloads, taunts and nonfailed preparation requests, without duplicates.
+    /// cache payloads, prepared_clips and nonfailed preparation requests, without duplicates.
     /// These are preparation hints, not validated installed source identities.
     pub fn required_labels(&self) -> std::collections::BTreeSet<[u8; 4]> {
         self.cache
             .payloads()
             .map(|clip| clip.entry.label)
-            .chain(self.taunts.iter().map(|clip| clip.entry.label))
+            .chain(self.prepared_clips.iter().map(|clip| clip.entry.label))
             .chain(self.preparation.required_labels())
             .collect()
     }

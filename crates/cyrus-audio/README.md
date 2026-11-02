@@ -225,9 +225,14 @@ exhaustion use text lifetime. Missing voice dependencies and looping voices repo
 unsupported playback.
 
 The ordinary host retains a twenty-entry cache and lends `DialogueSource` to
-RTXp tasks. A cache miss returns pending until the entry and its audio dependency
-are ready; pending preparation does not allocate a dialogue record or start a
-voice. Ready text uses the installed HUD REDSEL font for wrapping. After object
+RTXp tasks. Before ordinary simulation, the host prepares literal RTX-family
+labels from the world's scripts and their audio dependencies. Preparation does
+not occupy the twenty runtime cache entries or start voices. Calls still allocate
+cache entries and samples when executed, so file readiness adds no intervening
+ordinary updates between prepared lines. Unused script labels can be absent;
+their retained preparation error is reported only if the script calls them.
+Dynamic label operands retain demand-driven preparation and can return pending.
+Ready text uses the installed HUD REDSEL font for wrapping. After object
 updates, the host advances game-owned dialogue records through synchronous sample
 feedback, then ages the RTX cache. The game selects the subtitle record and owns
 speaker inhibition; rendering only reads that selection. The configured keyboard
