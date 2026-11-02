@@ -570,8 +570,7 @@ impl ScriptWorld {
     /// Whether the turn accumulators of the selected player add the fight-turn attributes
     /// (`attr_fight_turn_accel` up to `attr_fight_turn_speed`) instead of SYSTEM.INI's
     /// `turn_speed` up to `turn_max_speed`: the player holds a weapon and plays a group other
-    /// than 18 or 31, or its hand item is 51. Decoded from the original's input update
-    /// (recorded in the redguard-decomp supplement 2026-10-24-fight-turn-accumulators).
+    /// than 18 or 31, or its hand item is 51.
     pub(super) fn player_turn_uses_fight_values(
         &self,
         id: super::ScriptActorId,

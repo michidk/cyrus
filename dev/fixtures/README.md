@@ -144,8 +144,7 @@ Use the `cyrus-playtest` skill's debugger procedure to measure the original view
 Keep executable-specific probes and raw measurements under `magic/`, archive the
 research text privately, and record only camera poses/setup in these fixtures.
 Maintainers can retrieve the complete corrected adapter, restore helper and cold
-verification records from the private
-[guarded bundle](https://github.com/michidk/redguard-decomp/tree/0d596e97c624388e0080ea7a1dd9077c82126495/research/supplements/2026-10-13-stage0-owned-preview/cold-fixtures). Copy the restore helper and all five adjacent instruments under `magic/`.
+verification records from their local guarded tooling bundle. Copy the restore helper and all five adjacent instruments under `magic/`.
 Use the bundle's restore command with `--static-capture`; its `--snapshot`
 argument points to the earlier tooling snapshot for the Docker/runtime templates.
 The helper checks archive and executable hashes, copies the install into a fresh

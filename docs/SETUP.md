@@ -105,7 +105,7 @@ events (a software-rendered tab runs at about 2 frames per second, so its key ho
 
 `dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
 policy (xdotool keys; positions, yaw and health read from the emulator's memory by a reader kept
-under `magic/tools/` and archived in redguard-decomp, because it holds executable addresses). The
+under `magic/tools/`, because it holds executable addresses). The
 container is started with `--cap-add SYS_PTRACE`, and the run copy's `maps` link is replaced by a
 real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and hangs if the
 emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
@@ -714,7 +714,7 @@ loading; it is insufficient for a scene capture. Script and gameplay readiness
 remain separate.
 
 Maintainers restoring the original adapter should use the complete
-[guarded bundle](https://github.com/michidk/redguard-decomp/tree/0d596e97c624388e0080ea7a1dd9077c82126495/research/supplements/2026-10-13-stage0-owned-preview/cold-fixtures) and the [fixture workflow](../dev/fixtures/README.md).
+local guarded tooling bundle and the [fixture workflow](../dev/fixtures/README.md).
 Pass `--static-capture` to the restore helper. It checks archive and executable
 hashes, copies the install and Glide overlay into an isolated writable runtime,
 and disables the documented task/animation SYSTEM.INI switches before startup.
