@@ -93,7 +93,7 @@ fn invalid_music_candidates_preserve_live_track_and_stopped_music_needs_no_sourc
         "track",
         "gain",
         "playback.transport.speed",
-        "playback.transport.looping",
+        "playback.transport.repetitions",
         "playback.transport.gains",
         "playback.transport.frame_gains",
     ] {
@@ -103,7 +103,7 @@ fn invalid_music_candidates_preserve_live_track_and_stopped_music_needs_no_sourc
             "track" => serde_json::json!(0),
             "gain" => serde_json::json!(0.5),
             "playback.transport.speed" => serde_json::json!(0.75),
-            "playback.transport.looping" => serde_json::json!(false),
+            "playback.transport.repetitions" => serde_json::json!(1),
             _ => serde_json::json!({"Sixteen":[64,64]}),
         };
         let mut field = &mut invalid;

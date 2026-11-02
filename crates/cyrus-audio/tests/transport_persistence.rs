@@ -1,4 +1,4 @@
-use bevy::audio::{AudioSource, Decodable};
+use bevy::audio::{AudioSource, Decodable, Source};
 use cyrus_assets::audio::pcm_wav;
 use cyrus_audio::sound::{Panned, PannedGains, PannedSnapshot, PcmWidth};
 use rgpre::import::sfx::AudioType;
@@ -39,7 +39,7 @@ fn source_transport_replacement_keeps_exact_future_samples_and_gain_boundaries()
                 gains.set(64, 255, 127);
                 let before = serde_json::to_value(live.snapshot().unwrap()).unwrap();
                 let saved: PannedSnapshot = serde_json::from_value(before.clone()).unwrap();
-                assert_eq!(saved.looping(), looping);
+                assert_eq!(saved.repetitions().is_infinite(), looping);
                 assert_eq!(saved.speed(), 0.75);
                 assert!(!saved.source_identity().is_empty());
                 let replacement = Panned::from_snapshot(bytes, width, saved).unwrap();
@@ -76,7 +76,7 @@ fn transport_rejects_invalid_source_cursor_gains_and_ambiguous_capture() {
     assert_eq!(decoder.next(), Some(0.5));
     let saved = serde_json::to_value(live.snapshot().unwrap()).unwrap();
     for (field, value) in [
-        ("version", serde_json::json!(2)),
+        ("version", serde_json::json!(3)),
         ("source_identity", serde_json::json!("different")),
         ("speed", serde_json::json!(0.0)),
         ("input_samples", serde_json::json!(999)),
@@ -221,4 +221,89 @@ fn malformed_pcm_metadata_and_truncated_data_reject_before_decoder_construction(
             );
         }
     }
+}
+
+#[test]
+fn finite_repetition_restores_remaining_passes_and_pending_stereo_output() {
+    use cyrus_audio::sound::SampleRepetitions;
+    let bytes = AudioSource {
+        bytes: pcm_wav(AudioType::Mono16, 22050, &[0x00, 0x40, 0x00, 0xe0])
+            .unwrap()
+            .into(),
+    };
+    let expected = [
+        0.5, 0.5, -0.25, -0.25, 0.5, 0.5, -0.25, -0.25, 0.5, 0.5, -0.25, -0.25,
+    ];
+    for consumed in 0..=expected.len() {
+        let live = Panned::with_repetitions(
+            bytes.clone(),
+            PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
+            SampleRepetitions::finite(std::num::NonZeroU8::new(3).unwrap()),
+            1.0,
+        )
+        .unwrap();
+        let mut decoder = live.decoder();
+        let duration = decoder.total_duration().unwrap();
+        assert_eq!(
+            decoder.by_ref().take(consumed).collect::<Vec<_>>(),
+            expected[..consumed]
+        );
+        let snapshot = live.snapshot().unwrap();
+        let remaining = match consumed {
+            0..=4 => 3,
+            5..=8 => 2,
+            _ => 1,
+        };
+        assert_eq!(snapshot.repetitions().remaining().unwrap().get(), remaining);
+        let restored = Panned::from_snapshot(bytes.clone(), PcmWidth::Sixteen, snapshot).unwrap();
+        let mut replacement = restored.decoder();
+        assert_eq!(
+            replacement.size_hint(),
+            (12 - consumed, Some(12 - consumed))
+        );
+        assert_eq!(
+            replacement.by_ref().collect::<Vec<_>>(),
+            expected[consumed..]
+        );
+        assert_eq!(decoder.by_ref().collect::<Vec<_>>(), expected[consumed..]);
+        assert_eq!(decoder.total_duration(), Some(duration));
+        assert_eq!(replacement.next(), None);
+        assert_eq!(replacement.next(), None);
+        assert_eq!(replacement.size_hint(), (0, Some(0)));
+    }
+}
+
+#[test]
+fn installed_finite_tune_retains_225_passes_and_restores_after_wrap() {
+    use cyrus_assets::{audio::load_effect_bank, install::GameInstall};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (finite tune transport)");
+        return;
+    };
+    let mut bank = load_effect_bank(&install).unwrap();
+    let effect = bank[117].take().unwrap();
+    assert_eq!(effect.repetitions.remaining().unwrap().get(), 225);
+    let transport = Panned::with_repetitions(
+        AudioSource {
+            bytes: effect.bytes.into(),
+        },
+        PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
+        effect.repetitions,
+        1.0,
+    )
+    .unwrap();
+    let mut decoder = transport.decoder();
+    assert_eq!(decoder.by_ref().take(768180).count(), 768180);
+    assert!(decoder.next().is_some());
+    let saved = transport.snapshot().unwrap();
+    assert_eq!(saved.repetitions().remaining().unwrap().get(), 224);
+    let replacement =
+        Panned::from_snapshot(transport.source().clone(), PcmWidth::Sixteen, saved).unwrap();
+    assert_eq!(
+        decoder.take(1024).collect::<Vec<_>>(),
+        replacement.decoder().take(1024).collect::<Vec<_>>()
+    );
 }

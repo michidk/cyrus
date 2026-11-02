@@ -16,6 +16,10 @@ const GROUP_CLIMB_UP: u16 = 82;
 const GROUP_CLIMB_DOWN: u16 = 83;
 const GROUP_GRAB: u16 = 84;
 const GROUP_JUMP: u16 = 85;
+/// The hanging pose the idle request settles into, and the two poses the chain update promotes it to.
+const GROUP_HANG: u16 = 79;
+const GROUP_HANG_DIRECTED: u16 = 80;
+const GROUP_HANG_PITCHED: u16 = 81;
 /// The animation group whose first frame supplies the hand point of the grab.
 const GROUP_HAND: u64 = 79;
 /// Links searched below the requested one start this many before it.
@@ -412,6 +416,19 @@ impl ScriptWorld {
                 self.climb(id, rope_index, data, false, ticks, probe, sounds)?;
             }
         }
+        let node = self.ropes[rope_index]
+            .attachments
+            .iter()
+            .find(|a| a.actor == index)
+            .map(|a| a.node)
+            .context("rope update: attachment unavailable")?;
+        let limit = self.rope_hand_link(id, rope_index, node + 1, data, probe)?;
+        self.ropes[rope_index].down_limit = Some((index, limit));
+        // The selected player's ordinary update repeats the key's climb group while attached,
+        // whether or not the climb helper's node bounds accepted it.
+        if let Some(group) = ordinary_climb_group(up, down, look) {
+            self.request_ordinary_group(id, group, false, ticks, sounds)?;
+        }
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
         let mut turned = heading;
         if self.player_rope.turn_rate != 0 {
@@ -451,7 +468,36 @@ impl ScriptWorld {
                 .local
                 .angles[1] = turned as u16;
         }
-        self.place_player_on_rope(id, rope_index, data)
+        self.place_player_on_rope(id, rope_index, data)?;
+        if !up && !down {
+            self.promote_hanging_group(id, rope_index, ticks, sounds)?;
+        }
+        Ok(())
+    }
+
+    /// The chain update's pose choice for a hanging selected player (preservation "Rope control
+    /// while attached"): with no group pending, or the plain hanging group, and neither Up nor Down
+    /// held, a rope with a nonzero direction byte requests group 80, otherwise group 81 while the
+    /// player is pitched.
+    fn promote_hanging_group(
+        &mut self,
+        id: ScriptActorId,
+        rope_index: usize,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let pending = self.actors[index]
+            .animation
+            .as_ref()
+            .context("rope hang: ordinary animation unavailable")?
+            .playback
+            .pending_group();
+        let pitch = self.spatial(id)?.local.angles[0];
+        match hanging_group(pending, self.ropes[rope_index].direction, pitch) {
+            Some(group) => self.request_ordinary_group(id, group, false, ticks, sounds),
+            None => Ok(()),
+        }
     }
 
     /// The link nearest below the player's hand, searched from eight links before `start`: the
@@ -603,6 +649,16 @@ impl ScriptWorld {
             return Ok(());
         }
         let group = if up { GROUP_CLIMB_UP } else { GROUP_CLIMB_DOWN };
+        if up {
+            let playback = &self.actors[index]
+                .animation
+                .as_ref()
+                .context("rope climb animation unavailable")?
+                .playback;
+            if !repeats_climb_up_request(playback.current_group(), playback.exit_reached()) {
+                return Ok(());
+            }
+        }
         self.request_ordinary_group(id, group, false, ticks, sounds)
     }
 
@@ -628,6 +684,7 @@ impl ScriptWorld {
             .position(|a| a.actor == index)
             .context("rope release: attachment unavailable")?;
         let attachment = rope.attachments.remove(position);
+        rope.down_limit = None;
         let motion = i64::from(attachment.motion);
         let scale = i64::from(frame_scale.max(1));
         let speed = if rope.amplitude < 6 && motion.abs() < (scale * 0x1800) >> 8 {
@@ -663,6 +720,7 @@ impl ScriptWorld {
         control.rope_attached = false;
         control.rope_speed = speed;
         control.jump_selector = 24;
+        self.player_rope.last_rope = Some(rope_index);
         Ok(())
     }
 
@@ -789,9 +847,66 @@ impl ScriptWorld {
     }
 }
 
+/// The group the selected player's ordinary update requests while attached with the view key up:
+/// 83 for Down, otherwise 82 for Up (preservation "Rope control while attached").
+fn ordinary_climb_group(up: bool, down: bool, look: bool) -> Option<u16> {
+    match (look, down, up) {
+        (true, ..) => None,
+        (false, true, _) => Some(GROUP_CLIMB_DOWN),
+        (false, false, true) => Some(GROUP_CLIMB_UP),
+        _ => None,
+    }
+}
+
+/// Whether the climb-up helper requests group 82: always when another group is current, and again
+/// for the current group only while its exit marker is clear (preservation "Rope control while
+/// attached"). Climb down requests group 83 every update.
+fn repeats_climb_up_request(current: Option<u16>, exit_reached: bool) -> bool {
+    current != Some(GROUP_CLIMB_UP) || !exit_reached
+}
+
+/// The group a hanging player is promoted to, if any; see `promote_hanging_group`.
+fn hanging_group(pending: Option<u16>, direction: u8, pitch: u16) -> Option<u16> {
+    if pending.is_some_and(|group| group != GROUP_HANG) {
+        None
+    } else if direction != 0 {
+        Some(GROUP_HANG_DIRECTED)
+    } else if pitch != 0 {
+        Some(GROUP_HANG_PITCHED)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hanging_player_is_promoted_by_the_rope_direction_then_its_pitch() {
+        assert_eq!(hanging_group(None, 1, 0), Some(80));
+        assert_eq!(hanging_group(Some(79), 1, 0), Some(80));
+        assert_eq!(hanging_group(None, 0, 5), Some(81));
+        assert_eq!(hanging_group(None, 0, 0), None);
+        assert_eq!(hanging_group(Some(82), 1, 5), None);
+    }
+
+    #[test]
+    fn the_ordinary_update_requests_83_for_down_else_82_for_up_unless_look_is_held() {
+        assert_eq!(ordinary_climb_group(false, true, false), Some(83));
+        assert_eq!(ordinary_climb_group(true, true, false), Some(83));
+        assert_eq!(ordinary_climb_group(true, false, false), Some(82));
+        assert_eq!(ordinary_climb_group(false, false, false), None);
+        assert_eq!(ordinary_climb_group(true, true, true), None);
+    }
+
+    #[test]
+    fn climb_up_repeats_its_request_only_before_the_exit_marker() {
+        assert!(repeats_climb_up_request(Some(80), true));
+        assert!(repeats_climb_up_request(None, false));
+        assert!(repeats_climb_up_request(Some(82), false));
+        assert!(!repeats_climb_up_request(Some(82), true));
+    }
 
     #[test]
     fn angle_differences_take_the_short_way_round() {

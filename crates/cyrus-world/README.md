@@ -88,7 +88,10 @@ unsupported. These APIs do not establish matched original-game playback.
 and sums use software x87 extended intermediates and nearest-even stores and
 integer conversion, following preservation PR55. The shared rotation table also
 supplies player heading projection. Matrix arithmetic requires no renderer or
-host floating-point-mode changes.
+host floating-point-mode changes. Ordinary unattached incremental refresh uses
+`Matrix::rotate_unattached`, which rounds products before sums, following
+[preservation PR154](https://github.com/michidk/redguard-preservation/pull/154).
+Family composition retains the separate extended-product path.
 
 `Matrix::collision_orientation` rebuilds shape orientation from local angles,
 using the published collision matrix rather than retained presentation history.
@@ -122,10 +125,10 @@ Malformed state and changed sources reject without changing live playback. This 
 not restore a game world: the host must validate actor/world generation and bind its
 saved model frame and native sound slot before committing the replacement.
 
-The shared rotation table retains the angle precision through sine and stores
-single-precision samples, including the extended cosine endpoint. Water reuses
-this owner. The construction follows preservation's
-[rotation-table correction](https://github.com/michidk/redguard-preservation/commit/7fb4970af38d225f2f0182f2af0d44885aea8569).
+The shared rotation table rounds the angle to single precision before sine, then
+stores single-precision samples, including the extended cosine endpoint. Water
+reuses this owner. The construction follows preservation's
+[initialized runtime table](https://github.com/michidk/redguard-preservation/pull/154).
 
 `ActorAnimation::clear_pending_request` cancels only the queued group, preserving
 current sequence, frame, finite loop count and sound ownership. Combat callers

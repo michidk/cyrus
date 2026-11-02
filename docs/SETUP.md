@@ -1,5 +1,8 @@
 # SETUP — running cyrus and the original
 
+For player controls, saving, resuming and current limitations, see
+[Playing cyrus](PLAYING.md). This guide covers setup and developer tools.
+
 ## You need
 
 - The GOG release of *The Elder Scrolls Adventures: Redguard*. Buy it; the
@@ -102,7 +105,7 @@ events (a software-rendered tab runs at about 2 frames per second, so its key ho
 
 `dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
 policy (xdotool keys; positions, yaw and health read from the emulator's memory by a reader kept
-under `magic/tools/` and archived in redguard-decomp, because it holds executable addresses). The
+under `magic/tools/`, because it holds executable addresses). The
 container is started with `--cap-add SYS_PTRACE`, and the run copy's `maps` link is replaced by a
 real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and hangs if the
 emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
@@ -217,23 +220,27 @@ browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
-tags, either when pushed or dispatched from `main` with a `tag` input such as
-`v0.2.0`. Dispatching from `main` saves the build caches where the next release
-can restore them; caches saved by a tag-push run are visible only to that tag.
+tags, either when pushed or dispatched from the default branch with a `tag` input
+such as `v0.2.0`. A tag push dispatches the build on the default branch; every
+build still checks out the specified tag. This saves compiled dependencies in
+the default-branch cache scope so later releases can restore them. The tag-push
+run only dispatches; follow the separate dispatched `Release` run for build and
+publication results. The first run for a platform or changed toolchain can
+still need a full build.
 
-Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
-shared workspace version and lockfile, commit, and atomically push the commit
-and tag, then dispatch `Release` from `main` for that tag. It uses the built-in
-workflow token and needs no repository secret. Repeating a matching version/tag
-retries the release without another version commit. Alternatively, update the
-version and lockfile locally and push the version commit and tag.
+Run `Bump Version & Tag` on `main` with `auto`, `patch`, `minor`, or `major`.
+It updates the shared workspace version and lockfile, commits, and atomically
+pushes the commit and tag using the configured releaser App. The tag push
+triggers `Release`. To retry an existing tag, dispatch `Release` on the default
+branch with that tag as its input.
 
 `Release` checks that every workspace package matches the tag and runs lint and
 test gates in parallel while all platforms build. Both verification jobs reuse
 the matching CI caches. Nothing is published unless every job succeeds.
 Verification and native Linux builds remove preinstalled SDKs only when less than
 12 GiB is free; browser builds still free space for their additional swap. The macOS
-Intel build runs on an Apple Silicon runner. Browser release builds use two Cargo
+Intel build uses the Intel runner pool, independently of Apple Silicon capacity.
+Browser release builds use four Cargo
 jobs, extra swap, and the `wasm-release` profile (thin link-time optimization,
 16 codegen units) to stay within hosted-runner memory; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
@@ -397,8 +404,8 @@ are ready. **Verified:** original world loading has a gold lower-left percentage
 and no right-hand status message. Native and browser presentation use that layout.
 The startup title updates its bottom-right red label during menu/HUD preparation,
 menu loading and browser sound loading. Title labels describe cyrus loading stages.
-Escape returns to the menu after a loading error. Full gameplay and story
-initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
+Escape returns to the menu after a loading error. Full-game progression and
+new-game-to-ending acceptance remain incomplete. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
 playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
@@ -407,7 +414,7 @@ change. Timing uses the startup presentation cadence rather than original update
 performance. Book/page
 motion and navigation feedback play installed effects through the shared sound
 path on native and browser builds. **Verified:** the original default book menu has no pointer
-hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
+hover/click selection. Joystick support and remaining mouse-bound actions are incomplete. Lighting,
 camera-plane clipping remain unsupported. Entering the book from gameplay, or by a fatal death, captures a 256x192 centre-cropped
 view that the book shows and slot saves store; a save made from live gameplay (quick save) stores no thumbnail.
 
@@ -597,8 +604,9 @@ state and shared task slots through explicit hosts. Installed programs and
 initial instance locals are retained independently of rendered meshes. The
 inspection host supports self `GetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag`
 and `TestGlobalFlag`; unsupported services produce a
-sticky contextual failure. Automatic actor eligibility, simulation timing,
-complete native handlers, progression and resumable saves remain unavailable.
+sticky contextual failure. These explicit inspection commands are separate from
+ordinary gameplay scheduling and the production Save/Load pages; they do not
+establish full-game progression or fidelity acceptance.
 
 ### Explicit shared script animation
 
@@ -710,7 +718,7 @@ loading; it is insufficient for a scene capture. Script and gameplay readiness
 remain separate.
 
 Maintainers restoring the original adapter should use the complete
-[guarded bundle](https://github.com/michidk/redguard-decomp/tree/0d596e97c624388e0080ea7a1dd9077c82126495/research/supplements/2026-10-13-stage0-owned-preview/cold-fixtures) and the [fixture workflow](../dev/fixtures/README.md).
+local guarded tooling bundle and the [fixture workflow](../dev/fixtures/README.md).
 Pass `--static-capture` to the restore helper. It checks archive and executable
 hashes, copies the install and Glide overlay into an isolated writable runtime,
 and disables the documented task/animation SYSTEM.INI switches before startup.

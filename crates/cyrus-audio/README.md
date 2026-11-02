@@ -18,12 +18,16 @@ size hints retain the complete resampling span, including a pending right channe
 The vendored dependency fix is documented in `dev/vendor/rodio/README.md`.
 Volume and pan updates keep the sample's original width and apply together at stereo-frame boundaries.
 
-`Panned::with_playback` validates the source and owns looping before gain scaling;
+`Panned::with_repetitions` validates the source and owns finite or unbounded
+repetition before gain scaling. `with_playback` selects once or unbounded playback;
 hosts use its `playback_settings()` so later loops observe live gain changes.
 Preparation rejects invalid WAV rates, mismatched PCM widths and truncated data
 before creating the backend decoder.
 `Panned::snapshot` and `Panned::from_snapshot` retain exact interleaved source
-progress, pending stereo output, gains, loop mode and speed. Reconstruction
+progress, pending stereo output, gains, remaining repetitions and speed.
+Transport checkpoint version 2 requires an explicit repetition count; older
+boolean-loop checkpoints reject. Finite effects finish after the installed number
+of passes on both native and browser hosts. Reconstruction
 validates the supplied source identity and PCM width without starting playback.
 Multiple decoder consumers reject capture. These checkpoints exclude downstream
 resampler/device buffers; complete session audio restoration remains unavailable.
@@ -212,9 +216,13 @@ unformatted RTX text, original lifetime counters and header metadata.
 `ScriptSounds` starts prepared voices through the shared sample channels at
 header volume and centre pan from slot zero, then restores the general start
 index to six. Volume refresh uses the logical speaker's local Q8 position and
-retains centre pan. Disabled speech, text-only entries and channel exhaustion use
-text lifetime. Missing voice dependencies and looping voices report unsupported
-playback.
+retains centre pan. Verified: ordinary RTX lookup still starts an available voice
+when speech mode is disabled and retains its duration for the line's nominal
+lifetime, following preservation's
+[dialogue contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+Speech mode selects subsequent record maintenance. Text-only entries and channel
+exhaustion use text lifetime. Missing voice dependencies and looping voices report
+unsupported playback.
 
 The ordinary host retains a twenty-entry cache and lends `DialogueSource` to
 RTXp tasks. A cache miss returns pending until the entry and its audio dependency

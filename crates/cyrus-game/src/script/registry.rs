@@ -387,6 +387,8 @@ pub struct ScriptActor {
     native_hook: Option<Call>,
     combat_taunts: Vec<CombatTaunt>,
     runtime: Option<Runtime>,
+    /// Created-record cleanup completed; runtime may also be absent during an active call.
+    created_retired: bool,
     unavailable: Option<String>,
     attributes: Vec<u8>,
     control: Option<ActorControlState>,
@@ -457,6 +459,7 @@ impl ScriptActor {
                 .map(|template| template.combat_taunts.clone())
                 .unwrap_or_default(),
             runtime,
+            created_retired: false,
             unavailable,
             attributes: vec![0; 256],
             control: None,
@@ -651,6 +654,16 @@ impl ScriptWorld {
     #[doc(hidden)]
     pub fn set_activation_owner_for_test(&mut self, owner: Option<ScriptActorId>) {
         self.activation.set_owner_for_test(owner);
+    }
+
+    /// Test hook: attach or release a logical actor on a rope without running the attach routine.
+    #[doc(hidden)]
+    pub fn set_rope_attached_for_test(&mut self, id: ScriptActorId, attached: bool) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .rope_attached = attached;
     }
 
     /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
@@ -1114,6 +1127,7 @@ impl ScriptWorld {
                     .map(|actor| actor.combat_taunts.clone())
                     .unwrap_or_default(),
                 runtime,
+                created_retired: false,
                 unavailable,
                 location_offsets: metadata
                     .map(|actor| actor.location_offsets.clone())
@@ -1383,7 +1397,11 @@ impl ScriptWorld {
                         .and_then(|animation| animation.playback.current_group())
                         .map_or(0, i32::from)
                 },
-                |_, _, node| node,
+                // Only the selected player computes the limit; other attachments step freely.
+                |rope, actor, node| match rope.down_limit {
+                    Some((owner, limit)) if owner == actor => limit,
+                    _ => node,
+                },
             );
         }
         Ok(())
@@ -2783,6 +2801,14 @@ impl ScriptWorld {
             self.world,
             actor.index
         );
+        let receiver = &self.actors[actor.index];
+        anyhow::ensure!(
+            !receiver.created_retired,
+            "world {} retired created receiver {} {} is unsupported",
+            self.world,
+            actor.index,
+            receiver.name()
+        );
         Ok(actor.index)
     }
     /// Bounded diagnostics carry logical state, never installed bytecode.
@@ -2895,6 +2921,8 @@ impl ScriptWorld {
     pub fn ordinary_updates(&self) -> u64 {
         self.ordinary_updates
     }
+    /// Handle for an indexed record, including records retained for diagnostics after cleanup.
+    /// Operations on a retired created receiver return an unsupported error.
     pub fn id(&self, index: usize) -> Result<ScriptActorId> {
         anyhow::ensure!(
             index < self.actors.len(),
@@ -4484,7 +4512,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn target_index(&self, target: &Target) -> Result<usize> {
         let index = match target {
-            Target::Me => return Ok(self.index),
+            Target::Me => Some(self.index),
             Target::Named(name) => self.registry.names.values().copied().find(|&index| {
                 self.registry.actors[index]
                     .namespace
@@ -4497,14 +4525,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
-            // Object encoding 0x0A names an actor through a local variable.  The
-            // variable stores the actor's signed 16-bit runtime identifier; the
-            // registry already owns the authoritative identifier-to-slot map.
+            // Logical variable targets use runtime identifiers; original raw actor
+            // references are not represented by this mapping.
             Target::Variable(value) => i16::try_from(*value)
                 .ok()
                 .and_then(|identifier| self.registry.names.get(&identifier).copied()),
         };
-        index.with_context(|| format!("object target {target:?}: receiver absent"))
+        let index = index.with_context(|| format!("object target {target:?}: receiver absent"))?;
+        self.registry
+            .resolve(self.registry.id(index)?)
+            .with_context(|| format!("object target {target:?}"))
     }
 }
 enum PoseProperty {
@@ -7337,6 +7367,7 @@ mod fighting_tests {
                 native_hook: None,
                 combat_taunts: vec![],
                 runtime: None,
+                created_retired: false,
                 unavailable: None,
                 attributes: vec![0; 256],
                 control: Some(ActorControlState {
@@ -7492,6 +7523,7 @@ mod selector_tests {
             native_hook: None,
             combat_taunts: vec![],
             runtime: None,
+            created_retired: false,
             unavailable: None,
             attributes: vec![0; 256],
             control: Some(ActorControlState::default()),

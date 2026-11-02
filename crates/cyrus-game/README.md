@@ -37,6 +37,11 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: ordinary falling resolves and stores the regained support's surface
+before landing damage. Water surfaces suppress fall damage; dry support retains
+the configured hurt and fatal thresholds, following preservation's
+[ordinary landing decision](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-landing-decision).
+
 The [script module documentation](src/script/mod.rs) describes SOUP state
 ownership, host services and internal responsibilities. Hosts integrate through
 `ScriptPlugin`, `ScriptInputs` and `run_ordinary`; unavailable services return
@@ -51,6 +56,13 @@ forward and sideways movement, and a transition mark for backward movement.
 Player alignment consumes these marks when choosing its fallback. The auxiliary
 response bytes remain separate, following preservation's
 [directional refusal contract](https://github.com/michidk/redguard-preservation/pull/153).
+
+Verified: ordinary actor and actor-style static overlap give the selected player
+zero mobility while the shared alignment result or lockout word is nonzero,
+without changing its weight attribute. A nonzero alignment result also preserves
+its current position on rollback; lockout alone restores its previous position.
+The actor-pair override applies in either role, after small-contact handling,
+following preservation's [weighted overlap contract](https://github.com/michidk/redguard-preservation/blob/d86699d/docs/engine/player.md#weighted-actor-overlap-response).
 
 Installed `multitask PlayAnimation(10, 0)` calls retain a native animation request
 across main-thread loops and session restore. Function-form requests complete
@@ -73,6 +85,36 @@ and weapon publication skips killed receivers. `Resurrect`
 does not republish the removed geometry, following preservation's
 [lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
 
+Named lookup retains the first namespace registration after a created receiver
+loses its executable runtime. A lookup of that killed receiver reports an explicit
+unsupported error, including after restore; it does not select a later duplicate
+or expose the retained pose as live behavior. The namespace lifetime follows
+preservation's [registry contract](https://github.com/michidk/redguard-preservation/pull/160).
+The original's result when dereferencing the freed record remains Unknown.
+Direct actor-handle reads, mutations and execution also reject a retired created
+receiver. Logical variable targets use the same lifetime check, including after
+restore. Pending-kill receivers remain accessible until created-object cleanup;
+killed map records remain addressable. Retained records stay available to bounded
+diagnostics and snapshot storage. Logical variable identifiers do not establish
+parity with the original's raw actor references.
+Restore rejects a created executable saved without runtime and without its killed
+flag, before returning the replacement world. Retained lineup task references also
+reject retired created receivers before replacement; allocated live and pending-kill
+references remain valid.
+
+Verified: visible created objects maintain retained lights and flats before script
+dispatch, following preservation's [ordinary maintenance contract](https://github.com/michidk/redguard-preservation/pull/160).
+Script-created effects first advance on the next eligible update; hidden created
+objects retain their phases without consuming modulation random values.
+
+Created-object updates discard an already killed receiver's executable runtime.
+A receiver killed by its ordinary hook also skips its main program. Saved killed
+continuations obey the same exclusion after restoration, following preservation's
+[created-object lifecycle](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#removal-of-killed-created-objects).
+
+Automatic selected-player weapon validation also releases the retained attachment
+when its item is no longer an owned weapon, so rendering cannot keep the old sword.
+
 Projectile endpoint contact selects the target's initialized body spheres.
 Verified: attribute 56 suppresses those spheres. Vertex-bound RAVC volumes belong to
 a separate overlap owner and do not block projectile contact. The optional RAFS
@@ -88,13 +130,20 @@ continuations, then places both player records at the destination marker, follow
 preservation's [player entry contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#initial-player-animation-setup).
 Whole-session restoration retains the saved player pose.
 
+Session and retained-world restoration validate saved `PlayerLineUp` references
+before returning a replacement. An absent actor or the currently selected player
+cannot be restored as the retained reference. Valid references keep their saved
+actor index across generation replacement, following preservation's
+[alignment ownership contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#player-alignment-ownership-and-targets).
+
 Verified: logical sessions retain the selected player's rope jump latch separately
 from per-world rope records, following preservation's
 [saved global owner contract](https://github.com/michidk/redguard-preservation/blob/8f692dd2e2c9a9ea86a20a7eb74c7acac7cef39f/docs/formats/SAVEGAME.md#rope-jump-latch).
 A legacy session with an active selected-player rope attachment and no latch is
 rejected before replacement; a legacy detached session defaults the latch to false.
-Temporary world revisits do not restore this session owner. Other rope controller
-history and complete original load-policy parity remain unverified.
+Temporary world revisits do not restore this session owner. Jump release remembers
+the released rope for its cooldown even after restoring an attachment. Other rope
+controller history and complete original load-policy parity remain unverified.
 
 Verified: actor prelighting seals nonmoving static actors after fresh or retained
 entry initialization and before ordinary updates. It retains the resolved static
@@ -134,6 +183,17 @@ Verified: refused selected-player scripted directional checks retain the directi
 blocked response for collision-age maintenance without moving the player, following
 preservation's [walking support contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-forward-walk-support-checks).
 
+Verified: selected-player forward running in group 18 retains animation-owned
+movement after key release until the movement marker or idle transition stops it,
+following preservation's [release continuation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#continuation-after-input-release).
+The per-update called flag prevents a second movement step when the controller
+already moved the player.
+
+Ordinary simulation restores axis locks without publishing unattached matrix changes.
+The next model-presentation phase refreshes the retained matrix; explicit orientation
+operations keep their own refresh behavior. **Verified:** preservation
+[ordinary publication contract](https://github.com/michidk/redguard-preservation/pull/155).
+
 [SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
@@ -153,3 +213,19 @@ require `just gates`. Preserve successful checks when their inputs are unchanged
 Runtime changes also require the applicable headless, replay or original-game
 comparison. See [METHOD](../../docs/METHOD.md) and
 [SETUP](../../docs/SETUP.md) for the verification and launch workflows.
+
+Verified: point route initialization preserves current and pending animation playback,
+so walking can continue while a new route is selected. The animation-stop operation
+leaves playback unchanged, following preservation
+[point initialization](https://github.com/michidk/redguard-preservation/pull/156).
+
+Verified: held-node facing turns toward the node without the coordinate-facing
+arrival snap, preserving the final approach heading before walking claims a node.
+
+Verified: accepted compass item use consumes the shared HUD press, so the later
+HUD input pass preserves the toggle. Releasing the action key rearms it,
+following preservation's [compass contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#compass).
+
+Verified: slope turns publish the selected player's orientation matrix and angle history
+immediately through the shared turn service, following preservation's
+[ordinary slope response](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-slope-response).

@@ -99,6 +99,11 @@ pub struct MenuFace {
     pub vertices: [[f32; 5]; 3],
     pub texture: Option<usize>,
     pub color: [u8; 4],
+    /// Lighting level (0 to 255, every channel alike) at each corner. Textured pixels take the
+    /// level interpolated in screen space, converted to an integer `L`, and become
+    /// `floor(texel * (L + 1) / 256)`; `None` draws the texture unlit.
+    #[serde(default)]
+    pub light: Option<[f32; 3]>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

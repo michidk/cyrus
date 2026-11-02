@@ -16,7 +16,7 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-pub const CATALOG_VERSION: u32 = 26;
+pub const CATALOG_VERSION: u32 = 27;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

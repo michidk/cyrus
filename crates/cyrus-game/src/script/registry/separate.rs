@@ -152,6 +152,7 @@ impl ScriptWorld {
             let actor = &mut self.actors[index];
             if actor.control.as_ref().is_some_and(|control| control.killed) {
                 actor.runtime = None;
+                actor.created_retired = true;
                 continue;
             }
             if actor.runtime.is_none() || actor.failure().is_some() {
@@ -159,6 +160,14 @@ impl ScriptWorld {
             }
             self.snapshot_spatial(id)?;
             let result = (|| -> Result<()> {
+                if !self.actors[index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.hidden)
+                {
+                    self.actors[index].maintain_light(inputs.nominal_ticks.unwrap(), random)?;
+                    self.actors[index].maintain_flat(inputs.nominal_ticks.unwrap());
+                }
                 self.advance(
                     id,
                     ScriptStage::OrdinaryHook,
@@ -167,7 +176,12 @@ impl ScriptWorld {
                     Some(random),
                     budget,
                 )?;
-                if self.updates.task_system {
+                if self.updates.task_system
+                    && !self.actors[index]
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| control.killed)
+                {
                     self.advance(
                         id,
                         ScriptStage::OrdinaryMain,
@@ -182,6 +196,7 @@ impl ScriptWorld {
             let actor = &mut self.actors[index];
             if actor.control.as_ref().is_some_and(|control| control.killed) {
                 actor.runtime = None;
+                actor.created_retired = true;
             }
             if let Err(error) = result {
                 actor.update_failure = Some(format!(

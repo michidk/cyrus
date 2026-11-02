@@ -43,7 +43,7 @@ def main():
     name = "retro-idle"
     reader = MAGIC / "tools/original-state.py"
     if not reader.exists():
-        sys.exit(f"{reader} is missing; restore it from redguard-decomp research/supplements/2026-10-23-original-duel-compare")
+        sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
     try:
         ini.write_text(re.sub(r"(?m)^start_world=\d+", f"start_world={args.world}", original), errors="surrogateescape")
         sh("docker", "rm", "-f", name, check=False)

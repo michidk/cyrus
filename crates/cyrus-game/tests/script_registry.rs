@@ -172,6 +172,348 @@ fn cache() -> Scripts {
 }
 
 #[test]
+fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
+    use cyrus_game::script::ScriptInputs;
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.definition.references = vec!["angle.vy".into()];
+    scripts.instances[0].angles[1] = 111;
+    scripts.instances[1].angles[1] = 222;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.strings = vec!["logic".into()];
+    actor.program.entry = 3;
+    actor.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(1, "KillMe", CallKind::Function, vec![]),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Endint,
+            },
+        ),
+        (
+            3,
+            Step {
+                next: 4,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Read {
+                            place: Place::Property {
+                                object: Object::Named { string: 0 },
+                                reference: 0,
+                            },
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            4,
+            Step {
+                next: 5,
+                operation: Operation::End { target: 3 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity()?;
+    let mut world = ScriptWorld::prepare(&scripts, 1)?;
+    world.prepare_spatial()?;
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world.advance(
+        world.id(0)?,
+        ScriptStage::Body(Thread::Interrupt),
+        inputs,
+        Some(&mut |_, _| Ok(())),
+        None,
+        20,
+    )?;
+    world.update_created(
+        inputs,
+        &mut cyrus_game::random::EngineRandom::from_state(42),
+        &mut |_, _| Ok(()),
+        20,
+    )?;
+    world.advance(
+        world.id(1)?,
+        ScriptStage::Body(Thread::Main),
+        inputs,
+        None,
+        None,
+        20,
+    )?;
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    let killed = world.id(0)?;
+    assert_eq!(world.spatial(killed)?.query_pose()?.angles[1], 111);
+    world.set_actor_surface(killed, 7)?;
+    assert_eq!(world.actor_surface(killed)?, 7);
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), &[111]);
+    Ok(())
+}
+
+#[test]
+fn retired_created_references_are_unsupported_without_promoting_duplicates() -> anyhow::Result<()> {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    for (restore, target) in [false, true].into_iter().flat_map(|restore| {
+        [Object::Named { string: 0 }, Object::Local { index: 1 }]
+            .into_iter()
+            .map(move |target| (restore, target))
+    }) {
+        let mut scripts = cache();
+        scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
+        scripts.definition.references = vec!["angle.vy".into()];
+        let kill = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut actor = scripts.actors["LOGIC"].clone();
+        actor.instances = 1;
+        actor.code_origin += 1000;
+        actor.header_index += 100;
+        actor.namespace = Some("projectile".into());
+        actor.instance_variables = vec![vec![0, 0]];
+        actor.program.variables = vec![0, 0];
+        actor.program.strings = vec!["projectile".into()];
+        actor.program.entry = 3;
+        actor.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(kill, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::Assign {
+                        destination: Place::Local { index: 0 },
+                        formula: Formula {
+                            first: Value::Read {
+                                place: Place::Property {
+                                    object: target.clone(),
+                                    reference: 0,
+                                },
+                            },
+                            rest: vec![],
+                        },
+                    },
+                },
+            ),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: Operation::Endint,
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::Assign {
+                        destination: Place::Local { index: 0 },
+                        formula: Formula {
+                            first: Value::Read {
+                                place: Place::Property {
+                                    object: target.clone(),
+                                    reference: 0,
+                                },
+                            },
+                            rest: vec![],
+                        },
+                    },
+                },
+            ),
+            (
+                4,
+                Step {
+                    next: 5,
+                    operation: Operation::End { target: 3 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("PROJECTILE".into(), actor);
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity()?;
+        let (mut world, data, _) =
+            static_model_fixture_session(scripts.clone(), None, [10, 20, 30], false);
+        let creator = world.id(0)?;
+        let first = world.create_object(creator, "PROJECTILE", [0; 3], [0, 111, 0])?;
+        let reader = world.create_object(creator, "PROJECTILE", [0; 3], [0, 222, 0])?;
+        let inputs = ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        };
+        world.advance(
+            first,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )?;
+        assert_eq!(
+            world.actors()[first.index].runtime().unwrap().variables(),
+            &[111, 0]
+        );
+        // The killed record remains allocated until the created-object pass retires it.
+        world.advance(
+            reader,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            None,
+            None,
+            20,
+        )?;
+        assert_eq!(
+            world.actors()[reader.index].runtime().unwrap().variables(),
+            &[111, 0]
+        );
+        assert!(world.actors()[first.index].control_state().unwrap().killed);
+        assert_eq!(world.spatial(first)?.query_pose()?.angles[1], 111);
+        world.set_actor_surface(first, 7)?;
+        assert_eq!(world.actor_surface(first)?, 7);
+        world.update_created(
+            inputs,
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| Ok(()),
+            20,
+        )?;
+        assert!(world.actors()[first.index].runtime().is_none());
+        world.update_created(
+            inputs,
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| Ok(()),
+            20,
+        )?;
+        let fresh = world.create_object(creator, "PROJECTILE", [0; 3], [0, 333, 0])?;
+        if restore {
+            let collision = Default::default();
+            let sources = WorldSnapshotSources {
+                identity_memo: None,
+                effects: None,
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &collision,
+            };
+            let saved = world.snapshot(&sources)?;
+            let mut invalid = serde_json::to_value(&saved)?;
+            invalid["actors"][first.index]["control"]["killed"] = false.into();
+            let before = world.inspect(0, 64);
+            let error = ScriptWorld::from_snapshot(
+                serde_json::from_value(invalid)?,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals: Default::default(),
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .err()
+            .expect("an executable created actor cannot lose runtime before killed cleanup");
+            assert!(
+                format!("{error:#}")
+                    .contains("created actor executable absent without killed cleanup"),
+                "{error:#}"
+            );
+            assert_eq!(world.inspect(0, 64), before);
+            let globals = std::mem::take(world.globals_mut());
+            world = ScriptWorld::from_snapshot(
+                saved,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals,
+                    samples: &BTreeMap::new(),
+                },
+            )?;
+        }
+        let first = world.id(first.index)?;
+        let fresh = world.id(fresh.index)?;
+        assert_eq!(world.spatial(fresh)?.query_pose()?.angles[1], 333);
+        let before = world.inspect(0, 64);
+        for result in [
+            world.spatial(first).map(|_| ()),
+            world.set_actor_surface(first, 9),
+            world.snapshot_spatial(first),
+            world.advance(
+                first,
+                ScriptStage::Body(Thread::Main),
+                inputs,
+                None,
+                None,
+                20,
+            ),
+            world
+                .create_object(first, "PROJECTILE", [0; 3], [0; 3])
+                .map(|_| ()),
+        ] {
+            let error =
+                result.expect_err("direct access to a retired created receiver is unsupported");
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("world 7")
+                    && message.contains(&format!(
+                        "retired created receiver {} PROJECTILE",
+                        first.index
+                    ))
+                    && message.contains("unsupported"),
+                "{message}"
+            );
+        }
+        assert_eq!(world.inspect(0, 64), before);
+
+        let error = world
+            .advance(
+                fresh,
+                ScriptStage::Body(Thread::Main),
+                inputs,
+                None,
+                None,
+                20,
+            )
+            .expect_err("retired target must not return its old pose or a duplicate's pose");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("world 7")
+                && message.contains("object target")
+                && message.contains(&format!(
+                    "retired created receiver {} PROJECTILE",
+                    first.index
+                ))
+                && message.contains("unsupported"),
+            "{message}"
+        );
+        assert_eq!(
+            world.actors()[fresh.index].runtime().unwrap().variables(),
+            &[0, 0]
+        );
+        assert_eq!(world.flags(), &[12]);
+    }
+    Ok(())
+}
+
+#[test]
 fn created_objects_use_identifier_zero_and_first_namespace_registration_wins() {
     let mut scripts = cache();
     scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
@@ -4409,6 +4751,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     };
     let mut initial_roles = role_snapshot(&app);
     assert_eq!(initial_roles["actors"][0]["attributes"][23], 1);
+    assert!(initial_roles["actors"][0]["weapon"].is_object());
     assert_eq!(initial_roles["actors"][1]["attributes"][23], 1);
     assert_eq!(
         initial_roles["actors"][0]["animation"]["frame"], 1,
@@ -4534,7 +4877,12 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         0,
         "presentation must recover the authoritative logical heading"
     );
+    assert!(
+        role_snapshot(&app)["actors"][0]["weapon"].is_null(),
+        "losing weapon ownership must release its displayed attachment"
+    );
     initial_roles["actors"][0]["attributes"][23] = serde_json::json!(0);
+    initial_roles["actors"][0]["weapon"] = serde_json::Value::Null;
     assert_eq!(role_snapshot(&app)["actors"], initial_roles["actors"]);
     assert!(
         app.world_mut()
@@ -7580,10 +7928,19 @@ fn overlap_response_fixture_edited(
 #[test]
 fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() {
     use cyrus_game::script::OrdinaryOverlapMotion as Motion;
-    for (weight, other_weight, expected_actor, expected_other, actor_distance, other_distance) in [
-        (128, 128, 1025, 23039, 1535, 1535),
-        (128, 0, 1453, 21504, 1107, 0),
-        (0, 128, 2560, 22611, 0, 1107),
+    // Inferred from initialized quarter-turn residuals and stored forward translation.
+    for (
+        weight,
+        other_weight,
+        expected_actor,
+        expected_z,
+        expected_other,
+        actor_distance,
+        other_distance,
+    ) in [
+        (128, 128, 1025, 7679, 23039, 1535, 1535),
+        (128, 0, 1453, 7679, 21504, 1107, 0),
+        (0, 128, 2560, 7680, 22611, 0, 1107),
     ] {
         let (mut world, data) = overlap_response_fixture(weight, other_weight, 74);
         let id = world.id(0).unwrap();
@@ -7599,7 +7956,7 @@ fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() 
         );
         assert_eq!(
             world.spatial(id).unwrap().local.position,
-            [expected_actor, 5120, 7680]
+            [expected_actor, 5120, expected_z]
         );
         assert_eq!(
             world.spatial(other).unwrap().local.position,
@@ -10348,6 +10705,32 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
     assert_eq!(
         world.actors()[0].control_state().unwrap().sliding_distance,
         512
+    );
+
+    // A backward slope turns the selected player and publishes its orientation immediately.
+    let backward = SelectedSupport::Primary {
+        source: SupportSource::Terrain,
+        support: GroundSupport {
+            height: 20.0,
+            normal: [200, -100, -200],
+        },
+    };
+    let before = world.spatial(id).unwrap().local.angles;
+    world
+        .resolve_ordinary_slope(
+            id,
+            Some(&backward),
+            query(),
+            inputs(Some(id)),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let spatial = world.spatial(id).unwrap();
+    assert_ne!(spatial.local.angles, before);
+    assert_eq!(spatial.angle_history, spatial.local.angles);
+    assert_eq!(
+        spatial.local.matrix,
+        cyrus_world::transform::Matrix::orientation(spatial.local.angles)
     );
 }
 
@@ -13811,12 +14194,13 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         )
         .unwrap();
     let after = world.spatial(player).unwrap().local;
-    // Left steps a quarter turn off the heading: X moves, Z and the heading do not.
+    // Inferred: the initialized quarter-turn residual lowers stored Z by one Q8 unit.
+    // The sidestep preserves the heading.
     assert_ne!(
         after.position[0], before.position[0],
         "{before:?} -> {after:?}"
     );
-    assert_eq!(after.position[2], before.position[2]);
+    assert_eq!(after.position[2], before.position[2] - 1);
     assert_eq!(after.angles, before.angles);
     assert_eq!(
         world.actors()[index]
@@ -16038,6 +16422,92 @@ fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
         world.model_presentation(root).unwrap().unwrap().position,
         [10.0, 20.0, 30.0]
     );
+}
+
+#[test]
+fn ordinary_heading_assignment_waits_for_the_next_model_matrix_refresh() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = heading_property_scripts(294, Object::Me);
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Property {
+            object: Object::Me,
+            reference: 294,
+        },
+        formula: Formula {
+            first: Value::Integer { value: 512 },
+            rest: vec![],
+        },
+    };
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (mut world, data, _) = static_model_fixture(scripts);
+    let id = world.id(0).unwrap();
+    world
+        .prepare_model_admission(&Default::default(), 0)
+        .unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let before = world.spatial(id).unwrap().local;
+    assert_eq!(before.angles[1], 1536);
+    world
+        .update_ordinary(
+            &data,
+            [0; 2],
+            OrdinaryInputs {
+                scripts: inputs,
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[id.index].failure().is_none(),
+        "{:?}",
+        world.actors()[id.index].failure()
+    );
+    let after = world.spatial(id).unwrap();
+    assert_eq!(after.local.angles[1], 512);
+    assert_eq!(after.local.matrix, before.matrix);
+    assert_eq!(after.angle_history[1], 1536);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let published = world.spatial(id).unwrap();
+    assert_eq!(published.local.angles[1], 512);
+    assert_ne!(published.local.matrix, before.matrix);
+    assert_eq!(published.effective.unwrap().angles[1], 512);
 }
 
 #[test]
@@ -25808,7 +26278,7 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
 fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_a_map() {
     use cyrus_game::script::ScriptInputs;
     for (position, hit) in [([0, 0, 0], true), ([90_000_000, 0, 90_000_000], false)] {
-        let (mut world, ..) = free_node_fixture(
+        let (mut world, scripts, data) = free_node_fixture(
             serde_json::json!([{"node_count":2,"walk_nodes":[walk_node([0,0,0]),walk_node([5,0,0])]}]),
             0,
             |saved| {
@@ -25816,6 +26286,8 @@ fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_
                 saved["actors"][0]["control"]["point_command"]["phase"] = 0.into();
             },
         );
+        let animation_before =
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"].clone();
         let id = world.id(0).unwrap();
         let result = world
             .move_ordinary_point(
@@ -25832,6 +26304,11 @@ fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_
             )
             .unwrap();
         assert_eq!(result, 1, "the wrapper stays pending");
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"],
+            animation_before,
+            "route initialization preserves current and pending playback"
+        );
         let control = world.actors()[0].control_state().unwrap();
         if hit {
             assert_eq!(control.navigation.map, Some(0));
@@ -26749,7 +27226,12 @@ fn point_walking_continues_then_claims_or_releases_nodes_with_one_registration()
 #[test]
 fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_result() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
-    for (exited, heading) in [(false, 56), (true, 64)] {
+    for (exited, heading, distance, phase, movement_flags) in [
+        (false, 56, 4096, 2, 0x10),
+        (true, 64, 4096, 2, 0x10),
+        (false, 56, 128, 8, 0),
+        (true, 64, 128, 8, 0),
+    ] {
         let (world, scripts, data) = point_node_fixture(8);
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][0]["attributes"][15] = 8.into();
@@ -26759,9 +27241,10 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
         saved["actors"][0]["control"]["navigation"] =
             serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
         saved["actors"][0]["control"]["point_command"]["phase"] = 2.into();
-        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([256, 200, -3328]);
+        saved["spatial"]["actors"][0]["local"]["position"] =
+            serde_json::json!([256, 200, 768 - distance]);
         saved["spatial"]["actors"][0]["previous_local_position"] =
-            serde_json::json!([256, 200, -3328]);
+            serde_json::json!([256, 200, 768 - distance]);
         saved["spatial"]["actors"][0]["local"]["angles"][1] = 64.into();
         let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
         let id = world.id(0).unwrap();
@@ -26790,13 +27273,13 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
                 .unwrap()
                 .point_command
                 .phase,
-            2
+            phase
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().movement_flags,
-            0x10
+            movement_flags
         );
-        assert!(world.spatial(id).unwrap().local.position[2] > -3328);
+        assert!(world.spatial(id).unwrap().local.position[2] > 768 - distance);
     }
 }
 
@@ -30849,6 +31332,312 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
     }
 }
 
+#[test]
+fn initialized_lineup_references_are_validated_before_session_replacement() {
+    use cyrus_game::{
+        clock::SimulationClock,
+        player::input::PlayerToggles,
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        random::EngineRandom,
+        script::{
+            LocomotionGeometry, LogicalSessionRestoreInputs, LogicalSessionSnapshot,
+            ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource, ScriptActors,
+            ScriptHud, ScriptInputs, ScriptStage, WorldSnapshotSources,
+        },
+    };
+    struct Store;
+    impl PreferenceStore for Store {
+        fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        scripts.lineup_distance = Some(i32::MAX);
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "PlayerLineUp".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        scripts.definition.attributes[12] = "attr_walk_speed".into();
+        scripts
+            .actors
+            .get_mut("CYRUS")
+            .unwrap()
+            .attributes
+            .insert("attr_walk_speed".into(), 3);
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            id,
+            "PlayerLineUp",
+            CallKind::Task,
+            vec![
+                Value::Integer { value: 1024 },
+                Value::Integer { value: 0 },
+                Value::Integer { value: -2048 },
+            ],
+        );
+        let kill_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "KillMe".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut created = scripts.actors["LOGIC"].clone();
+        created.code_origin += 1000;
+        created.header_index += 100;
+        created.instances = 1;
+        created.namespace = None;
+        created.instance_variables = vec![vec![0]];
+        created.program.entry = 3;
+        created.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::Endint,
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::End { target: 3 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("REFERENCE".into(), created);
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    let receiver = world.id(0).unwrap();
+    let actors = [player, receiver];
+    let preferences = Preferences::new(Store);
+    let asset = inventory_asset(&[]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)
+        .unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        player_collision: Some(PlayerCollisionSource {
+            scene: &scene,
+            animations: &data,
+            view: [10, 30],
+            actors: &actors,
+        }),
+        locomotion_geometry: Some(LocomotionGeometry {
+            ground: OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            environment: ObstacleEnvironment {
+                selected_player: Some(player),
+                auto_grab: false,
+                item_system_ready: false,
+                shell_execution: false,
+                ticks: 1,
+            },
+        }),
+        ..Default::default()
+    };
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut random = EngineRandom::from_state(42);
+    world
+        .advance(
+            receiver,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let retired_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+    world
+        .advance(
+            retired_reference,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    world
+        .update_created(inputs, &mut random, &mut |_, _| Ok(()), 20)
+        .unwrap();
+    let live_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+    let pending_reference = world
+        .create_object(receiver, "REFERENCE", [0; 3], [0; 3])
+        .unwrap();
+
+    world
+        .advance(
+            pending_reference,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    assert!(world.actors()[live_reference.index].runtime().is_some());
+    assert!(
+        world.actors()[pending_reference.index]
+            .control_state()
+            .unwrap()
+            .killed
+    );
+    assert!(world.actors()[pending_reference.index].runtime().is_some());
+    assert!(world.actors()[retired_reference.index].runtime().is_none());
+    assert!(world.spatial(retired_reference).is_err());
+    let before = world.inspect(0, 64);
+    let collision = Default::default();
+    let sources = BTreeMap::from([(
+        scripts.world,
+        WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        },
+    )]);
+    let mut registry = ScriptActors::default();
+    registry.current = Some(world);
+    let saved = serde_json::to_value(
+        registry
+            .snapshot_session(
+                &sources,
+                &hud,
+                &SimulationClock::new(scripts.clock).unwrap(),
+                &random,
+                PlayerToggles {
+                    walk_mode: true,
+                    auto_defend: false,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let task = &saved["registry"]["worlds"][0]["actors"][0]["tasks"];
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["initialized"], true);
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["approach"], false);
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["reference"], 0);
+    let restore = |document| {
+        serde_json::from_value::<LogicalSessionSnapshot>(document)
+            .unwrap()
+            .plan(LogicalSessionRestoreInputs {
+                sources: &sources,
+                last_generation: 100,
+                hud: &asset,
+                preferences: &preferences,
+                bios_tick: 100,
+            })
+            .unwrap()
+            .finish(&(0..16).map(|slot| (slot, slot)).collect())
+    };
+    for (reference, expected) in [
+        (9999, "stale or absent saved owner"),
+        (player.index, "lineup reference is the selected player"),
+        (retired_reference.index, "retired created receiver"),
+    ] {
+        let mut invalid = saved.clone();
+        invalid["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+            reference.into();
+        let error = restore(invalid)
+            .err()
+            .expect("invalid retained reference must reject before session replacement");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(expected)
+                && message.contains("actor 0 saved task references")
+                && message.contains("native PlayerLineUp token"),
+            "{message}"
+        );
+        assert_eq!(registry.current.as_ref().unwrap().inspect(0, 64), before);
+    }
+    let alternate = registry
+        .current
+        .as_ref()
+        .unwrap()
+        .actors()
+        .iter()
+        .position(|actor| {
+            matches!(
+                actor.source,
+                cyrus_game::script::ScriptActorSource::AlternatePlayer
+            )
+        })
+        .unwrap();
+    let mut swapped = saved.clone();
+    swapped["registry"]["globals"]["player_swapped"] = true.into();
+    swapped["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+        alternate.into();
+    let error = restore(swapped)
+        .err()
+        .expect("swapped selected-player reference must reject");
+    assert!(
+        format!("{error:#}").contains("lineup reference is the selected player"),
+        "{error:#}"
+    );
+    let mut nonselected = saved.clone();
+    nonselected["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+        alternate.into();
+    assert!(
+        restore(nonselected).is_ok(),
+        "the unselected player role remains a valid reference"
+    );
+    for reference in [live_reference, pending_reference] {
+        let mut valid = saved.clone();
+        valid["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+            reference.index.into();
+        let restored =
+            restore(valid).expect("allocated created references remain valid until cleanup");
+        let world = restored.actors.current.unwrap();
+        assert!(world.spatial(world.id(reference.index).unwrap()).is_ok());
+        assert_eq!(registry.current.as_ref().unwrap().inspect(0, 64), before);
+    }
+    let restored = restore(saved.clone()).unwrap();
+    let restored_world = restored.actors.current.unwrap();
+    assert_eq!(restored_world.generation(), 101);
+    let roundtrip =
+        serde_json::to_value(restored_world.snapshot(&sources[&scripts.world]).unwrap()).unwrap();
+    assert_eq!(&roundtrip["actors"][0]["tasks"], task);
+}
+
 #[path = "script_registry/effects.rs"]
 mod environmental_effect_tests;
 
@@ -31134,6 +31923,15 @@ fn block_message_handoff_gates_skip_unavailable_traversal_and_selected_death_que
 
 #[test]
 fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_list() {
+    check_scripted_item_use(false);
+}
+
+#[test]
+fn scripted_item_use_preserves_the_rope_association() {
+    check_scripted_item_use(true);
+}
+
+fn check_scripted_item_use(on_rope: bool) {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
@@ -31179,6 +31977,8 @@ fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_
         item.drop_use_items = vec![5];
     }
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let player = world.selected_player().unwrap();
+    world.set_rope_attached_for_test(player, on_rope);
     let map = world.id(0).unwrap();
     let inputs = |hud| ScriptInputs {
         hud: Some(hud),
@@ -31214,6 +32014,7 @@ fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_
         )
         .unwrap();
     assert!(world.actors().last().unwrap().failure().is_none());
+    assert_eq!(world.selected_player_on_rope(), on_rope);
 }
 
 fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
@@ -31947,6 +32748,96 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
 }
 
 #[test]
+fn compass_item_use_is_not_repeated_by_the_hud_for_the_same_press() {
+    use cyrus_game::script::{CompassUse, QuickKeys, ScriptInputs};
+    let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(0, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    hud.select_item(0).unwrap();
+    let inputs = ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        quick_keys: Some(QuickKeys {
+            sword: false,
+            health: false,
+            use_selected: true,
+        }),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::default();
+    for expected in [true, false, true] {
+        world.globals_mut().end_item_use_attempt();
+        world
+            .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(
+            hud.inspect()["compass_on"],
+            expected,
+            "item use toggles once"
+        );
+        for _ in 0..3 {
+            assert_eq!(
+                hud.compass_input(true, CompassUse::Accepted),
+                expected,
+                "the HUD must not repeat an accepted item use while held"
+            );
+        }
+        assert_eq!(hud.compass_input(false, CompassUse::Blocked), expected);
+    }
+    assert_eq!(hud.inventory(None).unwrap().counts[&0], 1);
+}
+
+#[test]
+fn the_action_key_does_not_use_the_selected_item_on_a_rope() {
+    use cyrus_game::script::{QuickKeys, ScriptInputs};
+    let use_item = |rope: bool| {
+        let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
+        let player = world
+            .id(world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Player)
+                })
+                .unwrap())
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        // Flag bit four empties the item once it is used, which makes a use observable.
+        let mut asset = inventory_asset(&[(4, 1)]);
+        asset.inventory.get_mut(&4).unwrap().flags = 4;
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        hud.select_item(4).unwrap();
+        world.set_attribute_for_test(player, 3, 60);
+        world.globals_mut().initialize_selected_health_for_test(60);
+        world.set_rope_attached_for_test(player, rope);
+        let inputs = ScriptInputs {
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            quick_keys: Some(QuickKeys {
+                sword: false,
+                health: false,
+                use_selected: true,
+            }),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::default();
+        world
+            .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        hud.inventory(None).unwrap().counts[&4]
+    };
+    assert_eq!(use_item(false), 0, "the selected potion is used up");
+    assert_eq!(use_item(true), 1, "a player on a rope does not use it");
+}
+
+#[test]
 fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weapon() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
@@ -32379,6 +33270,288 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
     assert_eq!(restored.actors().len(), census + 1);
     let id = restored.id(created.index).unwrap();
     assert_eq!(restored.spatial(id).unwrap().local.position, at);
+}
+
+#[test]
+fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Result<()> {
+    use anyhow::{Context, ensure};
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
+        ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    for restore_before_cleanup in [false, true] {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+            scripts.lineup_distance = Some(i32::MAX);
+            scripts.definition.attributes[12] = "attr_walk_speed".into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("attr_walk_speed".into(), 3);
+            let lineup_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: "PlayerLineUp".into(),
+                param_count: 3,
+                kind: CallKind::Task,
+            });
+            let kill_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: "KillMe".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+            program.entry = 3;
+            program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Endint,
+                    },
+                ),
+                (
+                    3,
+                    Step {
+                        next: 4,
+                        operation: wait(
+                            lineup_id,
+                            "PlayerLineUp",
+                            CallKind::Task,
+                            vec![
+                                Value::Integer { value: 1024 },
+                                Value::Integer { value: 0 },
+                                Value::Integer { value: -2048 },
+                            ],
+                        ),
+                    },
+                ),
+                (
+                    4,
+                    Step {
+                        next: 5,
+                        operation: set_flag(7),
+                    },
+                ),
+                (
+                    5,
+                    Step {
+                        next: 6,
+                        operation: Operation::End { target: 3 },
+                    },
+                ),
+            ]);
+        });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        let player = world.selected_player().context("selected player")?;
+        let creator = world.id(0)?;
+        let receiver = world.create_object(creator, "LOGIC", [0; 3], [0; 3])?;
+        let actors = [player, creator, receiver];
+        let hud = cyrus_game::script::ScriptHud::default();
+        let prepared =
+            world.prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)?;
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            shell_execution: Some(false),
+            hud: Some(&hud),
+            player_collision: Some(PlayerCollisionSource {
+                scene: &scene,
+                animations: &data,
+                view: [10, 30],
+                actors: &actors,
+            }),
+            locomotion_geometry: Some(LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                environment: ObstacleEnvironment {
+                    selected_player: Some(player),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            }),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        world.begin_player_movement_update(player, 0)?;
+        world.advance(
+            receiver,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+        ensure!(
+            world.actors()[receiver.index]
+                .runtime()
+                .context("receiver runtime")?
+                .active_tasks()
+                == 1,
+            "alignment must be active before kill"
+        );
+        let before = world.inspect(receiver.index, 1);
+        let flags = world.flags().to_vec();
+        let position = world.spatial(player)?.local.position;
+        let result = before["globals"]["lineup_result"].clone();
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let active = serde_json::to_value(world.snapshot(&sources)?)?;
+        let task = &active["actors"][receiver.index]["tasks"]["tasks"][0]["state"]["LineUp"];
+        ensure!(
+            task["initialized"] == true && task["reference"] == receiver.index,
+            "created owner must retain its own initialized reference"
+        );
+        world.advance(
+            receiver,
+            ScriptStage::Body(Thread::Interrupt),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+        ensure!(
+            world.actors()[receiver.index]
+                .control_state()
+                .context("control")?
+                .killed,
+            "independent interrupt did not kill receiver"
+        );
+        ensure!(
+            world.actors()[receiver.index]
+                .runtime()
+                .context("runtime before cleanup")?
+                .active_tasks()
+                == 0,
+            "kill retained task"
+        );
+
+        if restore_before_cleanup {
+            let globals = std::mem::take(world.globals_mut());
+            let saved = world.snapshot(&sources)?;
+            world = ScriptWorld::from_snapshot(
+                saved,
+                &sources,
+                WorldRestoreContext {
+                    generation: 101,
+                    globals,
+                    samples: &BTreeMap::new(),
+                },
+            )?;
+        }
+        let player = world
+            .selected_player()
+            .context("selected player after replacement")?;
+        let receiver = world.id(receiver.index)?;
+        for _ in 0..3 {
+            world.update_created(
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| panic!("killed receiver must not emit sounds"),
+                100,
+            )?;
+            ensure!(
+                world.actors()[receiver.index].runtime().is_none(),
+                "cleanup retained executable runtime"
+            );
+            ensure!(
+                world.actors()[receiver.index].failure().is_none(),
+                "killed receiver attempted a failing continuation"
+            );
+            ensure!(
+                world.spatial(player)?.local.position == position,
+                "killed receiver moved player"
+            );
+            ensure!(
+                world.inspect(receiver.index, 1)["globals"]["lineup_result"] == result,
+                "killed receiver published lineup completion"
+            );
+            ensure!(
+                world.flags() == flags,
+                "waiting main continuation executed after kill"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn created_object_killed_by_its_hook_does_not_run_main() {
+    use cyrus_game::script::ScriptInputs;
+    let mut scripts = cache();
+    let kill_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: "KillMe".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let template = scripts.actors.get_mut("LOGIC").unwrap();
+    template.native_hook = Some(Call {
+        function_id: kill_id,
+        function: "KillMe".into(),
+        target: Object::Me,
+        kind: CallKind::Function,
+        arguments: vec![],
+    });
+    template.program.steps.get_mut(&0).unwrap().operation = set_flag(7);
+    let (mut world, _, _) = static_model_fixture(scripts);
+    let creator = world.id(0).unwrap();
+    let receiver = world
+        .create_object(creator, "LOGIC", [0; 3], [0; 3])
+        .unwrap();
+    let flags = world.flags().to_vec();
+    world
+        .update_created(
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            20,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[receiver.index]
+            .control_state()
+            .unwrap()
+            .killed
+    );
+    assert!(world.actors()[receiver.index].runtime().is_none());
+    assert!(world.actors()[receiver.index].failure().is_none());
+    assert_eq!(
+        world.flags(),
+        flags,
+        "main ran after the hook killed its receiver"
+    );
 }
 
 #[test]
@@ -32929,6 +34102,77 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
 }
 
 #[test]
+fn combat_hit_from_a_sender_without_an_attack_slot_deals_no_damage() {
+    use cyrus_game::script::{CombatControlState, ScriptHud, ScriptInputs};
+
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            let mut instance = scripts.instances[0].clone();
+            instance.object_id = 2;
+            scripts.instances.push(instance);
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.instances = 3;
+            actor.instance_variables = vec![vec![4]; 3];
+            for instance in &mut scripts.instances {
+                instance.active = 1;
+            }
+            scripts.combat_attacks = vec![cyrus_assets::script::combat::Attack {
+                is_combo: false,
+                motions: vec![
+                    serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "damage":1,"first_collide_frame":0,"collide_duration":1
+                    }))
+                    .unwrap(),
+                ],
+                min_range: 0,
+                max_range: 100,
+            }];
+        },
+        |saved| {
+            for (index, slot) in [(1, 0), (2, -1)] {
+                saved["actors"][index]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        attacker_selection_state: 1,
+                        action: 0,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, slot],
+                        ..Default::default()
+                    })
+                    .unwrap();
+            }
+            saved["actors"][1]["attributes"][3] = 40.into();
+        },
+    );
+    let receiver = world.id(1).unwrap();
+    let sender = world.id(2).unwrap();
+    let hud = ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(1, 0)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world.send_combat_message(sender, receiver, 0xd001).unwrap();
+    world
+        .process_combat_message_with_services(
+            receiver,
+            None,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut cyrus_game::random::EngineRandom::default()),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.actors()[receiver.index].attributes()[3], 40);
+}
+
+#[test]
 fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
     use cyrus_game::script::{CombatControlState, ScriptHud, ScriptInputs};
 
@@ -33017,16 +34261,27 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
 
 #[test]
 fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
+    ordinary_animated_fall_landing(false, false);
+}
+
+#[test]
+fn ordinary_update_resolves_landing_surface_before_fatal_damage() {
+    ordinary_animated_fall_landing(true, true);
+    ordinary_animated_fall_landing(false, true);
+}
+
+fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool) {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
     scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
-        death_height: 568,
-        hurt_height: 300,
+        death_height: if fatal_distance { 1 } else { 568 },
+        hurt_height: if fatal_distance { 0 } else { 300 },
         hurt_zap: 10,
         bounce_height: None,
     });
     scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+    attributes.insert("attr_3".into(), 100);
     attributes.insert("attr_1".into(), 4);
     attributes.insert("attr_32".into(), 32);
     for placement in &mut scripts.instances {
@@ -33043,14 +34298,14 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
         .unwrap();
     definition["model_load_path"] = "animation_table".into();
     definition["animation_groups"] =
-        serde_json::json!([0, 56, 57, 65].map(|group| serde_json::json!({
+        serde_json::json!([0, 56, 57, 65, 74].map(|group| serde_json::json!({
             "group_index":group,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
         })));
     world
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(id, 7).unwrap();
+    world.set_actor_surface(id, 0).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let start_y = world.spatial(id).unwrap().local.position[1];
@@ -33103,22 +34358,26 @@ fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() 
         world.actors()[id.index].control_state().unwrap().fall_timer,
         14
     );
-    // Terrain at the actor's height returns support: the fall ends without damage and
-    // the landing animation request clears the falling byte.
+    // Water suppresses damage even beyond the fatal threshold; dry support still applies it.
     let y_map = i16::try_from(world.spatial(id).unwrap().local.position[1] >> 8).unwrap();
     scene.terrain = Some(
         cyrus_collision::ground::TerrainGround::new(
             vec![y_map + 3; 256 * 256],
             vec![false; 256 * 256],
-            None,
+            Some(vec![if water { 0 } else { 1 }; 256 * 256]),
         )
         .unwrap(),
     );
-    let health_before = world.actors()[id.index].attributes()[3];
+    scene.collision.texture_surfaces = Some(Default::default());
+    assert_eq!(world.actor_surface(id).unwrap(), 0);
     step(&mut world, &scene);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.falling_state, 0);
-    assert_eq!(world.actors()[id.index].attributes()[3], health_before);
+    assert_eq!(world.actor_surface(id).unwrap(), if water { 4 } else { 0 });
+    assert_eq!(
+        world.actors()[id.index].attributes()[3],
+        if water || !fatal_distance { 100 } else { 0 }
+    );
 }
 
 #[test]
@@ -33453,7 +34712,13 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
             .unwrap();
         let actor = &world.actors()[ball.index];
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
-        positions.push(world.spatial(ball).unwrap().local.position);
+        // The final killed pose is retained for diagnostics, not live access.
+        positions.push(
+            serde_json::from_value::<[i32; 3]>(
+                world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"].clone(),
+            )
+            .unwrap(),
+        );
         if actor.control_state().unwrap().killed {
             break;
         }
@@ -33581,7 +34846,14 @@ fn projectile_ai_stops_at_a_wall_contact() {
                 .unwrap();
             let actor = &world.actors()[ball.index];
             assert!(actor.failure().is_none(), "{:?}", actor.failure());
-            path.push(world.spatial(ball).unwrap().local.position);
+            // The contact pose remains in diagnostic storage after cleanup.
+            path.push(
+                serde_json::from_value::<[i32; 3]>(
+                    world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"]
+                        .clone(),
+                )
+                .unwrap(),
+            );
             if actor.control_state().unwrap().killed {
                 break;
             }
@@ -35171,7 +36443,10 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
 
         assert_eq!(
-            world.spatial(ball).unwrap().local.position,
+            serde_json::from_value::<[i32; 3]>(
+                world.inspect(ball.index, 1)["actors"][0]["spatial"]["local"]["position"].clone(),
+            )
+            .unwrap(),
             if !expected_hit {
                 [600 << 8, 20 << 8, 1000 << 8]
             } else {
@@ -35386,6 +36661,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     scene: Some(&scene),
                     scripts: ScriptInputs {
                         nominal_ticks: Some(1),
+                        fine_ticks: Some(8),
                         frame_scale: Some(256),
                         shell_execution: Some(false),
                         player_controller: Some(PlayerControllerInput {
@@ -35516,6 +36792,15 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     .as_u64(),
                 Some(85)
             );
+            for _ in 0..2 {
+                tick(live, false);
+                assert!(
+                    !live.selected_player_on_rope(),
+                    "jump cooldown must prevent regrabbing the released rope after restore"
+                );
+                assert!(live.ropes()[0].attachments.is_empty());
+                assert!(live.actors()[index].control_state().unwrap().jump_selector > 0);
+            }
         }
         let mut detached = ScriptActors::default();
         detached.current = Some(restored);
@@ -35692,4 +36977,344 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         world.equipped_weapon(id).unwrap().is_none(),
         "Resurrect must not republish stale attachment geometry"
     );
+}
+
+// Saved session owners establish the fixture without adding runtime setters.
+fn selected_overlap_fixture(
+    lineup: Option<i32>,
+    lockout: Option<u16>,
+    other_weight: u8,
+    offset: i32,
+) -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    use cyrus_game::{
+        clock::SimulationClock,
+        player::input::PlayerToggles,
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        random::EngineRandom,
+        script::{
+            LogicalSessionRestoreInputs, LogicalSessionSnapshot, ScriptActors, ScriptHud,
+            WorldSnapshotSources,
+        },
+    };
+    struct Store;
+    impl PreferenceStore for Store {
+        fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let (scripts, mut world, mut data, mut scene) = player_walking_fixture();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    world
+        .prepare_ordinary_collision_shape(player, &data, &scene)
+        .unwrap();
+    let collision = Default::default();
+    let sources = BTreeMap::from([(
+        scripts.world,
+        WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        },
+    )]);
+    let asset = inventory_asset(&[]);
+    let preferences = Preferences::new(Store);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let mut actors = ScriptActors::default();
+    actors.current = Some(world);
+    let mut saved = serde_json::to_value(
+        actors
+            .snapshot_session(
+                &sources,
+                &hud,
+                &SimulationClock::new(scripts.clock).unwrap(),
+                &EngineRandom::from_state(42),
+                PlayerToggles {
+                    walk_mode: true,
+                    auto_defend: false,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    saved["registry"]["globals"]["lineup_result"] = serde_json::to_value(lineup).unwrap();
+    saved["registry"]["globals"]["lockout"] = serde_json::to_value(lockout).unwrap();
+    let saved_world = &mut saved["registry"]["worlds"][0];
+    for (index, position, weight) in [
+        (player.index, [133632, 5120, 7680], 128),
+        (0, [133632, 5120, 7680 + offset * 256], other_weight),
+    ] {
+        saved_world["actors"][index]["attributes"][6] = weight.into();
+        let spatial = &mut saved_world["spatial"]["actors"][index];
+        spatial["local"]["position"] = serde_json::json!(position);
+        if spatial["effective"].is_object() {
+            spatial["effective"]["position"] = serde_json::json!(position);
+        }
+        spatial["previous_local_position"] =
+            serde_json::json!([position[0] - 256, position[1], position[2]]);
+    }
+    let mut world = serde_json::from_value::<LogicalSessionSnapshot>(saved)
+        .unwrap()
+        .plan(LogicalSessionRestoreInputs {
+            sources: &sources,
+            last_generation: 10,
+            hud: &asset,
+            preferences: &preferences,
+            bios_tick: 100,
+        })
+        .unwrap()
+        .finish(&(0..16).map(|slot| (slot, slot)).collect())
+        .unwrap()
+        .actors
+        .current
+        .unwrap();
+    let player = world.selected_player().unwrap();
+    world.refresh_model_presentations(&data, &[player]).unwrap();
+    let definition = scene.definition.take();
+    scene = static_overlap_scene(world.world);
+    scene.definition = definition;
+    scene.collision.placements[0].position = [574, 20, 30];
+    scene.static_collision =
+        cyrus_collision::collision_world::StaticCollision::new(&scene.collision).unwrap();
+    (world, data, scene)
+}
+
+#[test]
+fn selected_overlap_mobility_protects_both_pair_roles_without_changing_weights() {
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    for (lineup, lockout) in [(0, 0), (1, 0), (-1, 0), (0, 2), (1, 1)] {
+        for player_updates in [true, false] {
+            let (mut world, data, _) =
+                selected_overlap_fixture(Some(lineup), Some(lockout), 128, 50);
+            let player = world.selected_player().unwrap();
+            let other = world.id(0).unwrap();
+            let before = world.spatial(player).unwrap().local.position;
+            let (id, target) = if player_updates {
+                (player, other)
+            } else {
+                (other, player)
+            };
+            let response = world
+                .resolve_ordinary_actor_overlap(id, target, &data)
+                .unwrap();
+            let Motion::Separate { actor, other } = response else {
+                panic!("{response:?}")
+            };
+            if lineup != 0 || lockout != 0 {
+                assert_eq!(if player_updates { actor } else { other }, 0);
+                assert!(if player_updates { other } else { actor } > 0);
+                assert_eq!(world.spatial(player).unwrap().local.position, before);
+            } else {
+                assert!(actor > 0 && other > 0);
+                assert_ne!(world.spatial(player).unwrap().local.position, before);
+            }
+            assert_eq!(world.actors()[player.index].attributes()[6], 128);
+            assert_eq!(world.actors()[0].attributes()[6], 128);
+        }
+    }
+}
+
+#[test]
+fn selected_overlap_lineup_preserves_position_but_lockout_alone_rolls_back() {
+    use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    for (lineup, lockout) in [(1, 0), (-1, 2), (0, 1), (0, 2)] {
+        for static_contact in [false, true] {
+            let (mut world, data, scene) =
+                selected_overlap_fixture(Some(lineup), Some(lockout), 0, 50);
+            let player = world.selected_player().unwrap();
+            let current = world.spatial(player).unwrap().local.position;
+            let previous = world.spatial(player).unwrap().previous_local_position;
+            assert_ne!(current, previous);
+            let response = if static_contact {
+                let prepared = world
+                    .prepare_ordinary_collision_query(player, &scene, &data, [522, 30], &[player])
+                    .unwrap();
+                let candidate = ActorCandidate {
+                    owner: CandidateOwner::Static(0),
+                    model: Some(ModelInstance::StaticPlacement(0)),
+                    collision_flags: 1,
+                };
+                world
+                    .resolve_ordinary_static_overlap(player, &scene, &data, &prepared, &candidate)
+                    .unwrap()
+            } else {
+                world
+                    .resolve_ordinary_actor_overlap(player, world.id(0).unwrap(), &data)
+                    .unwrap()
+            };
+            assert_eq!(response, Motion::Rollback);
+            assert_eq!(
+                world.spatial(player).unwrap().local.position,
+                if lineup != 0 { current } else { previous }
+            );
+            assert_eq!(world.actors()[player.index].attributes()[6], 128);
+        }
+    }
+}
+
+#[test]
+fn selected_overlap_small_contacts_precede_unavailable_global_owners() {
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    let (mut world, data, _) = selected_overlap_fixture(None, None, 0, 52);
+    let player = world.selected_player().unwrap();
+    let other = world.id(0).unwrap();
+    assert_eq!(
+        world
+            .query_ordinary_actor_overlap(player, other, &data)
+            .unwrap(),
+        2
+    );
+    let position = world.spatial(player).unwrap().local.position;
+    assert_eq!(
+        world
+            .resolve_ordinary_actor_overlap(player, other, &data)
+            .unwrap(),
+        Motion::Touch
+    );
+    assert_eq!(world.spatial(player).unwrap().local.position, position);
+    for index in [player.index, other.index] {
+        assert_ne!(
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .body_response_flags
+                & 4,
+            0
+        );
+    }
+    let (mut world, data, _) = selected_overlap_fixture(None, Some(0), 128, 50);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    let error = world
+        .resolve_ordinary_actor_overlap(player, world.id(0).unwrap(), &data)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("overlap lineup result unavailable"));
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+}
+
+#[test]
+fn selected_overlap_protection_leaves_other_actor_rollback_and_unlocked_static_motion_intact() {
+    use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
+    use cyrus_game::script::OrdinaryOverlapMotion as Motion;
+    let (mut world, data, _) = selected_overlap_fixture(Some(1), Some(0), 0, 50);
+    let player = world.selected_player().unwrap();
+    let other = world.id(0).unwrap();
+    let previous = world.spatial(other).unwrap().previous_local_position;
+    assert_eq!(
+        world
+            .resolve_ordinary_actor_overlap(other, player, &data)
+            .unwrap(),
+        Motion::Rollback
+    );
+    assert_eq!(world.spatial(other).unwrap().local.position, previous);
+
+    let (mut world, data, scene) = selected_overlap_fixture(Some(0), Some(0), 0, 50);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [522, 30], &[player])
+        .unwrap();
+    let candidate = ActorCandidate {
+        owner: CandidateOwner::Static(0),
+        model: Some(ModelInstance::StaticPlacement(0)),
+        collision_flags: 1,
+    };
+    assert_eq!(
+        world
+            .resolve_ordinary_static_overlap(player, &scene, &data, &prepared, &candidate)
+            .unwrap(),
+        Motion::Separate {
+            actor: 767,
+            other: 0
+        }
+    );
+    assert_ne!(world.spatial(player).unwrap().local.position, before);
+}
+
+#[test]
+fn created_effects_maintain_before_scripts_and_preserve_hidden_phases_after_restore() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    for restore in [false, true] {
+        for hidden in [false, true] {
+            let mut calls: Vec<(&str, &[i32])> = vec![
+                ("Light", &[256, 100]),
+                ("LightFlicker", &[18, 1]),
+                ("LightSize", &[8, 1]),
+                ("FlatAnimate", &[129, 1, 1]),
+            ];
+            if hidden {
+                calls.push(("HideMe", &[]));
+            }
+            let mut scripts = light_maintenance_scripts(4, 1, &calls);
+            scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
+            let (scripts, mut world, data) = light_maintenance_world(scripts);
+            world.prepare_spatial().unwrap();
+            let created = world
+                .create_object(world.id(0).unwrap(), "LOGIC", [0; 3], [0; 3])
+                .unwrap();
+            let inputs = ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            };
+            let mut random = cyrus_game::random::EngineRandom::from_state(1);
+            world
+                .update_created(inputs, &mut random, &mut |_, _| Ok(()), 100)
+                .unwrap();
+            let first_flat = world.actors()[created.index].flat_state().unwrap();
+            let first_light = world.actors()[created.index].light_state().unwrap();
+            assert_eq!(first_flat["frame"], 0);
+            assert_eq!(random.state(), 1, "new effects wait for the next update");
+            if restore {
+                let collision = Default::default();
+                let sources = WorldSnapshotSources {
+                    identity_memo: None,
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &data,
+                    collision: &collision,
+                };
+                let saved = world.snapshot(&sources).unwrap();
+                let globals = std::mem::take(world.globals_mut());
+                world = ScriptWorld::from_snapshot(
+                    saved,
+                    &sources,
+                    WorldRestoreContext {
+                        generation: 2,
+                        globals,
+                        samples: &BTreeMap::new(),
+                    },
+                )
+                .unwrap();
+            }
+            world
+                .update_created(inputs, &mut random, &mut |_, _| Ok(()), 100)
+                .unwrap();
+            let actor = &world.actors()[created.index];
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            if hidden {
+                assert_eq!(actor.flat_state().unwrap(), first_flat);
+                assert_eq!(actor.light_state().unwrap(), first_light);
+                assert_eq!(random.state(), 1);
+            } else {
+                assert_eq!(actor.flat_state().unwrap()["frame"], 1);
+                assert_ne!(actor.light_state().unwrap(), first_light);
+                assert_eq!(random.state(), 2524885223);
+            }
+        }
+    }
 }

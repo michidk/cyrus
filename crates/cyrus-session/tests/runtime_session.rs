@@ -522,7 +522,7 @@ fn exercise_runtime_session(
         cyrus_audio::sound::Effect {
             bits_per_sample: 16,
             audio: effect_source,
-            looping: true,
+            repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
             base_volume: 100,
             sample_rate: 22050,
         },

@@ -275,7 +275,7 @@ fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
     app.insert_resource(SoundEffects(vec![Some(Effect {
         bits_per_sample: 8,
         audio: Handle::default(),
-        looping: true,
+        repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
         base_volume: 64,
         sample_rate: 22050,
     })]));
@@ -340,7 +340,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     app.insert_resource(SoundEffects(vec![Some(Effect {
         bits_per_sample: 8,
         audio,
-        looping: true,
+        repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
         base_volume: 64,
         sample_rate: 11025,
     })]));
@@ -438,7 +438,7 @@ fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
                 Some(Effect {
                     bits_per_sample: 8,
                     audio: Handle::default(),
-                    looping: true,
+                    repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
                     base_volume: 64,
                     sample_rate: 22050,
                 })
@@ -628,7 +628,7 @@ fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
     app.insert_resource(SoundEffects(vec![Some(Effect {
         bits_per_sample: 8,
         audio,
-        looping: true,
+        repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
         base_volume: 64,
         sample_rate: 11025,
     })]));

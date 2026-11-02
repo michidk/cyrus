@@ -118,10 +118,14 @@ impl GameHost<'_, '_, '_, '_> {
         if keys.health {
             self.quick_health()?;
         }
-        // An activation prompt owner (a world object in reach) takes the key; the order between
-        // object activation and this use is not recovered from the original, so it stays
-        // conservative and leaves the key to the object.
+        // The original, observed with a potion selected: an activation prompt owner takes the key
+        // and the item is not used, and a player hanging on a rope does not use the item either.
+        let on_rope = self.registry.actors[self.index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.rope_attached);
         if keys.use_selected
+            && !on_rope
             && self.registry.activation.owner().is_none()
             && let Some(selected) = hud.selected_item()?
         {

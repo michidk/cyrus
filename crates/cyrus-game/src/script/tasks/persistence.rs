@@ -35,6 +35,24 @@ pub struct NativeTaskBindings<'a> {
 }
 
 impl NativeTasks {
+    pub(in crate::script) fn validate_actor_references(
+        &self,
+        mut validate: impl FnMut(u32) -> Result<()>,
+    ) -> Result<()> {
+        for (&token, state) in &self.tasks {
+            if let Task::LineUp {
+                reference: Some(index),
+                ..
+            } = state
+            {
+                validate(*index).with_context(|| {
+                    format!("native PlayerLineUp token {token} reference {index}")
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// Capture exact native variants and continuation fields without polling.
     pub fn snapshot(&self) -> NativeTasksSnapshot {
         NativeTasksSnapshot {

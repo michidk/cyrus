@@ -374,7 +374,7 @@ impl SoundFrame<'_, '_> {
                                 effect: Some(i32::from(*requested)),
                                 audio: effect.audio.clone(),
                                 bits_per_sample: effect.bits_per_sample,
-                                looping: effect.looping,
+                                repetitions: effect.repetitions,
                                 volume,
                                 pan: Some(pan),
                                 speed: playback_speed(effect.sample_rate, *rate_offset_hz),
@@ -658,11 +658,11 @@ impl ScriptSounds<'_, '_> {
         &self,
         clip: &super::dialogue::DialogueClip,
     ) -> anyhow::Result<()> {
-        let settings = anyhow::Context::context(
+        anyhow::Context::context(
             self.frame.settings.as_deref(),
             "RTX start: sound settings unavailable",
         )?;
-        let Some(voice) = clip.entry.voice.as_ref().filter(|_| settings.speech) else {
+        let Some(voice) = clip.entry.voice.as_ref() else {
             return Ok(());
         };
         anyhow::ensure!(
@@ -692,7 +692,8 @@ impl ScriptSounds<'_, '_> {
     /// Start one loaded RTX voice on the shared sample allocator. The caller owns
     /// the cache entry and must remember the returned slot; text is not formatted
     /// or presented here. Missing dependencies fail before sample allocation.
-    /// Speech disabled, text-only entries and channel exhaustion use text lifetime.
+    /// Text-only entries and channel exhaustion use text lifetime. Speech mode
+    /// selects record advancement, not whether lookup starts the voice.
     /// See preservation engine/sound.md for start index and duration rules.
     pub fn start_dialogue(
         &mut self,
@@ -704,7 +705,7 @@ impl ScriptSounds<'_, '_> {
             .settings
             .as_deref()
             .expect("checked dialogue settings");
-        let Some(voice) = clip.entry.voice.as_ref().filter(|_| settings.speech) else {
+        let Some(voice) = clip.entry.voice.as_ref() else {
             return Ok(super::dialogue::DialogueStart {
                 sample: None,
                 lifetime: clip.entry.text_lifetime,
@@ -724,7 +725,7 @@ impl ScriptSounds<'_, '_> {
                 effect: None,
                 audio: audio.clone(),
                 bits_per_sample: voice.bits_per_sample,
-                looping: false,
+                repetitions: SampleRepetitions::ONCE,
                 volume: voice.base_volume.min(127),
                 pan: Some(64),
                 speed: playback_speed(voice.sample_rate, 0),
@@ -1959,7 +1960,17 @@ mod dialogue_tests {
             .unwrap()
             .snapshot();
         assert_eq!([scale.apply(0.5, 0), scale.apply(0.5, 1)], [0.5; 2]);
-        for _ in 1..16 {
+        world.resource_mut::<SoundSettings>().speech = false;
+        world.run_system_cached(start_line).unwrap();
+        assert_eq!(
+            world.resource::<Starts>().0[1].as_ref().unwrap(),
+            &super::super::dialogue::DialogueStart {
+                sample: Some(1),
+                lifetime: 128
+            }
+        );
+        assert_eq!(world.resource::<Channels>().samples.status(Some(1)), 4);
+        for _ in 2..16 {
             world
                 .resource_mut::<Channels>()
                 .samples
@@ -1969,24 +1980,14 @@ mod dialogue_tests {
         }
         world.run_system_cached(start_line).unwrap();
         assert_eq!(
-            world.resource::<Starts>().0[1].as_ref().unwrap(),
-            &super::super::dialogue::DialogueStart {
-                sample: None,
-                lifetime: 30
-            }
-        );
-        assert_eq!(world.resource::<Channels>().playing.len(), 1);
-        world.resource_mut::<SoundSettings>().speech = false;
-        world.resource_mut::<LoadedDialogue>().0.audio = None;
-        world.run_system_cached(start_line).unwrap();
-        assert_eq!(
             world.resource::<Starts>().0[2].as_ref().unwrap(),
             &super::super::dialogue::DialogueStart {
                 sample: None,
                 lifetime: 30
             }
         );
-        world.resource_mut::<SoundSettings>().speech = true;
+        assert_eq!(world.resource::<Channels>().playing.len(), 2);
+        world.resource_mut::<LoadedDialogue>().0.audio = None;
         world.run_system_cached(start_line).unwrap();
         assert!(
             world.resource::<Starts>().0[3]
@@ -1995,7 +1996,16 @@ mod dialogue_tests {
                 .to_string()
                 .contains("dependency absent")
         );
-        assert_eq!(world.resource::<Channels>().playing.len(), 1);
+        world.resource_mut::<SoundSettings>().speech = true;
+        world.run_system_cached(start_line).unwrap();
+        assert!(
+            world.resource::<Starts>().0[4]
+                .as_ref()
+                .unwrap_err()
+                .to_string()
+                .contains("dependency absent")
+        );
+        assert_eq!(world.resource::<Channels>().playing.len(), 2);
     }
     fn dialogue_test_hud() -> cyrus_assets::hud::HudAsset {
         serde_json::from_value(serde_json::json!({
@@ -2295,6 +2305,7 @@ mod dialogue_tests {
     #[test]
     fn dialogue_source_reuses_prepared_entry_and_sample_then_resets_shared_slot() {
         let mut world = dialogue_test_world();
+        world.resource_mut::<SoundSettings>().speech = false;
         world.run_system_cached(cached_line).unwrap();
         let channels = world.resource::<Channels>();
         assert_eq!(channels.samples.status(Some(0)), 2);

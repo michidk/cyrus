@@ -50,7 +50,7 @@ faster); the original's pace there is not a target.
 ## Rope attachment shortcuts
 
 **Verified:** the attach test, the controls, the swing and the release follow preservation's rope sections.
-**Inferred or simplified:** the climb helpers do not read the animation record's progress bytes. The
+**Inferred or simplified:** climb up repeats its group-82 request only while the animation's exit marker is clear, as preservation documents; the helpers' returned movement-suppression flag has no consumer here. The rope owner's downward step limit is the selected player's hand-height link choice computed by its controls on the same update; **Unknown:** whether the original recomputes it later in the frame, and a 16-unit lower bottom pose than the original's. The
 implementation emits the swing sound owned by the first attached actor at channel index 6, as
 preservation documents; native/browser audibility has not been compared. The hand-height link choice clamps against the floor probe as decoded; **Inferred:** the terrain sample
 truncates like the queued clearance's, and the clamp has no live comparison with the original (the shipped
@@ -99,8 +99,10 @@ has no runtime, runs no script, draws no model and holds no light, sound or task
 actor table, spatial state and snapshots are index-parallel, so removing a record would shift every later
 identity for no player-visible gain. **Inferred:** the observable result (no update, no model, no light, no
 sound) is the same; only memory and one skipped table entry per update remain, a technical limit the
-faithful mode does not reproduce. A script holding a reference to a killed created object reaches a dead
-record, where the original reaches freed memory, which has no defined behaviour to match.
+faithful mode does not reproduce. Direct actor handles and script targets reject references to a created object after
+cleanup with an explicit unsupported error; the retained diagnostic record is not a
+live receiver. **Unknown:** the result of dereferencing the original's freed record,
+and parity between logical variable identifiers and original raw actor references.
 
 ## Book picture after the ending
 

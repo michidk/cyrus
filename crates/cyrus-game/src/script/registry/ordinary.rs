@@ -493,16 +493,15 @@ impl ScriptWorld {
                 if let Some(query) = player_query {
                     self.advance_player_walking(id, query, player_timing, true, sounds)?;
                 }
-                // The selected player's armed circling (groups 94 and 95) keeps turning and stepping
-                // through the same continuation as other actors; its other groups are driven by
-                // the controller each update. Observed in the original against its armed strafe.
-                let player_circling = selected_role
+                // Forward running and armed circling retain animation-owned movement after
+                // release. The called flags prevent a second step after controller movement.
+                let player_continuation = selected_role
                     && self.actors[id.index]
                         .animation
                         .as_ref()
                         .and_then(|animation| animation.playback.current_group())
-                        .is_some_and(|group| matches!(group, 94 | 95));
-                if !selected_role || player_circling {
+                        .is_some_and(|group| matches!(group, 18 | 94 | 95));
+                if !selected_role || player_continuation {
                     // The walk continues in its movement group when this update requested no movement.
                     let query = inputs.locomotion_geometry.map(|geometry| {
                         super::obstacle::OrdinaryObstacleQuery {
@@ -594,9 +593,6 @@ impl ScriptWorld {
                     )?;
                 }
                 self.restore_axis_locks(id)?;
-                if self.spatial(id)?.parent.is_none() {
-                    self.refresh_transform(id)?;
-                }
                 self.retain_ordinary_water_position(id)?;
                 if selected_player {
                     self.finish_player_movement_update(id)?;

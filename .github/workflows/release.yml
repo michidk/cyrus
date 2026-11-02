@@ -8,14 +8,14 @@ on:
     inputs:
       tag:
         description: Release tag, for example v0.2.0
-        required: false
+        required: true
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.repository }}-${{ inputs.tag || github.ref }}
+  group: release-${{ github.repository }}-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -29,7 +29,25 @@ defaults:
     shell: bash
 
 jobs:
+  dispatch:
+    name: Dispatch release on default branch
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      # workflow_dispatch starts a run even when sent using GITHUB_TOKEN.
+      # Its default-branch scope makes saved caches reusable by later releases.
+      - name: Dispatch tagged source build
+        run: gh workflow run release.yml --ref "$DEFAULT_BRANCH" -f tag="$TAG_NAME"
+
   verify:
+    if: github.event_name == 'workflow_dispatch'
     name: Verify release (${{ matrix.stage }})
     runs-on: ubuntu-26.04
     strategy:
@@ -61,10 +79,10 @@ jobs:
           df -h /
       - name: Install Bevy's Linux libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: ${{ matrix.stage }}
           cache-workspace-crates: true
@@ -84,6 +102,7 @@ jobs:
 
   # Builds start alongside verify; publishing still requires it.
   native:
+    if: github.event_name == 'workflow_dispatch'
     name: Native (${{ matrix.target }})
     timeout-minutes: 90
     strategy:
@@ -94,8 +113,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-2025
             target: x86_64-pc-windows-msvc
-          # Apple Silicon runners build Intel binaries far faster; the smoke runs under Rosetta.
-          - os: macos-15
+          # Keep Intel builds independent of the ARM hosted-runner capacity pool.
+          - os: macos-15-intel
             target: x86_64-apple-darwin
           - os: macos-15
             target: aarch64-apple-darwin
@@ -116,10 +135,10 @@ jobs:
       - name: Install Bevy's Linux libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: artifacts-${{ matrix.target }}
           cache-workspace-crates: true
@@ -137,7 +156,7 @@ jobs:
             binary="target/$BUILD_TARGET/release/$app$suffix"
             if [[ -f "$binary" ]]; then "$binary" --help; fi
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-${{ matrix.target }}
           path: |
@@ -148,11 +167,12 @@ jobs:
           retention-days: 7
 
   web:
+    if: github.event_name == 'workflow_dispatch'
     # Four jobs use the hosted runner's cores while the swap file below absorbs linker peaks.
     env:
       CARGO_BUILD_JOBS: 4
     name: Browser bundles
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -168,10 +188,10 @@ jobs:
           sudo mkswap /swapfile-cyrus
           sudo swapon /swapfile-cyrus
           free -h
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: artifacts-web
           cache-workspace-crates: true
@@ -179,12 +199,12 @@ jobs:
         id: bindgen
         run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)" >> "$GITHUB_OUTPUT"
       - name: Install matching wasm-bindgen
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2
         with:
           tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
       - name: Build and package
         run: /usr/bin/time -v bash dev/scripts/build-artifacts.sh web
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: browser
           path: target/artifacts/cyrus-browser.tar.gz
@@ -195,7 +215,7 @@ jobs:
   release:
     name: Publish GitHub release
     needs: [verify, native, web]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -245,7 +265,7 @@ jobs:
     # Deploy only after the release is complete; the site is the released browser bundle.
     name: Deploy browser build to GitHub Pages
     needs: release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       pages: write

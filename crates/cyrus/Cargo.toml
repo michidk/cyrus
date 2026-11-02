@@ -29,6 +29,7 @@ blake3.workspace = true
 clap.workspace = true
 # Load libwayland at runtime instead of linking it, so the binary starts on hosts without it.
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
+wgpu-types = { version = "30", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

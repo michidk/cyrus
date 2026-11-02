@@ -78,7 +78,7 @@ pub fn load_speech(path: &std::path::Path) -> Result<HashMap<String, VoiceClip<V
 pub struct PreparedEffect {
     pub bits_per_sample: u16,
     pub bytes: Vec<u8>,
-    pub looping: bool,
+    pub repetitions: crate::sound::SampleRepetitions,
     pub base_volume: u8,
     pub sample_rate: u32,
 }
@@ -96,7 +96,7 @@ pub fn load_effect_bank(install: &GameInstall) -> Result<Vec<Option<PreparedEffe
                 Ok(bytes) => Some(PreparedEffect {
                     bits_per_sample: effect.audio_type.bits_per_sample(),
                     bytes,
-                    looping: effect.loop_flag != 0,
+                    repetitions: crate::sound::SampleRepetitions::from_sfx_flag(effect.loop_flag),
                     base_volume: effect.base_volume,
                     sample_rate: effect.sample_rate,
                 }),

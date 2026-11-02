@@ -38,15 +38,30 @@ pub(crate) fn prepare(
         let bytes = wav(effect)?;
         output.publish(&out.join(format!("{i:03}.wav")), &bytes)?;
         effects.push(SoundEffect {
-            looping: effect.loop_flag != 0,
+            repetitions: crate::sound::SampleRepetitions::from_sfx_flag(effect.loop_flag),
             sample_rate: effect.sample_rate,
             channels: effect.audio_type.channels(),
             bits_per_sample: effect.audio_type.bits_per_sample(),
             base_volume: effect.base_volume,
         });
-        html.push_str(&format!("<p>Effect {i} <audio aria-label=\"Effect {i}\" controls preload=\"none\" {} src=\"{i:03}.wav\"></audio></p>",if effect.loop_flag != 0 {"loop"} else {""}));
+        let passes = crate::sound::SampleRepetitions::from_sfx_flag(effect.loop_flag)
+            .remaining()
+            .map_or(0, std::num::NonZeroU8::get);
+        html.push_str(&format!("<p>Effect {i} <audio aria-label=\"Effect {i}\" controls preload=\"none\" data-passes=\"{passes}\" {} src=\"{i:03}.wav\"></audio></p>",if effect.loop_flag == -1 {"loop"} else {""}));
     }
-    html.push_str("</body></html>");
+    html.push_str(
+        r#"<script>
+for (const audio of document.querySelectorAll('audio[data-passes]')) {
+    const passes = Number(audio.dataset.passes);
+    if (passes <= 1) continue;
+    let remaining = passes;
+    audio.addEventListener('ended', () => {
+        if (--remaining > 0) { audio.currentTime = 0; audio.play(); }
+        else remaining = passes;
+    });
+}
+</script></body></html>"#,
+    );
     output.publish(&out.join("index.html"), html.as_bytes())?;
     let settings =
         crate::sound::SoundSettings::parse(&crate::preparation::text(source, "SYSTEM.INI")?);

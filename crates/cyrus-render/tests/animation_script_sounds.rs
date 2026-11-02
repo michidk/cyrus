@@ -75,7 +75,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
         app.insert_resource(SoundEffects(vec![Some(Effect {
             bits_per_sample: 8,
             audio,
-            looping: true,
+            repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
             base_volume: 64,
             sample_rate: 11025,
         })]));

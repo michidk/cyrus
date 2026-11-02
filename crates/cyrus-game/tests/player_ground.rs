@@ -417,12 +417,12 @@ fn upright_orientation_retains_original_half_turn_residual_and_heading_sign() {
     let half = upright_rotation(1024);
     assert_eq!(
         half.x_axis,
-        Vec3::new(-1.0, 0.0, -f32::from_bits(0x3366_2a9a))
+        Vec3::new(-1.0, 0.0, -f32::from_bits(0x3422_2169))
     );
     assert_eq!(half.y_axis, Vec3::Y);
     assert_eq!(
         half.z_axis,
-        Vec3::new(f32::from_bits(0x3366_2a9a), 0.0, -1.0)
+        Vec3::new(f32::from_bits(0x3422_2169), 0.0, -1.0)
     );
     assert_eq!(upright_rotation(0), upright_rotation(2048));
     assert!(upright_rotation(2036).z_axis.x > 0.0);
@@ -430,14 +430,28 @@ fn upright_orientation_retains_original_half_turn_residual_and_heading_sign() {
 }
 
 #[test]
-fn incremental_upright_refresh_matches_selected_player_without_rebuilding() {
+fn incremental_upright_refresh_uses_initialized_table_without_rebuilding() {
     use bevy::math::{Mat3, Vec3};
     use cyrus_game::player::motion::refresh_upright_rotation;
     let mut matrix = Mat3::from_diagonal(Vec3::new(-1.0, 1.0, -1.0));
     refresh_upright_rotation(&mut matrix, 0, 12);
-    assert_eq!(matrix.x_axis, Vec3::new(-0.999_322_35, 0.0, -0.036_807_33));
+    assert_eq!(
+        matrix.x_axis,
+        Vec3::new(
+            -f32::from_bits(0x3f7f_d397),
+            0.0,
+            f32::from_bits(0xbd16_c319)
+        )
+    );
     assert_eq!(matrix.y_axis, Vec3::Y);
-    assert_eq!(matrix.z_axis, Vec3::new(0.036_807_33, 0.0, -0.999_322_35));
+    assert_eq!(
+        matrix.z_axis,
+        Vec3::new(
+            -f32::from_bits(0xbd16_c319),
+            0.0,
+            -f32::from_bits(0x3f7f_d397)
+        )
+    );
     let refreshed = matrix;
     refresh_upright_rotation(&mut matrix, 12, 12);
     assert_eq!(matrix, refreshed);

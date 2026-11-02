@@ -85,9 +85,12 @@ shapes; passing it proves nothing about where code came from.
 
 ## Private research archive
 
+Never name or link the private research repository in issues, comments, commits,
+tracked files, or user-facing reports. Keep its location in local tool configuration.
+Public evidence summaries must stand on their own without private archive links.
+
 Research documentation and decompiler output must be committed and pushed to
-the private [redguard-decomp](https://github.com/michidk/redguard-decomp)
-repository before a research task is handed over. Archive new or updated
+the private research archive before a research task is handed over. Archive new or updated
 specifications, journals, task notes, handoffs, text observations, decompiled
 C-like exports, and supporting analysis records from `magic/`. A local-only
 copy does not complete the handoff.

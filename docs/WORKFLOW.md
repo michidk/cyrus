@@ -63,8 +63,8 @@ that bind everyone are in `AGENTS.md`.
   second task/status ledger in the repository.
 - Publish established format and engine facts in redguard-preservation. Keep
   internal research, detailed comparison records and historical checkpoints in
-  redguard-decomp, with source paths and hashes; link the archive from the
-  issue. Local `magic/` artifacts remain working copies and must be archived
+  the private research archive, with source paths and hashes. Keep archive identity
+  and links private; summarize evidence directly in the issue. Local `magic/` artifacts remain working copies and must be archived
   before handoff.
 - One worktree per agent. Several agents in one checkout leave each other's
   half-done files in the tree and fight over the cargo build lock;
@@ -97,8 +97,7 @@ artifact `README.md` and living docs change. Logs, probes and JSON dumps go in
 the artifact, not loose in `magic/`.
 
 Research documentation and decompiler output also require a durable copy in
-the private [redguard-decomp](https://github.com/michidk/redguard-decomp)
-repository. Before handing over a research task, archive its new or updated
+the private research archive. Before handing over a research task, archive its new or updated
 text records and exports, commit and push them there, and verify the remote
 commit. Preserve paths and hashes, keep changed evidence in a dated snapshot,
 and record the archive commit in the local handoff. Follow `AGENTS.md`'s

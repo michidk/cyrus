@@ -164,12 +164,18 @@ fn stored_sphere_transform_keeps_fractional_centers_and_extended_products() {
 }
 
 #[test]
-fn shared_rotation_table_retains_native_angle_precision_and_endpoint() {
+fn shared_rotation_table_matches_initialized_samples_and_endpoint() {
+    // Verified initialized runtime samples, per preservation PR154.
     for (index, bits) in [
-        (1, 0x3b49_0fc6),
+        (0, 0x0000_0000),
+        (1, 0x3b49_0fc5),
+        (2, 0x3bc9_0f87),
         (256, 0x3f35_04f3),
-        (1024, 0x3366_2a9a),
-        (2048, 0xb3e6_2a9a),
+        (512, 0x3f80_0000),
+        (513, 0x3f7f_ffb1),
+        (1024, 0x3422_2169),
+        (1536, 0xbf80_0000),
+        (2048, 0xb4a2_2169),
         (2560, 0x3f80_0000),
     ] {
         assert_eq!(rotation_sample(index).to_bits(), bits, "sample {index}");
@@ -267,5 +273,46 @@ fn animated_vertex_conversion_scales_and_rounds_ties_even() {
         [0.0, 0.0, 8388608.0],
     ] {
         assert!(animation_vertex_q8(position).is_err());
+    }
+}
+
+#[test]
+fn unattached_rotation_rounds_products_before_sums() {
+    // Verified ordinary yaw and pitch transitions; both use unchanged table samples.
+    let cases = [
+        (
+            [0, 1991, 0],
+            [
+                [1064785160, 3147691644, 3196327068],
+                [995104864, 1065352745, 3151928672],
+                [1048844282, 1002191984, 1064784958],
+            ],
+            [
+                [1065290951, 3147691644, 3182428804],
+                [999108910, 1065352745, 3150519791],
+                [1034948834, 1002191984, 1065290827],
+            ],
+        ),
+        (
+            [2038, 0, 0],
+            [
+                [1065353216, 0, 0],
+                [0, 1065282203, 1035745768],
+                [0, 3183229416, 1065282203],
+            ],
+            [
+                [1065353216, 0, 0],
+                [0, 1065321640, 1031481790],
+                [0, 3178965438, 1065321640],
+            ],
+        ),
+    ];
+    for (angles, initial, expected) in cases {
+        let mut matrix = Matrix(initial.map(|row| row.map(f32::from_bits)));
+        let mut extended = matrix;
+        matrix.rotate_unattached(angles);
+        extended.rotate(angles);
+        assert_eq!(matrix.0.map(|row| row.map(f32::to_bits)), expected);
+        assert_ne!(extended.0.map(|row| row.map(f32::to_bits)), expected);
     }
 }

@@ -75,7 +75,10 @@ impl Plugin for EguiPlugin {
             .expect("egui installs its shader")
             .source
         {
-            *source = source.replace("enable wgpu_binding_array;", "").into();
+            // Remove the directive's condition too, so it cannot hide the following struct.
+            *source = source
+                .replace("@if(BINDLESS)\nenable wgpu_binding_array;", "")
+                .into();
         }
     }
 }

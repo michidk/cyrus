@@ -10,9 +10,7 @@ local research methodology's analyst and implementation sessions.
 Read the preservation [console reference](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md)
 for the complete command and subcommand catalog, and the
 [cheat reference](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
-for activation conditions. The private archive's
-[console research page](https://github.com/michidk/redguard-decomp/blob/main/research/console.md)
-links the supporting handlers and runtime observations. Keep new traces and
+for activation conditions. Keep new traces and
 open questions under `magic/` and archive them according to `AGENTS.md`.
 
 **Verified:** the following console rules apply to the analyzed Glide build.

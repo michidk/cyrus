@@ -5,8 +5,7 @@ Starts the original under DOSBox-X in the retro container (needs retro-run, gog 
 GOG app under $CYRUS_MAGIC, default ./magic, as run-retro.sh does). The container gets
 --cap-add SYS_PTRACE so the state reader can read the emulator's guest RAM; it must not run in a
 tracked file because it holds executable addresses, so it lives in the gitignored
-$CYRUS_MAGIC/tools/original-state.py and is archived in the private redguard-decomp repository
-(research/supplements/2026-10-23-original-duel-compare). The bot turns toward, approaches and
+$CYRUS_MAGIC/tools/original-state.py. The bot turns toward, approaches and
 attacks the nearest living pirate with installed keys sent through xdotool, reading positions,
 yaw and health from the original's own memory. Prints one JSON line per sample (wall seconds,
 the original's game seconds, engine frame counters, player and pirate health), then the story
@@ -63,7 +62,7 @@ def main():
            "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
     reader = MAGIC / "tools/original-state.py"
     if not reader.exists():
-        sys.exit(f"{reader} is missing; restore it from redguard-decomp research/supplements/2026-10-23-original-duel-compare")
+        sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
     sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
     log = open(args.log, "w") if args.log else None
     started = time.time()

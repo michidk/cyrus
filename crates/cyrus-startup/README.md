@@ -102,8 +102,9 @@ percentage without a right-hand status message. Shared native/browser presentati
 uses that layout and leaves the remaining artwork untouched. See preservation
 [startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md)
-supplies the entry parser and loading layout. Saves, full story/gameplay
-initialization and progression unlocks remain unavailable.
+supplies the entry parser and loading layout. Save/Load uses the shared session
+boundary and the native or browser slot host. Full story/gameplay initialization
+and progression remain incomplete.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `menu.json` in the config directory or browser localStorage. It validates local state,
@@ -128,9 +129,19 @@ and simulation checkpoint. Existing audio continues. Native control state expose
 unchanged. The reader draws styles 0 to 4 and 6 to 9 of preservation's
 [reader style table](https://github.com/michidk/redguard-preservation/pull/114) with its pixel
 wrap and constant colour factor (styles 1 and 2 use page-palette colours); style 5, which the
-original never initialises, draws nothing but keeps its place in the layout. Manual entry editing,
-journal new-game reset semantics and save integration remain unsupported. Scroll lighting is unsupported
-(the original's light inputs are unknown) and pixel-exact filtering still needs fidelity work. Rules follow the
+original never initialises, draws nothing but keeps its place in the layout. Manual entry editing
+remains unsupported. New Game deletes the stored journal; saved sessions retain accepted text,
+duplicate-tag history and pending notification state through the game-owned journal snapshot.
+The two scrolls are lit as the original's reader
+lights them: its own ambient 64, a white directional light and two white local lights, independent of the world
+(preservation's [scroll lighting](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-scroll-lighting)),
+with corner levels interpolated across each face and the texture scaled by `floor(T * (L + 1) / 256)`; reader caches
+written before this need re-export. The scroll textures take their colours from the paper file's own palette, as the original's
+reader does. The 640x480 reader picture fills the window height at 4:3 and the GPU stretches it with bilinear filtering; a native run at 640x480 is
+pixel-identical to the painted picture and one at 1024x768 matches that picture stretched by 1.6 (bilinear) within 0.3% of full scale.
+The original's 16-bit framebuffer quantisation is not reproduced, which leaves the scrolls about two levels per channel brighter than
+the original's. The browser host matches the native picture (a 640x480 CSS viewport at device scale 2 equals the picture stretched by 2 with
+bilinear filtering within 0.3% of full scale, lettering and scroll lighting present). Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).
 
 Available-save death entry presents the installed last-game dialog over a captured

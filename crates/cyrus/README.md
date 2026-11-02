@@ -3,6 +3,10 @@
 The game executable. Parses arguments, finds the install, assembles the Bevy
 app from assets, world, game and presentation plugins, and runs it.
 
+Software render adapters use direct mesh drawing. Hardware adapters retain
+Bevy's indirect drawing selection. This changes renderer setup without changing
+world geometry or materials.
+
 ```sh
 cargo run -p cyrus -- --scene START         # window
 cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control server only
@@ -46,7 +50,21 @@ Native document storage writes an exclusively created sibling candidate, syncs
 its complete bytes, then publishes it with one rename. Failed publication leaves
 the accepted destination intact and cleans up only that write's candidate.
 Callers own document validation. This shared byte-storage boundary does not yet
-provide gameplay saves or full restoration after a restart.
+establish complete gameplay continuation after a restart. Native save slots wrap
+session documents with revision-checked metadata and optional gameplay thumbnails.
+On Unix, publication and slot deletion sync the containing directory before
+reporting success. A directory-sync failure after publication or deletion means
+the change is visible but its crash durability is unconfirmed. Windows does not
+provide the same directory-sync guarantee through this storage boundary.
+
+Original `SAVEGAME.SAV` and per-world `.TSG` files are not supported load inputs.
+They use a different format from cyrus session documents. Preservation can read
+their containers, global flags and inventory records, but the complete original
+object/script state has no validated import mapping. A matching world number or
+successfully decoded inventory does not establish a compatible session. The load
+path rejects unsupported document/slot formats before session publication; it
+does not load a fresh world as a substitute. See
+[original-save compatibility](https://github.com/michidk/cyrus/issues/93).
 
 Shared browser/CLI options use exactly the same names:
 
@@ -142,12 +160,11 @@ installed current/visited worlds and service sources off-live. Poll
 Preparation alone is not success. Only one native load may be pending, and its
 terminal result remains available across repeated polls. Acknowledge it with
 `session_load_result {acknowledge: true}` before another request. Capture commands reject while
-that load owns the boundary. The authored Load page uses this host to list the first nine slots and restore
+that load owns the boundary. The authored Load page uses this host to list paginated slots and restore
 the selected revision. Slot and retained-last-game loads clear saved sample/dialogue
 services and retain the live CD transport for ordinary world track selection,
 following preservation's sound and music restoration rules. Named diagnostic loads
-retain exact audio source checkpoints. This does not establish original save eligibility. Installed rendered restoration and revisit
-acceptance remain unfinished.
+retain exact audio source checkpoints. Authored Save/Load actions apply the book's eligibility rules.
 
 Native diagnostic `session_slots {operation}` supports list, create, overwrite,
 load and delete. Poll `session_slots_result` and acknowledge its terminal result
@@ -158,5 +175,5 @@ files. Failed capture, preparation or publication does not replace accepted data
 Admitted save/load selections retain the last-save slot and description for death
 confirmation. Its Yes choice restores that slot through the shared atomic session
 boundary; missing or malformed saves report errors without starting a fresh world.
-The Load page consumes the same slot host; Save dialogs and save eligibility
-remain unavailable.
+The authored Save page uses the same slot host for description editing, creation
+and revision-checked overwrite. Slot metadata includes the captured gameplay thumbnail.

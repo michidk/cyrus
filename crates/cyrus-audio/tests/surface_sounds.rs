@@ -40,7 +40,7 @@ fn fixture() -> (App, Entity) {
             Some(Effect {
                 bits_per_sample: 8,
                 audio,
-                looping: true,
+                repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
                 base_volume: 64,
                 sample_rate: rate,
             })
@@ -683,7 +683,11 @@ fn production_loop_rechecks_gains_and_finite_cues_complete() {
         app.world_mut().resource_mut::<SoundEffects>().0[1]
             .as_mut()
             .unwrap()
-            .looping = looping;
+            .repetitions = if looping {
+            cyrus_audio::sound::SampleRepetitions::FOREVER
+        } else {
+            cyrus_audio::sound::SampleRepetitions::ONCE
+        };
         play(&mut app, actor, 200);
         let (player, settings, gains) = app
             .world_mut()
@@ -782,7 +786,7 @@ fn installed_loop_pcm_updates_gains_and_reconstructs_through_the_headless_host()
     target.audio = audio;
     target.bits_per_sample = effect.audio_type.bits_per_sample();
     target.sample_rate = effect.sample_rate;
-    target.looping = true;
+    target.repetitions = cyrus_audio::sound::SampleRepetitions::FOREVER;
     play(&mut app, actor, 200);
     let (player, gains) = app
         .world_mut()

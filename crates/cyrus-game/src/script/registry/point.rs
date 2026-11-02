@@ -606,7 +606,7 @@ impl ScriptWorld {
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
         if phase == 0 {
-            self.initialize_point_route(id, inputs, sounds)?;
+            self.initialize_point_route(id)?;
         } else if phase == 8 {
             if let Some(result) = self.advance_point_route(id, point, inputs)? {
                 return Ok(result);
@@ -664,7 +664,7 @@ impl ScriptWorld {
                     .exit_reached();
                 if !exited {
                     let facing = self.point_facing_inputs(id, inputs)?;
-                    self.face_ordinary_point(
+                    self.face_held_node(
                         id,
                         destination,
                         facing,
@@ -713,8 +713,7 @@ impl ScriptWorld {
                     let sounds = sounds
                         .as_mut()
                         .context("point facing requires synchronous sounds")?;
-                    let facing =
-                        self.face_ordinary_point(id, destination, facing_inputs, sounds)?;
+                    let facing = self.face_held_node(id, destination, facing_inputs, sounds)?;
                     if facing == 0 {
                         let ticks = inputs
                             .nominal_ticks
@@ -743,7 +742,7 @@ impl ScriptWorld {
                     self.globals.native_command.point_phase = 8;
                 } else {
                     let facing_inputs = self.point_facing_inputs(id, inputs)?;
-                    let facing = self.face_ordinary_point(
+                    let facing = self.face_held_node(
                         id,
                         destination,
                         facing_inputs,
@@ -776,17 +775,11 @@ impl ScriptWorld {
         Ok(1)
     }
 
-    /// Phase zero: release the held nodes, admit the default animation, then search for a free
-    /// node. A hit makes it the next node and selects phase one; a miss keeps phase zero and
-    /// leaves the receiver without a map.
-    fn initialize_point_route(
-        &mut self,
-        id: ScriptActorId,
-        inputs: ScriptInputs<'_>,
-        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
-    ) -> Result<()> {
+    /// Phase zero preserves playback while releasing held nodes and searching for a free node.
+    /// A hit makes it the next node and selects phase one; a miss leaves no map.
+    /// Preservation's point route initialization calls the animation-stop operation, a no-op.
+    fn initialize_point_route(&mut self, id: ScriptActorId) -> Result<()> {
         self.release_held_walk_nodes(id)?;
-        self.admit_point_default(id, inputs, sounds)?;
         self.release_held_walk_nodes(id)?;
         let found = self.nearest_free_walk_node(id)?;
         self.actors[id.index]
@@ -968,6 +961,22 @@ impl ScriptWorld {
             self.globals.native_command.point_phase = 0;
         }
         Ok(None)
+    }
+
+    /// Face an admitted held-node destination without the coordinate-facing arrival snap.
+    fn face_held_node(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        inputs: super::slope::OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let origin = self.spatial(id)?.local.position;
+        let heading = super::super::spatial::query_bearing(
+            destination[0].wrapping_sub(origin[0]),
+            destination[2].wrapping_sub(origin[2]),
+        );
+        self.face_ordinary_angle(id, heading, inputs, sounds)
     }
 
     pub(super) fn point_facing_inputs(

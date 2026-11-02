@@ -81,7 +81,10 @@ colors. The recovered background fact is [published in preservation](https://git
 
 **Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
 selected-corner mask, terrain-centered phase, quarter-shifted rotation table,
-and half-amplitude bias. Playback uses real elapsed time at the BIOS timer rate, preserving its clock across scenes.
+and half-amplitude bias. The shared rotation-table owner rounds lookup angles to
+single precision before sine, following the initialized table documented in
+[preservation PR154](https://github.com/michidk/redguard-preservation/pull/154).
+Playback uses real elapsed time at the BIOS timer rate, preserving its clock across scenes.
 It deforms private copies of exported terrain meshes and recomputes shared
 normals across materials. Re-export worlds to replace old water masks.
 
@@ -363,6 +366,11 @@ survive HUD/world replacement. Rope simulation and attachments are included in t
 session snapshot and restore; journal and torch reset semantics remain unsupported.
 Matched original/native/browser weapon-draw acceptance and gameplay walk-mode/auto-defend parity remain open. Native
 health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
+
+The inventory screen projects its pinned candle over the paused world HUD,
+including conditional visibility mode, and closing the screen clears the timer.
+The candle remains hidden for every nonzero lockout. Inventory candle animation
+cadence remains unverified.
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta

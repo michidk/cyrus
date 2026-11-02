@@ -681,6 +681,11 @@ impl ScriptWorld {
                 );
                 if let Some(support) = support.as_ref() {
                     if falling {
+                        let surface = query.scene.support_surface(
+                            support,
+                            self.spatial(id)?.query_pose()?.position.map(i64::from),
+                        )?;
+                        self.set_actor_surface(id, surface)?;
                         let selected = (environment.selected_player == Some(id)).then(|| {
                             super::falling::SelectedLanding {
                                 inputs: script,

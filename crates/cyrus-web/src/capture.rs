@@ -11,7 +11,8 @@ pub fn register(app: &mut App) {
     if enabled {
         app.add_systems(
             Update,
-            (sync_sky, sync_texture).run_if(in_state(cyrus_game::AppState::InGame)),
+            (sync_sky, sync_texture, sync_acceptance)
+                .run_if(in_state(cyrus_game::AppState::InGame)),
         );
         app.add_systems(
             PostUpdate,
@@ -74,6 +75,99 @@ fn sync_sky(
     })();
     if let Err(error) = result {
         error!("browser sky capture request: {error:?}");
+    }
+}
+
+/// One acceptance-run action on the prepared script world, the browser counterpart of the native
+/// control port's `place_player`, `mark_dead` and item commands. Positions are map units.
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum AcceptanceRequest {
+    PlacePlayer {
+        id: u32,
+        x: i32,
+        y: i32,
+        z: i32,
+        #[serde(default)]
+        heading: u16,
+    },
+    MarkDead {
+        id: u32,
+        index: usize,
+    },
+    AddItem {
+        id: u32,
+        item: u16,
+    },
+}
+
+fn sync_acceptance(
+    mut scripts: Option<ResMut<cyrus_game::script::ScriptActors>>,
+    hud: Option<Res<cyrus_game::script::ScriptHud>>,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let key = JsValue::from_str("__cyrusAcceptanceRequest");
+    let result = (|| -> Result<(), JsValue> {
+        let value = js_sys::Reflect::get(&window, &key)?;
+        if value.is_null() || value.is_undefined() {
+            return Ok(());
+        }
+        js_sys::Reflect::set(&window, &key, &JsValue::NULL)?;
+        let mut id = None;
+        let applied = (|| -> anyhow::Result<()> {
+            let text = value
+                .as_string()
+                .ok_or_else(|| anyhow::anyhow!("acceptance request must be a JSON string"))?;
+            let request: AcceptanceRequest = serde_json::from_str(&text)?;
+            let world = scripts
+                .as_mut()
+                .and_then(|actors| actors.current.as_mut())
+                .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+            match request {
+                AcceptanceRequest::PlacePlayer {
+                    id: request_id,
+                    x,
+                    y,
+                    z,
+                    heading,
+                } => {
+                    id = Some(request_id);
+                    world.place_selected_player(
+                        [x, y, z].map(|value| value.wrapping_mul(256)),
+                        heading,
+                    )
+                }
+                AcceptanceRequest::MarkDead {
+                    id: request_id,
+                    index,
+                } => {
+                    id = Some(request_id);
+                    world.mark_actor_dead(index)
+                }
+                AcceptanceRequest::AddItem {
+                    id: request_id,
+                    item,
+                } => {
+                    id = Some(request_id);
+                    let hud = hud
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("inventory is not prepared"))?;
+                    world.add_player_item(hud, item)
+                }
+            }
+        })();
+        let response = serde_json::json!({"id": id, "applied": applied.is_ok(), "error": applied.err().map(|error| format!("{error:#}"))});
+        js_sys::Reflect::set(
+            &window,
+            &"__cyrusAcceptanceResult".into(),
+            &js_sys::JSON::parse(&response.to_string())?,
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        error!("browser acceptance request: {error:?}");
     }
 }
 
@@ -140,6 +234,7 @@ fn observe(
     ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
     scripts: Option<Res<cyrus_game::script::ScriptActors>>,
+    script_hud: Option<Res<cyrus_game::script::ScriptHud>>,
     session: cyrus_session::SessionBoundaryInspection,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {
@@ -188,6 +283,16 @@ fn observe(
                 .unwrap_or(0.0) as usize;
             let text = world.inspect(offset, 64).to_string();
             js_sys::Reflect::set(&record, &"scripts".into(), &js_sys::JSON::parse(&text)?)?;
+        }
+        // The script HUD (inventory counts, selected item) under the same opt-in, like `state`'s `script_hud`.
+        if js_sys::Reflect::get(&window, &"__cyrusInspectScripts".into())?.is_truthy()
+            && let Some(hud) = script_hud.as_ref()
+        {
+            js_sys::Reflect::set(
+                &record,
+                &"script_hud".into(),
+                &js_sys::JSON::parse(&hud.inspect().to_string())?,
+            )?;
         }
         js_sys::Reflect::set(&window, &"__cyrusCapture".into(), &record)
     })();

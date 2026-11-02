@@ -466,14 +466,14 @@ mod tests {
     }
 
     #[test]
-    fn wave_uses_original_unrounded_angle_samples() {
+    fn wave_uses_initialized_rounded_angle_samples() {
         let water = Water {
             parameters: [24.0, 1.0, 0.0],
             side: 2,
             animated_vertices: vec![false, false, false, true],
         };
-        // Native table samples, including the extended revolution.
-        for (ticks, expected) in [(777, 0x3fbc_5e67), (1536, 0x3f19_999c), (1901, 0xbef5_c50d)] {
+        // Inferred wave displacement from observed initialized samples and published wave rules.
+        for (ticks, expected) in [(777, 0x3fbc_5e68), (1536, 0x3f19_99a0), (1901, 0xbef5_c510)] {
             assert_eq!(displacement(&water, 3, ticks).to_bits(), expected);
         }
     }

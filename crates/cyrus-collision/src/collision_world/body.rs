@@ -1,5 +1,5 @@
 //! Primary mixed body collection retains original owners and stops at sixteen.
-use super::StaticCollision;
+use super::{StaticCollision, static_rotation};
 use crate::{
     actor_models::ActorModelCollision,
     candidates::{CandidateOwner, CollisionCandidates, ModelInstance},
@@ -183,7 +183,7 @@ impl StaticCollision {
                         .context("body candidate static geometry unavailable")?;
                     let pose = ModelPose::new(
                         placement.position.map(|value| value as f32),
-                        super::placement_rotation(placement),
+                        static_rotation(placement),
                     )?;
                     (
                         model.mesh.world_sphere_contacts(&pose, probe)?,

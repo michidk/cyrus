@@ -461,28 +461,9 @@ impl ScriptWorld {
             slide_speed,
             inputs.frame_scale,
         );
-        let turn = ordinary_slope_turn(
-            spatial.local.angles[1],
-            slide.target_heading,
-            actor.attributes[if inputs.holding_weapon || inputs.combat_active {
-                21
-            } else {
-                15
-            }],
-            inputs.frame_scale,
-            inputs.holding_weapon,
-            torch,
-        );
-        if let Some(group) = turn.group {
-            self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
-        }
-        self.spatial
-            .as_mut()
-            .context("ordinary slope spatial state unavailable")?
-            .actor_mut(index)?
-            .local
-            .angles[1] = turn.heading;
-        self.request_ordinary_group(id, slide.group, first, inputs.ticks, sounds)?;
+        let ticks = inputs.ticks;
+        self.turn_ordinary_toward(id, slide.target_heading, inputs, sounds)?;
+        self.request_ordinary_group(id, slide.group, first, ticks, sounds)?;
         self.actors[index]
             .control
             .as_mut()

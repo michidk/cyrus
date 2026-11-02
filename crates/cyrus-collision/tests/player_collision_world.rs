@@ -447,114 +447,82 @@ fn runtime_candidates_share_static_order_and_keep_live_model_identity_separate()
 }
 
 #[test]
-fn static_body_queries_apply_authored_matrix_rows() {
+fn asymmetric_static_placement_uses_authored_row_major_rotation() {
     use bevy::math::{Mat3, Vec3};
+    use cyrus_assets::collision::ActorCollisionModels;
     use cyrus_collision::{
-        actor_models::ActorModelCollision, candidates::CandidateQuery, collision_mesh::BodyProbe,
+        actor_models::ActorModelCollision,
+        candidates::{CandidateOwner, CollisionCandidates, FaceCandidate, ModelInstance},
+        collision_mesh::BodyProbe,
+        collision_world::{ResidualBodyQuery, StaticCandidates},
     };
-    let mut wall = model(0);
-    wall.geometry.vertices = vec![[40.0, -10.0, -10.0], [40.0, 0.0, 10.0], [40.0, 10.0, -10.0]];
-    wall.geometry.normals = vec![[-1.0, 0.0, 0.0]];
+    use std::collections::BTreeMap;
+
     let mut scene = CollisionScene::default();
-    scene.models.insert("wall".into(), wall);
-    let mut record = placement(0, [600, 100, 600], "wall");
-    record.rotation = [0, 0, 268_435_456, 0, 268_435_456, 0, -268_435_456, 0, 0];
-    scene.placements.push(record);
+    let mut floor = model(0);
+    floor.geometry.vertices = vec![
+        [-20.0, 0.0, 10.0],
+        [20.0, 0.0, 10.0],
+        [20.0, 0.0, 90.0],
+        [-20.0, 0.0, 90.0],
+    ];
+    floor.geometry.faces = vec![vec![0, 1, 2, 3]];
+    scene.models.insert("floor".into(), floor);
+    let mut placed = placement(0, [1000, 0, 1000], "floor");
+    placed.rotation = [0, 0, 268_435_456, 0, 268_435_456, 0, -268_435_456, 0, 0];
+    scene.placements.push(placed);
     let world = StaticCollision::new(&scene).unwrap();
-    let spheres = [(Vec3::ZERO, 3.0)];
-    let models = ActorModelCollision::new(&Default::default()).unwrap();
-    for (z, expected) in [(562, true), (638, false)] {
-        let position = [600 * 256, 100 * 256, z * 256];
-        let static_candidates = world.candidates([600, 600], position, None).unwrap();
+    let statics = StaticCandidates {
+        faces: vec![0],
+        actors: vec![],
+    };
+    let mixed = CollisionCandidates {
+        faces: vec![FaceCandidate {
+            model: ModelInstance::StaticPlacement(0),
+            owner: CandidateOwner::Static(0),
+            collision_flags: 0,
+            candidate_type: 32,
+        }],
+        actors: vec![],
+    };
+    let actors = ActorModelCollision::new(&ActorCollisionModels::default()).unwrap();
+    for (x, expected) in [(1060, true), (940, false)] {
+        let position = [x * 256, -256, 1000 * 256];
+        let probe = GroundProbe::new(position, 0, 10).unwrap();
+        assert_eq!(
+            !world
+                .ground_contacts(&statics, &probe, true)
+                .unwrap()
+                .is_empty(),
+            expected
+        );
         let contacts = world
             .body_contacts(
-                &static_candidates,
+                &statics,
                 position,
                 Mat3::IDENTITY,
-                &spheres,
-                false,
+                &[(Vec3::ZERO, 2.0)],
+                true,
             )
             .unwrap();
-        assert_eq!(!contacts.is_empty(), expected, "static sphere at Z={z}");
-        if expected {
-            assert_eq!(contacts[0].point, Vec3::new(600.0, 100.0, 560.0));
-            assert_eq!(contacts[0].normal, Vec3::Z);
-        }
-        let position = position.map(|value| value as i32);
-        let candidates = world
-            .runtime_candidates(
-                [600, 600],
-                &CandidateQuery::new(position, None).unwrap(),
-                &[],
-                &[],
-            )
-            .unwrap();
-        assert_eq!(
-            world
-                .runtime_blocks_body(
-                    &candidates,
-                    &models,
-                    &Default::default(),
-                    &BodyProbe {
-                        position: position.map(i64::from),
+        assert_eq!(!contacts.is_empty(), expected);
+        let spheres = [(Vec3::ZERO, 2.0)];
+        let contacts = world
+            .runtime_residual_body_contacts(
+                &mixed,
+                &actors,
+                &BTreeMap::new(),
+                ResidualBodyQuery {
+                    probe: BodyProbe {
+                        position,
                         rotation: Mat3::IDENTITY,
                         spheres: &spheres,
-                        sidedness: false,
+                        sidedness: true,
                     },
-                    None
-                )
-                .unwrap(),
-            expected,
-            "runtime sphere at Z={z}"
-        );
-    }
-}
-
-#[test]
-fn static_ground_queries_apply_authored_matrix_rows() {
-    use cyrus_collision::{actor_models::ActorModelCollision, candidates::CandidateQuery};
-    let mut floor = model(0);
-    floor.geometry.vertices = vec![[30.0, 0.0, -10.0], [50.0, 0.0, -10.0], [40.0, 0.0, 10.0]];
-    let mut scene = CollisionScene::default();
-    scene.models.insert("floor".into(), floor);
-    let mut record = placement(0, [600, 100, 600], "floor");
-    record.rotation = [0, 0, 268_435_456, 0, 268_435_456, 0, -268_435_456, 0, 0];
-    scene.placements.push(record);
-    let world = StaticCollision::new(&scene).unwrap();
-    let models = ActorModelCollision::new(&Default::default()).unwrap();
-    for (z, expected) in [(560, true), (640, false)] {
-        let position = [600 * 256, 100 * 256, z * 256];
-        let probe = GroundProbe::new(position, 0, 10).unwrap();
-        let candidates = world.candidates([600, 600], position, None).unwrap();
-        assert_eq!(
-            !world
-                .ground_contacts(&candidates, &probe, false)
-                .unwrap()
-                .is_empty(),
-            expected
-        );
-        let position = position.map(|value| value as i32);
-        let candidates = world
-            .runtime_candidates(
-                [600, 600],
-                &CandidateQuery::new(position, None).unwrap(),
-                &[],
-                &[],
+                    excluded_candidate_type: None,
+                },
             )
             .unwrap();
-        assert_eq!(
-            !world
-                .runtime_ground_contacts(
-                    &candidates,
-                    &models,
-                    &Default::default(),
-                    &probe,
-                    false,
-                    None
-                )
-                .unwrap()
-                .is_empty(),
-            expected
-        );
+        assert_eq!(!contacts.is_empty(), expected);
     }
 }

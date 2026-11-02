@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 pub struct LogbookArtwork {
     pub paper: MenuPicture,
     pub scroll: MenuModel,
+    /// Per scroll face, the normal of each corner that the engine lights: the vertex normal the
+    /// indirection table selects, or the face normal when that one is unusable. Absent in caches
+    /// written before the scroll was lit, which `validate` rejects.
+    #[serde(default)]
+    pub scroll_normals: Vec<Vec<[f32; 3]>>,
+    /// Per scroll face, the lighting brightness byte `(tex_hi * 4) & 255`.
+    #[serde(default)]
+    pub scroll_brightness: Vec<u8>,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
     /// Reader fonts: small normal, small selected, REDSEL, FONTNORM and `gui_low_font`.
@@ -133,6 +141,16 @@ impl LogbookArtwork {
             "logbook: SCROLL.3D has invalid frame, face or texture references"
         );
         anyhow::ensure!(
+            self.scroll_normals.len() == self.scroll.faces.len()
+                && self.scroll_brightness.len() == self.scroll.faces.len()
+                && self
+                    .scroll_normals
+                    .iter()
+                    .zip(&self.scroll.faces)
+                    .all(|(normals, face)| normals.len() == face.corners.len()),
+            "logbook: scroll lighting data absent from this cache; re-export the logbook"
+        );
+        anyhow::ensure!(
             self.textures.iter().all(|t| t.width > 0
                 && t.height > 0
                 && t.rgba.len() == usize::from(t.width) * usize::from(t.height) * 4),
@@ -164,6 +182,72 @@ impl LogbookArtwork {
     }
 }
 
+/// The 256-entry palette of a GXA file (its `BPAL` section holds 6-bit values, shifted left two
+/// bits for display), found by walking the file's sections: a four-byte tag, then a big-endian
+/// payload length, except for `END `.
+#[cfg(feature = "parsers")]
+fn gxa_palette(bytes: &[u8]) -> anyhow::Result<[[u8; 3]; 256]> {
+    let mut at = 0;
+    while at + 8 <= bytes.len() {
+        let length = u32::from_be_bytes(bytes[at + 4..at + 8].try_into()?) as usize;
+        let payload = at + 8;
+        if &bytes[at..at + 4] == b"BPAL" {
+            let table = bytes
+                .get(payload..payload + 768)
+                .filter(|_| length >= 768)
+                .ok_or_else(|| anyhow::anyhow!("logbook: LOGPAPER.GXA palette is truncated"))?;
+            return Ok(std::array::from_fn(|index| {
+                std::array::from_fn(|channel| table[index * 3 + channel] << 2)
+            }));
+        }
+        if &bytes[at..at + 4] == b"END " {
+            break;
+        }
+        at = payload + length;
+    }
+    anyhow::bail!("logbook: LOGPAPER.GXA has no palette")
+}
+
+#[cfg(feature = "parsers")]
+/// Corner normals and brightness bytes the engine's model lighting reads for each face, following
+/// preservation's formats/models/3d.md: with an indirection table each face vertex, counted across
+/// the faces in order, selects its vertex normal; otherwise the vertex's own normal applies; an
+/// unusable (non-normal-length) normal falls back to the face normal. The brightness byte is the
+/// stored face byte shifted left two bits, low eight bits kept.
+fn scroll_shading(model: &rgpre::import::model3d::Model3DFile) -> (Vec<Vec<[f32; 3]>>, Vec<u8>) {
+    let mut counter = 0;
+    let mut normals = Vec::new();
+    for (face_index, face) in model.face_data.iter().enumerate() {
+        let face_normal = model
+            .face_normals
+            .get(face_index)
+            .map_or([0.0; 3], |n| [n.x, n.y, n.z]);
+        normals.push(
+            face.face_vertices
+                .iter()
+                .map(|corner| {
+                    let selected = if model.normal_indices.is_empty() {
+                        Some(corner.vertex_index as usize)
+                    } else {
+                        model.normal_indices.get(counter).map(|&i| i as usize)
+                    };
+                    counter += 1;
+                    selected
+                        .and_then(|index| model.vertex_normals.get(index))
+                        .filter(|n| (n.x * n.x + n.y * n.y + n.z * n.z).is_normal())
+                        .map_or(face_normal, |n| [n.x, n.y, n.z])
+                })
+                .collect(),
+        );
+    }
+    let brightness = model
+        .face_data
+        .iter()
+        .map(|face| face.tex_hi.wrapping_mul(4))
+        .collect();
+    (normals, brightness)
+}
+
 #[cfg(feature = "parsers")]
 pub(crate) fn prepare(
     source: &dyn crate::source::ReadAssets,
@@ -181,7 +265,13 @@ pub(crate) fn prepare(
     let read = |path: &str| {
         crate::preparation::read(source, path).with_context(|| format!("logbook: {path}"))
     };
-    let paper = parse_gxa_file(&read("SYSTEM/LOGPAPER.GXA")?)?
+    let paper_bytes = read("SYSTEM/LOGPAPER.GXA")?;
+    // The reader draws the paper and the scrolls with the paper file's own palette, so the scroll
+    // textures take their colours from it, not from REDGUARD.COL.
+    let reader_palette = Palette {
+        colors: gxa_palette(&paper_bytes)?,
+    };
+    let paper = parse_gxa_file(&paper_bytes)?
         .frames
         .into_iter()
         .next()
@@ -208,7 +298,7 @@ pub(crate) fn prepare(
                     width: image.width,
                     height: image.height,
                     indices: image.pixel_data.clone(),
-                    rgba: image.decode_rgba(Some(&palette)),
+                    rgba: image.decode_rgba(Some(&reader_palette)),
                 });
             }
         }
@@ -269,12 +359,15 @@ pub(crate) fn prepare(
         rgpre::import::keys_ini::KeysIni::parse(&crate::preparation::text(source, "KEYS.INI")?)
             .map_err(anyhow::Error::msg)?
             .control_codes();
+    let (scroll_normals, scroll_brightness) = scroll_shading(&model);
     let artwork = LogbookArtwork {
         paper: MenuPicture {
             width: paper.width,
             height: paper.height,
             rgba: paper.rgba,
         },
+        scroll_normals,
+        scroll_brightness,
         scroll: crate::startup::menu_export::export_model(model, [0.; 3], &references, &palette)?,
         textures,
         palette: palette.colors.to_vec(),
@@ -327,6 +420,27 @@ mod credits_tests {
             CreditAlign::Left,
             "unknown letters stay left"
         );
+    }
+
+    #[cfg(feature = "parsers")]
+    #[test]
+    fn gxa_palette_is_found_by_walking_sections_and_widened_to_eight_bits() {
+        let mut file = Vec::new();
+        file.extend(b"BMHD");
+        file.extend(34u32.to_be_bytes());
+        file.extend([0u8; 34]);
+        file.extend(b"BPAL");
+        file.extend(768u32.to_be_bytes());
+        file.extend((0..768).map(|i| (i % 64) as u8));
+        file.extend(b"END ");
+        let palette = gxa_palette(&file).unwrap();
+        assert_eq!(palette[0], [0, 4, 8]);
+        assert_eq!(palette[1], [12, 16, 20]);
+        assert_eq!(palette[255][2], (767 % 64) as u8 * 4);
+        // No palette section, or a truncated one, is an explicit error.
+        assert!(gxa_palette(&file[..42]).is_err());
+        assert!(gxa_palette(b"END ").is_err());
+        assert!(gxa_palette(&file[..60]).is_err());
     }
 
     #[test]

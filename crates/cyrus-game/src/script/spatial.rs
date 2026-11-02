@@ -570,9 +570,12 @@ impl ActorSpatial {
             .map_or(self.angle_history, |pose| pose.angles);
         match self.rotation_mode {
             0 if self.local.angles == matrix_angles => {}
-            0 => self.local.matrix.rotate(std::array::from_fn(|axis| {
-                self.local.angles[axis].wrapping_sub(matrix_angles[axis]) & 2047
-            })),
+            0 => self
+                .local
+                .matrix
+                .rotate_unattached(std::array::from_fn(|axis| {
+                    self.local.angles[axis].wrapping_sub(matrix_angles[axis]) & 2047
+                })),
             2 => self.local.matrix = Matrix::orientation(self.local.angles),
             mode => anyhow::bail!("actor rotation mode {mode} unsupported"),
         }
@@ -1068,6 +1071,46 @@ mod tests {
             fallback_position: None,
             linked_position: Some(None),
         }
+    }
+
+    #[test]
+    fn ordinary_refresh_rounds_products_and_consumes_the_delta_once() {
+        let mut actor = receiver([0; 3], vec![]);
+        actor.local.matrix = Matrix(
+            [
+                [1064785160, 3147691644, 3196327068],
+                [995104864, 1065352745, 3151928672],
+                [1048844282, 1002191984, 1064784958],
+            ]
+            .map(|row| row.map(f32::from_bits)),
+        );
+        actor.local.angles = [0, 1991, 0];
+        actor.refresh_transform().unwrap();
+        let expected = [
+            [1065290951, 3147691644, 3182428804],
+            [999108910, 1065352745, 3150519791],
+            [1034948834, 1002191984, 1065290827],
+        ];
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .0
+                .map(|row| row.map(f32::to_bits)),
+            expected
+        );
+        actor.refresh_transform().unwrap();
+        assert_eq!(
+            actor
+                .query_pose()
+                .unwrap()
+                .matrix
+                .0
+                .map(|row| row.map(f32::to_bits)),
+            expected
+        );
+        assert_eq!(actor.angle_history, [0; 3]);
     }
 
     #[test]
