@@ -30942,6 +30942,221 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
     }
 }
 
+#[test]
+fn initialized_lineup_references_are_validated_before_session_replacement() {
+    use cyrus_game::{
+        clock::SimulationClock,
+        player::input::PlayerToggles,
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        random::EngineRandom,
+        script::{
+            LocomotionGeometry, LogicalSessionRestoreInputs, LogicalSessionSnapshot,
+            ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource, ScriptActors,
+            ScriptHud, ScriptInputs, ScriptStage, WorldSnapshotSources,
+        },
+    };
+    struct Store;
+    impl PreferenceStore for Store {
+        fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        scripts.lineup_distance = Some(i32::MAX);
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: "PlayerLineUp".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        scripts.definition.attributes[12] = "attr_walk_speed".into();
+        scripts
+            .actors
+            .get_mut("CYRUS")
+            .unwrap()
+            .attributes
+            .insert("attr_walk_speed".into(), 3);
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            id,
+            "PlayerLineUp",
+            CallKind::Task,
+            vec![
+                Value::Integer { value: 1024 },
+                Value::Integer { value: 0 },
+                Value::Integer { value: -2048 },
+            ],
+        );
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    let receiver = world.id(0).unwrap();
+    let actors = [player, receiver];
+    let preferences = Preferences::new(Store);
+    let asset = inventory_asset(&[]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)
+        .unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        player_collision: Some(PlayerCollisionSource {
+            scene: &scene,
+            animations: &data,
+            view: [10, 30],
+            actors: &actors,
+        }),
+        locomotion_geometry: Some(LocomotionGeometry {
+            ground: OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            environment: ObstacleEnvironment {
+                selected_player: Some(player),
+                auto_grab: false,
+                item_system_ready: false,
+                shell_execution: false,
+                ticks: 1,
+            },
+        }),
+        ..Default::default()
+    };
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut random = EngineRandom::from_state(42);
+    world
+        .advance(
+            receiver,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let before = world.inspect(0, 64);
+    let collision = Default::default();
+    let sources = BTreeMap::from([(
+        scripts.world,
+        WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        },
+    )]);
+    let mut registry = ScriptActors::default();
+    registry.current = Some(world);
+    let saved = serde_json::to_value(
+        registry
+            .snapshot_session(
+                &sources,
+                &hud,
+                &SimulationClock::new(scripts.clock).unwrap(),
+                &random,
+                PlayerToggles {
+                    walk_mode: true,
+                    auto_defend: false,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let task = &saved["registry"]["worlds"][0]["actors"][0]["tasks"];
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["initialized"], true);
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["approach"], false);
+    assert_eq!(task["tasks"][0]["state"]["LineUp"]["reference"], 0);
+    let restore = |document| {
+        serde_json::from_value::<LogicalSessionSnapshot>(document)
+            .unwrap()
+            .plan(LogicalSessionRestoreInputs {
+                sources: &sources,
+                last_generation: 100,
+                hud: &asset,
+                preferences: &preferences,
+                bios_tick: 100,
+            })
+            .unwrap()
+            .finish(&(0..16).map(|slot| (slot, slot)).collect())
+    };
+    for (reference, expected) in [
+        (9999, "stale or absent saved owner"),
+        (player.index, "lineup reference is the selected player"),
+    ] {
+        let mut invalid = saved.clone();
+        invalid["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+            reference.into();
+        let error = restore(invalid)
+            .err()
+            .expect("invalid retained reference must reject before session replacement");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(expected)
+                && message.contains("actor 0 saved task references")
+                && message.contains("native PlayerLineUp token"),
+            "{message}"
+        );
+        assert_eq!(registry.current.as_ref().unwrap().inspect(0, 64), before);
+    }
+    let alternate = registry
+        .current
+        .as_ref()
+        .unwrap()
+        .actors()
+        .iter()
+        .position(|actor| {
+            matches!(
+                actor.source,
+                cyrus_game::script::ScriptActorSource::AlternatePlayer
+            )
+        })
+        .unwrap();
+    let mut swapped = saved.clone();
+    swapped["registry"]["globals"]["player_swapped"] = true.into();
+    swapped["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+        alternate.into();
+    let error = restore(swapped)
+        .err()
+        .expect("swapped selected-player reference must reject");
+    assert!(
+        format!("{error:#}").contains("lineup reference is the selected player"),
+        "{error:#}"
+    );
+    let mut nonselected = saved.clone();
+    nonselected["registry"]["worlds"][0]["actors"][0]["tasks"]["tasks"][0]["state"]["LineUp"]["reference"] =
+        alternate.into();
+    assert!(
+        restore(nonselected).is_ok(),
+        "the unselected player role remains a valid reference"
+    );
+    let restored = restore(saved.clone()).unwrap();
+    let restored_world = restored.actors.current.unwrap();
+    assert_eq!(restored_world.generation(), 101);
+    let roundtrip =
+        serde_json::to_value(restored_world.snapshot(&sources[&scripts.world]).unwrap()).unwrap();
+    assert_eq!(&roundtrip["actors"][0]["tasks"], task);
+}
+
 #[path = "script_registry/effects.rs"]
 mod environmental_effect_tests;
 

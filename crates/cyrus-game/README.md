@@ -94,6 +94,12 @@ continuations, then places both player records at the destination marker, follow
 preservation's [player entry contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#initial-player-animation-setup).
 Whole-session restoration retains the saved player pose.
 
+Session and retained-world restoration validate saved `PlayerLineUp` references
+before returning a replacement. An absent actor or the currently selected player
+cannot be restored as the retained reference. Valid references keep their saved
+actor index across generation replacement, following preservation's
+[alignment ownership contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#player-alignment-ownership-and-targets).
+
 Verified: logical sessions retain the selected player's rope jump latch separately
 from per-world rope records, following preservation's
 [saved global owner contract](https://github.com/michidk/redguard-preservation/blob/8f692dd2e2c9a9ea86a20a7eb74c7acac7cef39f/docs/formats/SAVEGAME.md#rope-jump-latch).

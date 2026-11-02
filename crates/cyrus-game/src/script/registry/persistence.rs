@@ -766,7 +766,7 @@ impl WorldSnapshot {
         self,
         sources: &WorldSnapshotSources<'_>,
         generation: u64,
-        dialogue: Option<&super::super::DialogueState>,
+        globals: &super::super::GameplayGlobals,
         samples: &BTreeMap<u8, u8>,
     ) -> Result<ScriptWorld> {
         ensure!(
@@ -774,7 +774,7 @@ impl WorldSnapshot {
             "world {}: saved source content differs",
             self.world
         );
-        self.restore_validated_source(sources, generation, dialogue, samples)
+        self.restore_validated_source(sources, generation, globals, samples)
     }
 
     // Registry plans retain immutable source borrows after checking their full identities.
@@ -782,7 +782,7 @@ impl WorldSnapshot {
         self,
         sources: &WorldSnapshotSources<'_>,
         generation: u64,
-        dialogue: Option<&super::super::DialogueState>,
+        globals: &super::super::GameplayGlobals,
         samples: &BTreeMap<u8, u8>,
     ) -> Result<ScriptWorld> {
         ensure!(
@@ -885,14 +885,28 @@ impl WorldSnapshot {
                             sources: &programs,
                             static_count,
                             rebind: &rebind,
-                            dialogue,
+                            dialogue: globals.dialogue.as_ref(),
                             samples,
                         },
                     )
                     .with_context(|| format!("world {} actor {index} replacement", self.world))
             })
             .collect::<Result<_>>()?;
+        let selected_player = super::selected_player_index(&candidate.actors, globals);
         for (index, actor) in candidate.actors.iter().enumerate() {
+            actor
+                .tasks
+                .validate_actor_references(|reference| {
+                    rebind(self.generation, reference as usize)?;
+                    ensure!(
+                        Some(reference as usize) != selected_player,
+                        "lineup reference is the selected player"
+                    );
+                    Ok(())
+                })
+                .with_context(|| {
+                    format!("world {} actor {index} saved task references", self.world)
+                })?;
             if let Some(control) = &actor.control {
                 if let Some(nodes) = &candidate.walk_nodes {
                     nodes.check_state(&control.navigation).with_context(|| {
@@ -1180,7 +1194,7 @@ impl RegistryRestorePlan<'_> {
             let candidate = world_snapshot.restore_validated_source(
                 &sources[&world],
                 replacements[&world],
-                globals.dialogue.as_ref(),
+                &globals,
                 samples,
             )?;
             if world == saved.current {
@@ -1492,7 +1506,7 @@ impl ScriptWorld {
         let mut candidate = snapshot.restore(
             sources,
             context.generation,
-            context.globals.dialogue.as_ref(),
+            &context.globals,
             context.samples,
         )?;
         candidate.globals = context.globals;
@@ -1532,12 +1546,8 @@ impl ScriptActors {
             .selected_player()
             .map(|player| current.spatial(player).map(|spatial| spatial.local))
             .transpose()?;
-        let mut replacement = snapshot.restore(
-            sources,
-            current.generation(),
-            current.globals.dialogue.as_ref(),
-            &samples,
-        )?;
+        let mut replacement =
+            snapshot.restore(sources, current.generation(), &current.globals, &samples)?;
         // Temporary world restoration precedes destination placement (preservation player entry).
         if let Some(destination) = destination {
             let spatial = replacement
