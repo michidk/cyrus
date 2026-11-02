@@ -101,7 +101,8 @@ See [setup](../../docs/SETUP.md) for shared build and install options.
 
 The viewer uses generic inspection rendering. It does not claim Faithful game
 lighting, timing, or scene behavior. Model playback steps converted frames at the
-chosen interval; scripts are inspected as data and never executed.
+chosen interval; scripts are inspected as data and never executed. Model previews
+use bilinear texture filtering, including when loading older cached exports.
 
 Movies load their full original bytes and prepare audio before playback. Seeking
 may pause while decoding catches up. Browser audio requires a user gesture.

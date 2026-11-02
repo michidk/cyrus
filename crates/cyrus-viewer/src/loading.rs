@@ -321,7 +321,11 @@ mod tests {
         let member = members
             .entries
             .iter()
-            .find(|entry| entry.error.is_none())
+            .find(|entry| {
+                entry.path.eq_ignore_ascii_case(&archive.path)
+                    && entry.is_member()
+                    && entry.error.is_none()
+            })
             .ok_or_else(|| anyhow::anyhow!("fxart/MENU.ROB has no supported members"))?;
         let options = cyrus_app::launch::ViewerOptions::try_parse_from([
             "viewer",

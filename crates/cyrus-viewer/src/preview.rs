@@ -6,6 +6,8 @@ use crate::{
 use bevy::{
     audio::{AudioSinkPlayback, Volume},
     camera::{Viewport, primitives::Aabb},
+    gltf::GltfLoaderSettings,
+    image::{ImageAddressMode, ImageSamplerDescriptor},
     prelude::*,
 };
 use cyrus_app::bevy_egui::{PrimaryEguiContext, egui};
@@ -80,9 +82,25 @@ pub fn sync(
                 commands.entity(root).despawn();
             }
             if let Some(frames) = frames {
+                let model_preview = matches!(
+                    viewer.preview.as_ref().map(|preview| &preview.content),
+                    Some(Content::Model { data: None, .. })
+                );
                 for (index, path) in frames.iter().enumerate() {
-                    let handle =
-                        assets.load(GltfAssetLabel::Scene(0).from_asset(format!("cache://{path}")));
+                    let handle = assets
+                        .load_builder()
+                        .with_settings(move |settings: &mut GltfLoaderSettings| {
+                            if model_preview {
+                                // Cached generic exports explicitly request nearest filtering.
+                                settings.override_sampler = true;
+                                settings.default_sampler = Some(ImageSamplerDescriptor {
+                                    address_mode_u: ImageAddressMode::Repeat,
+                                    address_mode_v: ImageAddressMode::Repeat,
+                                    ..ImageSamplerDescriptor::linear()
+                                });
+                            }
+                        })
+                        .load(GltfAssetLabel::Scene(0).from_asset(format!("cache://{path}")));
                     commands.spawn((
                         PreviewRoot,
                         PreviewFrame(index),
