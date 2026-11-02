@@ -14,13 +14,17 @@ world, by default `game-config/cache`). Each export lists the whole native catal
 
 Run it after exporting every world:
 
-    dev/scripts/native-audit.py [--scripts game-config/cache] [--sources crates] [--list-unused]
+    dev/scripts/native-audit.py [--scripts game-config/cache] [--sources crates] [--list-unused] [--matrix]
+
+`--matrix` lists every called native with its kind, the number of worlds calling it and the source
+files that name it exactly or in snake case (a pointer for the per-native audit, not proof of behaviour).
 """
 import argparse
 import collections
 import glob
 import json
 import os
+import re
 import sys
 
 
@@ -72,17 +76,47 @@ def sources(root):
     return "\n".join(code), "\n".join(tests).replace("_", "")
 
 
+def matrix(root, catalogue, used):
+    """Per called native: kind, calling worlds and the non-test source files naming it exactly."""
+    texts = {}
+    for directory, _, files in os.walk(root):
+        for name in files:
+            if name.endswith(".rs"):
+                path = os.path.join(directory, name)
+                with open(path, errors="ignore") as handle:
+                    text = handle.read()
+                texts[path] = text.split("#[cfg(test)]")[0]
+    rows = []
+    for name in sorted(used):
+        snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+        pattern = re.compile(r"\b(?:" + re.escape(name) + "|" + re.escape(snake) + r")\b", re.IGNORECASE)
+        files = sorted(
+            os.path.relpath(path, root)
+            for path, text in texts.items()
+            if os.sep + "tests" + os.sep not in path and pattern.search(text)
+        )
+        rows.append((name, catalogue.get(name, ""), len(used[name]), files))
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
     parser.add_argument("--sources", default="crates")
     parser.add_argument("--pattern", default="*.scripts", help="export file name pattern")
     parser.add_argument("--list-unused", action="store_true")
+    parser.add_argument(
+        "--matrix", action="store_true", help="print one tab-separated row per called native"
+    )
     args = parser.parse_args()
     catalogue, used, count = collect(args.scripts, args.pattern)
     if not used:
         print(f"no natives found in {count} script exports under {args.scripts}")
         return 1
+    if args.matrix:
+        for name, kind, worlds, files in matrix(args.sources, catalogue, used):
+            print(f"{name}\t{kind}\t{worlds}\t{', '.join(files) or '-'}")
+        return 0
     code, tests = sources(args.sources)
     unmentioned = sorted(name for name in used if name.lower() not in code)
     untested = sorted(name for name in used if name.lower() not in tests)
