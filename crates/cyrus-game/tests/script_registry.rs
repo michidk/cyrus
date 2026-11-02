@@ -4409,6 +4409,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     };
     let mut initial_roles = role_snapshot(&app);
     assert_eq!(initial_roles["actors"][0]["attributes"][23], 1);
+    assert!(initial_roles["actors"][0]["weapon"].is_object());
     assert_eq!(initial_roles["actors"][1]["attributes"][23], 1);
     assert_eq!(
         initial_roles["actors"][0]["animation"]["frame"], 1,
@@ -4534,7 +4535,12 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         0,
         "presentation must recover the authoritative logical heading"
     );
+    assert!(
+        role_snapshot(&app)["actors"][0]["weapon"].is_null(),
+        "losing weapon ownership must release its displayed attachment"
+    );
     initial_roles["actors"][0]["attributes"][23] = serde_json::json!(0);
+    initial_roles["actors"][0]["weapon"] = serde_json::Value::Null;
     assert_eq!(role_snapshot(&app)["actors"], initial_roles["actors"]);
     assert!(
         app.world_mut()

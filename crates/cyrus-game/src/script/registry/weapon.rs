@@ -531,6 +531,7 @@ impl ScriptWorld {
             || !hud.owned_weapon(weapon)?
         {
             self.actors[index].attributes[23] = 0;
+            self.actors[index].model.weapon = None;
             self.cleanup_actor_weapon(selected_player, selected_player, nominal_ticks, sounds)?;
         }
         Ok(())

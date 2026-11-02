@@ -69,6 +69,9 @@ and weapon publication skips killed receivers. `Resurrect`
 does not republish the removed geometry, following preservation's
 [lifecycle contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killme-and-resurrect).
 
+Automatic selected-player weapon validation also releases the retained attachment
+when its item is no longer an owned weapon, so rendering cannot keep the old sword.
+
 Projectile endpoint contact selects the target's initialized body spheres.
 Verified: attribute 56 suppresses those spheres. Vertex-bound RAVC volumes belong to
 a separate overlap owner and do not block projectile contact. The optional RAFS
