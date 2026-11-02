@@ -1,5 +1,8 @@
 # SETUP — running cyrus and the original
 
+For player controls, saving, resuming and current limitations, see
+[Playing cyrus](PLAYING.md). This guide covers setup and developer tools.
+
 ## You need
 
 - The GOG release of *The Elder Scrolls Adventures: Redguard*. Buy it; the
@@ -397,8 +400,8 @@ are ready. **Verified:** original world loading has a gold lower-left percentage
 and no right-hand status message. Native and browser presentation use that layout.
 The startup title updates its bottom-right red label during menu/HUD preparation,
 menu loading and browser sound loading. Title labels describe cyrus loading stages.
-Escape returns to the menu after a loading error. Full gameplay and story
-initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
+Escape returns to the menu after a loading error. Full-game progression and
+new-game-to-ending acceptance remain incomplete. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
 playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
@@ -407,7 +410,7 @@ change. Timing uses the startup presentation cadence rather than original update
 performance. Book/page
 motion and navigation feedback play installed effects through the shared sound
 path on native and browser builds. **Verified:** the original default book menu has no pointer
-hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
+hover/click selection. Joystick support and remaining mouse-bound actions are incomplete. Lighting,
 camera-plane clipping remain unsupported. Entering the book from gameplay, or by a fatal death, captures a 256x192 centre-cropped
 view that the book shows and slot saves store; a save made from live gameplay (quick save) stores no thumbnail.
 
@@ -597,8 +600,9 @@ state and shared task slots through explicit hosts. Installed programs and
 initial instance locals are retained independently of rendered meshes. The
 inspection host supports self `GetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag`
 and `TestGlobalFlag`; unsupported services produce a
-sticky contextual failure. Automatic actor eligibility, simulation timing,
-complete native handlers, progression and resumable saves remain unavailable.
+sticky contextual failure. These explicit inspection commands are separate from
+ordinary gameplay scheduling and the production Save/Load pages; they do not
+establish full-game progression or fidelity acceptance.
 
 ### Explicit shared script animation
 

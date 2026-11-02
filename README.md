@@ -8,23 +8,25 @@
 
 Bring your own GOG install. cyrus ships no game data.
 
-[Setup](docs/SETUP.md) · [Delivery issues](https://github.com/michidk/cyrus/issues/92) · [How cyrus is built](docs/METHOD.md) · [Contributing](CONTRIBUTING.md)
+[Playing and controls](docs/PLAYING.md) · [Setup](docs/SETUP.md) · [Delivery issues](https://github.com/michidk/cyrus/issues/92) · [How cyrus is built](docs/METHOD.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
 > [!IMPORTANT]
 > cyrus is early in development. Startup presentation and world viewing work,
-> but the game is not yet playable.
+> but a complete gameplay and fidelity playthrough has not been accepted.
 
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.
 - Play unlocked movies, edit persistent settings, and enter the starting world
-  with New Game. Load lists existing diagnostic saves; complete player-facing saves remain pending.
+  with New Game. Save and restore cyrus sessions through the book, including
+  gameplay thumbnails and native/browser restart support.
 - Load Redguard worlds from a local GOG install in the native or browser viewer.
 - Inspect loaded worlds with a free camera.
 
-See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
+See [Playing and controls](docs/PLAYING.md) for saving, resuming and current
+limitations. See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
 
 Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 `rg-unity-devtalk`.
