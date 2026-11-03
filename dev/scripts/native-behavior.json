@@ -4674,6 +4674,255 @@
       ],
       "limits": "Verified by source inspection: reads current attribute30, guards retained channel membership and clears posted state without changing membership/released value. Public test covers no-argument success and argument rejection, not a populated channel reset. GroupSync helper test exercises reset and subsequent group-cycle release below named dispatch; it does not cover the user reset or current-channel guard. Unknown: populated public reset, changed-channel refusal and matched original/native/browser reset sequences. General synchronized-walking acceptance does not complete these named reset calls. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
       "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "Guard",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "CountAiShells",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares function with 1 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "FindAiShell",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares function with 1 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "swordAI",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares task with 0 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "InCircle",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares function with 3 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "IsWithinView",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares function with 0 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "lookCyrus",
+      "status": "missing",
+      "owner": 35,
+      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: installed definition declares task with 1 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "Animal",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Declared animal task versus permissive constant-return host branch",
+      "caller": "ScriptWorld::advance -> GameHost::call Animal branch",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: canonical definition declares task with TWO arguments. Current host branch ignores kind/arguments and returns zero. Synthetic fixture constructs a FUNCTION with ONE argument from supplied calls and asserts zero. That fixture does not establish installed task dispatch/lifetime or side-effect absence. Unknown: original animal behavior and named installed task acceptance; do not infer a verified no-op from the source comment. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "IsWithinMap",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Constant-return map query and declaration boundary",
+      "caller": "ScriptWorld::advance -> GameHost::call IsWithinMap branch",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified: current branch returns one without checking operands; installed definition declares zero arguments. Inspected synthetic fixture supplies one argument and declares that arity, asserting one. No canonical zero-argument installed-call or original/native/browser map-boundary acceptance located. Unknown: original query contract beyond declaration; source comment is not behavioral proof. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "SetAiType",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver low-byte control setter and readback",
+      "caller": "ScriptWorld::advance -> GameHost::call -> receiver control.death_selector",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified by inspected public assertions: 300 truncates to44 through corresponding MyAI getter. Source checks one integer and stores its low byte. Setter/readback proves retained byte access, not an AI behavior transition, death response or original/native/browser execution of the named setter. Unknown: routed receiver/replacement and downstream behavior acceptance. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "SetAiMode",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver low-byte control setter and readback",
+      "caller": "ScriptWorld::advance -> GameHost::call -> receiver control.death_response",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+      ],
+      "limits": "Verified by inspected public assertions: 7 reads back as7 through corresponding MyAI getter. Source checks one integer and stores its low byte. Setter/readback proves retained byte access, not an AI behavior transition, death response or original/native/browser execution of the named setter. Unknown: routed receiver/replacement and downstream behavior acceptance. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "Wander",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Map-aware destination choice and empty-map displacement guard",
+      "caller": "ScriptWorld::advance/NativeHook -> GameHost::call -> wander_through_maps or navigation::wander_without_maps",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::empty_map_wander_consumes_original_draws_and_restores_excess_displacement",
+        "crates/cyrus-game/tests/script_registry.rs::wander_rejects_a_zero_radius_without_consuming_random",
+        "crates/cyrus-game/tests/script_registry.rs::wander_with_maps_picks_the_nearest_node_as_its_destination_and_ends_on_arrival",
+        "crates/cyrus-game/tests/script_instances.rs::installed_viledog_wander_hook_consumes_random_without_walk_maps"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified inspected assertions: empty-map literal random states, displacement restoration and attr94; sub-map-unit radius rejects before random consumption. Map fixture starts on its nearest node and checks destination immediately clears, so it does not prove multi-update traversal. Installed VILEDOG hook asserts random2524885223, attr94=1, unchanged position and no failure. Unknown: full installed map traversal/collision/random-order original/native/browser parity. General movement acceptance explicitly leaves selected/separate/timing branches bounded. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "cameraController",
+      "status": "partial",
+      "owner": 34,
+      "scope": "Public camera update service and ordinary CAMERA traversal hook",
+      "caller": "ScriptWorld::advance -> GameHost::call -> run_camera_controller; ordinary.rs CAMERA source branch -> same service",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::camera_controller_runs_one_pose_update_and_publishes_the_camera_actor",
+        "crates/cyrus-game/tests/script_camera_session.rs::camera_controller_without_the_update_service_changes_nothing"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified inspected public tests: current pose changes, previous retains start, camera actor publishes current position and service receives selected target pose; missing service errors before current-pose mutation. Ordinary traversal directly invokes shared controller rather than executing the named script function. Verified #34 receipt compares START native/original follow/story and sampled browser shots; it explicitly notes missed shots and unobserved overflow runtime. Unknown: named-call versus ordinary-hook composition across all slots/worlds and complete branch parity. Closed bounded camera scope is preserved. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "showCyrusPan",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Selected-player pan wrapper and held-weapon early return",
+      "caller": "ScriptWorld::advance -> NativeTasks ObjectPanCommand::Cyrus -> camera pan state",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255"
+      ],
+      "limits": "Verified inspected fixture: unarmed request binds selected player and scripted_active1; attr110 armed branch keeps selection/record flags and scripted_active0. It does not run the unarmed pan to completion or assert its full path. #35 actual camera scenes cover installed-called show/look/pan; no named acceptance receipt for this unused wrapper located. Unknown: original/native/browser named duration/geometry/cancellation and wrapper parity. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "showObjRot",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Declared eight-argument task versus four-argument no-op implementation",
+      "caller": "ScriptWorld::advance -> NativeTasks::ObjectRotation -> argument guard then completion",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::show_obj_rot_completes_without_touching_the_camera"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255"
+      ],
+      "limits": "Verified: preservation documents no-op return zero. Canonical installed definition declares EIGHT arguments; current task handler requires FOUR and persistence metadata records four. Synthetic fixture declares four, finishes task and checks selected camera unchanged/scripted_active0; this does not establish canonical eight-argument acceptance and current handler rejects eight. #35 installed-called camera acceptance does not cover this unused declaration. Unknown: installed task lifecycle/return acceptance across hosts; no completion inferred from the no-op contract. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
+      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
     }
   ],
   "instructions": [
