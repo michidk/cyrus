@@ -3688,10 +3688,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/254"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified independent installed4-argument native/full329-byte handler. Shared source actor position resolves alternate/active attachment/current local; source matrix transforms offsets; wrapping XYZ composition, Y subtracts receiver vertical offset<<8 and adds shared adjustment. Selected player writes pending flag/XYZ/unchanged angle; others current local XYZ/angle&2047 then registration. Return0/fourth stack argument cleanup.1440 original contexts/23 effective semantic mutations; original resolver/predicates/registration execute, matrix in-place IO and returning diagnostic/error137 controlled. Exact target hash matches separately evidenced original matrix PR248, not integrated numerical/runtime acceptance. Selected allocated domains; source producer/lifetime, malformed/full list/error termination/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {
       "native": "MovePos",
