@@ -22,6 +22,8 @@ files that name it exactly or in snake case (a pointer for the per-native audit,
 Unreviewed names are unaudited, never inferred missing or complete from source mentions.
 `--instruction-matrix` reports reviewed VM forms and static decoded statement counts.
 These counts do not establish execution or fidelity; absent forms remain visible.
+`--rejection-matrix` groups retained decoder failures, separating fallback statements
+from distinct actors. It does not establish current rejection or malformed original data.
 """
 import argparse
 import collections
@@ -147,6 +149,36 @@ def instruction_usage(directory, pattern):
     return used, counts
 
 
+
+def rejection_rows(directory, pattern):
+    """Group retained decode failures; repeated fallback cursors are not distinct actors."""
+    groups = {}
+    for path in sorted(glob.glob(os.path.join(directory, pattern))):
+        data = json.loads(Path(path).read_text())
+        for actor_name, actor in data.get("actors", {}).items():
+            for step in actor.get("program", {}).get("steps", {}).values():
+                operation = step.get("operation", {})
+                if operation.get("type") != "unsupported":
+                    continue
+                reason = operation.get("reason", "")
+                match = re.fullmatch(
+                    r"script instruction \d+: function (.+) requires (\d+) arguments, found (\d+)", reason)
+                key = ("arity", *match.groups()) if match else ("other", reason, "-", "-")
+                group = groups.setdefault(key, {"statements": 0, "actors": set(), "files": set()})
+                group["statements"] += 1
+                group["actors"].add((os.path.basename(path), actor_name))
+                group["files"].add(os.path.basename(path))
+    return groups
+
+
+def rejection_matrix(directory, pattern):
+    groups = rejection_rows(directory, pattern)
+    print("category\tfunction_or_reason\texpected\tfound\tstatements\tactors\texport_files\tclassification")
+    for key, group in sorted(groups.items()):
+        values = [*key, str(group["statements"]), str(len(group["actors"])),
+                  str(len(group["files"])), "unknown: retained decode rejection; current execution not established"]
+        print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
+
 def instruction_matrix(path, directory, pattern):
     """Join reviewed VM forms with static export occurrences, including absent forms."""
     used, counts = instruction_usage(directory, pattern)
@@ -185,7 +217,12 @@ def main():
     )
     parser.add_argument("--instruction-matrix", action="store_true",
                         help="review VM forms with static statement counts, not execution proof")
+    parser.add_argument("--rejection-matrix", action="store_true",
+                        help="group historical decode failures without classifying them as missing behavior")
     args = parser.parse_args()
+    if args.rejection_matrix:
+        rejection_matrix(args.scripts, args.pattern)
+        return 0
     if args.instruction_matrix:
         try:
             instruction_matrix(args.behavior, args.scripts, args.pattern)

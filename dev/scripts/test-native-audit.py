@@ -118,6 +118,32 @@ class BehaviorAuditTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout)
             self.assertIn('invalid instruction audit', result.stderr)
 
+    def test_rejections_group_causes_without_counting_fallback_cursors_as_actors(self):
+        def actor(reason):
+            return {'program': {'steps': {
+                '0': {'operation': {'type': 'unsupported', 'reason': reason}},
+                '9': {'operation': {'type': 'unsupported', 'reason': reason}},
+            }}}
+        (self.root / 'one.scripts').write_text(json.dumps({'actors': {
+            'A': actor('script instruction 7: function Query requires 0 arguments, found 1'),
+            'B': actor('script instruction 4: function Query requires 0 arguments, found 1'),
+            'C': actor('unrecovered decoder cause'),
+        }}))
+        (self.root / 'two.scripts').write_text(json.dumps({'actors': {
+            'A': actor('script instruction 8: function Query requires 0 arguments, found 1'),
+        }}))
+        groups = audit.rejection_rows(self.root, '*.scripts')
+        group = groups[('arity', 'Query', '0', '1')]
+        self.assertEqual(group['statements'], 6)
+        self.assertEqual(len(group['actors']), 3)
+        self.assertEqual(len(group['files']), 2)
+        self.assertIn(('other', 'unrecovered decoder cause', '-', '-'), groups)
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--rejection-matrix'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('arity\tQuery\t0\t1\t6\t3\t2\tunknown:', result.stdout)
+        self.assertIn('current execution not established', result.stdout)
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]

@@ -2771,6 +2771,39 @@
       ],
       "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert argument polling stops while paused and interrupt pause preserves shared main slot. Verified10 live replacement does not isolate the instruction. Unknown: installed three-host pause label execution, all foreign-source matching and persistence phases. Status is an inferred scoped assessment, not completion from source presence.",
       "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "task_resume",
+      "status": "partial",
+      "owner": 10,
+      "scope": "Clear pause on matching actor task slots while retaining counters and shared operand identity",
+      "caller": "cyrus_script::Runtime::invoke_body -> run -> control_tasks; matching uses actor origin plus label plus one",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-script/tests/runtime.rs::paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by inspection: public body calls resume a paused slot; next timed pass resumes polling with elapsed2 rather than advancing while paused. Shared pause/resume/stop fixture observes polling resumes before cancellation. Zero decoded TaskResume occurrences in the historical27 exports does not mean missing support. Unknown: installed original/native/browser label execution across foreign operands and replacement. The foreign restore fixture manually clears paused in its saved JSON, so its continuation is not TaskResume dispatch acceptance. Broader browser replacement acceptance under10 does not isolate this instruction. Rust tests inspected, not rerun; partial is an inferred scope judgment.",
+      "reviewed_revision": "51b778a821273ff6c65e8e119006d9d6ef899511"
+    },
+    {
+      "instruction": "unsupported",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Retain contextual decoder refusal and prevent host execution of an unsupported actor program",
+      "caller": "cyrus_assets::script_export::prepare_source -> preservation decode_script_program -> Unsupported fallback; cyrus_script::Runtime::run returns contextual sticky error",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/src/import/rgm/script_program.rs"
+      ],
+      "limits": "Verified by source inspection: decoder compares encoded arity to installed declaration; assets retains failure at base/entry fallback cursors, so duplicate statements are not independent failing actors. Historical27 exports contain24 fallback statements in22 HIDEOUT actors across eight arity groups. Current pinned decoder and VM definition validation retain count checks; this does not establish that every historical failure is reached or currently regenerated. The named test covers sticky callback errors/runaway budgets, not an Unsupported decode-to-runtime integration fixture. Unknown: stale versus current export equivalence, original handling of these mismatched forms, valid unsupported behavior versus deliberate malformed/unsafe rejection, actor admission and native/browser execution. No group is classified missing or malformed solely from its reason. No gameplay tests/runtime rerun.",
+      "reviewed_revision": "51b778a821273ff6c65e8e119006d9d6ef899511"
     }
   ]
 }
