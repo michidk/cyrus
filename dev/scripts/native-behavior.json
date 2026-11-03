@@ -3179,8 +3179,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask1 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask1 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "DisableScript",
@@ -3195,8 +3195,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask1 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask1 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "EnableTasks",
@@ -3210,8 +3210,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask4 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask4 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "DisableTasks",
@@ -3225,8 +3225,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask4 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask4 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "EnableObject",
@@ -3240,8 +3240,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask8 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask8 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "DisableObject",
@@ -3255,8 +3255,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask8 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask8 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "EnableCombat",
@@ -3270,8 +3270,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask16 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask16 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "DisableCombat",
@@ -3285,8 +3285,8 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
       ],
-      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask16 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask16 while preserving other bits. Inspected public fixture starts each family at zero, asserts disable produces its mask and disable then enable produces zero; its only mixed-mask assertion disables Tasks and Combat then enables Tasks, expecting16. It does not assert returned zero, nonzero initial unrelated bits for each family, malformed-argument rejection, missing control state or a distinct routed receiver. Source returns zero and rejects nonempty arguments before looking up control state; those branches are not exercised by this fixture. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "2c0aff518b672dad9d0179c6aee6296ec2b336ea"
     },
     {
       "native": "DisableNodeMaps",
