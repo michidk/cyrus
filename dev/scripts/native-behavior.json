@@ -737,6 +737,271 @@
       ],
       "limits": "Verified by inspection: public call fixture supplies nominal_ticks=3 and asserts result 3; source rejects absent or signed-range-exceeding input. Unknown: explicit public error assertions and installed original/native/browser time-source equivalence across updates. Source guard presence is not exercised-test evidence.",
       "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "lookObj",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Timed camera turn toward receiver, orientation hold and release",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::look_task_fixes_the_orientation_until_it_finishes",
+        "crates/cyrus-game/tests/script_camera_look.rs::look_reproduces_the_original_handler"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public script stages assert receiver binding, fixed-orientation bit, bounded completion and release; lower-level camera fixture checks original handler states. #35 records installed camera soak and cancellation. Unknown: isolated installed lookObj original/native/browser orientation and timing across targets. Story-shot position acceptance does not prove every look branch.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showCyrus",
+      "status": "partial",
+      "owner": 35,
+      "scope": "World-axis location camera targeting selected player with weapon admission",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_location.rs::location_camera_reproduces_the_original_handler"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: named LocationCommand selects the player and rejects holding-weapon state before shared show_location; helper fixture covers shared world/actor-frame location state. No dedicated public showCyrus named assertion was found in reviewed tests. Unknown: this variant admission/publication and installed original/native/browser comparison. Closed dispatch/soak coverage is retained, not promoted to branch parity.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showCyrusLoc",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Actor-axis location camera targeting selected player with synchronous pose publication",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::location_natives_run_the_pose_update_and_publish_the_camera_actor",
+        "crates/cyrus-game/tests/script_camera_session.rs::show_cyrus_loc_does_nothing_while_the_player_holds_a_weapon",
+        "crates/cyrus-game/tests/script_camera_location.rs::location_camera_reproduces_the_original_handler"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stages assert selected-player pose passed to update service, camera actor publication, first-call wait/next completion and weapon guard preserving camera. Shared helper fixture covers actor-axis transformation. Unknown: matched installed original/native/browser per-branch shot, obstacle and timing comparison; #34 browser sequence covers only three of five story shots.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showCyrusPanLoc",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Actor-axis pan targeting selected player with retained pan/task state",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::speech_and_camera_natives_accept_multitask_encoding",
+        "crates/cyrus-game/tests/script_camera_object_pan.rs::object_pans_reproduce_the_original_handlers"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: encoding test only rejects errors containing encoding; absent-service or operand errors can satisfy it. It is not successful pan execution. Production selects the player and uses shared actor-axis pan; helper fixture checks pan states below dispatch. Unknown: named public player-pan-local behavior and installed original/native/browser weapon/target/replacement parity.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showObj",
+      "status": "partial",
+      "owner": 35,
+      "scope": "World-axis location request on receiver with synchronous camera update",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::location_natives_run_the_pose_update_and_publish_the_camera_actor",
+        "crates/cyrus-game/tests/script_camera_location.rs::location_camera_reproduces_the_original_handler",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::dialogue_and_camera_multitasks_restore_without_changing_saved_continuations"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stages assert receiver pose service, camera actor publication and first-call/next-poll lifetime; task snapshot fixture covers shared continuation. Helper original-state fixture uses no obstacles/terrain. Unknown: complete installed original/native/browser receiver/obstacle/timing and replacement comparison. Recorded story-shot positions are bounded sequence evidence.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showObjLoc",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Actor-axis receiver location request and atomic pose failure behavior",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::location_natives_run_the_pose_update_and_publish_the_camera_actor",
+        "crates/cyrus-game/tests/script_camera_session.rs::location_native_without_the_update_service_fails_before_changing_the_camera",
+        "crates/cyrus-game/tests/script_camera_session.rs::failed_pose_update_leaves_the_camera_and_the_actor_untouched"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stages assert synchronous camera actor publication and no camera/actor mutation on missing or failing update service. Unknown: installed original/native/browser local-axis and attached-receiver shot/obstacle timing across worlds. #34 accepted START samples do not cover every target or slot.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showObjPan",
+      "status": "partial",
+      "owner": 35,
+      "scope": "World-axis receiver pan, task continuation and snapshot rebinding",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::object_pan_task_binds_the_receiver_and_finishes_with_its_request",
+        "crates/cyrus-game/tests/script_camera_session.rs::object_pan_binds_an_attached_receiver_through_its_composed_pose",
+        "crates/cyrus-game/tests/script_camera_session.rs::world_snapshot_resumes_an_object_pan_mid_flight",
+        "crates/cyrus-game/tests/script_camera_object_pan.rs::object_pans_reproduce_the_original_handlers"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stages assert receiver/composed pose binding, final request, script continuation and restored pan lifetime; helper fixture checks literal original states. Unknown: installed original/native/browser full pan phase/timing/obstacle equivalence. Native story dolly and partial browser sequence acceptance remain bounded evidence.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showObjPanLoc",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Actor-axis receiver pan with retained counter and scratch record",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_object_pan.rs::object_pans_reproduce_the_original_handlers"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: helper fixture runs show_object_pan with both vector frames and literal original per-step record/counter states; production command selects actor frame. No separate named public showObjPanLoc assertion was found in reviewed tests. Unknown: installed dispatch/attached target/replacement and original/native/browser full path timing.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showPlayer",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Return to selected player camera slot, snap/hold and task lifetime",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::show_player_holds_the_snap_bit_for_one_poll_then_completes",
+        "crates/cyrus-game/tests/script_camera_session.rs::show_player_requests_the_combat_slot_while_the_player_holds_a_weapon",
+        "crates/cyrus-game/tests/script_camera_session.rs::show_player_fails_before_changing_the_camera_without_its_inputs",
+        "crates/cyrus-game/tests/script_camera_session.rs::world_snapshot_resumes_show_player_on_the_rebound_camera_session"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stages assert snap then hold, armed slot selection, missing-input no-change failure and snapshot continuation. #35 records installed return to ordinary follow after scenes. Unknown: all selected-player slots/states and original/native/browser transitions; #34 explicitly excludes other slots/worlds and its browser capture misses two story shots.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "showPlayerPan",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Timed pan back to player selection and cleanup of scripted camera state",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> camera.rs::CameraState",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::show_player_pan_task_runs_to_completion_and_restores_the_selection",
+        "crates/cyrus-game/tests/script_camera.rs::show_player_pan_reproduces_the_original_step_by_step"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public stage test asserts pending task, scratch selection, bounded completion, restored player selection and continued script; CameraState fixture checks literal original steps. Unknown: installed original/native/browser every phase, changing player state and restore/cancellation timing. Shared camera sequence observations do not isolate this whole pan.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "XResetCamera",
+      "status": "partial",
+      "owner": 35,
+      "scope": "Reset player camera, clear player/camera tasks, publish pose and unlock control",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> registry/camera.rs::reset_camera_session",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::x_reset_camera_clears_the_task_slots_of_the_player_and_camera_actors",
+        "crates/cyrus-game/tests/script_camera_session.rs::x_reset_camera_recomputes_the_first_pose_with_record_zero_selected"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#xresetcamera",
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/cyrus/issues/34#issuecomment-6378949235"
+      ],
+      "limits": "Verified by inspection: public reset call clears started tasks on both roles, selects record0, recomputes/publishes pose and unlocks player. Source explicitly rejects caller equal to player/camera actor. Unknown: isolated installed original/native/browser reset with all task/service variants and failure branches. Reset pose assertions are not rendered parity.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "PlayerLooking",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Selected-player heading versus quantized positional bearing, with attached/link priority",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/spatial.rs::ActorSpatial::query",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_dispatch_returns_result_to_script_local",
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_uses_signed_tolerance_and_quantized_position_bearing",
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_preserves_attached_then_linked_position_priority",
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_facing_and_arc_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerdistance-and-playerfacing",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public dispatch returns expected script locals; lower-level spatial queries test signed tolerance, bearing, position priority and literal original routine rows. Unknown: installed original/native/browser query values across moving/attached targets and replacement. #48 synchronized movement replay does not isolate this query.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "PlayerFacing",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Compare selected-player heading to receiver heading plus offset",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/spatial.rs::ActorSpatial::query",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::attached_facing_stays_composed_until_family_refresh",
+        "crates/cyrus-game/tests/script_registry.rs::spatial_distance_requires_explicit_override_and_fallback_state",
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_facing_and_arc_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerdistance-and-playerfacing",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: ActorSpatial query fixtures cover signed tolerance/heading and literal original routine rows; attached-facing test directly queries spatial state after public rotation stages. These are not public PlayerFacing VM-dispatch assertions. Unknown: installed original/native/browser query/refresh parity and malformed/public routed-call acceptance.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "PlayerDistance",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Receiver-to-player Manhattan distance with explicit override/fallback/link state",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/spatial.rs::ActorSpatial::query",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::placed_distance_queries_use_receiver_owned_initial_link_state",
+        "crates/cyrus-game/tests/script_registry.rs::spatial_distance_requires_explicit_override_and_fallback_state",
+        "crates/cyrus-game/tests/script_registry.rs::player_distance_natives_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerdistance-and-playerfacing",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public calls from two placed receivers assert distinct results; lower-level queries cover override/fallback and literal original distances. Unknown: installed original/native/browser changing selected/attached/linked states and source-service equivalence. Helper original-row equality is not whole-world query acceptance.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "AcuratePlayerDistance",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Rounded Euclidean receiver-to-player distance with shared override/fallback",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/spatial.rs::ActorSpatial::query",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spatial_distance_requires_explicit_override_and_fallback_state",
+        "crates/cyrus-game/tests/script_registry.rs::player_distance_natives_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerdistance-and-playerfacing",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: direct ActorSpatial query assertions cover rounded lengths, fallback and override, including literal original routine rows. Public registry dispatch shares spatial.query but the reviewed explicit placed-receiver public test calls PlayerDistance only. Unknown: accurate-form installed public original/native/browser query and replacement acceptance.",
+      "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
     }
   ]
 }
