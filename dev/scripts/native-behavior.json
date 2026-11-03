@@ -4276,15 +4276,17 @@
       "native": "DetachMe",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named family/attachment SOUP dispatch",
+      "scope": "Named zero-argument receiver family detachment",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/pull/191",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605075984"
       ],
-      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified: canonical zero-argument function returns zero. Complete original public handler/predicates/lookups pass 30 constructed instruction contexts and six changed-contract controls. Non-slave unchanged; attached master clears slave then master lookup fails for finite acyclic trees without list/pose/refresh changes. Ordinary attached actor absent from membership stays unchanged; found head/middle/tail/nested record unlinks, clears slave, copies effective pose to local position/angles and requests refresh. Unlinked record/effective fields retained. Refresh internals are a controlled service boundary, not original transform arithmetic or production execution. Malformed/cyclic graphs, scheduling and live original/native/browser acceptance remain outside evidence. Named Rust handler remains absent; existing item/rope/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
+      "reviewed_revision": "5f1cdd25ddef857b06f04ad39fd239f1ed82bb5e"
     },
     {
       "native": "DetachSlaves",
