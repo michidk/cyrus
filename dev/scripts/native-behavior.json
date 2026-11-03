@@ -4573,10 +4573,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/b21919690b4e63f5ee994c474752fd9d91ceb139/docs/engine/SOUP.md#pipeslaves-query"
       ],
-      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed zero-argument declaration/exact binding/full original116-byte native/364-byte collector/60-byte predicate/103-byte recursive lookup:16688 original-instruction cases/8 effective semantic controls PASS.366 finite acyclic forest shapes/max6 nodes/two receivers/two patterns/seeded count and scratch; all256 metadata master bytes in selected direct contexts. Prior KillSlaves predicate/lookup audited once for exact byte identity; new native buffer/count/terminator chain executed. Always count0 and first buffer slot null on bounded forests; stale suffix/actors/metadata/tree/previous scratch unchanged, visited scratch last traversal node. Exact nonstack write order/domain/six regs/stack-canary checked. No controlled services; diagnostic/copy/dormant collector append/recursive paths never reached. Unknown cyclic/malformed state/null metadata/producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser. Named production dispatch missing; no production acceptance inferred.",
+      "reviewed_revision": "f077292b6f7b7c8680a4cb65264bb655529e3767"
     },
     {
       "native": "PipeUser",
