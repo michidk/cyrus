@@ -4727,10 +4727,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
+        "https://github.com/michidk/redguard-preservation/commit/6e4db30"
       ],
-      "limits": "Verified: installed definition declares function with 1 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Related animation/dialogue services do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified independent installed one-argument function/exact native binding/full133-byte native/full202-byte matrix helper.1536 original CPU contexts/seven effective original-byte semantic controls PASS, no controlled service returns. Eight signed arguments including binary32 integer-rounding boundary/four constructed dyadic matrices/two receivers/three player alias modes/four masked x87 rounding modes/two patterns. Independent directed binary32 and integer-rounding reference; exact full3072-byte actor snapshots/zero return/five preserved registers/stack/CW/TOP. Transformed0,0,argument vector plus receiver X/Z writes selected player X/Z directly; Y/yaw retained/no dialogue/animation/collision/registration calls. Unknown matrix producer/admission/orthonormality/NaN/infinite/out-of-range conversion, pointer lifecycle/full joint domain/task scheduling/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/game runtime acceptance.",
+      "reviewed_revision": "1b4868db6c0e30b0c8d20eb68ed6ff9d091abfd9"
     },
     {
       "native": "EndMySound",
