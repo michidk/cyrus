@@ -2817,15 +2817,17 @@
       "native": "Spare0Parm7",
       "status": "missing",
       "owner": 5,
-      "scope": "Named function dispatch for installed declaration with7 arguments; reserved behavior Unknown",
+      "scope": "Named seven-argument receiver-pointer diagnostic dispatch",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
+        "https://github.com/michidk/redguard-preservation/pull/218",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6607176418"
       ],
-      "limits": "Verified: canonical installed SOUP386.DEF declares this function with7 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
-      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+      "limits": "Verified: installed seven-argument declaration and independently mapped full original handler. Seven arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. 10272 original contexts cross receiver/state/writer variations with pairwise coverage of seven argument inputs over four selected values and all-equal patterns, not full seven-dimensional/integer domain. Three register/four stack inputs; consumes four stack arguments. Eight effective mutations reject wrong return, omitted writer, wrong mapped format, actor mutation, wrong receiver diagnostic, wrong writer and missing/excess cleanup. Actor/string bytes/caller canary/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
+      "reviewed_revision": "cafaa4d1ab310e47773e30d1cf085992a6aa90e7"
     },
     {
       "native": "Spare1Parm0",
