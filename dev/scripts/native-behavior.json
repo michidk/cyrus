@@ -2897,15 +2897,15 @@
       "native": "Spare1Parm4",
       "status": "missing",
       "owner": 5,
-      "scope": "Named function dispatch for installed declaration with4 arguments; reserved behavior Unknown",
+      "scope": "Four-argument original diagnostic contract; named implementation missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+        "https://github.com/michidk/redguard-preservation/pull/225",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6607621023"
       ],
-      "limits": "Verified: canonical installed SOUP386.DEF declares this function with4 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
-      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+      "limits": "Verified: independent installed declaration/native/full-handler mapping; four arguments unused, receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 12288 bounded original-instruction contexts and eight effective mutation controls, including stack cleanup, pass. Diagnostic writer is controlled IO; four selected values per argument do not exhaust the integer domain. Unknown: VM operand decoding, malformed-call admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing.",
+      "reviewed_revision": "38708356618b7417747dd5c3c8e03b5a88fc69bd"
     },
     {
       "native": "Spare1Parm5",
