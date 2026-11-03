@@ -234,13 +234,13 @@ impl ScriptWorld {
                 }
                 return Ok(());
             }
-            if (10..=19).contains(
-                &world.actors[id.index]
-                    .control
-                    .as_ref()
-                    .expect("validated control")
-                    .living_state,
-            ) {
+            if world.actors[id.index]
+                .control
+                .as_ref()
+                .expect("validated control")
+                .living_state
+                == 15
+            {
                 return world.control_ledge_player(id, query, inputs, timing, sounds);
             }
             // The drawing group and the scabbard-grip idle group return before turning.

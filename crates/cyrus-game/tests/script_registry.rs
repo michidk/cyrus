@@ -35867,6 +35867,136 @@ fn mark_actor_dead_sets_the_state_is_dead_reads() {
 }
 
 #[test]
+fn climbing_forward_queues_motion_without_leaving_the_climb() {
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+        WorldRestoreContext, WorldSnapshotSources,
+    };
+    let (scripts, mut world, mut data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "group_index":86,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+        }));
+    let mut playback =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+    let frame = playback
+        .force_request_with_sounds(86, 0, 0, &mut |_| Ok(()))
+        .unwrap();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][index]["animation"] =
+        serde_json::json!({"playback":playback.snapshot(),"frame":frame});
+    saved["actors"][index]["control"]["living_state"] = 11.into();
+    let globals = std::mem::take(world.globals_mut());
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &Default::default(),
+    };
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals,
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let before = world.inspect(index, 1)["actors"][0]["spatial"].clone();
+    let hud = cyrus_game::script::ScriptHud::default();
+    for forward in [true, false] {
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        let held = cyrus_game::player::input::PlayerInput {
+            forward,
+            ..Default::default()
+        };
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_game::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    hud: Some(&hud),
+                    locomotion_geometry: Some(cyrus_game::script::LocomotionGeometry {
+                        ground: OrdinaryGroundQuery {
+                            scene: &scene,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: 4,
+                            sidedness: false,
+                        },
+                        environment: cyrus_game::script::ObstacleEnvironment {
+                            selected_player: Some(player),
+                            auto_grab: false,
+                            item_system_ready: false,
+                            shell_execution: false,
+                            ticks: 0,
+                        },
+                    }),
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                    }),
+                    shell_execution: Some(false),
+                    fine_ticks: Some(0),
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        let inspected = world.inspect(index, 1);
+        let actor = &inspected["actors"][0];
+        assert_eq!(
+            actor["animation"]["pending_group"], 18,
+            "forward request survives release during the climb"
+        );
+        assert_eq!(actor["animation"]["current_group"], 86);
+        assert_eq!(actor["control"]["living_state"], 11);
+        assert_eq!(
+            actor["spatial"], before,
+            "a queued movement animation must not translate the climbing actor"
+        );
+    }
+}
+
+#[test]
 fn hanging_backward_releases_without_the_walk_key() {
     use cyrus_game::script::{
         OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,

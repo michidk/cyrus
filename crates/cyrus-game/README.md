@@ -251,3 +251,9 @@ Ordinary hosts can read literal RTX-family labels from the prepared script call
 table before simulation begins. This includes dormant script definitions and
 leaves actor tasks, random state, dialogue records and sample allocation unchanged.
 Dynamic label operands are resolved only when their script calls execute.
+
+Verified: hanging state 15 uses the dedicated ledge input branch. Other ledge
+states retain ordinary directional helper dispatch, allowing forward animation
+requests to remain queued during a climb without ordinary translation, following
+preservation
+[controller dispatch](https://github.com/michidk/redguard-preservation/blob/b1111cac9dc49f63e505373ecb39bbbe64dc768e/docs/engine/player.md#ordinary-controller-dispatch).
