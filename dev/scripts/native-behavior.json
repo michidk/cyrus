@@ -5724,10 +5724,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/commit/48d09cb"
       ],
-      "limits": "Verified installed definition: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified: independent installed function0/exact binding/full100-byte native/full155 PopItem/full117 ordered lookup/full210 final selection original instructions. Disabled returns0 without effects. Enabled signed-count loop invokes original receiver/consecutive integer IDs; restoration uses saved values. Completed loop ensures selection then returns0. Existing selection retained; otherwise ordered ID1 lookup wins regardless value/kind, then first nonzero-current kind1 or first nonzero-current fallback; player selection receives low ID byte. Missing-ID diagnostic-copy entry retains earlier writes. Full mapped memory/nonstack writes/canary/request sequence/return/six preserved registers/stack checked on returns. Unknown diagnostic effects/continuation, natural count/dense-ID invariant/list producers/lifecycle/malformed or cyclic lists/full domain/VM/production parity. Sparse/duplicate/unsorted lists are constructed controls. Named production missing. No Cargo/game runtime.",
+      "reviewed_revision": "b9b1f3db1ad55ada9a62eb6f5b64e727b656da2c"
     },
     {
       "native": "PopItem",
