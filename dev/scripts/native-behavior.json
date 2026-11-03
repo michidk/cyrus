@@ -4527,10 +4527,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/b6505f5a95b1d50b15bd7c8424d5e767c237ede1/docs/engine/SOUP.md#pipehidden-query"
       ],
-      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed zero-argument declaration/exact native binding/full original handler:4288 instruction contexts/10 effective semantic controls PASS.4268 returning cases and20 stopped diagnostic cases. Finite acyclic lists0..66, all256 hidden-byte values in four-node contexts/two orders/two patterns/null-member-nonmember-unmapped receiver identities. Selects list-order hidden nonreceiver actors into shared buffer, null terminates below64 selected, returns buffer. Prefix/write order/terminator/unchanged tail/full actors/head/six preserved regs on returns/stack-canary checked. At64th selection stores pointer then requests runtime error11; sole controlled diagnostic stops at exact request, no implementation/continuation/unwind/termination claim. Unknown cyclic/malformed lists, producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser. Named production dispatch remains missing; no production acceptance inferred.",
+      "reviewed_revision": "7ac94cfd7d1cd3dd654286cf33b35e30b5cf61bf"
     },
     {
       "native": "PipeMasters",
