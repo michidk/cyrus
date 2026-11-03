@@ -2698,6 +2698,230 @@
       ],
       "limits": "Verified source/assertion inspection: task encoding and one integer operand are required; channel0 completes, active members wait, ignored members permit released-byte comparison against the full operand. Public fixture checks0,256,-256 and task/flag continuation. The fixture does not establish all member/channel replacement, disabled teardown or frame-order branches. Historical27 exports contain zero calls, not proof of original absence. Unknown: direct matched original/native/browser user-channel continuation and save/reload traces. Group-channel synchronized-walking acceptance cannot substitute for this user-channel call. Rust assertions inspected, not rerun.",
       "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "Spare0Parm0",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with0 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with0 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm1",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with1 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with1 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm2",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with2 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with2 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm3",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with3 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with3 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm4",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with4 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with4 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm5",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with5 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with5 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm6",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with6 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with6 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare0Parm7",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with7 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with7 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm0",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with0 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with0 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm1",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with1 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with1 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm2",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with2 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with2 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm3",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with3 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with3 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm4",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with4 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with4 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm5",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with5 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with5 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm6",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with6 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with6 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "native": "Spare1Parm7",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named function dispatch for installed declaration with8 arguments; reserved behavior Unknown",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761"
+      ],
+      "limits": "Verified: canonical installed SOUP386.DEF declares this function with8 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit. The numeric suffix is7 but the declared argument count is8; do not normalize from the name.",
+      "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
     }
   ],
   "instructions": [
