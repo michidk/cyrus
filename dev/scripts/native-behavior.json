@@ -4237,10 +4237,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/272"
       ],
-      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
-      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+      "limits": "Verified independent installed function parms0/exact native mapping/full48-byte call-free handler. Separate receiver control word gates clearing selection byte0; zero gate preserves selected byte, nonzero incl sign-bit clears it. Payload pointer assigned by LoadStatic retained/not gate. Return receiver/no release/copy/other receiver writes.15360 original-instruction contexts/10 effective semantic controls;2 receivers/5 control words/all256 selected bytes/3 pointer tokens/2 patterns. Full both-actor memory/write order/domain/no calls/return/six preserved regs/stack/canary checked. No controlled services. Malformed receivers/control-field producers/static consumers/lifecycle/VM/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
+      "reviewed_revision": "676f1b6c3af270ff0c9352304748004349e2eccf"
     },
     {
       "native": "FlickerLight",
