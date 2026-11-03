@@ -3127,11 +3127,12 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "faf2acee161066d0268fa4c3a6455e9ed9f923f6",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#attribute-reads-and-writes"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#attribute-reads-and-writes",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605588595"
       ],
       "native": "GetMyAttr",
       "status": "partial",
@@ -3140,7 +3141,7 @@
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::researched_attribute_query_reads_unsigned_bytes_and_checks_bounds"
       ],
-      "limits": "Verified: public fixture reads255 and checks invalid GetMyAttr indices-1/256 return0. Source returns0 for invalid GetMyAttr index and reads receiver byte. Published contract also permits absent table; current actors have owned tables. Unknown all absent/routed/retired receiver and matched original/native/browser traces. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+      "limits": "Verified canonical one-index original query reads receiver unsigned byte and returns zero for absent table or signed index outside 0..255, unlike unchecked GetAttribute. Existing preservation contract corroborated by 3168 constructed exact original instruction cases and six changed-contract controls. Inspected Rust public fixture reads 255 and checks invalid indices -1/256 return zero. Additional named_functions_resolve_namespace_and_receiver_arguments_case_insensitively fixture queries mixed-case named receiver using receiver-local index 9, returns 255 into caller local, preserves receiver local 9 and has distinct caller attribute 4 value 11. These assertions were inspected, not rerun. Current actors own tables; absent-table admission, full public byte/index domain, retired/replaced receiver and live original/native/browser acceptance remain Unknown. Instruction evidence and routed fixture source are not production acceptance or proof of downstream consumers. Historical static absence cannot exclude Unsupported actor bodies."
     },
     {
       "owner": 5,
