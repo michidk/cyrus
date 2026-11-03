@@ -406,6 +406,35 @@ fn branches_fold_left_to_right_without_boolean_precedence() {
     assert!(host.calls.is_empty());
 }
 #[test]
+fn signed_less_or_equal_includes_equality_and_preserves_false_branch_destination() {
+    for (lhs, rhs, expected) in [
+        (i32::MIN, i32::MIN, 7),
+        (i32::MIN, 0, 7),
+        (i32::MAX, i32::MIN, 73),
+    ] {
+        let mut vm = runtime(vec![
+            Operation::If {
+                conditions: vec![Condition {
+                    lhs: integer(lhs),
+                    comparison: 4,
+                    rhs: integer(rhs),
+                    conjunction: 0,
+                }],
+                target: 2,
+            },
+            assign(Place::Flag { index: 0 }, 7),
+            Operation::End { target: 0 },
+        ]);
+        let mut host = Service::default();
+        let mut flags = [73];
+        vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
+        assert_eq!(flags, [expected], "{lhs} <= {rhs}");
+        assert_eq!(host.ends, 1, "{lhs} <= {rhs}");
+        assert!(host.calls.is_empty());
+    }
+}
+
+#[test]
 fn malformed_targets_are_rejected_before_effects() {
     let error = Runtime::new(
         program(0, vec![Operation::End { target: 4 }]),
