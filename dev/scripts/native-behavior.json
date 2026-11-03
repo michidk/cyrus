@@ -5659,10 +5659,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/pull/285"
       ],
-      "limits": "Verified installed definition: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified independent installed function parms1/exact lowercase binding/full118-byte native/117-byte ordered lookup/31-byte string copy. Disabled0/no lookup; enabled full unsigned key/first-equal match/first-greater stop, returns raw stored word unchanged/no type-quantity filter/receiver ignored. Missing writes original error context/source-name copy and requests179.4032 original contexts/10 effective controls:3 callers/3 enables/7 keys/8 finite lists/4 raw words/2 patterns. Full mapped memory/write order-domain/calls/canary; return/five regs/EDX/stack on returning paths. Copy executes original instructions; sole controlled runtime-error boundary stopped at exact request, no error continuation/unwind claim. Unknown runtime-error effects/item word producer/lifecycle/malformed-cyclic lists/VM/natural original/native/browser/exhaustive domain. Production unchanged; no inventory/gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "84f5166fa7b28e875f7d435da523960769eb0f4e"
     },
     {
       "native": "PopAllItems",
