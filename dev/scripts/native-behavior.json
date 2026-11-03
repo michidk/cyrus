@@ -3942,10 +3942,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/259"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified independent installed0-argument declaration/exact native mapping/full129-byte handler. Copies current logicalXYZ unchanged to previous history; each signed current component arithmetic>>8 then exact single-float model-coordinate store. Negative fractions round down at shift; current logical unchanged; return0/no calls/registration/attachment/environment adjustment.12960 direct original32-bit machine contexts/12 effective binary controls, no intercepted services/interpreter;270 triples incl extremes/all256 low fractions,2 receivers/2 initial2KiB patterns/4 rounding modes/3 precision modes. Independent integer-built IEEE754 expectations; both actor memories,return,preserved regs,stack/canary,x87 status0/control unchanged checked. Selected allocated contexts/empty x87/masked exceptions/DFclear; malformed/nonempty-full FPU/unmasked pending exceptions/DFset/exhaustive combinations/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "1cdc89d9ac838cb53985e1284cea05782a335a07"
     },
     {
       "native": "PlayerSnap",
