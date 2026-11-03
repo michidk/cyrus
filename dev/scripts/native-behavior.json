@@ -2626,14 +2626,16 @@
       "native": "ReceiveBroadcast",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast entry filter, value return and cursor advance contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/544bf8a9614defc35c27f5e724e4a5ab2fa9d1ed",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614034764"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed zero-argument declaration/exact binding/full206-byte native. 77,580 original-instruction contexts/14 effective semantic controls cover full256x256 selection/sentinel pairs, all256 selections/two receivers/two patterns/null-self recipients/five raw values, finite skip/wrap/sentinel paths/max8 skipped entries, signed thresholds and controlled returning diagnostics. Direct context first-pointer supplies12-byte entries; no channel/subrecord or ordinary cursor read. Matching/null recipient returns raw value retaining cursor, other recipient advances byte/reset under signed global limit and repeats; sentinel returns0 before entry read. Exact repeated sentinel/first-pointer reads/write order verified. No sender/recipient dereference, entry mutation or release. Formatter/runtime-error IO controlled with repair or immediate sentinel. Unknown malformed receiver/context/array admission, cursor/sentinel/limit/context producers/consistency, lifetime/allocation/consumption, arbitrary nontermination, natural diagnostics, concurrency/reentrancy, VM/original/native/browser/full joint domain. No invented queue service model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "reviewed_revision": "46c9692e22abd020ce1ed28ed32d85a0d63c68d9"
     },
     {
       "native": "ReceiveMessage",
