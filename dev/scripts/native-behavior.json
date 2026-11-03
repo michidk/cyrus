@@ -4734,10 +4734,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
+        "https://github.com/michidk/redguard-preservation/pull/281"
       ],
-      "limits": "Verified by source inspection: sets wait byte255 when a playback record exists; absent record returns zero. Public test checks successful calls and wrong argument counts on an actor WITHOUT playback. Unknown: public-call mutation on populated playback, countdown/release boundaries and matched visible original/native/browser playback. World helper coverage does not prove registry-to-playback composition. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified installed function parms0/independent exact lowercase binding/full59-byte call-free original handler. Null receiver or control pointer returns0; otherwise replaces one control byte with255 and residual return control pointer. No ordinary enable/mode gate.18432 original contexts/7 effective semantic controls:3 receivers/3 control pointers/all256 initial bytes/2 enables/2 modes/2 patterns, differing other actor pointer. Full both-actor/both-control/global memory/exact write order-domain/no calls/return/six regs/stack/canary. No controlled services. Initial receiver-selection control ineffective with shared pointer; fixture corrected before acceptance, ineffective attempt not counted. Unknown consumer/timing meaning/malformed pointers/lifetime/VM/natural original/native/browser/exhaustive domain. Production unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "d402916bfc1acf57b019f6876031b11d3b40533c"
     },
     {
       "native": "PauseAnimation",
