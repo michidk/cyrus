@@ -3764,10 +3764,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/245"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified installed three-argument native/full111-byte handler: independent nonzero X/Y/Z flags restore selected current local coordinate components from saved start unchanged; zero leaves component unchanged. Arguments are flags, not coordinates. Returns0/no helper calls; only selected current-position words written.3002 original instruction contexts/11 effective mutations cover selected flag/coordinate/receiver/state domains; all-zero flags avoid receiver access. Nonzero malformed receiver admission, coordinate producers, attachments/effective-position resolution, exhaustive state, VM and natural original/native/browser Unknown. Current named implementation remains missing; related movement/location helpers do not implement this native. No Rust tests/game runtime run.",
+      "reviewed_revision": "9491d7c095ea64d4cb2296065e175fdb57fc764e"
     },
     {
       "native": "Move",
