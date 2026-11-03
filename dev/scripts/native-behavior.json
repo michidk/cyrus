@@ -4860,10 +4860,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/commit/d1a9255"
       ],
-      "limits": "Verified: installed definition declares task with 3 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified independent installed three-argument task/exact native binding/full64-byte native/full583-byte movement dependency inspected.216 original CPU contexts/six effective original-byte controls PASS;72 RNG/72 lookup/36 reset/36 mover exact entry stops, no controlled returns/continuation/final-return execution claim. Original metric/sqrt instructions execute. Six branch/threshold-equality domains/two receivers/three initial clear-byte values/three differing argument triples/two patterns. Full actor arena/head/queue/CW/TOP and exact service receiver/register arguments checked. Native clears guard byte/ignores input values/fixed radius262144+zero mode; helper signed distance threshold, selection gates and node unsigned-XZ/signed-Y expansion verified to request boundaries. Unknown RNG/lookup/reset/mover effects/natural producer/lifecycle/full joint domain/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/game runtime acceptance.",
+      "reviewed_revision": "faf1af1fe9226de6787123d33fb150ea9c1a16c6"
     },
     {
       "native": "CountAiShells",
