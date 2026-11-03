@@ -5322,16 +5322,18 @@
       "native": "ChangeGroup",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named state/action/weapon dispatch",
+      "scope": "Original ChangeGroup function: first-match group membership removal, low-byte update and registration under controlled heap services; named rebuild handler remains missing",
       "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/redguard-preservation/pull/265",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6610809112"
       ],
-      "limits": "Verified canonical declaration: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+      "limits": "Verified: independently mapped complete original handler/lookup/registration; 2892 bounded original-instruction contexts and 13 semantic mutation controls. Disabled management preserves byte/list after initial receiver read; enabled removal then low-byte update then registration, including same-group/duplicates. Controlled successful allocation/release/13-byte zero fill. Unknown: malformed/cyclic lists, allocation failure/lifetime/reentrancy, consumers, VM integration and natural original/native/browser acceptance. Named rebuild behavior remains unsupported.",
+      "reviewed_revision": "716b6792676823ec04801b6936743633ab9e6d91"
     },
     {
       "native": "ChangeUser",
