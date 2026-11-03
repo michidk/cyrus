@@ -4165,10 +4165,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/264"
       ],
-      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
-      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+      "limits": "Verified independent installed one-argument multitask declaration/exact native/full95-byte handler and original resolver/bounded RNG/base RNG/seed getter. Bound passed directly without absolute conversion. Nonzero draw retains selected word; zero draw clears nonzero word or copies paired word into zero word; return1. Existing record reused; missing record requests41 bytes and initializes both words100 before toggle.2880 positive-bound original-instruction contexts/12 effective controls plus12 zero-bound budget exclusions; original subtraction-by-zero loop does not terminate. Full mapped memory/write order/domain/calls/return/registers/stack/canary checked. Only exact41-byte allocation controlled. Two receivers/present-missing records/15 positive bounds/4 seeds/6 word pairs/2 patterns. Negative bounds/malformed/null allocation/record producers and field meanings/consumers/seed lifecycle/exhaustive domain/VM scheduling/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
+      "reviewed_revision": "363e2c6c2aaf4b7895b6fe74ba8ff24cb3d54a08"
     },
     {
       "native": "FxLightSize",
