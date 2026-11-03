@@ -2805,5 +2805,274 @@
       "limits": "Verified by source inspection: decoder compares encoded arity to installed declaration; assets retains failure at base/entry fallback cursors, so duplicate statements are not independent failing actors. Historical27 exports contain24 fallback statements in22 HIDEOUT actors across eight arity groups. Current pinned decoder and VM definition validation retain count checks; this does not establish that every historical failure is reached or currently regenerated. The named test covers sticky callback errors/runaway budgets, not an Unsupported decode-to-runtime integration fixture. Unknown: stale versus current export equivalence, original handling of these mismatched forms, valid unsupported behavior versus deliberate malformed/unsafe rejection, actor admission and native/browser execution. No group is classified missing or malformed solely from its reason. No gameplay tests/runtime rerun.",
       "reviewed_revision": "51b778a821273ff6c65e8e119006d9d6ef899511"
     }
+  ],
+  "operands": [
+    {
+      "operand": "value.integer",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Integer literal delivered in the portable signed32 domain",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Literal-1 and shift33 contribute to asserted result-1073741824. Unknown: every decoded numeric encoding including NumericAlt low16 truncation; portable literals do not prove parser equivalence. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "value.string",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Host-resolved native string parameter with retained source context",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
+        "crates/cyrus-script/tests/native_source.rs::alternate_entry_keeps_previous_normal_actor_string_source"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public receive preserves caller strings initially then receiver strings during task reevaluation. Native-source fixture is a fake Host and asserts alternate entry retains prior actor strings. Unknown: all installed retained-source/alternate-hook branches and original/native/browser byte-index truncation. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "value.read",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Read a destination as integer without update",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::native_arguments_evaluate_backwards_but_retain_authored_positions",
+        "crates/cyrus-script/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Property callbacks are evaluated right-to-left as arguments and returned in authored order; wide references reach the host. Unknown: all property readers and installed cross-host operand traces. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "value.update",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Wrapping write-before-use conditional read-modify-write",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
+        "crates/cyrus-script/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public invoke decrements local before signed comparison and property before OR completion, with flag7/property0 assertions. Unknown: overflow, every destination and installed matched original/native/browser side-effect ordering. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "value.call",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Function-valued native dispatch requiring a portable numeric result",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
+        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public body records resolve/prepare/operand/call in FunctionValue mode; valueless effects fail when a formula consumes them. Unknown: every native numeric return and installed nested side-effect trace. Native parameter mode separately rejects nested function calls. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "value.object_call",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Addressed function expression retains ObjectFunctionValue call provenance",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
+        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Trace fixture distinguishes ObjectFunctionValue even for explicit Me; routed valueless formula fails. Unknown: all host target resolution/value return branches and installed three-host expression parity; statement continuation is a different scope. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "place.flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Read/write shared global flag with bounds checked against supplied storage",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
+        "crates/cyrus-assets/tests/script.rs::installed_indices_are_checked_inside_nested_function_arguments"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Runtime fixture writes flag8; definition validation rejects missing global flag inside nested call. Unknown: all installed flag identities, storage sharing/restoration and original/native/browser writes. Native runtime flags bounds are also checked at access. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "place.local",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Read/write receiver instance local state",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
+        "crates/cyrus-game/tests/script_registry.rs::named_functions_resolve_namespace_and_receiver_arguments_case_insensitively"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Subroutine shares local9; named call evaluates receiver local9 and obtains attribute255 into caller result. Unknown: all retired/replaced receivers and installed local lifetime/byte encodings. These assertions use synthetic actor data. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "place.property",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Host-owned full16-bit reference read/write with target routing",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation",
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Core fixture asserts read294/write65535 reach fake host unchanged; production registry fixture reads heading using installed-name descriptors at reference0/38/294. Unknown: all descriptor meanings/access widths and matched three-host property writes. Core callbacks are not proof of every property implementation. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "object.me",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resolve explicit self to current runtime receiver",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::explicit_me_object_task_continues_and_matches_the_embedded_dispatch_label",
+        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public ScriptWorld fixture distinguishes explicit-Me object task from self blocking statement; core provenance trace preserves addressed expression. Unknown: all reentrant/current-receiver and installed encoding cases. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "object.player",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Host resolves selected player independently of map placements",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::standalone_player_and_camera_receive_tasks_without_map_placements",
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public world fixture allocates task on standalone player while caller continues flag7; heading property resolves selected player separately. Unknown: alternate player replacement, unavailable selection and every installed three-host addressed form. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "object.camera",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Host resolves standalone script camera, distinct from rendering camera entity",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::standalone_player_and_camera_receive_tasks_without_map_placements"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public fixture creates camera source without placement, gives it one receiver-owned task and observes completion using receiver local5. Unknown: live camera lifecycle across replacement and original/native/browser addressed-call parity. Visible camera movement alone does not isolate this target encoding. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "object.named",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resolve caller string through host namespace registry with signed runtime-id ordering",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::named_functions_resolve_namespace_and_receiver_arguments_case_insensitively",
+        "crates/cyrus-game/tests/script_registry.rs::signed_identifier_order_resolves_duplicate_names_across_the_low_word_wrap"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public fixtures assert mixed-case namespace lookup and duplicate precedence across signed identifier wrap. Unknown: all stale registration/removal/reset and installed three-host namespace outcomes; actor script names alone are not the namespace contract. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "object.local",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Portable local target currently maps logical signed runtime identifiers; original raw-reference semantics remain unsupported",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::retired_created_references_are_unsupported_without_promoting_duplicates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Runtime converts the selected local to Target::Variable; registry target_index converts it to i16 and resolves through names by runtime identifier. Preservation documents the original local form as an actor reference, not namespace identifier lookup. This is a concrete fidelity boundary: current logical mapping does not represent original raw references. Public lifecycle fixture reads killed-but-still-allocated receiver heading111, then rejects retired named/local references without promoting a duplicate, including restore variants. Those logical references do not establish original raw-pointer fidelity. Unknown: installed producers, raw-reference representation and original/native/browser replacement parity. Partial describes supported logical mapping only; original raw-reference behavior remains unsupported, owner5. Broad9/10 task/session acceptance does not close this gap.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    },
+    {
+      "operand": "formula",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Left-to-right signed32 wrapping arithmetic with unsigned division and masked shifts",
+      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts",
+        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public invoke asserts-1073741824 for unsigned divide, wrapping add and signed masked shift; formula requires integer-valued operands. Source supports operators1..9 and contextual division-by-zero errors. Unknown: every operator/zero-divisor/side-effect boundary and original/native/browser literal expression traces; no blanket arithmetic parity from one chain. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
+      "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
+    }
   ]
 }

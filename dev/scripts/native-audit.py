@@ -24,6 +24,8 @@ Unreviewed names are unaudited, never inferred missing or complete from source m
 These counts do not establish execution or fidelity; absent forms remain visible.
 `--rejection-matrix` groups retained decoder failures, separating fallback statements
 from distinct actors. It does not establish current rejection or malformed original data.
+`--operand-matrix` exposes reviewed portable operand scopes without requiring exports;
+it does not claim original byte encoding or host property behavior from VM support.
 """
 import argparse
 import collections
@@ -199,6 +201,22 @@ def instruction_matrix(path, directory, pattern):
                        row["limits"]]
         print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
 
+
+def operand_matrix(path):
+    """Expose reviewed portable operand scopes without implying byte-encoding acceptance."""
+    known = {"value.integer", "value.string", "value.read", "value.update", "value.call",
+             "value.object_call", "place.flag", "place.local", "place.property", "object.me",
+             "object.player", "object.camera", "object.named", "object.local", "formula"}
+    rows = behavior_rows(path, known, known, "operands", "operand")
+    print("operand\tstatus\towner\tscope\tcaller\ttests\tevidence\tlimits")
+    for name, row in rows:
+        if row is None:
+            values = [name, "unaudited", "-", "-", "-", "-", "-", "No behavior review recorded."]
+        else:
+            values = [name, row["status"], f'#{row["owner"]}', row["scope"], row["caller"],
+                      "; ".join(row.get("tests", [])) or "-", "; ".join(row["evidence"]), row["limits"]]
+        print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
@@ -219,7 +237,16 @@ def main():
                         help="review VM forms with static statement counts, not execution proof")
     parser.add_argument("--rejection-matrix", action="store_true",
                         help="group historical decode failures without classifying them as missing behavior")
+    parser.add_argument("--operand-matrix", action="store_true",
+                        help="review portable values, destinations, targets and formula scopes")
     args = parser.parse_args()
+    if args.operand_matrix:
+        try:
+            operand_matrix(args.behavior)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"invalid operand audit: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.rejection_matrix:
         rejection_matrix(args.scripts, args.pattern)
         return 0

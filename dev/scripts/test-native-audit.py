@@ -144,12 +144,31 @@ class BehaviorAuditTest(unittest.TestCase):
         self.assertIn('arity\tQuery\t0\t1\t6\t3\t2\tunknown:', result.stdout)
         self.assertIn('current execution not established', result.stdout)
 
+    def test_operand_reviews_do_not_infer_completion_from_portable_scope_presence(self):
+        self.path.write_text(json.dumps({'operands': [dict(
+            self.row, operand='value.integer')]}))
+        result = subprocess.run(['python3', str(SCRIPT), '--operand-matrix',
+                                 '--behavior', str(self.path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {line.split('\t')[0]: line.split('\t')
+                for line in result.stdout.splitlines()[1:]}
+        self.assertEqual(len(rows), 15)
+        self.assertEqual(rows['value.integer'][1:3], ['partial', '#5'])
+        self.assertEqual(rows['place.property'][1:3], ['unaudited', '-'])
+        for row in [dict(self.row, operand='invented'),
+                    dict(self.row, operand='value.integer', status='done')]:
+            self.path.write_text(json.dumps({'operands': [row]}))
+            result = subprocess.run(['python3', str(SCRIPT), '--operand-matrix',
+                                     '--behavior', str(self.path)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('invalid operand audit', result.stderr)
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]
         self.assertTrue(data['natives'])
         self.assertEqual(len({row['native'] for row in data['natives']}), len(data['natives']))
-        for row in data['natives'] + data.get('instructions', []):
+        for row in data['natives'] + data.get('instructions', []) + data.get('operands', []):
             for reference in row['tests']:
                 path, name = reference.split('::', 1)
                 self.assertIn('fn ' + name + '(', (root / path).read_text(), reference)
