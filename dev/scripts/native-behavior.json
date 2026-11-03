@@ -3047,7 +3047,7 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "7366bfbb7049ef725c3db197b3c1795c9e83e0e5",
+      "reviewed_revision": "d3a69ae8659d86a3d96c138e34df9e06ff044b93",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
@@ -3061,7 +3061,7 @@
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
       ],
-      "limits": "Verified original contract: canonical declaration takes zero script arguments; independently resolved complete handler returns one with stack-local writes only. Preservation PR172 records the contract; static declaration/instruction controls do not establish host runtime acceptance. Current handler requires two arguments and returns one, so canonical zero-argument input conflicts with its guard. Synthetic fixture supplies (0,5) and derives declaration arity from those operands, masking that mismatch. Unknown: corrected canonical admission and original/native/browser host acceptance. No implementation correction or runtime rerun claimed; Rust assertions inspected only. Static absence in the historical schema-27 corpus cannot exclude Unsupported actor bodies."
+      "limits": "Verified original contract: canonical declaration takes zero script arguments; independently resolved complete handler returns one with stack-local writes only. Preservation PR172 records the contract; static declaration/instruction controls do not establish host runtime acceptance. Current handler requires two arguments and returns one, so canonical zero-argument input conflicts with its guard. Synthetic fixture supplies (0,5) and derives declaration arity from those operands, masking that mismatch. Unknown: corrected canonical admission and original/native/browser host acceptance. No implementation correction or runtime rerun claimed; Rust assertions inspected only. Static absence in the historical schema-27 corpus cannot exclude Unsupported actor bodies. Source boundary review: script_export preserves the installed Function.param_count; Program::validate_definition checks call operand count against that declaration. The public test helper run_native_world_with instead clears definitions and synthesizes each param_count from the first supplied argument slice. Its two-operand TrueFunction fixture therefore validates against its own two-argument declaration, not the installed zero-argument contract. Changing only fixture operands while retaining a two-argument declaration would fail declaration validation; a canonical zero-argument declaration/call passes that arity check but contradicts the current GameHost two-argument guard. These are source-derived boundary conclusions, not an executed canonical integration test."
     },
     {
       "owner": 5,
