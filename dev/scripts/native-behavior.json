@@ -5403,10 +5403,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/redguard-preservation/pull/279"
       ],
-      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+      "limits": "Verified independently installed function parms0/exact lowercase binding/full61-byte wrapper/full122-byte lighting/full122-byte unlighting handlers. Original lighting first/true short-circuit then unlighting same supplied receiver. Enable/non-null receiver/non-null control pointer/mode0 gates precede action/animation. Lighting action33 or animation149; unlighting action34 or animation150; action match skips animation read. Boolean/no state mutation/no controlled services.5184 original contexts/19 effective controls:3 receivers incl null/3 enables/3 modes/2 pointers/8 actions/6 animation words/2 patterns. Full both-actor/animation/global memory/no external writes/exact calls/return/six registers/stack/canary. Unknown malformed nonnull pointers/state producers/lifecycle/VM/natural original/native/browser/exhaustive domain. Production unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "5930322b1a902da05d14e3c49303a62093214784"
     },
     {
       "native": "IsLightingTorch",
