@@ -4941,10 +4941,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/blob/8bcdba1/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: installed definition declares function with 0 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified: independent installed function0/exact native binding/full153-byte handler/predicate60/metric101/sqrt48. Original CPU instructions check gate bypass0, metadata position selection, separate signed coordinate shifts, wrapped horizontal camera deltas, zero Y, directed floating distance and signed inclusive threshold result. Full actor/metadata arena and touched globals retained; six preserved registers/stack/canary/CW/TOP checked. Nine effective original-byte result mutations and original reexecution. Unknown: natural view gate/threshold/position producers, pointer lifecycle/full joint domain/exceptional float conversion/VM/production parity. Named production support remains missing. Rust/game runtime NOT RUN.",
+      "reviewed_revision": "81e5e0e5c027afab4910d9ae4144016fe745847d"
     },
     {
       "native": "lookCyrus",
