@@ -5487,10 +5487,11 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
-        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439",
+        "https://github.com/michidk/redguard-preservation/pull/278"
       ],
-      "limits": "Verified inspected public cases: groups91/129 true and group1 false; receiver attributes unchanged. Source requires zero arguments, ready inventory/animation and shell context as applicable. Actual #30 draw/sheath lifecycle is accepted, but does not prove these named queries execute in production. Unknown: full receiver state/group boundaries, replacement and original/native/browser query parity. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+      "limits": "Verified independently installed function parms0/exact lowercase binding/full61-byte wrapper/full122-byte sheathing/full121-byte drawing callees. Calls sheathing first; true returns1 without drawing; otherwise drawing with same supplied receiver. Each gates enable/non-null receiver/non-null control pointer/mode0 before action/animation. Sheathing action21 or animation129; drawing action20 or animation91; action match skips animation read. Boolean/no state mutation/no controlled services.5184 original contexts/19 effective controls:3 receivers incl null/3 enables/3 modes/2 pointers/8 actions/6 animations/2 patterns. Full both-actor/animation/global memory/no external writes/call order/return/six registers/stack/canary. Unknown malformed nonnull pointers/state producers/lifecycle/VM/natural original/native/browser/exhaustive domain. Production status unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "b939dcff14dfb6760f33b785b7143de132cd2a2f"
     },
     {
       "native": "PlayerArmed",
