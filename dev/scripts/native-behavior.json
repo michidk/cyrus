@@ -5178,6 +5178,253 @@
       ],
       "limits": "Verified inspected hook validates direct Me/function/zero-argument call and emits CompleteWithoutValue after callback, with script-control/task guards. Scripted walk fixture invokes run_player_native_hook and checks signed forward/backward displacement; scheduler fixture checks keyboard forward/release, published pose and animation sound. These are controller composition evidence, not every PlayerMain branch or generic GameHost named call support. Unknown: full original/native/browser ordinary-update ordering, all input/controller paths and guard/replacement acceptance. Closed controller/attribute subscopes remain bounded. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
       "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "ChangeGroup",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "ChangeUser",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "CheckPlayerWeapon",
+      "status": "missing",
+      "owner": 30,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsCarryingWeapon",
+      "status": "missing",
+      "owner": 30,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsLightingOrUnlighting",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsLightingTorch",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsUnlightingTorch",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named state/action/weapon dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified canonical declaration: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing group/user channels, retained weapon predicates and actual torch lifecycle are distinct services; their presence does not implement this named native. Unknown: original return/side-effect contracts beyond published facts/declaration; no semantics inferred from the name. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsDrawingSword",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Receiver-routed animation/weapon predicate with readiness and shell context",
+      "caller": "ScriptWorld::advance -> GameHost -> receiver_weapon_predicates -> activation::weapon_predicates",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified inspected public cases: group91 true outside shell, false in shell; no animation/attr110 does not imply drawing; receiver attributes unchanged. Source requires zero arguments, ready inventory/animation and shell context as applicable. Actual #30 draw/sheath lifecycle is accepted, but does not prove these named queries execute in production. Unknown: full receiver state/group boundaries, replacement and original/native/browser query parity. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsSheathingSword",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Receiver-routed animation/weapon predicate with readiness and shell context",
+      "caller": "ScriptWorld::advance -> GameHost -> receiver_weapon_predicates -> activation::weapon_predicates",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified inspected public cases: group129 true and group91 false; receiver attributes unchanged. Source requires zero arguments, ready inventory/animation and shell context as applicable. Actual #30 draw/sheath lifecycle is accepted, but does not prove these named queries execute in production. Unknown: full receiver state/group boundaries, replacement and original/native/browser query parity. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "IsDrawingOrSheathing",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Receiver-routed animation/weapon predicate with readiness and shell context",
+      "caller": "ScriptWorld::advance -> GameHost -> receiver_weapon_predicates -> activation::weapon_predicates",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified inspected public cases: groups91/129 true and group1 false; receiver attributes unchanged. Source requires zero arguments, ready inventory/animation and shell context as applicable. Actual #30 draw/sheath lifecycle is accepted, but does not prove these named queries execute in production. Unknown: full receiver state/group boundaries, replacement and original/native/browser query parity. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "PlayerArmed",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Selected-player combat-capability and drawn-not-sheathing predicate",
+      "caller": "ScriptWorld::advance -> GameHost -> selected_player -> combat_capable(armed=true)",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified source: attr110 returns true early; otherwise requires control, animation, combat record, weapon_drawn and neither living_state21 nor group129. Source assumes original transition/world-active global gates. No dedicated named public assertion located. #30 production armed/draw/sheath/restore receipts verify related lifecycle, not execution of PlayerArmed. Unknown: selected-versus-caller, override/readiness/global gates, restore and named original/native/browser query acceptance. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "ResetAction",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Void statement updates to receiver directional words",
+      "caller": "ScriptWorld::advance -> GameHost action branch -> directional_state / Jump",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::action_statement_resets_preserve_high_words_through_snapshot_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified inspected public statement fixture from restored movement state: mask0x80000001 clears those bits in both words, yielding258/514; jump_window remains27. Source rejects task encoding and returns CompleteWithoutValue. Source performs bitwise reset without requiring animation. Unknown: all public mask/encoding boundaries and named installed original/native/browser action sequences; actual keyboard action is a different path. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "ResetAllAction",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Void statement updates to receiver directional words",
+      "caller": "ScriptWorld::advance -> GameHost action branch -> directional_state / Jump",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::action_statement_resets_preserve_high_words_through_snapshot_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified inspected public statement fixture from restored movement state: clears both full words to0; jump_window remains27. Source rejects task encoding and returns CompleteWithoutValue. Source performs bitwise reset without requiring animation. Unknown: all public mask/encoding boundaries and named installed original/native/browser action sequences; actual keyboard action is a different path. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "SetAction",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Void statement updates to receiver directional words",
+      "caller": "ScriptWorld::advance -> GameHost action branch -> directional_state / Jump",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::action_statement_resets_preserve_high_words_through_snapshot_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770"
+      ],
+      "limits": "Verified inspected public statement fixture from restored movement state: duplicate mask1 preserves the preexisting2147483907/2147484162 words; jump_window remains27. Source rejects task encoding and returns CompleteWithoutValue. SetAction newly admitted mask1/2 can clear low bits, open a running jump window or invoke Jump, but the reviewed fixture only covers duplicate refusal. Unknown: all public mask/encoding boundaries and named installed original/native/browser action sequences; actual keyboard action is a different path. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "Jump",
+      "status": "partial",
+      "owner": 15,
+      "scope": "Immediate script jump admission, group requests and selected-player edge composition",
+      "caller": "ScriptWorld::advance -> GameHost -> script_jump_admitted -> begin_script_jump -> selected edge/hang release or initialize_ordinary_jump",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::script_jump_completes_immediately_and_uses_its_distinct_group_rows",
+        "crates/cyrus-game/tests/script_registry.rs::script_jump_refusals_return_zero_without_changing_jump_state",
+        "crates/cyrus-game/tests/script_registry.rs::selected_script_jump_group_nineteen_sets_cooldown_and_heading_write"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/player.md#script-jump",
+        "https://github.com/michidk/cyrus/issues/14#issuecomment-6500230518"
+      ],
+      "limits": "Verified inspected public fixtures: zero result permits next instruction; literal group/torch/holding/selector cases select queued1/3/8/24 and request32/33/34/35/49/50/85/111, reset fall/stable state and preserve/write heading as specified. Refusals preserve fields across excluded groups/motion/living/deep-water states. Selected group19 case uses real collision query after generation restore, queues3, copies yaw and sets conditional_ticks6. These are configured public fixtures, not full visible jump arcs or natural input. Unknown: selected edge/hang branches, complete task encodings and matched installed original/native/browser timing/geometry/sound. Script Jump and ordinary jump-key arbitration are distinct entry paths. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
     }
   ],
   "instructions": [
