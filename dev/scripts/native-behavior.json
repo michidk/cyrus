@@ -3600,10 +3600,12 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212",
+        "https://github.com/michidk/redguard-preservation/pull/194",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605301660"
       ],
-      "limits": "Verified helper rows check heading/history direction and wrap cases. Public source requires selected-player spatial state but assumes model presence, while published original returns0 without model. Helper equality does not establish production history capture timing, no-model path or matched original/native/browser continuation. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified canonical zero-argument wrapper selects player independently of receiver. Original helper guards missing model, compares negated masked current yaw with stored yaw and inverts direction only above the half-turn boundary. Shared three-query witness passes 174 constructed original instruction cases and five altered-contract controls, executing the original integer absolute-value helper directly. Inspected Rust literal helper fixtures cover direction/wrap arithmetic; registry assumes model presence. Unknown: original saved-angle producer versus Rust angle_history representation and actual snapshot/routing/replacement lifecycle. No arithmetic-only defect or production parity claim; no live original/native/browser acceptance. Rust assertions inspected, not rerun. Historical static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "c2fd8fba6d6b0a4c0648567f16cd1fe0287d0e17"
     },
     {
       "native": "MoveAboveMe",
@@ -5160,10 +5162,12 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/pull/194",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605301660"
       ],
-      "limits": "Verified inspected public fixture exercises missing selected player and uninitialized spatial failure only. Source compares selected local position with previous snapshot. Movement scheduler assertions show positions changing but do not call/assert PlayerMoved. Unknown: public false/true boundaries, ordinary snapshot timing, replacement and installed original/native/browser named query. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified canonical zero-argument wrapper selects the player independently of receiver. Bounded original instruction witness compares all three local position components with stored previous components without a model guard. Shared three-query witness: 174 constructed cases and five altered-contract controls, including nonzero saved positions and signed boundaries. Inspected public Rust fixture asserts missing selected player/spatial errors only; movement scheduler assertions do not call/assert this query. Unknown: successful public false/true boundaries, snapshot producer timing, routing/replacement and live original/native/browser acceptance. Rust assertions inspected, not rerun; constructed instruction execution is not production acceptance. Historical static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "c2fd8fba6d6b0a4c0648567f16cd1fe0287d0e17"
     },
     {
       "native": "PlayerTurned",
@@ -5177,10 +5181,12 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/pull/194",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605301660"
       ],
-      "limits": "Verified helper compares supplied angles/history against literal original-routine rows with11-bit masking. Public handler collects selected spatial state but assumes model presence; original no-model zero branch is not represented. No direct named public successful fixture located. Unknown: actual ordinary-history timing, model absence and original/native/browser query acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified canonical zero-argument wrapper selects player independently of receiver. Original helper returns zero without model; otherwise compares negated masked current angles with stored angle fields. Shared three-query original witness passes 174 constructed cases and five altered-contract controls. Inspected Rust helper has literal angle/history fixtures, while registry assumes model presence. Unknown: equivalence of original saved-angle producer representation to Rust angle_history under actual update/attachment/replacement order; no defect or parity inferred from arithmetic alone. Public routed success, no-model and live original/native/browser acceptance remain unverified. Rust assertions inspected, not rerun. Historical static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "c2fd8fba6d6b0a4c0648567f16cd1fe0287d0e17"
     },
     {
       "native": "PlayerMovementSpeed",
