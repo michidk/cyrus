@@ -3029,17 +3029,19 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "75249b36cdd414e23d815945d87c037beb687f25",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/231",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6608056734"
       ],
       "native": "PressKey",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Packed input query with required modifiers and consuming key-state word; named implementation missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified: independent installed one-argument ordinary-function declaration/native/full handler. Low byte passed to character-to-key lookup; next three bytes require case-insensitive c Control, s either Shift, a Alt; others ignored. Unmapped key or failed modifiers return zero without consuming state. Otherwise nonzero key state word or matching latest-event byte returns one and clears only target state word; event byte retained. Receiver not dereferenced/changed, no task boundary. 39168 bounded original handler cases, ten effective instruction controls and four two-call sequences pass; original lowercase helper checked over all256 bytes. Varied receiver/actor bytes, packed modifier positions/subsets/case/duplicates/ignored bytes, target/modifier states, aliases, event and translated byte truncation. Actor/global/caller-canary bytes, allowed write target/count, saved registers and stack checked. Lookup output controlled, input words synthetic. Unknown: initialized keyboard layout, interrupt/event timing, VM decoding/malformed admission and natural original/native/browser acceptance. Selected packed/state cases do not exhaust full integer domain. Named implementation remains missing; no dedicated production rejection acceptance added."
     },
     {
       "owner": 5,
@@ -3089,19 +3091,20 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "75249b36cdd414e23d815945d87c037beb687f25",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/232"
       ],
       "native": "MainloopExit",
       "status": "partial",
-      "scope": "Retain exit request codes at least5000",
+      "scope": "Original signed exit-request retention/overwrite and late main-loop return boundary; rebuild request retention partial",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000"
       ],
-      "limits": "Verified: fixture checks4999 rejected as request,5000 retained and-7 ignored. Source requires one integer and returns0. No production take_host_requests/mainloop_exit consumer located outside logical tests; a retained request does not prove process/menu termination. Unknown original/native/browser exit behavior and continuation. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+      "limits": "Verified original: signed codes below 5000 preserve the previous shared request; codes at least 5000 overwrite it. Returns zero without receiver access or calls. 2240 original handler contexts, five chained invocations and eight effective controls pass. The bounded late main-loop gate/epilogue returns nonzero request unchanged without clearing it; 24 cases/three effective controls pass. Zero continues beyond this bounded gate. Verified existing source fixture: 4999/-7 ignored,5000 retained; this research does not rerun or expand production acceptance. Unknown: complete loop/priorities/outer process-menu caller, VM decoding and natural original/native/browser exit behavior. Partial status retained; a logical request is not process/menu termination."
     },
     {
       "owner": 5,
