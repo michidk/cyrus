@@ -18,6 +18,16 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        let held = inputs
+            .activation_use_held
+            .or_else(|| inputs.activation.map(|activation| activation.use_held))
+            .or_else(|| inputs.player_controller.map(|input| input.held.action));
+        if self
+            .globals
+            .activation_consumes_action(held.unwrap_or(true))
+        {
+            return Ok(());
+        }
         let Some(keys) = inputs
             .quick_keys
             .filter(|keys| keys.sword || keys.health || keys.use_selected)

@@ -301,7 +301,7 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        if input.held.jump {
+        if input.held.jump || self.globals.activation_consumes_action(input.held.action) {
             return Ok(());
         }
         let settings = &query.scene.settings;

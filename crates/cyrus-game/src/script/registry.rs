@@ -5557,6 +5557,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 &self.registry.actors[self.index].attributes,
                 selected_player,
             )? {
+                if value != 0 {
+                    self.registry.globals.activation_consumed_use = true;
+                }
                 return Ok(CallResult::Complete(value));
             }
         }

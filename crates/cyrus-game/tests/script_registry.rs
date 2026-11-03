@@ -32776,6 +32776,186 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
 }
 
 #[test]
+fn ending_activation_keeps_the_action_press_consumed_until_release() {
+    use cyrus_game::script::{
+        ActivationActor, ActivationAnimation, ActivationInputs, QuickKeys, ScriptInputs,
+    };
+    for deactivate in [false, true] {
+        for item in [1, 4] {
+            let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+                let activate = scripts.definition.functions.len() as u16;
+                scripts.definition.functions.push(Function {
+                    name: "Activate".into(),
+                    param_count: 1,
+                    kind: CallKind::Function,
+                });
+                scripts.definition.functions.push(Function {
+                    name: "Deactivate".into(),
+                    param_count: 0,
+                    kind: CallKind::Function,
+                });
+                let mut operations = vec![
+                    assign_call(1, activate, "Activate", &[i32::from_le_bytes(*b"TEST")]).operation,
+                ];
+                if deactivate {
+                    operations.push(Operation::Call {
+                        call: Call {
+                            function_id: activate + 1,
+                            function: "Deactivate".into(),
+                            target: Object::Me,
+                            kind: CallKind::Function,
+                            arguments: vec![],
+                        },
+                    });
+                }
+                operations.push(Operation::End { target: 0 });
+                scripts.actors.get_mut("LOGIC").unwrap().program.steps = operations
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, operation)| {
+                        (
+                            i as u32,
+                            Step {
+                                next: i as u32 + 1,
+                                operation,
+                            },
+                        )
+                    })
+                    .collect();
+            });
+            let player = world
+                .id(world
+                    .actors()
+                    .iter()
+                    .position(|a| matches!(a.source, cyrus_game::script::ScriptActorSource::Player))
+                    .unwrap())
+                .unwrap();
+            let owner = world.id(0).unwrap();
+            let hud = cyrus_game::script::ScriptHud::default();
+            let mut asset = inventory_asset(&[(item, 1)]);
+            let definition = asset.inventory.get_mut(&item).unwrap();
+            definition.flags = 4;
+            if item == 1 {
+                definition.item_type = 1;
+                definition.weapon = true;
+            }
+            hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+            hud.select_item(item).unwrap();
+            let state = ActivationActor {
+                state: 0,
+                on_rope: false,
+                water_state: 0,
+                torch_burning: 0,
+                weapon_assigned: true,
+                weapon_drawn: false,
+                animation: Some(ActivationAnimation { group: Some(0) }),
+            };
+            let activation = ActivationInputs {
+                player,
+                actors: BTreeMap::from([(owner.index, state), (player.index, state)]),
+                labels: BTreeMap::from([("test".into(), "OPEN".into())]),
+                lockout: 0,
+                dialogue_open: false,
+                lineup_result: 0,
+                use_held: true,
+                item_system_ready: true,
+                shell_execution: false,
+                render_disabled: false,
+            };
+            world
+                .advance(
+                    owner,
+                    ScriptStage::OrdinaryMain,
+                    ScriptInputs {
+                        activation: Some(&activation),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            assert_eq!(
+                world.actors()[owner.index].runtime().unwrap().variables()[0],
+                1
+            );
+            assert_eq!(
+                world.activation().owner(),
+                None,
+                "the script released its owner"
+            );
+            let mut random = cyrus_game::random::EngineRandom::default();
+            for (held, use_selected) in [(true, true), (true, true), (false, false)] {
+                world.globals_mut().end_item_use_attempt();
+                world
+                    .run_quick_keys(
+                        ScriptInputs {
+                            hud: Some(&hud),
+                            shell_execution: Some(false),
+                            activation_use_held: Some(held),
+                            quick_keys: Some(QuickKeys {
+                                use_selected,
+                                ..Default::default()
+                            }),
+                            nominal_ticks: Some(1),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        &mut random,
+                        &mut |_, _| Ok(()),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    world.actors()[player.index]
+                        .control_state()
+                        .unwrap()
+                        .living_state,
+                    0,
+                    "activation must not draw the selected sword"
+                );
+                assert_eq!(
+                    hud.inventory(None).unwrap().counts[&item],
+                    1,
+                    "activation must not consume the selected item"
+                );
+            }
+            world
+                .run_quick_keys(
+                    ScriptInputs {
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        activation_use_held: Some(true),
+                        quick_keys: Some(QuickKeys {
+                            use_selected: true,
+                            ..Default::default()
+                        }),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    &mut random,
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(
+                hud.inventory(None).unwrap().counts[&item],
+                0,
+                "a new press may use the selected item"
+            );
+            assert_eq!(
+                world.actors()[player.index]
+                    .control_state()
+                    .unwrap()
+                    .living_state,
+                if item == 1 { 20 } else { 0 }
+            );
+        }
+    }
+}
+
+#[test]
 fn compass_item_use_is_not_repeated_by_the_hud_for_the_same_press() {
     use cyrus_game::script::{CompassUse, QuickKeys, ScriptInputs};
     let (_, mut world, _, _) = player_walking_fixture_with(|_| {});

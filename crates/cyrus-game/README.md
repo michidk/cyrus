@@ -187,6 +187,9 @@ Verified: the production SOUP `End` notification releases activation ownership
 when the ending actor owns it, following preservation's
 [End contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#end-0x05).
 The pending prompt and activation holdoff survive this owner release.
+Successful activation also consumes the held action input until release, independently
+of the owner. Quick-key and armed action handlers honor that mark, following
+preservation's [activation input contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#compass).
 
 World transitions retain their exit outcome until the destination registry is prepared.
 The departed world runs no further ordinary updates or ordinary audio services while

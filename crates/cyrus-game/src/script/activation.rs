@@ -197,6 +197,8 @@ pub struct GameplayGlobals {
     pub(super) world_loop_frame: u32,
     /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
     pub(super) item_use_latch: bool,
+    /// Successful activation consumes the action input until the selected player sees release.
+    pub(super) activation_consumed_use: bool,
     /// Nominal ticks until the dragon may breathe fire again; process-wide, zero at startup.
     pub(super) dragon_breath_cooldown: u32,
     /// Contacts of the most recent primary body response, retained across actors: a sliding
@@ -608,6 +610,10 @@ impl GameplayGlobals {
     /// iteration, so an iteration admits one attempt.
     pub fn end_item_use_attempt(&mut self) {
         self.item_use_latch = false;
+    }
+    pub(super) fn activation_consumes_action(&mut self, held: bool) -> bool {
+        self.activation_consumed_use &= held;
+        self.activation_consumed_use
     }
     pub(super) fn lockout_player(&mut self, value: i32) -> u16 {
         let value = value as u16;
@@ -1317,6 +1323,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     #[serde(default)]
     world_loop_frame: u32,
     #[serde(default)]
+    activation_consumed_use: bool,
+    #[serde(default)]
     dragon_breath_cooldown: u32,
     #[serde(default)]
     primary_body_contacts: u32,
@@ -1367,6 +1375,7 @@ impl GameplayGlobals {
             selected_ledge_result: self.selected_ledge_result,
             selected_ledge_anchor: self.selected_ledge_anchor,
             world_loop_frame: self.world_loop_frame,
+            activation_consumed_use: self.activation_consumed_use,
             dragon_breath_cooldown: self.dragon_breath_cooldown,
             primary_body_contacts: self.primary_body_contacts,
             sound_maintenance: self.sound_maintenance.snapshot(),
@@ -1456,6 +1465,7 @@ impl GameplayGlobals {
             dragon_breath_cooldown: saved.dragon_breath_cooldown,
             primary_body_contacts: saved.primary_body_contacts,
             item_use_latch: false,
+            activation_consumed_use: saved.activation_consumed_use,
             player_contacts: Default::default(),
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,
