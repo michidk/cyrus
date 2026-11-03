@@ -310,7 +310,38 @@ impl ScriptWorld {
                     )?;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
                 if let Some(scale) = inputs.frame_scale {
-                    self.run_pre_script_displacement(id, scale)?;
+                    let backward = self.actors[id.index]
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| {
+                            let motion = if control.queued_motion != 0 {
+                                control.queued_motion
+                            } else {
+                                control.falling_state
+                            };
+                            motion & 127 == 3 && !control.rope_attached
+                        });
+                    let backward_query = if backward {
+                        scene
+                            .map(|scene| {
+                                self.prepare_ordinary_collision_query(
+                                    id, scene, data, view, &selected,
+                                )
+                            })
+                            .transpose()?
+                    } else {
+                        None
+                    };
+                    let query = backward_query.as_ref().zip(scene).map(|(prepared, scene)| {
+                        super::obstacle::OrdinaryObstacleQuery {
+                            scene,
+                            animations: data,
+                            prepared,
+                            vertical_offset: 0,
+                            respond: false,
+                        }
+                    });
+                    self.run_pre_script_displacement(id, scale, inputs, query)?;
                 }
                 let control = self.actors[id.index]
                     .control

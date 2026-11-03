@@ -60,6 +60,12 @@ completes immediately after admission and its state writes; selected-player
 edge and hang services use the caller's receiver-bound collision geometry.
 Its contract follows preservation's `player.md#script-jump`.
 
+Verified: the pre-script queued/falling stage carries backward motion 3 through
+ordinary backward displacement, including startup counters, animation suppression,
+stance admission and the exact queued-3 retained heading. It shares the existing
+translation arithmetic, following preservation's
+[backward displacement contract](https://github.com/michidk/redguard-preservation/blob/ca1fe612a5aa024206dfa0ee8d1a3c4ff0eb81cc/docs/engine/player.md#pre-script-queued-and-falling-stage).
+
 Verified: refused scripted directional steps retain body-response marks for
 forward and sideways movement, and a transition mark for backward movement.
 Player alignment consumes these marks when choosing its fallback. The auxiliary

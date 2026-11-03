@@ -277,12 +277,14 @@ impl super::ScriptWorld {
 
     /// The stage between the ordinary animation and script stages: queued (else falling) motion 8
     /// or 9 carries a jump forward, and motion 2 a forward-steered jump, at a rate set by
-    /// attribute 31 and the frame scale until the accumulated distance reaches its cap; deep water changes neither. Other
-    /// motion values add no displacement here. It reads no actor kind, so every actor takes it.
+    /// attribute 31 and the frame scale until the accumulated distance reaches its cap; deep water changes neither. Motion 3 uses the
+    /// ordinary backward step and retained jump heading. It reads no actor kind.
     pub(super) fn run_pre_script_displacement(
         &mut self,
         id: super::ScriptActorId,
         frame_scale: u32,
+        inputs: super::ScriptInputs<'_>,
+        query: Option<super::obstacle::OrdinaryObstacleQuery<'_>>,
     ) -> anyhow::Result<()> {
         use anyhow::Context;
         let index = self.resolve(id)?;
@@ -296,6 +298,9 @@ impl super::ScriptWorld {
         } else {
             control.falling_state
         };
+        if motion & 127 == 3 {
+            return self.run_backward_jump_displacement(id, frame_scale, inputs, query);
+        }
         if motion & 127 == 24 {
             return self.run_rope_jump_displacement(id, frame_scale);
         }
@@ -350,6 +355,96 @@ impl super::ScriptWorld {
             self.spatial
                 .as_mut()
                 .context("pre-script displacement spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .position = position;
+        }
+        Ok(())
+    }
+
+    /// Preservation's pre-script motion-3 branch shares backward startup arithmetic.
+    /// The exact queued byte 3 retains the jump heading even after the actor turns.
+    fn run_backward_jump_displacement(
+        &mut self,
+        id: super::ScriptActorId,
+        frame_scale: u32,
+        inputs: super::ScriptInputs<'_>,
+        query: Option<super::obstacle::OrdinaryObstacleQuery<'_>>,
+    ) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let index = self.resolve(id)?;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .context("backward jump control unavailable")?;
+        if control.rope_attached {
+            return Ok(());
+        }
+        let combat_stance = control
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.flags & 4 != 0);
+        let (_, holding_weapon) = self.spacing_weapon(id, inputs)?;
+        let stance = holding_weapon || combat_stance;
+        if stance
+            && self.blocked_ahead(
+                id,
+                30,
+                query.context("backward jump obstacle query unavailable")?,
+            )?
+        {
+            return Ok(());
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated control")
+            .motion_direction = 3;
+        if matches!(self.actors[index].surface, Some(2 | 4))
+            && !self.edge_probe_clear(
+                id,
+                3,
+                query.context("backward jump edge scene unavailable")?.scene,
+            )?
+        {
+            return Ok(());
+        }
+        self.globals.locomotion_called |= 8;
+        let actor = &mut self.actors[index];
+        let animation = actor
+            .animation
+            .as_ref()
+            .context("backward jump animation unavailable")?;
+        let group = animation.playback.current_group();
+        let suppressed = animation.playback.translation_suppressed();
+        let length = if stance {
+            i32::from(actor.attributes[18]) << 8
+        } else if matches!(group, Some(76 | 78)) {
+            i32::from(actor.attributes[8]) << 7
+        } else {
+            i32::from(actor.attributes[9]) << 8
+        };
+        let control = actor.control.as_mut().expect("validated control");
+        let distance = super::super::locomotion::initial_step_distance(
+            &mut control.movement_flags,
+            6,
+            actor.attributes[11],
+            length,
+        );
+        let retained = (control.queued_motion == 3).then_some(control.motion_vector[1]);
+        let pose = self.spatial(id)?.local;
+        let movement = super::super::locomotion::backward_translation(
+            retained.map_or(pose.angles[1], |heading| heading as u16),
+            distance,
+            frame_scale as i32,
+            suppressed,
+        );
+        if let Some((heading, distance)) = movement {
+            let position =
+                cyrus_world::transform::translate_forward(pose.position, heading, distance)?;
+            self.spatial
+                .as_mut()
+                .context("backward jump spatial state unavailable")?
                 .actor_mut(index)?
                 .local
                 .position = position;

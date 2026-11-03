@@ -5345,7 +5345,12 @@ fn object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target() 
                 20,
             )
             .unwrap();
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
         world
             .advance(
@@ -5361,7 +5366,12 @@ fn object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target() 
                 20,
             )
             .unwrap();
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
         assert_eq!(
             world.spatial(world.id(1).unwrap()).unwrap().local.position,
@@ -7254,7 +7264,12 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             })
             .unwrap();
         assert_eq!(transitions, 1);
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         assert_eq!(world.spatial(id).unwrap().local.angles[1], 344);
         assert_eq!(
             world.actors()[0]
@@ -7387,7 +7402,12 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 unreachable!("grounded contacts run no motion transition")
             })
             .unwrap();
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         if let Some(heading) = heading {
             assert_eq!(world.spatial(id).unwrap().local.angles[1], heading);
         }
@@ -7412,7 +7432,12 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 &settings,
             )
             .unwrap();
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         assert_eq!(
             world.actors()[0]
                 .control_state()
@@ -22509,7 +22534,12 @@ fn live_spacing_root_queries_amount_then_moves_only_when_midpoint_is_retained() 
                 &mut |_, _| Ok(()),
             )
             .unwrap();
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
         assert_eq!(random.state(), 1);
@@ -25895,7 +25925,12 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
             world.actors()[0].control_state().unwrap().navigation,
             Default::default()
         );
-        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
     }
     let (mut world, _, _) = point_wrapper_fixture(7);
     let id = world.id(0).unwrap();
@@ -37986,4 +38021,110 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
     assert_eq!(world.dialogue_labels(), vec![*b"ALFA", *b"BETA"]);
     assert_eq!(world.dialogue_labels(), vec![*b"ALFA", *b"BETA"]);
     assert_eq!(world.inspect(0, 64), before);
+}
+
+#[test]
+fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
+    use cyrus_game::script::{
+        OrdinaryInputs, ScriptHud, ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    for (queued, suppressed) in [(3, false), (131, false), (3, true)] {
+        let (mut world, scripts, data) = movement_fixture(
+            49,
+            suppressed,
+            false,
+            |scripts| {
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                    instance.active = 1;
+                }
+                // Ground/collision stages are deliberately separate from this displacement contract.
+                scripts
+                    .actors
+                    .get_mut("LOGIC")
+                    .unwrap()
+                    .attributes
+                    .insert("attr_1".into(), 4);
+                scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
+                    death_height: 568,
+                    hurt_height: 300,
+                    hurt_zap: 10,
+                    bounce_height: None,
+                });
+            },
+            |saved| {
+                saved["actors"][0]["control"]["queued_motion"] = queued.into();
+                saved["actors"][0]["control"]["motion_vector"] = serde_json::json!([0, 512, 0]);
+                saved["actors"][0]["control"]["movement_flags"] = 0.into();
+            },
+        );
+        // Use the public ordinary loop without ground response. Its contextual admission error
+        // follows the displacement and prevents this fixture from claiming collision coverage.
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][1] = 0.into();
+        world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &WorldSnapshotSources {
+                identity_memo: None,
+                effects: None,
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &Default::default(),
+            },
+            WorldRestoreContext {
+                generation: 3,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        let before = world.spatial(id).unwrap().local;
+        let hud = ScriptHud::default();
+        world
+            .update_ordinary(
+                &data,
+                [0, 0],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(128),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        ..Default::default()
+                    },
+                    scene: None,
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        let expected = if suppressed {
+            before.position
+        } else {
+            let heading = if queued == 3 {
+                1536
+            } else {
+                before.angles[1].wrapping_add(1024) & 2047
+            };
+            cyrus_world::transform::translate_forward(before.position, heading, 384).unwrap()
+        };
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            expected,
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.motion_direction, 3);
+        assert_eq!(control.movement_flags & 0xc0, 0x40);
+        assert!(
+            world.actors()[0]
+                .failure()
+                .unwrap()
+                .contains("ordinary queued motion stage unsupported")
+        );
+    }
 }
