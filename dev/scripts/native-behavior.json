@@ -3046,17 +3046,18 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "67ddb2b35bbafa8b0ad6981c85d2c25254e39dac",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/237"
       ],
       "native": "SpacePressed",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Non-consuming Boolean query of Space input state word; named implementation missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified: independent installed zero-argument ordinary-function declaration/native/full handler; returns one exactly when Space16-bit input state word is nonzero, otherwise zero. Original keyboard-writer indexing and installed KEYS.INI identify code57 independently. No receiver dereference, latest-event read, calls, task creation or nonstack writes. Repeated invocations do not consume state. 66544 bounded original instruction contexts cover all65536 word values plus selected receiver/actor/register/neighbor/event states; eight effective instruction controls and four three-call sequences pass. Exact nonstack read boundary, unchanged input/actor/canary bytes, saved registers and stack checked. No intercepted services; input state synthetic. Unknown: interrupt/input lifecycle timing, VM decoding, malformed admission and natural original/native/browser acceptance. Exhaustive word values do not exhaust all machine states. Named implementation remains missing; no production acceptance or dedicated public rejection test added."
     },
     {
       "owner": 5,
