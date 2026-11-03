@@ -2922,6 +2922,232 @@
       ],
       "limits": "Verified: canonical installed SOUP386.DEF declares this function with8 arguments;27 historical export catalogues agree. No named handler or spare-family generic dispatcher exists in current public host/delegated services, and no dedicated rejection assertion was located. Missing is limited to named call dispatch. Verified: the installed definition comment labels this family spare expansion functions that currently do nothing. That is declaration evidence, not an observed handler result. Unknown: original handler return and actual side effects; no runtime or instruction-level no-op proof is claimed. Declaration metadata does not establish actual bytecode invocation or acceptance. Hidden unsupported actor bodies limit absence claims. No original/native/browser behavior acceptance or Rust tests run for this audit. The numeric suffix is7 but the declared argument count is8; do not normalize from the name.",
       "reviewed_revision": "2ac89b02aecf248b9e4c8889d1cede22502c12d3"
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "PrintParms",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "PrintStringParm",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "LogParms",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "NullFunction",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed. Verified: NullFunction is synthetic index0 prepended by the definition parser, not an authored DEF line; test helper declarations do not execute it."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "TestTask",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "PressKey",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "SpacePressed",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "IsShellScript",
+      "status": "missing",
+      "scope": "Direct named public SOUP call dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
+      "tests": [],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "TrueFunction",
+      "status": "partial",
+      "scope": "Constant result after argument validation",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "limits": "Verified: current handler requires2 arguments and returns1; synthetic fixture calls(0,5). Canonical installed DEF declares0 arguments, while run_native_world_with constructs declaration arity from supplied arguments. The test therefore does not exercise the installed declaration. An installed-valid zero-argument call reaches wrong-argument-count rejection. Unknown original return/side effects and direct host parity; this is a concrete declaration/handler mismatch, not full support. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "MainloopExit",
+      "status": "partial",
+      "scope": "Retain exit request codes at least5000",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000"
+      ],
+      "limits": "Verified: fixture checks4999 rejected as request,5000 retained and-7 ignored. Source requires one integer and returns0. No production take_host_requests/mainloop_exit consumer located outside logical tests; a retained request does not prove process/menu termination. Unknown original/native/browser exit behavior and continuation. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "MyId",
+      "status": "partial",
+      "scope": "Read receiver signed runtime identifier",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::my_id_reads_the_runtime_identifier"
+      ],
+      "limits": "Verified: source reads runtime_identifier and sign extends; fixture compares local result to the same actor field. This is field consistency, not independent original identity/allocation/reuse proof. Unknown matched original/native/browser identity after replacement and routed calls. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "MyAiMode",
+      "status": "partial",
+      "scope": "Read receiver lifecycle response byte",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "limits": "Verified: source requires zero arguments and reads death_response; fixture SetAIMode7 then reads7. Unknown independently matched original meaning, all lifecycle producers, routed receiver and replacement/native/browser outcomes. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+      ],
+      "native": "MyAiType",
+      "status": "partial",
+      "scope": "Read receiver lifecycle selector byte",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "limits": "Verified: source requires zero arguments and reads death_selector; fixture SetAIType300 then reads44, exercising low-byte setter/readback. Unknown independently matched original meaning, lifecycle producers and replacement/native/browser outcomes. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#attribute-reads-and-writes"
+      ],
+      "native": "GetMyAttr",
+      "status": "partial",
+      "scope": "Read unsigned receiver attribute with out-of-range zero",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::researched_attribute_query_reads_unsigned_bytes_and_checks_bounds"
+      ],
+      "limits": "Verified: public fixture reads255 and checks invalid GetMyAttr indices-1/256 return0. Source returns0 for invalid GetMyAttr index and reads receiver byte. Published contract also permits absent table; current actors have owned tables. Unknown all absent/routed/retired receiver and matched original/native/browser traces. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "owner": 5,
+      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#attribute-reads-and-writes"
+      ],
+      "native": "SetMyAttr",
+      "status": "partial",
+      "scope": "Write low attribute byte without GetAttribute backup semantics",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes"
+      ],
+      "limits": "Verified: fixture writes511/-1 through SetMyAttr without changing backup bytes and checks other actor unchanged. Dedicated public invalid-index fixture checks extrema/-1/256, return0 and no mutation. Published default-group special case is conditional; living_map_default fixture checks no combat-default change on ordinary living map writes. Unknown every exclusion/combat/standalone/retired combination and direct matched original/native/browser attribute traces. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
     }
   ],
   "instructions": [
