@@ -3148,6 +3148,229 @@
         "crates/cyrus-game/tests/script_registry.rs::attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes"
       ],
       "limits": "Verified: fixture writes511/-1 through SetMyAttr without changing backup bytes and checks other actor unchanged. Dedicated public invalid-index fixture checks extrema/-1/256, return0 and no mutation. Published default-group special case is conditional; living_map_default fixture checks no combat-default change on ordinary living map writes. Unknown every exclusion/combat/standalone/retired combination and direct matched original/native/browser attribute traces. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+    },
+    {
+      "native": "EnableScript",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask1 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit",
+        "crates/cyrus-game/tests/script_registry.rs::disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask1 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableScript",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask1 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit",
+        "crates/cyrus-game/tests/script_registry.rs::disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask1 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Public stage fixture observes DisableScript finishing the current invocation, flag13 frozen over200 main-stage updates, active task retained, native-hook EnableScript restoring later flag14. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "EnableTasks",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask4 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask4 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableTasks",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask4 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask4 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "EnableObject",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask8 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask8 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableObject",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask8 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask8 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "EnableCombat",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask16 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and clears mask16 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableCombat",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver script-control mask16 mutation and bounded stage effects",
+      "caller": "ScriptWorld::advance -> GameHost::call -> Enable/Disable suffix dispatcher -> ActorControlState::script_control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::enable_and_disable_natives_toggle_their_script_control_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#ordinary-update-gates"
+      ],
+      "limits": "Verified: generic suffix dispatcher admits only Script/Tasks/Object/Combat, requires0 arguments and sets mask16 while preserving other bits. Public fixture asserts per-family toggle and mixed Tasks/Combat preservation. It does not establish complete ordinary update/combat/task lifetime from bit mutation alone. Published ordinary gates distinguish hook/main/task/object paths. Unknown matched installed original/native/browser toggles, all routed/retired receivers and replacement/save lifetime. Zero static occurrences in27 historical exports are not absence proof; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableNodeMaps",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Set enable flag of all prepared walk-node maps",
+      "caller": "GameHost::call -> ScriptWorld::set_all_walk_maps_enabled -> WalkNodes::set_all_enabled",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::disable_and_enable_node_maps_set_every_map_flag_and_need_prepared_navigation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/23"
+      ],
+      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "EnableNodeMaps",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Set enable flag of all prepared walk-node maps",
+      "caller": "GameHost::call -> ScriptWorld::set_all_walk_maps_enabled -> WalkNodes::set_all_enabled",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::disable_and_enable_node_maps_set_every_map_flag_and_need_prepared_navigation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/23"
+      ],
+      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "IsMaster",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Boolean read of receiver attribute25",
+      "caller": "GameHost::call -> receiver attributes nonzero predicate",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950"
+      ],
+      "limits": "Verified source/assertion inspection: no arguments, returns1 iff attribute25 nonzero. Fixture writes3 through SetMyAttr then reads1; IsMaster also checks default0. This establishes bounded predicate/readback, not master/slave model ownership, all values, absent attributes or original reference semantics. Unknown matched original/native/browser routed/retired receiver and replacement behavior. Zero static occurrences do not establish original absence; no Rust tests/runtime run.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "IsSlave",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Boolean read of receiver attribute26",
+      "caller": "GameHost::call -> receiver attributes nonzero predicate",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950"
+      ],
+      "limits": "Verified source/assertion inspection: no arguments, returns1 iff attribute26 nonzero. Fixture writes3 through SetMyAttr then reads1; IsMaster also checks default0. This establishes bounded predicate/readback, not master/slave model ownership, all values, absent attributes or original reference semantics. Unknown matched original/native/browser routed/retired receiver and replacement behavior. Zero static occurrences do not establish original absence; no Rust tests/runtime run.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DisableSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named public SOUP function dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "EnableSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named public SOUP function dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "HeaderHook",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named public SOUP function dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
+      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
     }
   ],
   "instructions": [
