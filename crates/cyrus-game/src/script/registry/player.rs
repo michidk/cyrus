@@ -266,11 +266,12 @@ impl ScriptWorld {
                     };
                     world.step_player(id, function, inputs, sounds)
                 }
-                // WalkForward delegates to MoveForward in deep water (preservation SOUP.md).
+                // Deep water delegates WalkForward to MoveForward and an armed stance walks in
+                // group 31 (preservation SOUP.md); only the unarmed dry walk is the walking stage.
                 SheathedAction::WalkForward
-                    if matches!(world.actors[id.index].surface, Some(2 | 4)) =>
+                    if walk_forward_is_scripted(armed, world.actor_surface(id)?) =>
                 {
-                    world.step_player(id, "MoveForward", inputs, sounds)
+                    world.step_player(id, "WalkForward", inputs, sounds)
                 }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
@@ -1403,6 +1404,13 @@ impl PlayerMovement {
     }
 }
 
+/// Whether the held walk key steps through the scripted `WalkForward` helper: an armed stance (group
+/// 31) and deep water (surfaces 2 and 4, where it becomes `MoveForward`) do; the unarmed dry walk is
+/// the controller's own walking stage.
+fn walk_forward_is_scripted(armed: bool, surface: u8) -> bool {
+    armed || matches!(surface, 2 | 4)
+}
+
 /// The jump entry the key arbitration starts refuses while the player is in deep water (surface 2
 /// or 4) or in group 114, 116, 130 or 131 (preservation player.md "Jump-key arbitration").
 fn jump_key_refused(surface: u8, group: Option<u16>) -> bool {
@@ -1452,6 +1460,15 @@ mod airborne_tests {
         assert_eq!(control.queued_motion, 0x81);
         steer_airborne(&mut control, Some(32), &held);
         assert_eq!(control.queued_motion, 2);
+    }
+
+    #[test]
+    fn the_walk_key_steps_through_the_helper_when_armed_or_swimming() {
+        assert!(super::walk_forward_is_scripted(true, 0));
+        assert!(super::walk_forward_is_scripted(false, 2));
+        assert!(super::walk_forward_is_scripted(false, 4));
+        assert!(!super::walk_forward_is_scripted(false, 0));
+        assert!(!super::walk_forward_is_scripted(false, 3));
     }
 
     #[test]
