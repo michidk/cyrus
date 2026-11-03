@@ -3315,10 +3315,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/23"
+        "https://github.com/michidk/cyrus/issues/23",
+        "https://github.com/michidk/redguard-preservation/pull/204"
       ],
-      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only. Verified original direct handlers traverse the loaded list, write only each runtime disabled byte, and return zero including an empty list. Constructed instruction witness covers3072 total cases across both handlers, list lengths0..5 and all256 initial flag bytes, with five altered-instruction controls. List links, unrelated bytes and detached nodes remain unchanged. No reservation or actor-state helper is called; later navigation effects are separate. Source returns Complete(0), but the inspected fixture does not assert successful named dispatch/return with prepared maps, mixed multi-map flags, empty prepared navigation or named-call snapshot lifetime. No Rust tests executed in this audit.",
+      "reviewed_revision": "37dd1df568deb265fcbe064757347d611ea1b7c6"
     },
     {
       "native": "EnableNodeMaps",
@@ -3331,10 +3332,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/23"
+        "https://github.com/michidk/cyrus/issues/23",
+        "https://github.com/michidk/redguard-preservation/pull/204"
       ],
-      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: named dispatcher validates no arguments and delegates to prepared navigation. Fixture toggles helper directly and observes next-node1/-1/1; named public calls only assert errors without prepared navigation and with an argument. Successful helper is not successful named-call acceptance. Unknown matched original/native/browser map flags, live route/reservation consequences and restore for this exact call. Static zero occurrences in27 exports, not runtime absence; Rust assertions inspected only. Verified original direct handlers traverse the loaded list, write only each runtime disabled byte, and return zero including an empty list. Constructed instruction witness covers3072 total cases across both handlers, list lengths0..5 and all256 initial flag bytes, with five altered-instruction controls. List links, unrelated bytes and detached nodes remain unchanged. No reservation or actor-state helper is called; later navigation effects are separate. Source returns Complete(0), but the inspected fixture does not assert successful named dispatch/return with prepared maps, mixed multi-map flags, empty prepared navigation or named-call snapshot lifetime. No Rust tests executed in this audit.",
+      "reviewed_revision": "37dd1df568deb265fcbe064757347d611ea1b7c6"
     },
     {
       "native": "IsMaster",
