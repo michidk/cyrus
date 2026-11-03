@@ -1743,6 +1743,261 @@
       ],
       "limits": "Verified by inspection: dispatcher fixture retains the request; isolated host test waits for a book then sends movie four and StopAll exactly once. Verified public receipts: original real-input fight/ending/book/New Game, native fight and ending, and browser ending/restart pass on their recorded revisions. Browser restart used a diagnostic kill; earlier production browser movie evidence used a restored diagnostic checkpoint and normal combat. Unknown: direct retained-waiting-script disposal at WonGame, physical audio timing and full unskipped parity. Post-ending SAVE availability differs explicitly in docs/DIFFERENCES.md. #44 is closed for its stated bounded acceptance; this broader behavior row remains partial.",
       "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "BounceObject",
+      "status": "partial",
+      "owner": 69,
+      "scope": "Receiver launch task, ascent, descent handoff and steering",
+      "caller": "ScriptWorld::advance -> script/tasks.rs Bounce -> registry/bounce.rs live adapter -> script/bounce.rs state machine",
+      "tests": [
+        "crates/cyrus-game/src/script/bounce.rs::bounce_object_refused_calls_end_without_effects",
+        "crates/cyrus-game/src/script/bounce.rs::rising_waits_for_the_entry_group_then_lifts_and_decays",
+        "crates/cyrus-game/src/script/bounce.rs::the_apex_starts_the_ordinary_fall_and_landing_ends_the_task"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/69"
+      ],
+      "limits": "Verified by inspection: state-machine fixtures use a mock Actor port to assert refusals, entry-group wait, lift/decay, fall handoff and completion. They are below public native dispatch and live collision/audio. #49 records historical NECRTOWR execution, without a matched original/browser trajectory receipt. Unknown: complete installed original/native/browser launch, steering, landing and task replacement parity.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "GolemSteam",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Randomly admitted attachment-point steam effect and rendered lifetime",
+      "caller": "ScriptWorld::advance -> registry GolemSteam -> attachment_offset -> spawn_environment_effect",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::golem_steam_acts_on_one_draw_in_four_and_needs_animation_data_then"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public-stage test accepts an idle RNG draw and expects animation-data-unavailable on an acting draw. It does not produce a steam puff or assert attachment identity, alternating descriptor, sample/RNG sequence after admission or rendered output. Unknown: installed original/native/browser effect placement and lifetime. An expected missing-service error is not successful effect acceptance.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerCollide",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Selected-player receiver contact query including actor support",
+      "caller": "ScriptWorld::advance -> registry native -> shared player contact lists / selected-player support actor",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_collide_natives_read_the_selected_players_contact_lists"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/48"
+      ],
+      "limits": "Verified by inspection: public OrdinaryMain fixture directly records player contact and asserts zero without contact, one for receiver contact and zero for another receiver. The fixture bypasses physical collision production and does not distinguish actor/static lists or establish the PlayerCollide support-actor branch. Unknown: matched installed original/native/browser contact publication, clearing, selected-role and revisit behavior.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerCollideStatic",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Selected-player receiver contact query for static contacts",
+      "caller": "ScriptWorld::advance -> registry native -> shared player contact lists",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_collide_natives_read_the_selected_players_contact_lists"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/48"
+      ],
+      "limits": "Verified by inspection: public OrdinaryMain fixture directly records player contact and asserts zero without contact, one for receiver contact and zero for another receiver. The fixture bypasses physical collision production and does not distinguish actor/static lists or establish the PlayerCollide support-actor branch. Unknown: matched installed original/native/browser contact publication, clearing, selected-role and revisit behavior.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerFaceObj",
+      "status": "partial",
+      "owner": 37,
+      "scope": "Selected-player facing task, near snap and stale-response abandonment",
+      "caller": "ScriptWorld::advance -> tasks PlayerFace -> registry selected-player state/outcome adapter",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::player_face_obj_snaps_onto_a_near_receiver_and_levels_the_roll_when_facing",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::player_face_obj_abandons_after_a_stale_collision_response"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518"
+      ],
+      "limits": "Verified by inspection: NativeTasks fixture supplies player state directly and asserts near X/Z snap, Y retention, roll leveling and stale-response return state. It is below public ScriptWorld selected-player application. #37 accepts installed conversation alignment but does not identify a separately executed PlayerFaceObj case. Unknown: per-native original/native/browser turn/animation and cancellation parity.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerHanging",
+      "status": "partial",
+      "owner": 69,
+      "scope": "Selected player hanging from this receiver model identity",
+      "caller": "ScriptWorld::advance -> registry PlayerHanging -> living state and ledge_support",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_hanging_is_false_outside_the_hanging_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/69"
+      ],
+      "limits": "Verified by inspection: public fixture dispatches PlayerHanging and asserts the script resumes at flag seven; it never asserts the stored query result despite its test name. Source requires hanging state and receiver-owned ledge support; that source path is not behavior acceptance. Unknown: positive/negative receiver identity, static ledge and original/native/browser return-value parity.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerInSight",
+      "status": "partial",
+      "owner": 24,
+      "scope": "Selected-player visibility with fresh or retained collision candidates",
+      "caller": "ScriptWorld::advance -> registry PlayerInSight -> player_in_sight / player_in_sight_retained",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/24"
+      ],
+      "limits": "Verified by inspection: direct ScriptWorld geometry helpers assert wall blocking, inclusive fixed distance and retained candidate-list behavior. The fixture does not dispatch the native or validate production selected-role/input binding. Unknown: installed original/native/browser public query and stale-candidate/attached/linked boundaries; helper visibility is not native acceptance.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerLineUp",
+      "status": "done",
+      "owner": 37,
+      "scope": "Task-owned mode/reference and initialized continuation through production conversation replacement",
+      "caller": "ScriptWorld::advance -> tasks LineUp -> registry lineup mover/collision owner -> production session replacement",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::a_receivers_lineup_natives_walk_the_selected_player_onto_the_target",
+        "crates/cyrus-game/tests/script_registry.rs::initialized_lineup_references_are_validated_before_session_replacement",
+        "crates/cyrus-game/tests/script_registry.rs::killed_created_lineup_receiver_never_resumes_its_waiting_main"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594262189",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified: public fixtures cover threshold equality, retained mode, moved reference, missing collision and killed receiver. #37 production browser captures initialized token seven with retained reference six; live browser replacement, navigation and native host restore continue to the original natural conversation endpoint with nominal line identities/intervals. Invalid references reject before replacement. Scope excludes exact physical admission ticks, device audio, undefined freed-memory behavior and unrelated alignment variants. Done is inferred only for this bounded task/continuation scope.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1",
+      "acceptance": {
+        "original": "https://github.com/michidk/cyrus/issues/37#issuecomment-6594262189 (retained original fifteen-line and natural endpoint comparison; preservation mode/reference rules linked by final receipt)",
+        "native": "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518 (initialized browser document restored through production native session host)",
+        "browser": "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518 (actual initialized capture, live replacement and navigation)"
+      }
+    },
+    {
+      "native": "PlayerParallelLineUp",
+      "status": "partial",
+      "owner": 37,
+      "scope": "Receiver-target alignment using the plain mover",
+      "caller": "ScriptWorld::advance -> tasks lineup variant -> registry selected-player mover",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::a_receivers_lineup_natives_walk_the_selected_player_onto_the_target",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_fallback"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518"
+      ],
+      "limits": "Verified by inspection: public ScriptWorld fixture walks the selected player to the receiver plus authored unrotated offset and resumes. Lower task-manager fixture logs plain-turn versus pickup-face routing and retains fallback after path availability changes. #37 initialized production restoration explicitly captures PlayerLineUp, not this variant. Unknown: variant-specific installed original/native/browser admission, blocked-path fallback, rendered approach and replacement. This row claims no item integration ownership.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PlayerPickupLineUp",
+      "status": "partial",
+      "owner": 37,
+      "scope": "Receiver-target alignment with retained pickup fallback",
+      "caller": "ScriptWorld::advance -> tasks lineup variant -> registry selected-player mover",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::a_receivers_lineup_natives_walk_the_selected_player_onto_the_target",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_fallback"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518"
+      ],
+      "limits": "Verified by inspection: public ScriptWorld fixture walks the selected player to the receiver plus authored unrotated offset and resumes. Lower task-manager fixture logs plain-turn versus pickup-face routing and retains fallback after path availability changes. #37 initialized production restoration explicitly captures PlayerLineUp, not this variant. Unknown: variant-specific installed original/native/browser admission, blocked-path fallback, rendered approach and replacement. This row claims no item integration ownership.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PushPlayer",
+      "status": "partial",
+      "owner": 43,
+      "scope": "End-of-loop selected-role swap with retained world/controller ownership",
+      "caller": "ScriptWorld::advance -> registry request -> finish_world_loop -> consume_player_swap_requests / select_player",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration",
+        "crates/cyrus-game/tests/script_registry.rs::pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration_as_push"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/43#issuecomment-6363036230",
+        "https://github.com/michidk/cyrus/issues/43#issuecomment-6359703788"
+      ],
+      "limits": "Verified by inspection: public update/end-loop fixture asserts swap role and pose; combined requests preserve push-before-pop behavior. #43 records native authored MGUILD swap/world transition, distinct-process swapped reload and native JAILINT PopPlayer; browser records MGUILD transition and visually compared camera. Unknown: original SCENE4 framing, browser swapped-session restoration and browser PopPlayer production acceptance. Historical closure explicitly excluded browser save/load then unavailable; later general save support alone does not fill this specific gap. The recovered domain is one swap state, not a stack.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "PopPlayer",
+      "status": "partial",
+      "owner": 43,
+      "scope": "End-of-loop selected-role return with retained world/controller ownership",
+      "caller": "ScriptWorld::advance -> registry request -> finish_world_loop -> consume_player_swap_requests / select_player",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration",
+        "crates/cyrus-game/tests/script_registry.rs::pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration_as_push"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/43#issuecomment-6363036230",
+        "https://github.com/michidk/cyrus/issues/43#issuecomment-6359703788"
+      ],
+      "limits": "Verified by inspection: public update/end-loop fixture asserts swap role and pose; combined requests preserve push-before-pop behavior. #43 records native authored MGUILD swap/world transition, distinct-process swapped reload and native JAILINT PopPlayer; browser records MGUILD transition and visually compared camera. Unknown: original SCENE4 framing, browser swapped-session restoration and browser PopPlayer production acceptance. Historical closure explicitly excluded browser save/load then unavailable; later general save support alone does not fill this specific gap. The recovered domain is one swap state, not a stack.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "LoadWorld",
+      "status": "partial",
+      "owner": 42,
+      "scope": "Authored world-transition staging, failure retention and destination continuation",
+      "caller": "ScriptWorld::advance -> registry LoadWorld -> finish_world_loop -> world_request::consume -> SceneRequest/ReloadScene -> host staging",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host",
+        "crates/cyrus-game/tests/script_registry.rs::world_loop_exit_system_publishes_native_world_transition_at_last"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/42#issuecomment-6494486724",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594262189",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6593433423"
+      ],
+      "limits": "Verified by inspection: public request and Last-schedule fixtures assert destination/marker/heading, transition priority, suspended old loop and no delayed ending. Verified: later #37 current native/browser action-driven TAVERN/ISLAND return and native two-world replacement pass against controlled original markers. Heading-only placement is disclosed; this is not uninterrupted walking. Unknown: all authored destinations, matched original teardown order and browser asynchronous failure/retry branches. The closed #42 state does not erase the older audit limits.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "AddLog",
+      "status": "partial",
+      "owner": 60,
+      "scope": "Script journal tag lookup, persistence-before-notification and retained duplicate suppression",
+      "caller": "ScriptWorld::advance -> registry ScriptHud::call -> journal persistence / HUD notification",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::script_logbook_dispatch_writes_installed_text_before_notifying_and_suppresses_tags",
+        "crates/cyrus-game/tests/script_animation_host.rs::failed_logbook_storage_does_not_notify_or_overwrite_and_tag_is_still_suppressed",
+        "crates/cyrus-game/tests/script_animation_host.rs::full_logbook_tag_table_does_not_retain_new_tags"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/145",
+        "https://github.com/michidk/cyrus/issues/89#issuecomment-6590356176",
+        "https://github.com/michidk/cyrus/issues/60"
+      ],
+      "limits": "Verified by inspection: public script calls with synthetic HUD/storage assert installed-label lookup, empty entry, duplicate suppression, write-before-notify, reload without new notification and failure retention. #89 actual native/browser manual entries and restart verify the shared journal/editor route, not an AddLog scripted tag or original notification cadence. Unknown: matched original/native/browser authored AddLog tag admission, notification timing and full-table/revisit behavior. Reader completion does not establish this native.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
+    },
+    {
+      "native": "lockoutPlayer",
+      "status": "partial",
+      "owner": 37,
+      "scope": "Shared low-word lockout and synchronous actor/activation cleanup",
+      "caller": "ScriptWorld::advance -> registry LockoutPlayer -> globals lockout_player / apply_player_lockout",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::lockout_player_retains_low_word_and_cleans_only_registered_actors",
+        "crates/cyrus-game/tests/script_animation_host.rs::lockout_call_changes_activation_and_overlay_in_the_same_invocation",
+        "crates/cyrus-game/tests/script_animation_host.rs::lockout_clears_prompt_override_only_outside_exact_one"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594262189",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6595627518"
+      ],
+      "limits": "Verified by inspection: public-stage fixtures assert low-word truncation, exact-one cleanup distinction, registered actor attributes, remembered choice reset and same-call activation/overlay change. #37 installed conversation/BYE and doorway receipts observe neutral cleared lockout, but do not separately cover all lockout operands and actor classes. Unknown: matched original/native/browser non-one values, prompt override and replacement cleanup. Neutral final state alone is not proof of every lockoutPlayer branch.",
+      "reviewed_revision": "56d223199d38df83c0cb97a5a9d110a456775dc1"
     }
   ]
 }
