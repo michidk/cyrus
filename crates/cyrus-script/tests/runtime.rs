@@ -435,6 +435,40 @@ fn signed_less_or_equal_includes_equality_and_preserves_false_branch_destination
 }
 
 #[test]
+fn inequality_and_greater_comparisons_use_signed_values_and_authored_boundaries() {
+    for (comparison, lhs, rhs, expected) in [
+        (1, i32::MIN, i32::MIN, 73),
+        (1, i32::MIN, i32::MAX, 7),
+        (3, i32::MAX, i32::MAX, 73),
+        (3, i32::MAX, i32::MIN, 7),
+        (3, i32::MIN, 0, 73),
+        (5, i32::MIN, i32::MIN, 7),
+        (5, i32::MAX, i32::MIN, 7),
+        (5, i32::MIN, 0, 73),
+    ] {
+        let mut vm = runtime(vec![
+            Operation::If {
+                conditions: vec![Condition {
+                    lhs: integer(lhs),
+                    comparison,
+                    rhs: integer(rhs),
+                    conjunction: 0,
+                }],
+                target: 2,
+            },
+            assign(Place::Flag { index: 0 }, 7),
+            Operation::End { target: 0 },
+        ]);
+        let mut host = Service::default();
+        let mut flags = [73];
+        vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
+        assert_eq!(flags, [expected], "comparison {comparison}: {lhs}, {rhs}");
+        assert_eq!(host.ends, 1);
+        assert!(host.calls.is_empty());
+    }
+}
+
+#[test]
 fn malformed_targets_are_rejected_before_effects() {
     let error = Runtime::new(
         program(0, vec![Operation::End { target: 4 }]),
