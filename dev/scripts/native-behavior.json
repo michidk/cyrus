@@ -4923,6 +4923,261 @@
       ],
       "limits": "Verified: preservation documents no-op return zero. Canonical installed definition declares EIGHT arguments; current task handler requires FOUR and persistence metadata records four. Synthetic fixture declares four, finishes task and checks selected camera unchanged/scripted_active0; this does not establish canonical eight-argument acceptance and current handler rejects eight. #35 installed-called camera acceptance does not cover this unused declaration. Unknown: installed task lifecycle/return acceptance across hosts; no completion inferred from the no-op contract. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
       "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+    },
+    {
+      "native": "GetMovementSpeed",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named state query",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified: canonical definition declares zero-argument function; no exact named handler or generic matching path located. No dedicated public assertion or named production receipt found. PlayerMovementSpeed, animation fields and falling/sliding state are distinct supported services; their existence does not implement this call. Unknown: original semantics beyond declaration/published facts; no result invented from the name. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsBouncing",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named state query",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified: canonical definition declares zero-argument function; no exact named handler or generic matching path located. No dedicated public assertion or named production receipt found. PlayerMovementSpeed, animation fields and falling/sliding state are distinct supported services; their existence does not implement this call. Unknown: original semantics beyond declaration/published facts; no result invented from the name. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "GetAttribute",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver attribute byte read with strict index and routed identity",
+      "caller": "ScriptWorld::step/advance -> GameHost -> attributes::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes",
+        "crates/cyrus-game/tests/script_registry.rs::routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage",
+        "crates/cyrus-game/tests/script_registry.rs::unsupported_attribute_access_fails_before_mutation_and_remains_sticky"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixtures: reads backup bytes contributing to289; routed GetAttribute119 returns receiver4 in caller local; index256 fails contextually before mutation and remains sticky. Source requires one integer and index0..255. Unknown: full canonical installed read/absent-table and original/native/browser query acceptance; byte read tests do not prove downstream attribute consumers. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsInWater",
+      "status": "partial",
+      "owner": 69,
+      "scope": "Query receiver stored surface class",
+      "caller": "ScriptWorld::step -> GameHost surface_test",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::surface_class_queries_read_receivers_stored_surface_without_a_support_query"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture iterates all256 supplied bytes with surface1..4 true, second receiver retains zero allocation surface and stale setter identity rejects. Source checks no arguments and prepared surface. This is retained classification, not a new support query. Unknown: actual installed ground-contact publication/order and original/native/browser named query after water/lava transitions. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsInLava",
+      "status": "partial",
+      "owner": 69,
+      "scope": "Query receiver stored surface class",
+      "caller": "ScriptWorld::step -> GameHost surface_test",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::surface_class_queries_read_receivers_stored_surface_without_a_support_query"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture iterates all256 supplied bytes with surface5 true, second receiver retains zero allocation surface and stale setter identity rejects. Source checks no arguments and prepared surface. This is retained classification, not a new support query. Unknown: actual installed ground-contact publication/order and original/native/browser named query after water/lava transitions. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsOnEdge",
+      "status": "partial",
+      "owner": 15,
+      "scope": "Receiver lifecycle/combat-state predicate",
+      "caller": "ScriptWorld::advance -> GameHost control_test",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::lifecycle_byte_queries_read_the_fresh_receiver_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses living_state10..19. No populated edge-state public fixture located. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsInAir",
+      "status": "partial",
+      "owner": 15,
+      "scope": "Receiver lifecycle/combat-state predicate",
+      "caller": "ScriptWorld::advance -> GameHost control_test",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::lifecycle_byte_queries_read_the_fresh_receiver_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses sliding/falling/queued nonzero or living_state27..29. Source explicitly assumes transition lock clear/world active; those original global gates are not represented. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "IsCombatCapable",
+      "status": "partial",
+      "owner": 25,
+      "scope": "Receiver lifecycle/combat-state predicate",
+      "caller": "ScriptWorld::advance -> GameHost combat_capable",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::lifecycle_byte_queries_read_the_fresh_receiver_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses attr110 override or a combat record with animation. Source explicitly assumes transition lock clear/world active; those original global gates are not represented. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "PlayerHealth",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Selected-player attribute3 query distinct from receiver Health",
+      "caller": "ScriptWorld::advance -> GameHost selected_player -> attributes[3]",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6602797154"
+      ],
+      "limits": "Verified source reads selected actor health with zero-argument guard and contextual missing-player error. Inspected Health/ReplenishHealth fixtures target different names; no dedicated successful public PlayerHealth assertion located. Actual health/death receipts do not establish the named query ran. Unknown: selected-versus-caller identity, replacement and installed original/native/browser query acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "armor",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Receiver combat record scalar read",
+      "caller": "ScriptWorld::advance -> GameHost -> control.combat.armor",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::health_strength_and_armor_queries_read_the_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6602797154"
+      ],
+      "limits": "Verified inspected public fixture asserts contextual missing-combat-record error for this name. Source reads retained combat scalar and enforces no arguments. No populated-combat successful named query assertion located; health/death and setter behavior do not substitute for this query. Unknown: receiver routing, signed retained value, replacement and installed original/native/browser acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "strength",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Receiver combat record scalar read",
+      "caller": "ScriptWorld::advance -> GameHost -> control.combat.strength",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::health_strength_and_armor_queries_read_the_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6602797154"
+      ],
+      "limits": "Verified inspected public fixture asserts contextual missing-combat-record error for this name. Source reads retained combat scalar and enforces no arguments. No populated-combat successful named query assertion located; health/death and setter behavior do not substitute for this query. Unknown: receiver routing, signed retained value, replacement and installed original/native/browser acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "PlayerMoved",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Selected-player local position versus update-entry snapshot",
+      "caller": "ScriptWorld::advance -> GameHost -> spatial previous_local_position",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_moved_needs_a_selected_player_with_spatial_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected public fixture exercises missing selected player and uninitialized spatial failure only. Source compares selected local position with previous snapshot. Movement scheduler assertions show positions changing but do not call/assert PlayerMoved. Unknown: public false/true boundaries, ordinary snapshot timing, replacement and installed original/native/browser named query. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "PlayerTurned",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Selected-player angle history comparison",
+      "caller": "ScriptWorld::advance -> GameHost -> player_status::player_turned",
+      "tests": [
+        "crates/cyrus-game/src/script/player_status.rs::the_turn_speed_and_arctan_queries_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified helper compares supplied angles/history against literal original-routine rows with11-bit masking. Public handler collects selected spatial state but assumes model presence; original no-model zero branch is not represented. No direct named public successful fixture located. Unknown: actual ordinary-history timing, model absence and original/native/browser query acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "PlayerMovementSpeed",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Selected-player current animation group maps to authored movement byte",
+      "caller": "ScriptWorld::advance -> GameHost -> playback current_group -> movement_speed_attribute",
+      "tests": [
+        "crates/cyrus-game/src/script/player_status.rs::the_turn_speed_and_arctan_queries_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified helper maps supplied groups to attributes8/9/10/12/13 and literal sentinel values; unmatched groups return zero. Public handler requires selected animation, reads actor byte and assumes model presence. This helper does not prove public actor/group/attribute composition, model-absence behavior or actual movement speed. Unknown: canonical named dispatch and original/native/browser acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+    },
+    {
+      "native": "PlayerMain",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Selected-player native hook delegates ordinary controller",
+      "caller": "ScriptWorld::run_player_native_hook -> Runtime::invoke_native_hook -> PlayerHookHost -> controller callback",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::scripted_walk_steps_move_the_selected_player_through_the_support_check",
+        "crates/cyrus-game/tests/script_registry.rs::keyboard_walk_runs_through_ordinary_scheduler_and_projects_release"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+      ],
+      "limits": "Verified inspected hook validates direct Me/function/zero-argument call and emits CompleteWithoutValue after callback, with script-control/task guards. Scripted walk fixture invokes run_player_native_hook and checks signed forward/backward displacement; scheduler fixture checks keyboard forward/release, published pose and animation sound. These are controller composition evidence, not every PlayerMain branch or generic GameHost named call support. Unknown: full original/native/browser ordinary-update ordering, all input/controller paths and guard/replacement acceptance. Closed controller/attribute subscopes remain bounded. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
     }
   ],
   "instructions": [
