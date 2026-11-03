@@ -4561,10 +4561,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/c3901f581495aab15dba460f320965d7ece1643e/docs/engine/SOUP.md#pipemygroup-query"
       ],
-      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed zero-argument declaration/exact binding/full original native and string-copy instructions:8544 cases/12 effective semantic controls PASS,8532 returns/12 stops. All256 receiver/candidate group bytes individually in selected equality/difference contexts, not exhaustive pair Cartesian; three receiver identities/two list orders/two patterns/finite acyclic lists through66 nodes. Selects other actors matching receiver unsigned metadata group byte in list order, including group0 and receiver absent from list. Normal termination writes null after selected prefix; stale tail unchanged.64th selected pointer stored before source-context/string-copy including null and runtime error11 request. Sole controlled IO stops at that request; no diagnostic effects/continuation/unwind/termination claim. Exact actor/metadata/head/buffer/error memory, nonstack write order/domain, six preserved registers on returns/stack-canary checked. Group-field producer and copy dependency independently identity-audited. Unknown malformed/null receiver/metadata/list/cycles/producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser. Named production dispatch missing; no production acceptance inferred.",
+      "reviewed_revision": "06fc7b4b537d7c596a596892032d7c39b4295ed7"
     },
     {
       "native": "PipeSlaves",
