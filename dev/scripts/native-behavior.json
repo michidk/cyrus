@@ -1253,6 +1253,244 @@
       ],
       "limits": "Verified by inspection: NativeTasks call/poll fixture checks four literal positions, completion and update index; original-routine fixture covers shared movement arithmetic. These are below public ScriptWorld location/service dispatch. Unknown: installed original/native/browser authored selectors, attached receiver and collision/turn/replacement sequence. Closed Wander node-route scope does not complete this distinct timed location task.",
       "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "AmbientSound",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Multitask sample-slot allocation, retained handle, reset and cancellation",
+      "caller": "ScriptWorld::advance -> script/tasks.rs AmbientSound -> AmbientSoundDriver",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_playback"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644"
+      ],
+      "limits": "Verified by source inspection: public-stage mock-driver assertions cover separate handles, signed operands, retained channels, reset and cancellation. Unknown: installed original/native/browser audible emitter lifetime, restart and listener/controller inhibition. Mock requests do not prove playback.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "AmbientRtx",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Multitask ambient dialogue clip without a shared dialogue record",
+      "caller": "ScriptWorld::advance -> script/tasks.rs AmbientRtx -> DialogueSource",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::ambient_rtx_follows_its_clip_without_creating_a_dialogue_line"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644"
+      ],
+      "limits": "Verified by source inspection: task-manager fixture checks pending lookup, retained sample, position/volume updates, killed receiver, clip completion and text-only completion without creating a dialogue line. It is below public ScriptWorld dispatch. Unknown: installed original/native/browser ambient clip audibility and cancellation parity.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "EndMySounds",
+      "status": "partial",
+      "owner": 41,
+      "scope": "receiver-owned stop through public routed script dispatch",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> script/sound.rs -> ScriptSound event",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_sound_commands_keep_receiver_and_authored_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644"
+      ],
+      "limits": "Verified by source inspection: public named-receiver test asserts exact routed command events and authored operands. Unknown: matched installed original/native/browser allocator/device behavior for this command. Event delivery alone does not establish audible stop/start behavior or ownership cleanup in the backend.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "FlatSound",
+      "status": "partial",
+      "owner": 41,
+      "scope": "flat effect with signed volume/rate through public routed script dispatch",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> script/sound.rs -> ScriptSound event",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_sound_commands_keep_receiver_and_authored_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644"
+      ],
+      "limits": "Verified by source inspection: public named-receiver test asserts exact routed command events and authored operands. Unknown: matched installed original/native/browser allocator/device behavior for this command. Event delivery alone does not establish audible stop/start behavior or ownership cleanup in the backend.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "StopAllSounds",
+      "status": "partial",
+      "owner": 41,
+      "scope": "global stop through public routed script dispatch",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> script/sound.rs -> ScriptSound event",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_sound_commands_keep_receiver_and_authored_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644"
+      ],
+      "limits": "Verified by source inspection: public named-receiver test asserts exact routed command events and authored operands. Unknown: matched installed original/native/browser allocator/device behavior for this command. Event delivery alone does not establish audible stop/start behavior or ownership cleanup in the backend.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "Sound",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Receiver positional effect and attached/linked/local pose selection",
+      "caller": "ScriptWorld::advance -> script/registry.rs Sound -> ScriptSound::Positional",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::positional_sound_uses_the_routed_receivers_pose_and_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/41#issuecomment-6402181644",
+        "https://github.com/michidk/cyrus/issues/61#issuecomment-6569908005"
+      ],
+      "limits": "Verified by source inspection: public named-receiver test asserts local pose, authored operands, surface variants and zero return. Attached/linked selection is a source path, not exercised by that fixture. Verified: #61 production browser scheduler rejects expired starts, with a remaining main-thread gap. Unknown: per-native original/native/browser audible spatialization and all ownership branches; backend scheduling acceptance does not complete Sound.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "RTX",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Dialogue admission and continuation with ordinary speaker record",
+      "caller": "ScriptWorld::advance -> script/tasks.rs RTX -> DialogueSource / DialogueState",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826",
+        "https://github.com/michidk/cyrus/issues/61#issuecomment-6569908005"
+      ],
+      "limits": "Verified by source inspection: task-manager assertions cover pending lookup retry, speaker record ownership and animation group cycling. These fixtures are below public ScriptWorld dispatch. Verified: #37 matched original/native/browser TAVERN first/repeat conversation line identities, sample presence and nominal intervals. That is a bounded installed route, not proof every native variant executes there. Unknown: all variant-specific installed cancellation/animation branches and physical output timing. #61 proves only browser scheduling overlap correction.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "rtxAnim",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Dialogue admission and continuation with speaker animation",
+      "caller": "ScriptWorld::advance -> script/tasks.rs rtxAnim -> DialogueSource / DialogueState",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826",
+        "https://github.com/michidk/cyrus/issues/61#issuecomment-6569908005"
+      ],
+      "limits": "Verified by source inspection: task-manager assertions cover pending lookup retry, speaker record ownership and animation group cycling. These fixtures are below public ScriptWorld dispatch. Verified: #37 matched original/native/browser TAVERN first/repeat conversation line identities, sample presence and nominal intervals. That is a bounded installed route, not proof every native variant executes there. Unknown: all variant-specific installed cancellation/animation branches and physical output timing. #61 proves only browser scheduling overlap correction.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "RTXpAnim",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Dialogue admission and continuation with player animation",
+      "caller": "ScriptWorld::advance -> script/tasks.rs RTXpAnim -> DialogueSource / DialogueState",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::rtxp_anim_speaks_and_animates_as_the_selected_player"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826",
+        "https://github.com/michidk/cyrus/issues/61#issuecomment-6569908005"
+      ],
+      "limits": "Verified by source inspection: task-manager assertions cover selected-player animation/speaker ownership and distance cut-off. These fixtures are below public ScriptWorld dispatch. Verified: #37 matched original/native/browser TAVERN first/repeat conversation line identities, sample presence and nominal intervals. That is a bounded installed route, not proof every native variant executes there. Unknown: all variant-specific installed cancellation/animation branches and physical output timing. #61 proves only browser scheduling overlap correction.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "RTXp",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Selected-player reserved dialogue record, pending lookup and reset bypass",
+      "caller": "ScriptWorld::advance -> script/tasks.rs RTXp -> DialogueSource / DialogueState",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826",
+        "https://github.com/michidk/cyrus/issues/61#issuecomment-6569908005"
+      ],
+      "limits": "Verified by source inspection: public ScriptWorld assertions cover selected player, reserved record zero, one lookup after readiness, pending retries and reset bypass. Verified: #37 bounded installed first/repeat conversation nominal behavior passes across original/native/browser. Unknown: complete RTXp branch coverage and physical audible/device timing; a successful conversation does not complete every speech native.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "WaitOnDialog",
+      "status": "partial",
+      "owner": 41,
+      "scope": "Yield until initialized shared dialogue records clear",
+      "caller": "ScriptWorld::advance -> script/tasks.rs WaitOnDialog -> DialogueState::waiting",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::wait_on_dialog_uses_initialized_shared_records_and_yields_before_completion",
+        "crates/cyrus-game/tests/script_registry.rs::dialogue_lines_block_other_receivers_and_reuse_only_cleared_records"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified by source inspection: public-stage fixture yields before completing; another fixture inserts dialogue records directly and confirms cross-receiver blocking until cleared. Verified: #37 installed conversation continuation has matched nominal line intervals. Unknown: explicit original/native/browser WaitOnDialog admission/release boundary for speech, text-only and interrupted records. Direct record insertion is not playback acceptance.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "menuNew",
+      "status": "partial",
+      "owner": 36,
+      "scope": "Reset shared dialogue choices",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> shared script menu state",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::menu_natives_start_empty_and_need_installed_text_to_add_items",
+        "crates/cyrus-game/tests/script_animation_host.rs::script_menu_items_take_installed_text_and_report_the_committed_value"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/36#issuecomment-6563946377",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified by source inspection: public script fixtures check empty reset, absent owner/argument errors, missing label omission and remembered authored value using synthetic HUD text. Verified: #36 installed native Tobias menu/result/exit and #37 bounded conversation/BYE continuation pass. Unknown: matched original/native/browser full choice catalogue, alternate-font rendering and all input routes. Remembered menuSelection before commit is distinct from menuProc release acceptance.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "menuAddItem",
+      "status": "partial",
+      "owner": 36,
+      "scope": "Resolve installed-text choice and authored result value",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> shared script menu state",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::menu_natives_start_empty_and_need_installed_text_to_add_items",
+        "crates/cyrus-game/tests/script_animation_host.rs::script_menu_items_take_installed_text_and_report_the_committed_value"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/36#issuecomment-6563946377",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified by source inspection: public script fixtures check empty reset, absent owner/argument errors, missing label omission and remembered authored value using synthetic HUD text. Verified: #36 installed native Tobias menu/result/exit and #37 bounded conversation/BYE continuation pass. Unknown: matched original/native/browser full choice catalogue, alternate-font rendering and all input routes. Remembered menuSelection before commit is distinct from menuProc release acceptance.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "menuSelection",
+      "status": "partial",
+      "owner": 36,
+      "scope": "Read remembered dialogue choice value",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> shared script menu state",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::menu_natives_start_empty_and_need_installed_text_to_add_items",
+        "crates/cyrus-game/tests/script_animation_host.rs::script_menu_items_take_installed_text_and_report_the_committed_value"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/36#issuecomment-6563946377",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified by source inspection: public script fixtures check empty reset, absent owner/argument errors, missing label omission and remembered authored value using synthetic HUD text. Verified: #36 installed native Tobias menu/result/exit and #37 bounded conversation/BYE continuation pass. Unknown: matched original/native/browser full choice catalogue, alternate-font rendering and all input routes. Remembered menuSelection before commit is distinct from menuProc release acceptance.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "menuProc",
+      "status": "partial",
+      "owner": 36,
+      "scope": "Dialogue choice navigation, remembered highlight and commit on action release",
+      "caller": "ScriptWorld::advance -> script/tasks.rs menuProc -> menu controls/clock",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::script_menu_proc_highlights_with_the_controls_and_commits_on_release"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/36#issuecomment-6563946377",
+        "https://github.com/michidk/cyrus/issues/37#issuecomment-6594667826"
+      ],
+      "limits": "Verified by source inspection: public ScriptWorld fixture uses synthetic HUD text and controller/clock input, wraps highlight and resumes with value seven on release. Verified: #36 actual native installed topic/submenu/BACK/BYE release path and #37 bounded cross-host conversation/BYE continuation. Unknown: matched original/native/browser all menu choices, mouse/gamepad and exact admission/render timing. The rejected held-key driver is excluded.",
+      "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
     }
   ]
 }
