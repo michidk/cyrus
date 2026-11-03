@@ -112,6 +112,15 @@ state (it takes no snapshot when the ending starts). **Inferred:** the flat fill
 unpopulated picture buffer drawn through the book palette, not designed artwork, so cyrus does not
 reproduce the colour.
 
+## Save entry after the ending
+
+**Verified:** in the same book the original leaves SAVE enabled (the selection starts on it, and Down moves
+to LOAD, leaving SAVE black) and greys only CONTINUE; LOAD, NEW, OPTIONS, MOVIES and QUIT are enabled. cyrus
+greys both SAVE and CONTINUE, because the ended world is discarded when the ending starts and the book opens
+in its startup context, so the selection starts on LOAD. **Unknown:** what the original's SAVE stores or
+reloads from that state; it was not exercised. New Game from this book starts the opening movie and then the
+opening ship duel in both builds.
+
 ## Script movies run over the in-game book
 
 **Inferred:** the original plays a gameplay script's movie directly from the main loop. cyrus enters the
