@@ -1002,6 +1002,257 @@
       ],
       "limits": "Verified by inspection: direct ActorSpatial query assertions cover rounded lengths, fallback and override, including literal original routine rows. Public registry dispatch shares spatial.query but the reviewed explicit placed-receiver public test calls PlayerDistance only. Unknown: accurate-form installed public original/native/browser query and replacement acceptance.",
       "reviewed_revision": "6a51f9cc3ef992e0616078459fd2fedf59a05b96"
+    },
+    {
+      "native": "MoveObjectAxis",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Receiver-oriented movement, deferred relocation and retained task continuation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target",
+        "crates/cyrus-game/tests/script_registry.rs::deferred_movement_relocates_cells_and_retains_nearby_cached_order",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::motion_and_rotation_continuations_resume_at_the_same_pose"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public script stages assert transformed axis displacement, invalid-axis no-move, completion without final snap and deferred cell/order behavior. VM/native-host snapshot fixture compares resumed poses below full world integration. Unknown: complete separate-object host propagation and installed original/native/browser collision/family/timing parity.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "MovePlayerAboveMe",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Queue receiver-relative selected-player placement with height/yaw and world-loop application",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::move_player_above_me_names_the_missing_input_instead_of_guessing_a_placement"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6301146157",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#moveplayeraboveme"
+      ],
+      "limits": "Verified by inspection: public negative test only asserts error contains native name in a world missing selected-player/height service. Production computes receiver-relative position and queues placement. Recorded landing says frame-stage placement order is inferred and CAVERNS was not run end to end. Unknown: successful public placement, camera cut and installed original/native/browser world-loop ordering.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "Offset",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Attach calling actor to receiver with linked owner-frame position",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::offset_attaches_the_caller_to_a_rotated_receiver_and_unoffset_restores_its_position"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6297631909",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#offset-playeroffset-playeroffsettask-and-collideplayerweapon"
+      ],
+      "limits": "Verified by inspection: routed public call attaches caller, caches linked position after snapshot, preserves repeated-owner offset and rejects attached caller; shifted offset is asserted after detach. Recorded landing explicitly excludes real boat scene. Unknown: installed original/native/browser moving owner, collision/water order and replacement acceptance.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "UnOffset",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Detach receiver and publish retained linked position as local/model position",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::offset_attaches_the_caller_to_a_rotated_receiver_and_unoffset_restores_its_position"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6297631909",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#unoffset"
+      ],
+      "limits": "Verified by inspection: public Offset then UnOffset sequence clears link, restores original/shifted local position and updates model coordinates. Unknown: installed original/native/browser moving attachment detach and snapshot/owner-replacement order. Source/data composition tests do not establish live boat acceptance.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "PlayerOffsettask",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Repeated selected-player placement relative to receiver as a never-completing multitask",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> tasks.rs -> registry/point_tasks.rs::PointHost::player_offset -> offset_selected_player",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::player_offset_task_places_the_player_every_invocation_and_never_completes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6297631909",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#offset-playeroffset-playeroffsettask-and-collideplayerweapon"
+      ],
+      "limits": "Verified by inspection: Task::complete calls a recording placement host three times with unchanged operands, remains pending and rejects wrong arity. This bypasses named NativeTasks dispatch and real selected-player/receiver composition. Unknown: public installed original/native/browser placement, yaw/motion reset, cancellation and restore.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "ResetPosition",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Restore selected axes from receiver home and refresh associated spatial/camera state",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/src/script/spatial.rs::reset_position_restores_only_the_flagged_axes_from_home",
+        "crates/cyrus-game/tests/script_registry.rs::update_player_view_attrib_is_an_empty_call_and_reset_position_keeps_the_home_position"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#resetposition",
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: ActorSpatial helper asserts selective home axes, prior position/change and missing-home error; public ResetPosition fixture starts already at home. Production adjusts selected-player camera position by inferred change mapping. Unknown: public moved/selected-player reset and installed original/native/browser attached/family/camera refresh parity.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "ResetRotation",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Restore flagged receiver angle axes and rebuild matrix/history",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#resetrotation",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public scripts first rotate then reset selected axes; assertions check literal retained yaw, restored axes, matrix and history for function/task/multitask encodings. #9 records installed NGASTA encoding correction. Unknown: complete attached/separate-object original/native/browser transform publication and rendered timing.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "PlayerArc",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Receiver-relative horizontal player bearing with signed offset/tolerance",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> spatial.rs::ActorSpatial::query",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_arc_dispatch_returns_receiver_relative_result",
+        "crates/cyrus-game/tests/script_registry.rs::player_arc_uses_receiver_heading_signed_offset_and_inclusive_tolerance",
+        "crates/cyrus-game/tests/script_registry.rs::player_arc_distinguishes_linked_position_from_attached_heading",
+        "crates/cyrus-game/tests/script_registry.rs::player_looking_facing_and_arc_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerarc-query",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public VM dispatch returns different locals for heading offset0/1; direct ActorSpatial queries cover inclusive/signed bounds, attached/link priority and literal original routine rows. Unknown: installed original/native/browser moving/attached query and replacement parity. Synchronized movement acceptance does not isolate this query.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "InRectangle",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Receiver query position inside normalized inclusive horizontal corners",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#inrectangle",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public calls check reversed corners, exact boundary and two outside directions; missing spatial state errors. Production uses fighting_position, not a fresh collision search. Unknown: installed original/native/browser attached/linked receiver and authored boundary observations.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "IsInDeepWater",
+      "status": "partial",
+      "owner": 69,
+      "scope": "Read receiver retained surface class without new support query",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::surface_class_queries_read_receivers_stored_surface_without_a_support_query",
+        "crates/cyrus-game/tests/script_registry.rs::fresh_player_deep_water_query_has_zero_surface_before_grounded_updates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330",
+        "https://github.com/michidk/cyrus/issues/69"
+      ],
+      "limits": "Verified by inspection: public dispatch iterates all256 supplied surface bytes, true only for2/4, checks second receiver allocation and stale setter identity; fresh player query starts false. Unknown: installed original/native/browser actual ground/water classification transitions and timing. Injected surface values do not prove the producer.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "PlayerOnScape",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Query whether selected-player last ground response is terrain",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::selected_player_collision_uses_logical_pose_and_live_map_support"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playeronscape",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6305098934"
+      ],
+      "limits": "Verified by inspection: cited support test checks ground_kind0x20 for actor face; it never calls PlayerOnScape. Public registry dispatch reads selected-player ground_kind against terrain kind. No direct named public native test found in reviewed suite. Unknown: query routing/missing-input behavior and installed original/native/browser terrain-to-model transition.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "PlayerStand",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Compare receiver with selected-player retained supporting-actor identity",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::player_stand_reads_selected_player_support_without_changing_it",
+        "crates/cyrus-game/tests/script_registry.rs::player_stand_rejects_missing_player_and_arguments",
+        "crates/cyrus-game/tests/script_registry.rs::player_stand_validates_explicit_selected_identity"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerstand-query",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public calls cover support equality, other/no support, player receiver, no support mutation, missing/extra arguments and stale/wrong selected identity. Support is supplied via setter. Unknown: installed original/native/browser actual support producer, transient identity and replacement behavior.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "PlayerStatus",
+      "status": "partial",
+      "owner": 48,
+      "scope": "First matching class from selected-player motion/living/playback/position state",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> player_status.rs::player_status",
+      "tests": [
+        "crates/cyrus-game/src/script/player_status.rs::the_first_matching_rule_wins"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerstatus",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6282324102",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: helper tests assert class values and precedence for supplied queued/falling/sliding/living/group/moved inputs. Public registry gathers these from selected actor, animation and spatial history. No direct named public dispatch assertion found. Unknown: complete live input mapping and installed original/native/browser status transitions; early landing explicitly called motion-byte mapping inferred.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "updatePlayerViewAttrib",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Argument-free function statement with no portable result and no behavior",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::update_player_view_attrib_is_an_empty_call_and_reset_position_keeps_the_home_position"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public statement runs without failure and leaves receiver position unchanged; production returns CompleteWithoutValue. That assertion checks position only, not all state or expression error semantics. Unknown: installed original/native/browser statement continuation and unsupported forms. No-op source is not blanket runtime acceptance.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
+    },
+    {
+      "native": "WanderToLocation",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Retain initial location speed and snap inside one step",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_step",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::wander_to_location_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6281484724"
+      ],
+      "limits": "Verified by inspection: NativeTasks call/poll fixture checks four literal positions, completion and update index; original-routine fixture covers shared movement arithmetic. These are below public ScriptWorld location/service dispatch. Unknown: installed original/native/browser authored selectors, attached receiver and collision/turn/replacement sequence. Closed Wander node-route scope does not complete this distinct timed location task.",
+      "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
     }
   ]
 }
