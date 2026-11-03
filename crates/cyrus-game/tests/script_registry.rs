@@ -13806,6 +13806,8 @@ fn player_walking_fixture_with(
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":24,"anim_id":1,"anim_type":0,"commands":[
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
+            {"group_index":49,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":149,"anim_id":1,"anim_type":0,"commands":[
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":150,"anim_id":1,"anim_type":0,"commands":[
@@ -14436,6 +14438,145 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
             .unwrap()
             .motion_direction,
         2
+    );
+}
+
+#[test]
+fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: Default::default(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
+        torch_time: None,
+        inventory_screen: Default::default(),
+        island_map: Default::default(),
+    };
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    world.begin_player_movement_update(player, 0).unwrap();
+    let step = |world: &mut ScriptWorld, held: &cyrus_game::player::input::PlayerInput| {
+        let mut cues = Vec::new();
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_game::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held,
+                        walk_mode: false,
+                        auto_defend: false,
+                    }),
+                    hud: Some(&hud),
+                    fine_ticks: Some(0),
+                    shell_execution: Some(false),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    forward_step_clear: Some(true),
+                    locomotion_geometry: Some(cyrus_game::script::LocomotionGeometry {
+                        ground: OrdinaryGroundQuery {
+                            scene: &scene,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: 4,
+                            sidedness: false,
+                        },
+                        environment: cyrus_game::script::ObstacleEnvironment {
+                            selected_player: Some(player),
+                            auto_grab: false,
+                            item_system_ready: false,
+                            shell_execution: false,
+                            ticks: 1,
+                        },
+                    }),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |id, cue| {
+                    cues.push((id, cue));
+                    Ok(())
+                },
+            )
+            .unwrap();
+    };
+    let backward = cyrus_game::player::input::PlayerInput {
+        backward: true,
+        ..Default::default()
+    };
+    step(&mut world, &backward);
+    world
+        .advance(
+            player,
+            cyrus_game::script::ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    let held = cyrus_game::player::input::PlayerInput {
+        backward: true,
+        jump: true,
+        ..Default::default()
+    };
+    step(&mut world, &held);
+    // Original: Down + Space from the backward run group jumps in group 49 (queued 3) and starts
+    // the controller cooldown; the unarmed standing jump (group 32, queued 1) is wrong here.
+    assert_eq!(
+        world.actors()[index].control_state().unwrap().queued_motion,
+        3
     );
 }
 

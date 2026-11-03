@@ -479,6 +479,7 @@ impl super::ScriptWorld {
             .current_group()
             .context("ordinary jump current group unavailable")?;
         let force = control.jump_selector != 0;
+        let selected = environment.selected_player == Some(id);
         let (queued, request) = if force {
             (24, 85)
         } else {
@@ -497,7 +498,7 @@ impl super::ScriptWorld {
                         (8, 35)
                     }
                 }
-                19 | 23 if script_native => (3, if group == 19 { 49 } else { 50 }),
+                19 | 23 if script_native || selected => (3, if group == 19 { 49 } else { 50 }),
                 31 if script_native => (8, 34),
                 _ if script_native => {
                     let holding = super::super::activation::weapon_predicates(
@@ -530,14 +531,12 @@ impl super::ScriptWorld {
                 _ => (1, if control.torch_burning == 0 { 32 } else { 33 }),
             }
         };
-        let heading = script_native
+        // The selected player's key jump from a backward run group takes the script row as well.
+        let selected_backward = selected && matches!(group, 19 | 23);
+        let heading = (script_native || selected_backward)
             .then(|| self.spatial(id).map(|pose| pose.local.angles[1]))
             .transpose()?;
-        if script_native
-            && !force
-            && matches!(group, 19 | 23)
-            && environment.selected_player == Some(id)
-        {
+        if !force && selected_backward {
             self.globals.set_conditional_ticks(6)?;
         }
         let origin = self.spatial(id)?.local.position[1];
@@ -552,7 +551,7 @@ impl super::ScriptWorld {
         control.fall_timer = 0;
         control.sliding_distance = 0;
         control.queued_motion = queued;
-        if script_native && !force && matches!(group, 19 | 23 | 31) {
+        if !force && ((script_native && matches!(group, 19 | 23 | 31)) || selected_backward) {
             control.motion_vector[1] = i32::from(heading.expect("script Jump heading"));
         }
         if self.updates.animation_system {
