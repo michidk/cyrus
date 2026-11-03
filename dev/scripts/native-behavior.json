@@ -3037,19 +3037,21 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "7366bfbb7049ef725c3db197b3c1795c9e83e0e5",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/172",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603514150"
       ],
       "native": "TrueFunction",
       "status": "partial",
-      "scope": "Constant result after argument validation",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "scope": "Original constant-one contract versus canonical zero-argument rejection",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call TrueFunction branch",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
       ],
-      "limits": "Verified: current handler requires2 arguments and returns1; synthetic fixture calls(0,5). Canonical installed DEF declares0 arguments, while run_native_world_with constructs declaration arity from supplied arguments. The test therefore does not exercise the installed declaration. An installed-valid zero-argument call reaches wrong-argument-count rejection. Unknown original return/side effects and direct host parity; this is a concrete declaration/handler mismatch, not full support. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+      "limits": "Verified original contract: canonical declaration takes zero script arguments; independently resolved complete handler returns one with stack-local writes only. Preservation PR172 records the contract; static declaration/instruction controls do not establish host runtime acceptance. Current handler requires two arguments and returns one, so canonical zero-argument input conflicts with its guard. Synthetic fixture supplies (0,5) and derives declaration arity from those operands, masking that mismatch. Unknown: corrected canonical admission and original/native/browser host acceptance. No implementation correction or runtime rerun claimed; Rust assertions inspected only. Static absence in the historical schema-27 corpus cannot exclude Unsupported actor bodies."
     },
     {
       "owner": 5,
@@ -4784,7 +4786,7 @@
       "native": "Animal",
       "status": "partial",
       "owner": 5,
-      "scope": "Declared animal task versus permissive constant-return host branch",
+      "scope": "Original two-argument no-op task versus synthetic function-only acceptance",
       "caller": "ScriptWorld::advance -> GameHost::call Animal branch",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host"
@@ -4792,10 +4794,12 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/pull/175",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603671071"
       ],
-      "limits": "Verified: canonical definition declares task with TWO arguments. Current host branch ignores kind/arguments and returns zero. Synthetic fixture constructs a FUNCTION with ONE argument from supplied calls and asserts zero. That fixture does not establish installed task dispatch/lifetime or side-effect absence. Unknown: original animal behavior and named installed task acceptance; do not infer a verified no-op from the source comment. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified original contract: canonical declaration is a two-argument task; independently resolved complete handler ignores input values, writes only stack locals and returns zero without actor/world access. Preservation PR175 documents this contract. Declaration kind is metadata, not proof of a runtime call-kind restriction; shared original dispatch documentation says it is discarded. Current host branch permissively ignores kind/arguments and returns zero, so no canonical-arity rejection is inferred. Synthetic fixture declares a one-argument function and asserts zero; it does not establish canonical task admission/lifetime. Unknown: named canonical task acceptance across hosts. Rust assertions inspected only, not rerun; instruction witness is not original/native/browser game-runtime acceptance. Historical static absence cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "7366bfbb7049ef725c3db197b3c1795c9e83e0e5"
     },
     {
       "native": "IsWithinMap",
@@ -4910,7 +4914,7 @@
       "native": "showObjRot",
       "status": "partial",
       "owner": 35,
-      "scope": "Declared eight-argument task versus four-argument no-op implementation",
+      "scope": "Original eight-argument no-op task versus four-argument guard and persistence",
       "caller": "ScriptWorld::advance -> NativeTasks::ObjectRotation -> argument guard then completion",
       "tests": [
         "crates/cyrus-game/tests/script_camera_session.rs::show_obj_rot_completes_without_touching_the_camera"
@@ -4919,10 +4923,12 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
-        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255"
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255",
+        "https://github.com/michidk/redguard-preservation/pull/173",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603593506"
       ],
-      "limits": "Verified: preservation documents no-op return zero. Canonical installed definition declares EIGHT arguments; current task handler requires FOUR and persistence metadata records four. Synthetic fixture declares four, finishes task and checks selected camera unchanged/scripted_active0; this does not establish canonical eight-argument acceptance and current handler rejects eight. #35 installed-called camera acceptance does not cover this unused declaration. Unknown: installed task lifecycle/return acceptance across hosts; no completion inferred from the no-op contract. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified original contract: canonical declaration is an eight-argument task; independently resolved complete handler ignores input values, writes only stack locals and returns zero without camera/actor access. Preservation PR173 clarifies the signature; instruction contexts/controls do not establish host runtime acceptance. Current task guard requires four arguments and persistence metadata records four. Synthetic fixture declares four, finishes the task and checks camera selection/scripted activity, masking canonical eight-argument rejection. #35 installed-called camera acceptance does not cover this named declaration. Unknown: corrected canonical task admission, persistence and lifecycle across hosts. Rust assertions inspected only, not rerun; no new original/native/browser runtime claim. Historical static absence cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "7366bfbb7049ef725c3db197b3c1795c9e83e0e5"
     },
     {
       "native": "GetMovementSpeed",
