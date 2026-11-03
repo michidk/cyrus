@@ -34074,7 +34074,7 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
     assert_eq!(
         world.globals().player_death_override_group(),
         Some(121),
-        "an unarmed selected player dies in group 121, as in the original"
+        "the fixture table has no group 122, so a zero-selector death falls back to 121"
     );
     let control = world.actors()[receiver.index].control_state().unwrap();
     assert_eq!(control.death_selector, 8);
