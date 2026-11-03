@@ -2534,14 +2534,16 @@
       "native": "GetBroadcastSender",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast sender-pointer query",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/e7e21c2",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613234729"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed zero-argument declaration/exact binding/full native and availability helper. 76,799 original-instruction contexts and 10 effective semantic controls cover full selection/sentinel byte pairs, selected raw pointer/receiver/context paths and repeated availability guard. Context first pointer supplies 12-byte entry array; entry first pointer returned unchanged without sender dereference or ID extraction, including null/unmapped tokens. No selection/entry/sender mutation. Missing-context formatter/runtime-error IO controlled returning equal sentinel or repairing context; post-helper sentinel change is synthetic order probe. Unknown malformed receiver/context/entry admission, selection/sentinel producers, queue/sender lifetime/consumption, returned-pointer use, concurrency, natural diagnostics, VM/original/native/browser and full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence.",
+      "reviewed_revision": "7ac94cfd7d1cd3dd654286cf33b35e30b5cf61bf"
     },
     {
       "native": "GetBroadcastSenderId",
