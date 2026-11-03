@@ -1380,13 +1380,20 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         assert_eq!(vm.variables(), [7]);
         assert_eq!(host.count, 1);
 
+        let value = if routed {
+            Value::ObjectCall {
+                call: Box::new(call),
+            }
+        } else {
+            Value::Call {
+                call: Box::new(call),
+            }
+        };
         let mut vm = runtime(vec![
             Operation::Assign {
                 destination: Place::Local { index: 0 },
                 formula: Formula {
-                    first: Value::Call {
-                        call: Box::new(call),
-                    },
+                    first: value,
                     rest: vec![],
                 },
             },
