@@ -3591,10 +3591,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/commit/5a8c800"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified installed two-argument declaration/exact native binding/full original handler. Original CPU chain passes3252 selected contexts:778 returns,30 queue-diagnostic stops,2444 exact TurnToAngle-entry stops; eight effective semantic instruction controls. Original planar helper passes361 selected signed pairs/five effective controls; original hardware-atan producer fills513 entries under explicit flag0/fninit. Exact X/Z stores with Y retained, signed inclusive scaled-speed proximity, queue state/error ordering, negated masked planar delegation receiver/angle verified. Full constructed actor arena/queue/error memory compared; preserved-register/stack checks on returning paths. Unknown deeper TurnToAngle effects/continuation, natural initialization/software atan, INT_MIN/full joint domain, malformed state/lifecycle/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance.",
+      "reviewed_revision": "8e53f23e46134894bb67557b590ac70add7a1ab5"
     },
     {
       "native": "PointAt",
