@@ -3741,10 +3741,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/250"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified installed1-argument native/full76-byte handler,100-byte selector,231-byte relocation/195-byte list helpers: signed inclusive location-table bound/saved-start fallback; copy selected XYZ unchanged into receiver current and previous local positions. Selected-player tracked reference vector translates by wrapped same displacement; other receivers preserve it. Registers after writes, deduplicates list; empty insertion precedes capacity check/nonempty full reports error after writes. Normal return0.576 original instruction contexts/17 effective controls. Only full-list diagnostic/error services controlled returning; termination/list consumer, tracked-vector producer/consumer, malformed admission, exhaustive state, VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "8e469cd3812922a0f5affa910916584061c6d12a"
     },
     {
       "native": "SetObjectLocation",
