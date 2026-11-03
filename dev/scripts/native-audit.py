@@ -20,6 +20,7 @@ Run it after exporting every world:
 files that name it exactly or in snake case (a pointer for the per-native audit, not proof of behaviour).
 `--behavior-matrix` instead joins explicitly reviewed evidence from native-behavior.json.
 Unreviewed names are unaudited, never inferred missing or complete from source mentions.
+Add `--include-unused` to expose the entire catalogue, including zero-occurrence reviews.
 `--instruction-matrix` reports reviewed VM forms and static decoded statement counts.
 These counts do not establish execution or fidelity; absent forms remain visible.
 `--rejection-matrix` groups retained decoder failures, separating fallback statements
@@ -335,6 +336,8 @@ def main():
     parser.add_argument("--sources", default="crates")
     parser.add_argument("--pattern", default="*.scripts", help="export file name pattern")
     parser.add_argument("--list-unused", action="store_true")
+    parser.add_argument("--include-unused", action="store_true",
+                        help="include zero-occurrence catalogue names in --behavior-matrix")
     parser.add_argument(
         "--matrix", action="store_true", help="print one tab-separated row per called native"
     )
@@ -393,13 +396,13 @@ def main():
         return 1
     if args.behavior_matrix:
         try:
-            rows = behavior_rows(args.behavior, catalogue, used)
+            rows = behavior_rows(args.behavior, catalogue, catalogue if args.include_unused else used)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"invalid behavior catalogue: {error}", file=sys.stderr)
             return 1
         print("native\tkind\texport_files\tstatus\towner\tscope\tcaller\ttests\tevidence\tlimits")
         for name, row in rows:
-            values = [name, catalogue.get(name, ""), str(len(used[name]))]
+            values = [name, catalogue.get(name, ""), str(len(used.get(name, set())))]
             if row is None:
                 values += ["unaudited", "-", "-", "-", "-", "-", "No behavior review recorded."]
             else:

@@ -48,6 +48,24 @@ class BehaviorAuditTest(unittest.TestCase):
         self.assertEqual(rows['Mentioned'][3:5], ['unaudited', '-'])
         self.assertIn('Live continuation has not been observed.', rows['Reviewed'][-1])
 
+    def test_zero_occurrence_reviews_are_visible_only_when_requested(self):
+        self.save([self.row])
+        (self.root / 'one.scripts').write_text(json.dumps({
+            'definition': {'functions': [{'name': name, 'kind': kind}
+                                         for name, kind in self.catalogue.items()]},
+            'actors': {'A': {'program': [{'kind': 'call', 'function': 'Mentioned'}]}}}))
+        command = ['python3', str(SCRIPT), '--scripts', str(self.root),
+                   '--behavior-matrix', '--behavior', str(self.path)]
+        called = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(called.returncode, 0, called.stderr)
+        self.assertNotIn('Reviewed\t', called.stdout)
+        complete = subprocess.run(command + ['--include-unused'], capture_output=True, text=True)
+        self.assertEqual(complete.returncode, 0, complete.stderr)
+        rows = {line.split('\t')[0]: line.split('\t')
+                for line in complete.stdout.splitlines()[1:]}
+        self.assertEqual(rows['Reviewed'][2:5], ['0', 'partial', '#5'])
+        self.assertEqual(rows['Mentioned'][2:5], ['1', 'unaudited', '-'])
+
     def test_invalid_and_incomplete_reviews_are_rejected(self):
         variants = [
             [self.row, self.row],

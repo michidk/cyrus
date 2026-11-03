@@ -2501,6 +2501,203 @@
       ],
       "limits": "Verified by inspection: source assigns the integer to receiver combat strength; public fixture only asserts missing combat-record errors. The health/strength/armor getter fixture is not a successful setter test. Unknown: successful routed setter/readback, damage consequences, replacement and installed original/native/browser parity. Accepted duel damage and quick-health behavior do not prove these setters.",
       "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "DeleteBroadcast",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "DeleteMessage",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "GetBroadcastSender",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "GetBroadcastSenderId",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "GetMessageSender",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "GetMessageSenderId",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "IsBroadcastWaiting",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "IsMessageWaiting",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "ReceiveBroadcast",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "ReceiveMessage",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "ReplyBroadcastSender",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "ReplySender",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "SendBroadcast",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "SendMessage",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+      ],
+      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+    },
+    {
+      "native": "SyncWithUser",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Task-encoded user-channel posting and full-operand continuation",
+      "caller": "ScriptWorld::advance -> GameHost native_task_call -> Task::UserSync -> GroupSync::post_user",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::user_sync_checks_channel_members_and_the_full_operand_before_continuation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#user-synchronization-channels"
+      ],
+      "limits": "Verified source/assertion inspection: task encoding and one integer operand are required; channel0 completes, active members wait, ignored members permit released-byte comparison against the full operand. Public fixture checks0,256,-256 and task/flag continuation. The fixture does not establish all member/channel replacement, disabled teardown or frame-order branches. Historical27 exports contain zero calls, not proof of original absence. Unknown: direct matched original/native/browser user-channel continuation and save/reload traces. Group-channel synchronized-walking acceptance cannot substitute for this user-channel call. Rust assertions inspected, not rerun.",
+      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
     }
   ],
   "instructions": [
