@@ -3462,14 +3462,15 @@
       "native": "DistanceFromLocation",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
+      "scope": "Direct named SOUP spatial dispatch; original location-selection/distance-helper boundary",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/241"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified original one-argument declaration/native/full-handler and location selector. Signed nonnegative location at or below table upper bound selects its coordinate triple; absent table, negative or out-of-range location selects saved start. Wrapped XYZ selected-minus-local-current differences passed to distance helper; return forwarded unchanged. 1120 original instruction contexts/11 effective controls with metric helper controlled IO. Numerical norm/x87 rounding/square-root dependency, table producers, malformed receiver/table admission, exhaustive domain, VM and natural original/native/browser Unknown. Current named implementation remains missing; related location/movement helpers do not implement it. No Rust tests/runtime run.",
+      "reviewed_revision": "edb25d498ccc6cc5a05f7c4fdb779559d53d60c6"
     },
     {
       "native": "DistanceFromStart",
