@@ -4910,10 +4910,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/blob/b9b002b/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: installed definition declares task with 0 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified: independent installed task0/exact native binding/full560-byte handler; first terrain helper147 and vector helper71 inspected. Original integer instructions execute to exact first terrain-helper entry with receiver X/Z arithmetic-shifted by8, independent of Y/yaw/incoming argument registers. Full mapped memory/no nonstack writes/canary/retained receiver/exact single call checked. No fabricated service return/effect; no final task result or preserved-register claim at stop. Unknown: terrain/helper returns and effects, later rotation/movement/vertical clamp, natural producers/lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/game runtime NOT RUN.",
+      "reviewed_revision": "6bbc5170cc3b30847f6141732a5ba2df23bff0e9"
     },
     {
       "native": "InCircle",
