@@ -4239,6 +4239,216 @@
       ],
       "limits": "Verified internal original-emulator oracle includes FlatStop sequences, allocation/bitmap services stubbed. Compare serialized record mapping rather than Rust field-name intuition: original word order maps frame,last_frame,counter in the implementation oracle, and copy order is preserved. No dedicated successful public named fixture or actual displayed last-frame native/browser acceptance located. Retained byte-state equality is not raster/phase/timing parity. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
       "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "AttachMe",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "DetachMe",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "DetachSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "FixSlaveAngle",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with2 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "HideSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "KillSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "ShowSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named family/attachment SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeAroundMe",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeAroundPos",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with4 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeGroup",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeHidden",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeMasters",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeMyGroup",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeSlaves",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "PipeUser",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named pipe SOUP dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+      ],
+      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
+      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
     }
   ],
   "instructions": [
