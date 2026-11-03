@@ -2656,14 +2656,16 @@
       "native": "ReplyBroadcastSender",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast reply entry-write and global-index update contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/73625e301f01ac4b532cbb1c4679cfeea91c3ca5",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614227600"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed one-argument declaration/exact binding/full289-byte native; availability106/sender158-byte accepted helper identities audited once and joint chain executed without semantic interception. 72,912 original-instruction contexts/17 effective semantic controls, including 7,376 full256-entry arrays, full index/global-byte pairs, selected argument/sender/signed-limit/receiver/pattern variations and alias paths. Zero argument/unavailable/null-self sender returns0 without entry mutation. Otherwise stores receiver/sender token/argument at global index, increments byte/signed-limit reset, re-reads context pointer and clears new indexed entry; append-before-index-before-clear writes exact even on same-slot or selected-entry alias. Receiver cursor unchanged; EDX scratch, five preserved registers. No sender dereference/allocation/release/destination-content gate. Diagnostic IO controlled returning with repair or inactive paths, including wrapper/helper double diagnostic. Unknown malformed admission, producers/consistency/capacity/ownership/lifetime/consumption, concurrency/reentrancy, natural diagnostics, VM/original/native/browser/full joint domain. No invented queue model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "reviewed_revision": "dca032c60447b08469b0b92c3fa655fb58bc3c35"
     },
     {
       "native": "ReplySender",
