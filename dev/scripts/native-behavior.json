@@ -1,7 +1,7 @@
 {
   "reviewed_revision": "d3f09c1299a7ecf6da03706c8c2a7fcbcea500f5",
   "reviewed_date": "2026-11-03",
-  "method": "Manual source/assertion and public acceptance-receipt review. Status is an inferred scope assessment; source/test mentions never establish behavior completion. Tests were inspected, not rerun by this catalogue-only change. All partial rows require the stated missing acceptance; missing means no supported behavior in scope, not merely absent evidence. Unlisted natives are unaudited.",
+  "method": "Manual source/assertion and public acceptance-receipt review. Status is an inferred scope assessment; source/test mentions never establish behavior completion. Tests were inspected, not rerun by this catalogue-only change. All partial rows require the stated missing acceptance; missing means no supported behavior in scope, not merely absent evidence. Unlisted natives are unaudited. Rows with reviewed_revision use that source snapshot; other rows use the top-level reviewed_revision.",
   "natives": [
     {
       "native": "PlayAnimation",
@@ -238,6 +238,248 @@
         "https://github.com/michidk/cyrus/issues/26#issuecomment-6521888810"
       ],
       "limits": "Verified: public tests cover statement/expression/derived inputs and repeated entry; #25 accepts automatic START message continuation. #26 comparison corrects an earlier unmatched-frame-rate cadence claim. Unknown: all routed/reset/contact boundary branches and full pacing parity; #25 closure does not complete this broader combat scope."
+    },
+    {
+      "native": "MoveForward",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Forward admission, step checks, packed continuation counter and translation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::move_forward_steps_along_the_heading_when_the_step_check_passes",
+        "crates/cyrus-game/tests/script_animation_host.rs::move_forward_blocked_by_its_step_check_never_moves_and_keeps_the_direction_clear",
+        "crates/cyrus-game/tests/script_animation_host.rs::forward_task_stops_reading_the_step_check_after_three_steps"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948",
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public stage tests assert admitted translation, blocked pose and counter lifetime. Unknown: full deep-water/edge/lifecycle and matched installed original/native/browser collision and random order. The bounded #48 synchronization replay does not isolate all branches.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "WalkForward",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Walking admission, live geometry, selected-player dispatch and lifecycle bypass",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::scripted_walk_steps_move_the_selected_player_through_the_support_check",
+        "crates/cyrus-game/tests/script_registry.rs::native_walk_forward_uses_live_body_admission_on_call_and_poll",
+        "crates/cyrus-game/tests/script_animation_host.rs::walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: selected-player native hook checks signed displacement; public script call/poll checks live body admission. Unknown: complete selected-player and lifecycle-15 hanging behavior and original/native/browser timing. A selected-player test does not establish all selected-player branches.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "WalkBackward",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Backward walk groups, step checks and selected-player support dispatch",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::scripted_walk_steps_move_the_selected_player_through_the_support_check",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::walk_backward_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public selected-player hook asserts reverse displacement; literal task fixture checks routine states below ScriptWorld. Unknown: installed original/native/browser collision, water and animation timing across valid branches.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveAlongAxis",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Duration-scaled translation along the receiver orientation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_along_axis_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: NativeTasks call/poll literal fixture checks positions and completion using supplied spatial state. It does not execute the public ScriptWorld caller or separate-object host propagation. Unknown: installed original/native/browser admission and family-refresh timing.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveByAxis",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Relative quantized axis motion and retained destination",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::axis_movement_preserves_quantization_and_elapsed_position_contracts",
+        "crates/cyrus-game/tests/script_animation_host.rs::movement_zero_target_is_reinitialized_even_after_initial_completion",
+        "crates/cyrus-game/tests/script_animation_host.rs::axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public stages assert literal per-invocation positions, continuation, zero-target and invalid-axis rules. Unknown: complete separate-object relocation/host propagation and installed original/native/browser timing and collision order.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveMarker",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Direct point task to a marker with receiver-height adjustment",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> crates/cyrus-game/src/script/registry/point_tasks.rs::PointHost::move_to",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451",
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6297219473"
+      ],
+      "limits": "Verified by inspection: Task::complete decodes direct marker/tolerance and follows a recording host result; production PointHost derives marker destination and calls move_point_direct. Unknown: public installed marker walk with real geometry, hanging release and original/native/browser parity. Closed routed-Wander acceptance does not prove this direct wrapper.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveNodeMarker",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Node-routed point task to marker destination",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> crates/cyrus-game/src/script/registry/point_tasks.rs::PointHost::move_to",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451"
+      ],
+      "limits": "Verified by inspection: recording-host task test asserts node wrapper/marker/tolerance decoding and completion. #23 native ISLAND Wander proves shared route continuation and restoration only. Unknown: this authored task through public marker/geometry admission and original/native/browser path comparison.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveNodeLocation",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Node-routed point task to receiver-authored location",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll) -> crates/cyrus-game/src/script/registry/point_tasks.rs::PointHost::move_to",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451"
+      ],
+      "limits": "Verified by inspection: recording-host task test asserts node/location operand decoding. Production resolves receiver locations before shared routing. Unknown: installed public location-wrapper dispatch, selector/family behavior and original/native/browser paths. Native Wander phase evidence is shared infrastructure evidence only.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "AtNodeLocation",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Receiver location query with height and horizontal distance gates",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (function dispatch)",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/point_tasks.rs::at_node_location_tests_height_in_map_units_then_horizontal_distance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451"
+      ],
+      "limits": "Verified by inspection: helper assertions cover height truncation, odd extents and horizontal boundary; public registry resolves collision shape and receiver location. Unknown: public script query coverage and installed original/native/browser selector/attached-receiver acceptance. Helper arithmetic alone does not verify dispatch.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "AtNodeMarker",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Marker distance query using receiver local position",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (function dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::node_marker_query_uses_euclidean_distance_including_the_boundary_and_vertical_axis",
+        "crates/cyrus-game/tests/script_registry.rs::unavailable_marker_query_is_contextual_and_sticky",
+        "crates/cyrus-game/tests/script_registry.rs::routed_node_marker_query_reads_the_receivers_local_attached_position"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/23#issuecomment-6362657451"
+      ],
+      "limits": "Verified by inspection: public script assertions cover distance boundary/vertical axis, invalid marker sticky error and routed attached local position. Unknown: matched installed original/native/browser query observations. Route soak acceptance does not separately verify marker query outputs.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "MoveToLocation",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Timed normalized motion to authored receiver location or home",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::location_movement_reaches_target_but_finishes_only_after_duration",
+        "crates/cyrus-game/tests/script_animation_host.rs::location_count_boundary_reports_original_out_of_range_access",
+        "crates/cyrus-game/tests/script_animation_host.rs::attached_location_motion_reads_effective_pose_but_updates_local_coordinates",
+        "crates/cyrus-game/tests/script_animation_host.rs::location_movement_quantizes_normalized_components_and_snaps_after_overshoot"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public stages assert pose, retained duration, selector boundary error, attached-coordinate behavior and overshoot snapping. Unknown: separate-object host propagation and matched installed original/native/browser collision and family-refresh timing.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "RotateByAxis",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Relative rotation with quantization, retained target and task lifetime",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::rotation_changes_local_angles_and_completes_before_body_continues",
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_rotation_keeps_receiver_angles_and_task_slots",
+        "crates/cyrus-game/tests/script_animation_host.rs::cancelling_rotation_retains_last_local_angle"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public stage tests cover local angle change, routed identity/task slots and cancellation. Unknown: complete separate-object host publication and installed original/native/browser turn/refresh timing.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "RotateToAxis",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Absolute rotation and wraparound completion",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::absolute_rotation_matches_original_angle_sequences_and_completion",
+        "crates/cyrus-game/tests/script_animation_host.rs::absolute_rotation_nominal_fallback_preserves_direction_and_scaled_duration_fault_is_contextual"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public stages compare literal angle sequences, wrapped targets, completion and contextual timing faults. Unknown: complete separate-object host propagation and installed original/native/browser turn and family-refresh parity.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "ReloadRotation",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Rebuild receiver orientation matrix/history while retaining angles",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (function dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+      ],
+      "limits": "Verified by inspection: public script rotates first, calls ReloadRotation and asserts unchanged angles plus rebuilt matrix/history. Unknown: installed attached/separate-object host refresh ordering and original/native/browser acceptance. Synthetic matrix equality is not rendered acceptance.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "FacePlayer",
+      "status": "partial",
+      "owner": 48,
+      "scope": "Duration-based receiver turn toward supplied selected-player position",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::face_player_turns_toward_the_selected_player_over_its_duration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
+      ],
+      "limits": "Verified by inspection: public stages assert four literal heading steps and task completion using supplied PlayerQuery position. Unknown: installed changing-target, routing and original/native/browser timing. Bounded #48 synchronized ordinary-facing proof does not isolate this timed task.",
+      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
     }
   ]
 }
