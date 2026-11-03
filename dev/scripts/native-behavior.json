@@ -3914,10 +3914,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/256"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified independent installed3-argument declaration/exact native mapping/full231-byte handler and195-byte registration. Direct XYZ arguments copied unchanged to current/previous local coordinates; selected-player shared reference translates by wrapping argument-old_local displacement; other actors leave reference unchanged. Registration follows writes: empty append before capacity, nonempty dedup, signed capacity append or diagnostic196. Returning path0.576 direct original contexts/17 effective semantic mutations including argument/receiver/write/reference/registration/dedup/capacity/return/cleanup; full mapped-memory/write order/call order/register/stack checks. Only full-list logger/error controlled returning. Exact handler hash also matches independently mapped SetLocation dependency, no family inference. Selected allocated domains; reference producer/consumer, actual error termination, malformed/exhaustive domain/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "f0b2a5c073aa174f67a6a1b3af874bdd4f0ea120"
     },
     {
       "native": "SetRotation",
