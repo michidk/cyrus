@@ -3532,14 +3532,16 @@
       "native": "FaceObject",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
+      "scope": "Named FaceObject task entry and shared facing wrapper boundary; rebuild dispatch remains unsupported",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/249",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6609428012"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified: installed one-argument task, independent native mapping/full85-byte entry and138-byte wrapper. Receiver attribute byte15 zero returns0 before target/helper access; otherwise Boolean-normalizes wrapper result. Wrapper forwards target local X/Z to arrival; nonzero arrival returns0, otherwise wrapped target-minus-local-receiver X/Z to bearing, negated/masked bearing to turn and unchanged turn result.5656 original-instruction contexts/nine effective controls pass, including all256 gate bytes and selected identity/alias/overflow/service-result states. Arrival/bearing/turn are controlled services with no modeled writes; actual helper mutations/numerics/turn lifetime, attribute provenance, malformed admission, VM/task scheduler and natural original/native/browser acceptance remain Unknown. Missing status retains absent named rebuild dispatch. No product implementation or Rust runtime tests; historical static census is not exhaustive call absence.",
+      "reviewed_revision": "6320ddf8da0b79d41f8b2ae8c4f21d0e103bb91a"
     },
     {
       "native": "TurnToAngle",
