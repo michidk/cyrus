@@ -3531,10 +3531,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/blob/2f176be368f997bfe9165a60758fece31974bdd3/docs/engine/SOUP.md#atnodeposition-coordinate-distance-predicate"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified independent installed four-argument declaration/exact binding/full98-byte native/full101-byte metric/full48-byte sqrt wrapper:5424 original CPU contexts/13 effective semantic controls PASS,3700 true/1724 false. Selected coordinate/argument triples/wrapping differences/threshold neighbors/two receivers/two memory patterns/four rounding and three precision modes, masked exceptions/empty FPU stack. Exact numerical dependencies audited once; full new named chain executes originals with independent rational/high-precision expectations and no numerical interception. Raw argument-minus-receiver XYZ, no shifts/vertical adjustment/node lookup; signed inclusive complete32-bit threshold, including integer-indefinite signed result. Full actor arena/head/buffer snapshots/three preserved registers/stack argument cleanup/x87 control/TOP checked. No reached controlled services or nonstack state mutation. Production named dispatch missing; no acceptance inferred. Unknown natural CW/unmasked exceptions/nonempty FPU stack/malformed/null receiver/producers/lifetime/concurrency/VM/natural original/native/browser/full joint domain.",
+      "reviewed_revision": "2f5db08438d5f54ea69ddef8e7a43218f4743bb8"
     },
     {
       "native": "FaceLocation",
