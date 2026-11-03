@@ -3715,10 +3715,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/253"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified installed1-argument task/full157-byte native,100-byte selector,217-byte arrival/370-byte speed/195-byte registration/233-byte refresh helpers incl jump table.6480 original contexts/14 effective controls. Signed inclusive table/saved-start fallback. Arrival uses arithmetic-shift8 target/current plus actor vertical offset, controlled3D metric strictly below floor(1.5*speed); snap quantized XYZ/register/state0/return0. Else state4/store low16 location/refresh countdown+attribute; stored signed16 -1 returns0 otherwise1. Only metric result controlled; allocated empty/duplicate registration lists. No pathfinding/task scheduler or natural completion acceptance. Metric numerical integration/producers/malformed admission/full domains/VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "fbfd0c18e40667f71acef5e6a6fc5c6380a07567"
     },
     {
       "native": "OffsetLocation",
