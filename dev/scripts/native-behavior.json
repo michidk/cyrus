@@ -2547,14 +2547,16 @@
       "native": "GetBroadcastSenderId",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Original GetBroadcastSenderId zero-argument native/availability query with controlled missing-context diagnostics; named rebuild handler remains missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/pull/271",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6611314134"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified: independent installed binding/full native/availability helper;21248 original-instruction contexts/10 semantic controls. Selection byte equal sentinel returns0; otherwise12-byte entry stride/first sender pointer/signed16 runtime ID, no consume. Controlled missing-context formatter/error returns or explicit context repair. Unknown malformed pointers, sender/queue lifetime, natural error UI/termination/recovery, VM integration and original/native/browser acceptance; named rebuild unsupported.",
+      "reviewed_revision": "676f1b6c3af270ff0c9352304748004349e2eccf"
     },
     {
       "native": "GetMessageSender",
