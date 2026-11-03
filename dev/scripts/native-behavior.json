@@ -4544,10 +4544,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/eb4099819ac6457931d5fb84e4d6e94d05e5fd4b/docs/engine/SOUP.md#pipemasters-query"
       ],
-      "limits": "Verified: installed definition declares function with0 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed zero-argument declaration/exact native mapping/full original185-byte handler/60-byte metadata predicate/190-byte recursive family lookup:558 original-instruction contexts/12 effective semantic controls PASS.550 returns/8 stopped diagnostic requests. Metadata byte all256 values, three receivers, finite family trees/master chains0..65, child-first duplicate/prefix/sibling/no-match paths, stale buffer/count/scratch/two patterns. Clears count/first slot, follows containing-master chain; appends no terminator, later buffer slots retained. Exactly64 may return; before65th append runtime-error11 request stops at sole controlled service, no service/continuation/unwind/termination claim. Full mapped actor/metadata/tree/entry state, output/count/lookup scratch/initial write order/domain/six regs on returns/stack-canary checked. Unknown cycles/malformed state/producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser. Named production dispatch missing; no production acceptance inferred.",
+      "reviewed_revision": "8b42f5eaf8299f08e741df1291b8ab843237df4d"
     },
     {
       "native": "PipeMyGroup",
