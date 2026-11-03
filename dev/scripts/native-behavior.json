@@ -3029,12 +3029,13 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "75249b36cdd414e23d815945d87c037beb687f25",
+      "reviewed_revision": "65b35c4b3913ccecd02359ff7a3f952235b78c49",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
         "https://github.com/michidk/redguard-preservation/pull/231",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6608056734"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6608056734",
+        "https://github.com/michidk/redguard-preservation/blob/b6ec5e4c43319bb7dadd58102e2775ca47399da9/docs/engine/SOUP.md#presskey"
       ],
       "native": "PressKey",
       "status": "missing",
