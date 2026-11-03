@@ -2701,14 +2701,16 @@
       "native": "SendMessage",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original recipient-channel entry-write and index update contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/60a45b95d7ffd5fa70b2c01dcbf022b91f6d772c",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614889857"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed one-argument declaration/exact binding/full289-byte native, no native helpers. 78,944 original-instruction contexts/16 effective controls including 2,144 full256-entry arrays. All256 index bytes at channel127/ten signed limits/four arguments/three opaque sender tokens/two patterns; all256 channels at selected inputs; selected full arrays/two recipients. Zero value returns0 without recipient/channel/array/limit reads or entry/index mutation. Nonzero writes receiver token/recipient/value at recipient channel index, increments byte/signed-limit reset, re-reads channel pointer and stores zero/recipient/zero at updated index. Exact write order/same-slot alias, recipient cursor/other channels unchanged, no sender dereference/destination-content gate/allocation/release. Five preserved registers/EDX/stack checked. Diagnostic IO controlled returning with repair or zero argument. Unknown malformed admission/arbitrary structural alias/producers/capacity/ownership/lifetime/consumption/concurrency/reentrancy/natural diagnostics/VM argument adaptation/original/native/browser/full joint domain. Production named call remains absent; no dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "reviewed_revision": "3899b0b249fc0a1f39e923f9394194c93fa65713"
     },
     {
       "native": "SyncWithUser",
