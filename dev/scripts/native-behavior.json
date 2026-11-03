@@ -5505,10 +5505,11 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
-        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439",
+        "https://github.com/michidk/redguard-preservation/pull/280"
       ],
-      "limits": "Verified source: attr110 returns true early; otherwise requires control, animation, combat record, weapon_drawn and neither living_state21 nor group129. Source assumes original transition/world-active global gates. No dedicated named public assertion located. #30 production armed/draw/sheath/restore receipts verify related lifecycle, not execution of PlayerArmed. Unknown: selected-versus-caller, override/readiness/global gates, restore and named original/native/browser query acceptance. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+      "limits": "Verified independently installed function parms0/exact lowercase binding/full42-byte global-player wrapper/full184-byte holding/full130-byte model predicate/full122-byte sheathing. Supplied caller ignored; null selected player returns0. Metadata carrying byte nonzero returns1 before ordinary gates. Otherwise enable/non-null control/mode0, nonnull model pointer/nonzero active byte/not sheathing required. Model pointer not dereferenced.4608 original contexts/16 effective controls:3 callers incl null/unmapped/3 selected players incl null/A/B/2 enables/2 modes/2 control pointers/2 metadata bytes/2 model pointers/2 active bytes/2 actions/2 animation words/2 patterns. Full both-actor/metadata/animation/global memory/no external writes/exact calls/Boolean return/six regs/stack/canary; no controlled services. Unknown malformed player/metadata/control pointers/state producers/lifecycle/VM/natural original/native/browser/exhaustive domain. Production unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "583acd92d402db93d616e464b281bdc09aacefbe"
     },
     {
       "native": "ResetAction",
