@@ -3323,10 +3323,12 @@
         "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
       ],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950",
+        "https://github.com/michidk/redguard-preservation/pull/192",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605149728"
       ],
-      "limits": "Verified source/assertion inspection: no arguments, returns1 iff attribute25 nonzero. Fixture writes3 through SetMyAttr then reads1; IsMaster also checks default0. This establishes bounded predicate/readback, not master/slave model ownership, all values, absent attributes or original reference semantics. Unknown matched original/native/browser routed/retired receiver and replacement behavior. Zero static occurrences do not establish original absence; no Rust tests/runtime run.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: canonical zero-argument original predicate directly reads receiver byte attribute25, returning one iff nonzero, otherwise zero, with no calls/membership lookup/mutation. Complete original bodies pass 2048 constructed byte-domain cases and four changed-contract controls, distinct from live original/native/browser execution. Current Rust handler selects the same attribute and validates empty arguments. Inspected public fixture checks default IsMaster zero and SetMyAttr value3 returning one for both; it was not rerun and does not cover all values or routed/retired/replaced receiver lifecycle. Predicate truth does not establish actual family membership or model composition. Missing matched production lifecycle acceptance keeps this row partial. Zero static occurrences do not establish original absence. Rust tests and production runtime not run.",
+      "reviewed_revision": "ff751f84ea025340b435ef7460ef5ba8d1075695"
     },
     {
       "native": "IsSlave",
@@ -3338,10 +3340,12 @@
         "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
       ],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602457950",
+        "https://github.com/michidk/redguard-preservation/pull/192",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605149728"
       ],
-      "limits": "Verified source/assertion inspection: no arguments, returns1 iff attribute26 nonzero. Fixture writes3 through SetMyAttr then reads1; IsMaster also checks default0. This establishes bounded predicate/readback, not master/slave model ownership, all values, absent attributes or original reference semantics. Unknown matched original/native/browser routed/retired receiver and replacement behavior. Zero static occurrences do not establish original absence; no Rust tests/runtime run.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: canonical zero-argument original predicate directly reads receiver byte attribute26, returning one iff nonzero, otherwise zero, with no calls/membership lookup/mutation. Complete original bodies pass 2048 constructed byte-domain cases and four changed-contract controls, distinct from live original/native/browser execution. Current Rust handler selects the same attribute and validates empty arguments. Inspected public fixture checks default IsMaster zero and SetMyAttr value3 returning one for both; it was not rerun and does not cover all values or routed/retired/replaced receiver lifecycle. Predicate truth does not establish actual family membership or model composition. Missing matched production lifecycle acceptance keeps this row partial. Zero static occurrences do not establish original absence. Rust tests and production runtime not run.",
+      "reviewed_revision": "ff751f84ea025340b435ef7460ef5ba8d1075695"
     },
     {
       "native": "DisableSlaves",
