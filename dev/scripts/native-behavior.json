@@ -4260,15 +4260,17 @@
       "native": "AttachMe",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named family/attachment SOUP dispatch",
+      "scope": "Named one-argument family-group attachment control",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/pull/190",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604997817"
       ],
-      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Existing attribute-based master/slave model composition, rope attachment and Offset/UnOffset linked-position services do not implement this distinct public call. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified: canonical function takes one argument and returns zero. Original handler guard witness has 37 cases/four controls; zero/current slave/current master targets leave receiver unchanged. Another 54 control-path contexts/five controls trace detach-before-full-integer-target-lookup, ordinary membership reuse/allocation requests, group assignment and local/effective pose updates. Absent target can retain detach effects. Allocation/zero/detach-refresh/matrix/rotation/vector services are controlled boundaries with request arguments checked, not original helper arithmetic or production execution. Allocation failure, nonhead predecessor, malformed/cyclic structures and live original/native/browser acceptance remain outside this evidence. Named Rust handler remains absent; existing item/rope/attribute composition services do not implement this public call. Missing means named implementation only. No dedicated public rejection assertion or named production receipt located. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
+      "reviewed_revision": "ec5fe00ce7e97f4a6189e57e34c69e3ddc735484"
     },
     {
       "native": "DetachMe",
