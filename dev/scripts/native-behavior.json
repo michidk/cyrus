@@ -4508,10 +4508,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/a4a0b4be67965ae7706c510d51dde1813c5eb3be/docs/engine/SOUP.md#pipearoundpos-query"
       ],
-      "limits": "Verified: installed definition declares function with4 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed four-argument declaration/exact binding/full182-byte native/full101-byte metric/full48-byte sqrt wrapper:2768 original CPU instruction contexts/14 effective semantic controls PASS,2756 returns/12 stops. Selected explicit coordinates/wrapped differences/threshold neighbors/receiver state differing from arguments/two patterns/two receiver identities/list orders/finite acyclic lists through66 nodes; four x87 rounding/three precision modes, masked exceptions/empty FPU stack. Prior metric/sqrt exact identity audited once; new named query chain executes original bytes without numerical interception. Excludes receiver, computes candidate-minus-explicit coordinates, signed inclusive complete32-bit threshold; integer-indefinite compared signed. Normal prefix/null/stale tail and full actor arena/head/buffer snapshots/three preserved registers/stack argument cleanup/x87 control and TOP checked.64th pointer before diagnostic11; sole controlled IO stops exactly at request, no source-context/copy or diagnostic continuation claim. Production dispatch missing; no acceptance inferred. Unknown process CW lifecycle/unmasked exceptions/nonempty FPU stack/malformed or cyclic lists/producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser/full joint domain.",
+      "reviewed_revision": "5e9bee68e1e53f449975aa53cacaf6fae232e6c5"
     },
     {
       "native": "PipeGroup",
