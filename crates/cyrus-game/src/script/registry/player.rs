@@ -266,6 +266,12 @@ impl ScriptWorld {
                     };
                     world.step_player(id, function, inputs, sounds)
                 }
+                // WalkForward delegates to MoveForward in deep water (preservation SOUP.md).
+                SheathedAction::WalkForward
+                    if matches!(world.actors[id.index].surface, Some(2 | 4)) =>
+                {
+                    world.step_player(id, "MoveForward", inputs, sounds)
+                }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
                     Ok(())
