@@ -480,6 +480,263 @@
       ],
       "limits": "Verified by inspection: public stages assert four literal heading steps and task completion using supplied PlayerQuery position. Unknown: installed changing-target, routing and original/native/browser timing. Bounded #48 synchronized ordinary-facing proof does not isolate this timed task.",
       "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+    },
+    {
+      "native": "DisableHook",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Receiver native-hook suppression bit, without disabling main/tasks",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hook_toggles_set_and_clear_only_the_native_hook_suppression_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#disablehook-and-enablehook",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public calls set receiver control to 2 and leave the other actor at 0. The paired EnableHook call clears it. Unknown: installed original/native/browser toggle followed by actual hook/main/task execution. The assertion does not seed unrelated control bits.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "EnableHook",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Clear receiver hook suppression while retaining other script behavior",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hook_toggles_set_and_clear_only_the_native_hook_suppression_bit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#disablehook-and-enablehook",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public call after DisableHook restores control to 0; an initially enabled actor remains 0. Source masks only bit 2. Unknown: public nonzero-unrelated-bit assertion and installed original/native/browser resumed-hook ordering.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "KillMyTasks",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Clear existing receiver task slots synchronously while later tasks can allocate",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456"
+      ],
+      "limits": "Verified by inspection: public script starts a Wait multitask before and after the call; with cancellation one remains versus two without it. Despite the test name, this fixture does not populate every slot or mix task kinds. Unknown: installed original/native/browser mixed-slot cancellation and service cleanup. #9 barrier/BAT evidence does not isolate KillMyTasks.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "ResetGlobalFlag",
+      "status": "partial",
+      "owner": 179,
+      "scope": "Clear flag latch independently of its numeric value",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/flags.rs::Flags::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate",
+        "crates/cyrus-game/tests/script_registry.rs::global_flag_snapshot_retains_raw_values_and_mixed_latches"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/179",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public scripts reset BOOL/FLIPFLOP/COUNTER/NUMBER latches while retaining numeric values; snapshot APIs retain mixed latches separately. Unknown: matched installed original/native/browser reset/continuation. Closed snapshot implementation scope is not full native host acceptance.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "SetGlobalFlag",
+      "status": "partial",
+      "owner": 179,
+      "scope": "Type-dependent numeric flag update and independent latch",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/flags.rs::Flags::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate",
+        "crates/cyrus-game/tests/script_registry.rs::global_flag_snapshot_preserves_native_latches_without_executing_scripts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/179",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public calls distinguish BOOL repeated-set suppression, FLIPFLOP toggles, COUNTER decrement and NUMBER latch; restored BOOL latch prevents retoggle. Unknown: installed original/native/browser type/latch continuation. Snapshot API coverage does not establish all authored calls.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "TestGlobalFlag",
+      "status": "partial",
+      "owner": 179,
+      "scope": "Read latch rather than numeric global flag value",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/flags.rs::Flags::call",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/179",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public expression results distinguish latch from numeric value across four flag types before/after reset. Unknown: installed original/native/browser query and replacement continuation; no direct live TestGlobalFlag receipt was found in the reviewed scope.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "SyncWithGroup",
+      "status": "done",
+      "owner": 9,
+      "scope": "SOUP-facing group barrier membership, repeated wait/release/End and session continuation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::group_and_user_channels_allow_end_and_group_tasks_wait_for_release",
+        "crates/cyrus-game/tests/script_registry.rs::group_sync_completes_when_attribute_writes_select_an_unregistered_channel",
+        "crates/cyrus-game/tests/script_registry.rs::live_world_entry_and_reload_register_group_members_before_task_polling",
+        "crates/cyrus-game/tests/script_registry.rs::automatic_group_release_waits_for_the_next_model_phase"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#group-synchronization-channels"
+      ],
+      "limits": "Verified: #9 records unmodified OBSERVE group170 repeated paired barriers and group150 unequal arrival in original/native/browser, plus public lifecycle and retention checks. Unknown: exact wall time, atomic whole-frame sampling and every scene visual/audio fidelity. Those broader requirements are outside this synchronization/result scope.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7",
+      "acceptance": {
+        "original": "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "native": "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "browser": "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456"
+      }
+    },
+    {
+      "native": "Wait",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Signed duration, scaled elapsed continuation and retained invocation counter",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::wait_continues_to_flag_change_and_missing_scale_does_not_poison_actor",
+        "crates/cyrus-game/tests/script_registry.rs::wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot",
+        "crates/cyrus-game/tests/script_registry.rs::retained_world_wait_task_continues_its_saved_invocation_counter"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523086927",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456"
+      ],
+      "limits": "Verified by inspection: public calls assert pending slots, scaled/zero elapsed progression, signed wrap and retained counter continuation. BAT acceptance observes Wait within its loop, not isolated duration equality against the original. Unknown: complete installed original/native/browser duration, cancellation and restore timing.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "WaitNonMulti",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Wait for unpaused blocking tasks while ignoring multitasks",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::wait_non_multi_counts_blocking_slots_and_observes_same_pass_completion",
+        "crates/cyrus-game/tests/script_registry.rs::wait_non_multi_ignores_multiple_unpaused_multitasks"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456"
+      ],
+      "limits": "Verified by inspection: public main/interrupt scripts check blocking counts and same-pass completion; two unpaused multitasks remain after the wait completes. Unknown: installed original/native/browser mixed-task ordering and replacement. #9 synchronization acceptance is not a direct WaitNonMulti trace.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "WaitOnTasks",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Wait for unpaused task slots and preserve cancellation bookkeeping",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::wait_on_tasks_ignores_paused_slots_and_stop_clears_native_bookkeeping",
+        "crates/cyrus-game/tests/script_registry.rs::wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456"
+      ],
+      "limits": "Verified by inspection: public task passes assert paused slots stop blocking, resume/stop changes occupancy and later calls allocate again; initial call owns its pending slot. Unknown: matched installed original/native/browser mixed-service task wait and restore timing.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "WaitPlayerAnimFrame",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Wait on selected-player group/frame without advancing playback",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::animation_frame_waits_resume_from_the_correct_owner_without_advancing_playback",
+        "crates/cyrus-game/tests/script_registry.rs::animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_completes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
+      ],
+      "limits": "Verified by inspection: public stages retain a pending slot until separate selected-player playback advances, then continue; absent selected player completes. Unknown: installed original/native/browser selected-player frame-boundary and owner-replacement acceptance. #11 draw/sheath observations do not isolate this wait.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "HideMe",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Hide receiver presentation while ordinary script processing remains enabled",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::visibility_calls_return_zero_without_disabling_the_receivers_script",
+        "crates/cyrus-game/tests/script_registry.rs::hide_clears_model_and_show_restores_retained_static_resource_immediately"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#hideme-and-showme",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public stages check zero return, hidden state, continuing ordinary invocations and cleared model presentation while retained model position survives. Unknown: installed original/native/browser rendered disappearance, animation/collision ordering and restore behavior.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "ShowMe",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Clear hidden state and restore/refresh static receiver presentation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::visibility_calls_return_zero_without_disabling_the_receivers_script",
+        "crates/cyrus-game/tests/script_registry.rs::hide_clears_model_and_show_restores_retained_static_resource_immediately",
+        "crates/cyrus-game/tests/script_registry.rs::show_refreshes_static_coordinates_even_without_a_retained_resource"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#hideme-and-showme",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public stages restore static presentation pose immediately and distinguish static versus absent/animated resource coordinate refresh. Unknown: installed original/native/browser rendered reappearance, attached/animated refresh timing and restore. Model-record assertions are not rendered acceptance.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "SetAttribute",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Receiver byte write, backup-byte side effects and special default-group admission",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/attributes.rs::call, with registry lifecycle precheck",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes",
+        "crates/cyrus-game/tests/script_registry.rs::routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage",
+        "crates/cyrus-game/tests/script_registry.rs::unsupported_attribute_access_fails_before_mutation_and_remains_sticky",
+        "crates/cyrus-game/tests/script_registry.rs::set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#getattribute-setattribute-getmyattr-and-setmyattr",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public scripts assert truncation/backup bytes, routed receiver locals, invalid-index sticky failure and dead attribute44 service refusal. Unknown: all lifecycle-dependent attributes and installed original/native/browser same-update side effects. A generic byte write is not proof every attribute consumer is complete; health/death owners retain their scopes.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
+    },
+    {
+      "native": "GetFramePassed",
+      "status": "partial",
+      "owner": 49,
+      "scope": "Return shared nominal tick increment supplied for the update",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::frame_passed_reports_the_shared_nominal_tick_increment"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#getframepassed",
+        "https://github.com/michidk/cyrus/issues/49"
+      ],
+      "limits": "Verified by inspection: public call fixture supplies nominal_ticks=3 and asserts result 3; source rejects absent or signed-range-exceeding input. Unknown: explicit public error assertions and installed original/native/browser time-source equivalence across updates. Source guard presence is not exercised-test evidence.",
+      "reviewed_revision": "d8d5f84d683e75a77ea503c2a88b9ec3f8a97fb7"
     }
   ]
 }
