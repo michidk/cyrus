@@ -2639,14 +2639,16 @@
       "native": "ReceiveMessage",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original channel-selected entry filter, value return and cursor advance contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/4cae941993a7d969b7020775a929de3788b22c0e",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613758412"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed zero-argument declaration/exact binding/full237-byte native. 24,846 original-instruction contexts/14 effective semantic controls cover all256 selection and channel bytes independently, null/self/other recipient tokens, raw32-bit values, finite skip/wrap/sentinel paths, signed limits and diagnostic repair. Matching/null recipient returns entry value unchanged without advancing; other recipient advances byte/reset under signed global limit then repeats; sentinel returns0 before entry read. Channel captured once; sentinel/table re-read during traversal. No sender/recipient dereference, entry mutation or release. Formatter/runtime-error IO controlled returning. Unknown receiver/subrecord/context/table/channel admission, queue/channel/limit/sentinel producers/consistency, allocation/lifetime/consumption, arbitrary nontermination, natural diagnostics, concurrency/reentrancy, VM/original/native/browser/full joint domain. No invented queue service model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "reviewed_revision": "2e97b99a5ed8b99ae9b5100bfc3a079b32712af6"
     },
     {
       "native": "ReplyBroadcastSender",
