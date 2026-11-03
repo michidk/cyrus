@@ -3095,19 +3095,21 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "17ed8710f19acd87ca7d2afcbfcd7e47a88f21c6",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/199",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605771109"
       ],
       "native": "MyAiMode",
       "status": "partial",
       "scope": "Read receiver lifecycle response byte",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> receiver state/attributes::call",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> registry control_test -> receiver control.death_response",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::ai_setters_master_slave_and_true_function_follow_their_bytes"
       ],
-      "limits": "Verified: source requires zero arguments and reads death_response; fixture SetAIMode7 then reads7. Unknown independently matched original meaning, all lifecycle producers, routed receiver and replacement/native/browser outcomes. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+      "limits": "Verified canonical zero-argument original query directly returns receiver AI-mode unsigned byte 0..255, ignoring selected player and adjacent lifecycle selector. Exact original witness passes 1024 constructed byte-domain contexts and five changed-contract controls, with no calls or nonstack mutation. Inspected Rust control_test requires receiver control state and reads death_response; it does not route through attributes::call. Public fixture SetAIMode(7) then MyAIMode() == 7 is one setter/readback value. Rust assertions inspected, not rerun. Unknown: full public byte-domain/routing, missing-control admission, lifecycle producers/replacement and live original/native/browser acceptance. Instruction evidence is not production acceptance or proof of AI scheduling/setters. Historical static absence cannot exclude Unsupported actor bodies."
     },
     {
       "owner": 5,
