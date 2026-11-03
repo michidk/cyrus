@@ -4023,6 +4023,222 @@
       ],
       "limits": "Verified named public dispatcher accepts3 integers, calls offset_selected_player with follow=false and returns0. Helper uses receiver effective position plus rotated offset with wrapping addition and leaves player orientation/history unchanged. No dedicated successful named fixture located; attachment Offset and perpetual PlayerOffsettask are distinct contracts. Unknown routed/linked/selected-player lifecycle, collision consequence and matched three-host acceptance. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
       "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "AddLightEffect",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FxFlickerDim",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FxFlickerOnOff",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FxLightSize",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FxPhase",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "ScriptParticles",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "LoadStatic",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "UnLoadStatic",
+      "status": "missing",
+      "owner": 39,
+      "scope": "Direct named effects/static SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FlickerLight",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Configure receiver intensity flicker with period1",
+      "caller": "GameHost::call -> retained LightState -> eligible actor light maintenance",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/model-lighting.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified source/assertion inspection: Public fixture checks[7,0,1] words. Source truncates amplitude to low word; setter does not enable disabled record. Logical controls/maintenance do not prove actual bound light-image rows or visible modulation. MGUILD lifecycle protocol remains production NOT RUN; other renderer camera-region acceptance does not exercise this exact native. Unknown matched original/native/browser setter/restore/render sequences. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "LightFlickerOff",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Clear receiver intensity modulation amplitude",
+      "caller": "GameHost::call -> retained LightState -> eligible actor light maintenance",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/model-lighting.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified source/assertion inspection: Public fixture first configures[7,0,9], then checks[0,0,9], preserving period. Logical controls/maintenance do not prove actual bound light-image rows or visible modulation. MGUILD lifecycle protocol remains production NOT RUN; other renderer camera-region acceptance does not exercise this exact native. Unknown matched original/native/browser setter/restore/render sequences. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "LightRadius",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Set receiver starting/current radius and enable",
+      "caller": "GameHost::call -> retained LightState -> eligible actor light maintenance",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/model-lighting.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified source/assertion inspection: Public fixture only asserts enabled after radius70. Source stores signed low word to current/starting radius, clears inactive counter; exact radius extremes not asserted by this anchor. Logical controls/maintenance do not prove actual bound light-image rows or visible modulation. MGUILD lifecycle protocol remains production NOT RUN; other renderer camera-region acceptance does not exercise this exact native. Unknown matched original/native/browser setter/restore/render sequences. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "LightSize",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Configure receiver radius modulation",
+      "caller": "GameHost::call -> retained LightState -> eligible actor light maintenance",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores",
+        "crates/cyrus-game/tests/script_registry.rs::light_maintenance_consumes_intensity_then_radius_in_shared_actor_order"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/model-lighting.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified source/assertion inspection: Public fixture checks[7,0,9]. Shared-order public maintenance fixture checks two actors intensity/radius and exact random state; this is logical state, not bound image or rendered light. Logical controls/maintenance do not prove actual bound light-image rows or visible modulation. MGUILD lifecycle protocol remains production NOT RUN; other renderer camera-region acceptance does not exercise this exact native. Unknown matched original/native/browser setter/restore/render sequences. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "LightSizeOff",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Clear receiver radius modulation amplitude",
+      "caller": "GameHost::call -> retained LightState -> eligible actor light maintenance",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/model-lighting.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified source/assertion inspection: Public fixture configures[7,0,9] then checks[0,0,9], independent from intensity modulation. Logical controls/maintenance do not prove actual bound light-image rows or visible modulation. MGUILD lifecycle protocol remains production NOT RUN; other renderer camera-region acceptance does not exercise this exact native. Unknown matched original/native/browser setter/restore/render sequences. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "Flat",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Create/show retained actor flat and select texture",
+      "caller": "GameHost::call -> flat::call/show -> actor_flat_draws",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures",
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#flat-natives"
+      ],
+      "limits": "Verified public fixture calls Flat300 plus offset and checks enabled/texture/low-word offset; internal original-emulator oracle compares retained record bytes with allocation/bitmap services stubbed. Neither proves actual texture/model raster, same-world replacement or matched native/browser image. Tide special-flat0x80 renderer scope remains separately unaccepted; no inference from prepared material fixtures. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+    },
+    {
+      "native": "FlatStop",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Stop retained flat playback using original record-word copies",
+      "caller": "GameHost::call -> flat::call -> retained FlatState",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#flat-natives"
+      ],
+      "limits": "Verified internal original-emulator oracle includes FlatStop sequences, allocation/bitmap services stubbed. Compare serialized record mapping rather than Rust field-name intuition: original word order maps frame,last_frame,counter in the implementation oracle, and copy order is preserved. No dedicated successful public named fixture or actual displayed last-frame native/browser acceptance located. Retained byte-state equality is not raster/phase/timing parity. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
+      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
     }
   ],
   "instructions": [
