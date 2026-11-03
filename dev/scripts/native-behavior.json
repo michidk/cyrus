@@ -3291,6 +3291,125 @@
       ],
       "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures read0 without association,-1 before current group,7 and signed32768-as-32768, across Me/Player/Named and assert unchanged animation inspection. Writes are unsupported. Unknown: installed original/native/browser exact script reads around request/completion/restore; visible playback does not isolate property semantics. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
       "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "grip[0]",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/30"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads-32768 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "grip[1]",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/30"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads32767 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "rope_wait",
+      "status": "partial",
+      "owner": 22,
+      "scope": "Unsigned actor motion byte with low8 writes",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/22"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.motion_companion equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "slide_flag",
+      "status": "partial",
+      "owner": 19,
+      "scope": "Unsigned actor motion byte with low8 writes",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/19"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.sliding_state equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "extra_flag",
+      "status": "partial",
+      "owner": 18,
+      "scope": "Unsigned actor motion byte with low8 writes",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/18"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.living_state equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     }
   ]
 }
