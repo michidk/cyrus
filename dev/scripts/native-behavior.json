@@ -2508,14 +2508,16 @@
       "native": "DeleteBroadcast",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast-selection advance contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/f1714b7",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613350431"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed zero-argument declaration/exact binding/full native and availability helper. 127,232 original-instruction contexts/12 effective semantic controls cover full selection/sentinel pairs, byte increment wrap, ten signed global limit boundaries, two receivers, absent/nonzero unmapped context tokens and exact write order. Unavailable selection unchanged/no limit read; available increments byte then retains below signed limit or resets0, return0. No entry/sender/context-pointer dereference or entry release in native/helper spans. Formatter/runtime-error IO controlled returning with/without repair. Unknown malformed receiver/admission, limit/sentinel producers/consistency, queue lifetime/consumption, natural diagnostics, concurrency, VM/original/native/browser/full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence.",
+      "reviewed_revision": "8b42f5eaf8299f08e741df1291b8ab843237df4d"
     },
     {
       "native": "DeleteMessage",
