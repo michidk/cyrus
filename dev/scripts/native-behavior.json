@@ -5889,10 +5889,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
+        "https://github.com/michidk/redguard-preservation/blob/ceda570/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
-      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+      "limits": "Verified: installed function1/exact binding/full original handler independently mapped. Original holding/sheathing/model/weapon instructions execute. Constructed instruction witness checks exclusion/weapon gates, nonplayer signed wrapping byte saturation, exact path-specific residual returns, and exact selected-player adjustment/animation-condition/receiver-state query entries. Full mapped memory/nonstack writes/canary; preserved registers and balanced stack on returns. No arbitrary dependency return. Unknown: boundary query/service effects/return/continuation, later animation/finalization effects, natural state producers/pointer lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/runtime NOT RUN.",
+      "reviewed_revision": "2a64efa9f5f1162028699977a9e990755c8011bd"
     },
     {
       "native": "ZapObjectNoKill",
