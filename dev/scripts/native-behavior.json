@@ -3347,27 +3347,31 @@
       "native": "DisableSlaves",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named public SOUP function dispatch",
+      "scope": "Named zero-argument family control, distinct from global slave scheduling",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/185",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604551545"
       ],
-      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: installed declaration has zero arguments; complete original handler, receiver predicate and shared lookup pass 30 constructed instruction contexts and five changed-contract controls. Zero attr_master returns zero immediately. For a valid finite acyclic family tree, lookup traverses children/siblings without selecting a node, so actor-flag changes are unreachable and return is zero; only internal traversal scratch changes. This does not establish malformed/cyclic tree behavior or live original/native/browser acceptance. Named Rust handler remains absent; generic Enable/Disable Script/Tasks/Object/Combat and SYSTEM.INI slave scheduling settings are distinct. No dedicated public rejection assertion located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
+      "reviewed_revision": "fd560adfda5332a59a009d6298c8f1e9893cb01f"
     },
     {
       "native": "EnableSlaves",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named public SOUP function dispatch",
+      "scope": "Named zero-argument family control, distinct from global slave scheduling",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/185",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604551545"
       ],
-      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified: installed declaration has zero arguments; complete original handler, receiver predicate and shared lookup pass 30 constructed instruction contexts and five changed-contract controls. Zero attr_master returns zero immediately. For a valid finite acyclic family tree, lookup traverses children/siblings without selecting a node, so actor-flag changes are unreachable and return is zero; only internal traversal scratch changes. This does not establish malformed/cyclic tree behavior or live original/native/browser acceptance. Named Rust handler remains absent; generic Enable/Disable Script/Tasks/Object/Combat and SYSTEM.INI slave scheduling settings are distinct. No dedicated public rejection assertion located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
+      "reviewed_revision": "fd560adfda5332a59a009d6298c8f1e9893cb01f"
     },
     {
       "native": "HeaderHook",
