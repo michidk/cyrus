@@ -3,14 +3,17 @@
 
 Reads exported `*.scripts` files (what `cyrus --export` and the scene cache write for each
 world, by default `game-config/cache`). Each export lists the whole native catalogue
-(`definition.functions`) and the calls of every installed actor. The audit reports
+(`definition.functions`) and decoded actor calls. Unsupported bodies and older export
+schemas can hide calls, so zero occurrences do not prove absence from the current install.
+The default report lists:
 
-* natives an installed script calls that no Rust source mentions (a forgotten handler: exit 1),
-* natives an installed script calls that no test code names (informational: a mention is
-  necessary, not sufficient, and an indirect test may cover them),
-* the catalogue natives that no installed script calls: not required by any original script
-  contract, so they are outside the SOUP completion scope (docs/DIFFERENCES.md) and fail with a
-  contextual error when a script reaches them.
+* decoded calls with no Rust source mention (an investigation pointer: exit 1),
+* decoded calls with no test-code mention (informational; indirect tests may cover them),
+* catalogue names with no decoded call in the supplied corpus, without inferring behavior,
+  support or completion scope from absence.
+
+A source or test mention does not establish working dispatch or acceptance. See
+`docs/DIFFERENCES.md` for the original-script completion policy and coverage limits.
 
 Run it after exporting every world:
 

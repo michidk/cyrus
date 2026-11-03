@@ -77,16 +77,25 @@ not decoded), accepts six game-controller button codes as keys (controller input
 with the palette read last; cyrus decodes each image with its own palette. cyrus keeps the simulation clock
 frozen for the screen's duration like the inventory screen does and does not switch the music mode.
 
-## Natives no installed script calls
+## Native catalogue and script coverage
 
-**Verified:** the native catalogue has 367 entries; the installed scripts of all 27 maps call 151 of
-them, and `dev/scripts/native-audit.py` shows that every one of those is handled by a source module. The
-other entries (script messaging and broadcasts, the `pipe*` family, the `spare*` parameters, slave and
-hook management, and debug helpers, among others) are called by no installed script and have no recovered
-contract, so they are outside the SOUP completion scope, which asks for what an original script contract
-requires. cyrus does not implement them: a script that reaches one stops with a contextual native error
-naming the function, never a panic or a silent default. A modified or added script that needs one first
-needs its behaviour recovered in redguard-preservation.
+**Verified:** `dev/scripts/native-audit.py` reads native declarations and decoded calls from
+script exports. Its source and test matches are pointers for review, not proof that a handler
+executes correctly. The historical 27-map export corpus contains decoded calls to 151 of the
+367 catalogue names. Those counts describe that corpus; unsupported actor bodies and older export
+schemas prevent an exhaustive claim about calls in the current install.
+
+**Unknown:** a zero decoded-call count alone does not establish that a native is unused,
+unrecovered or unimplemented. Some zero-occurrence names have documented contracts and supported
+paths. Use `--behavior-matrix --include-unused` for explicitly reviewed scopes, owners, assertions
+and acceptance limits. A reviewed row does not imply complete behavior or original/native/browser
+acceptance. Remaining scope and acceptance belong to [the native audit](https://github.com/michidk/cyrus/issues/5)
+and [SOUP tracking](https://github.com/michidk/cyrus/issues/4).
+
+The completion requirement remains the behavior required by original scripts. A modified or added
+script that needs an unsupported native first needs its behavior recovered in redguard-preservation.
+Unsupported calls must fail with a contextual error naming the function; a source mention or static
+absence cannot establish that failure contract for every catalogue entry.
 
 ## Killed created objects keep their record
 
