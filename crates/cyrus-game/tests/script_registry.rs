@@ -30492,12 +30492,20 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
 
 #[test]
 fn world_loop_exit_system_publishes_native_world_transition_at_last() {
+    use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::*;
-    use cyrus_game::script::{ScriptActors, ScriptPlugin};
+    use cyrus_game::script::{OrdinaryContext, ScriptActors, ScriptPlugin, WorldLoopOutcome};
     let world = run_native_world(&[("LoadWorld", &[7, 11, -3]), ("WonGame", &[])]).unwrap();
     let mut app = App::new();
-    app.add_plugins(ScriptPlugin);
+    app.add_plugins(ScriptPlugin)
+        .init_resource::<Assets<cyrus_assets::animation::Animations>>()
+        .insert_resource(State::new(cyrus_game::AppState::InGame));
     app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
+    assert!(
+        app.world_mut()
+            .run_system_once(|context: OrdinaryContext| context.is_running())
+            .unwrap()
+    );
     assert!(
         !app.world()
             .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
@@ -30522,7 +30530,27 @@ fn world_loop_exit_system_publishes_native_world_transition_at_last() {
             .contains_resource::<cyrus_world::lifecycle::ReloadScene>()
     );
     let actors = app.world().resource::<ScriptActors>();
-    assert!(actors.world_loop_outcome.is_none());
+    assert_eq!(
+        actors.world_loop_outcome,
+        Some(WorldLoopOutcome::WorldTransition([7, 11, -3]))
+    );
+    assert!(
+        !app.world_mut()
+            .run_system_once(|context: OrdinaryContext| context.is_running())
+            .unwrap()
+    );
+    // A delayed destination cannot resume the old loop or dispatch its queued ending.
+    app.world_mut().run_schedule(Last);
+    assert!(
+        !app.world()
+            .contains_resource::<cyrus_game::script::EndingEntry>()
+    );
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_world::lifecycle::SceneRequest>()
+            .0,
+        "7"
+    );
 }
 
 #[test]

@@ -126,7 +126,9 @@ pub(super) fn consume(
     mut next: Option<ResMut<NextState<crate::AppState>>>,
     mut checked: Local<Option<(u64, u32, u32)>>,
 ) {
-    if actors.error.is_some() || state.is_some_and(|state| *state.get() != crate::AppState::InGame)
+    if actors.error.is_some()
+        || actors.world_loop_outcome.is_some()
+        || state.is_some_and(|state| *state.get() != crate::AppState::InGame)
     {
         return;
     }
@@ -179,6 +181,7 @@ pub(super) fn consume(
             world.globals_mut().request_mut().load_world = None;
             let play_now = world.globals_mut().request_mut().play_movie.take();
             let queued = world.globals_mut().take_queued_movie();
+            actors.world_loop_outcome = Some(WorldLoopOutcome::WorldTransition(destination));
             let result = match scripted_movie(play_now, queued) {
                 Some(index) => start_script_movie(
                     &mut commands,

@@ -188,6 +188,11 @@ when the ending actor owns it, following preservation's
 [End contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#end-0x05).
 The pending prompt and activation holdoff survive this owner release.
 
+World transitions retain their exit outcome until the destination registry is prepared.
+The departed world runs no further ordinary updates or ordinary audio services while
+the host loads its destination, following preservation's
+[world request contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#session-requests-loadworld-wongame-pushplayer-and-popplayer).
+
 Verified: refused selected-player scripted directional checks retain the directional
 blocked response for collision-age maintenance without moving the player, following
 preservation's [walking support contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-forward-walk-support-checks).

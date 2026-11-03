@@ -954,6 +954,7 @@ impl OrdinaryContext<'_, '_> {
                 .as_ref()
                 .is_some_and(|console| console.open)
             && self.actors.error.is_none()
+            && self.actors.world_loop_outcome.is_none()
             && self.actors.current.is_some()
     }
 
