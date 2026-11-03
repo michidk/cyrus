@@ -4808,16 +4808,18 @@
       "native": "CountAiShells",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named AI/spatial-view/camera dispatch",
+      "scope": "Named CountAiShells original AI-list query and string-service boundary; rebuild dispatch remains unsupported",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/pull/255",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6609897852"
       ],
-      "limits": "Verified: installed definition declares function with 1 arguments; exact-name and generic delegate inspection found no supported branch. No dedicated named public rejection fixture or production acceptance located. Existing control/visibility, camera lookObj, navigation and combat services do not implement this different named call. Unknown: original side effects, return and lifetime beyond published contracts/declaration; no semantics inferred from its name. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified: independent installed1-argument function/native/full213-byte handler. Disabled or empty AI list returns0; otherwise traverses next links and counts zero case-insensitive comparisons against normalized query stem. Receiver not dereferenced/list unchanged. Node copy9 includes low next-pointer byte after8 name bytes; no appended terminator.1749 bounded original-instruction contexts/12 effective controls pass over finite0..8-node lists/all binary comparison patterns and selected head/enable/receiver/key/state. String services controlled; retained library instructions statically inspected separately. Exact service arguments/order/copy9/return/register/stack/list preservation checked. Unknown malformed/cyclic lists, count overflow, scratch reentrancy, list lifecycle, locale/platform paths and natural original/native/browser acceptance. Missing status retains absent named rebuild implementation. No product change/Rust runtime tests; static corpus cannot prove exhaustive call absence.",
+      "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {
       "native": "FindAiShell",
