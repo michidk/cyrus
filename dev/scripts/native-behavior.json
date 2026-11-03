@@ -3475,14 +3475,15 @@
       "native": "DistanceFromStart",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
+      "scope": "Original one-axis signed start-minus-local displacement; named implementation missing",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/239"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified: independent installed one-argument declaration/native/full handler. Axes0/1/2 select X/Y/Z; every other axis returns zero before coordinate reads. Saved start minus receiver local current wraps32bit then arithmetic shifts right8; negative fractional differences round toward negative infinity. No calls/intercepted services/nonstack mutation. 11626 original instruction contexts/13 effective controls pass with signed/fractional/wrapping pairs, distinct receiver/coordinate decoys, invalid axes, actor patterns/register seeds and selected invalid-axis/unmapped-receiver cases. Actor/global bytes, saved registers excluding argument register, stack/canary checked. Unknown: full32-bit coordinate/axis combinations, valid-axis null/malformed admission, coordinate producers, attachment effective-position integration, VM decoding and natural original/native/browser acceptance. Named implementation remains missing; no name/family inference.",
+      "reviewed_revision": "f12878c6ddc3086ff53a1bff61e9b4a4c43f2dc2"
     },
     {
       "native": "AtPos",
