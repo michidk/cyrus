@@ -5669,6 +5669,81 @@
       ],
       "limits": "Verified inspected public fixture supplies100 and checks contextual missing-combat-record error for this name. Source requires one integer, wraps addition into retained combat scalar and returns0. No successful populated-combat public assertion located; setters/readbacks/health/death receipt do not establish this adjustment executes. Unknown: overflow/negative/routed/replacement and installed original/native/browser named adjustment acceptance. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
       "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "ZapObject",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named zap dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+      ],
+      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
+      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+    },
+    {
+      "native": "ZapObjectNoKill",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named zap dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+      ],
+      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
+      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+    },
+    {
+      "native": "ZapPlayer",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named zap dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+      ],
+      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
+      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+    },
+    {
+      "native": "ZapPlayerNoKill",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named zap dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+      ],
+      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
+      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+    },
+    {
+      "native": "Rnd",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Positive-bound shared random draw, mask then reduction",
+      "caller": "ScriptWorld::advance -> GameHost Rnd -> EngineRandom::rnd",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::rnd_script_masks_before_reducing_and_consumes_one_draw",
+        "crates/cyrus-game/tests/script_registry.rs::random_handler_requires_shared_state_and_invalid_bounds_fail_stickily",
+        "crates/cyrus-game/src/random.rs::sequential_calls_match_original_results_and_state",
+        "crates/cyrus-game/src/random.rs::invalid_bounds_preserve_state_and_largest_positive_bound_is_supported"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#random-functions",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+      ],
+      "limits": "Verified inspected public fixture: bound3 returns2 and state1103527590 after one draw. Public invalid0/-1 preserve state1 and local4, retain sticky failure. Shared-state absence case in that fixture names QuickRnd, not Rnd. Helper golden sequences cover non-power bounds, large bound and restored next draw, below public dispatch. Source requires one integer/shared state and masks then reduces a single draw; invalid bound fails before consuming. Unknown: complete installed original/native/browser draw consumption order across engine/script consumers and restart equivalence. Arithmetic agreement and shared QuickRnd routing do not prove full Rnd session behavior. Rust assertions inspected only; runtime NOT RUN.",
+      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
     }
   ],
   "instructions": [
