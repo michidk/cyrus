@@ -54,7 +54,9 @@ call("set_fidelity", {"area":"player_controller","mode":"modern"})
 call("input", {"key":"KeyW","action":"press"})
 time.sleep(0.5)
 held = call("state")
-assert held["player_input"]["forward"], held
+# The headless loader has no ready rendered world, so gameplay input stays suppressed.
+assert not held["scene_ready"], held
+assert not held["player_input"]["forward"], held
 call("input", {"key":"KeyW","action":"release"})
 time.sleep(0.1)
 final = call("state")
