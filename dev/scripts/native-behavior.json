@@ -3803,6 +3803,226 @@
       ],
       "limits": "Verified supplied-state task helper compares literal original-emulator marker/pose/duration/elapsed/frame-scale rows including slave coordinates and update requests. This timed interpolation differs from MoveMarker direct point walking. Unknown production marker inputs, routed/separate ownership and matched native/browser task lifetime. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
       "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "SetPosition",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "SetRotation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "ReloadPosition",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "PlayerSnap",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "PlayerTilt",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "PlayerTiltRevx",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named transform/player SOUP dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "Rotate",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Per-invocation three-angle rotation",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified supplied-state task fixture checks angle increments/duration completion; named Task::Rotate dispatch exists. Helper pose/time injection is not public production input/relocation or three-host parity. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sMove",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Scaled three-axis translation",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified helper fixture distinguishes scaled per-invocation step from nominal-tick Move, including negative arithmetic and elapsed completion. Separate receiver without runtime identifier remains unsupported; no successful named public acceptance located. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sRotate",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Scaled three-angle rotation",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified supplied-state helper fixture asserts scaled angle progression and completion. Named dispatch exists; not production input capture, routed/separate lifetime or matched three-host behavior. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sMoveAlongAxis",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Scaled movement along rotated local axis",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::scaled_axis_movement_rotates_the_step_like_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified direct task helper compares literal original-emulator rows with supplied axis/delta/duration/scale/elapsed/matrix pose. No successful public named dispatch/production pose or separate relocation acceptance established. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sMoveByAxis",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Elapsed relative-axis position",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::axis_movement_preserves_quantization_and_elapsed_position_contracts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified public BODY/TASKS test checks+/-2560 exact position sequence, task completion and body flag. Invalid-axis/zero-duration fixture distinguishes refusal/contextual error. Helper original-emulator rows are additional bounded evidence. Unknown all axes/overflow/routed/separate/restore and matched three-host production ordering. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sRotateByAxis",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Elapsed relative-axis angle",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::absolute_rotation_matches_original_angle_sequences_and_completion"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified public test asserts positive/negative/wrapping angle sequences, task counts and continuation. Separate duration-error fixture checks contextual division error without pose mutation. Unknown all axes/overflow/routed/separate/restore and matched three-host production ordering. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "sRotateToAxis",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Elapsed absolute-axis target angle",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::absolute_rotation_matches_original_angle_sequences_and_completion"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified public test asserts target/shortest-wrap angle sequences, task counts and continuation. Duration1 contextual division error preserves pose. Unknown all axes/ties/routed/separate/restore and matched three-host production ordering. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "SpeedScale",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Wrapping fixed-point speed scaling",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified source computes wrapping value*frame_scale then arithmetic shift8. Public fixture supplies frame_scale256 and checks1234/-300 identity plus missing argument error. This does not prove other scales/overflow, production scale timing or original/native/browser parity. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+    },
+    {
+      "native": "PlayerOffset",
+      "status": "partial",
+      "owner": 5,
+      "scope": "One-shot selected-player position relative to receiver",
+      "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+      ],
+      "limits": "Verified named public dispatcher accepts3 integers, calls offset_selected_player with follow=false and returns0. Helper uses receiver effective position plus rotated offset with wrapping addition and leaves player orientation/history unchanged. No dedicated successful named fixture located; attachment Offset and perpetual PlayerOffsettask are distinct contracts. Unknown routed/linked/selected-player lifecycle, collision consequence and matched three-host acceptance. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
+      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
     }
   ],
   "instructions": [
