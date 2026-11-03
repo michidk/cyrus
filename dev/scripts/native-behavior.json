@@ -1630,17 +1630,19 @@
       "native": "PrintSingleParm",
       "status": "partial",
       "owner": 5,
-      "scope": "Receiver-name/value output retention and host display",
+      "scope": "Integer diagnostic retention, prefix coverage and host display",
       "caller": "ScriptWorld::step -> script/registry.rs -> GameplayGlobals::print_line",
       "tests": [
         "crates/cyrus-game/tests/script_animation_host.rs::print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
-        "https://github.com/michidk/cyrus/issues/191"
+        "https://github.com/michidk/cyrus/issues/191",
+        "https://github.com/michidk/redguard-preservation/pull/184",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604287583"
       ],
-      "limits": "Verified by inspection: public script step repeated seventy times retains sixty-six lines and exact ACTOR -7 text. Source documents display as host-owned; no production printed_lines display consumer was located in this review. Unknown: original/native/browser visible console delivery, ordering and lifecycle. Shared console editor completion does not prove this output path.",
-      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+      "limits": "Verified original contract: one signed integer with resolved script-name/fallback prefix, first free of 66 message slots, copy bound 255, full-queue drop and zero return. Complete original handler/name-lookup witnesses use controlled IO, not glyph/platform acceptance. Inspected public Rust fixture repeats seventy calls, retains 66 lines and asserts ACTOR -7. Current prefix uses ScriptActorSource name; this fixture does not establish unresolved-script fallback or routed/created/swapped-source parity, distinct-message slot reuse or rendered delivery. No production printed_lines display consumer located in this source review; display remains host-owned. Unknown: original/native/browser visible output ordering/lifecycle. No Rust tests or game runtime rerun.",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28"
     },
     {
       "native": "QueueMovie",
@@ -2925,45 +2927,51 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/182",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594"
       ],
       "native": "PrintParms",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Eight-integer diagnostic message request and full-queue behavior",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified original contract: eight integer arguments plus resolved script-name/fallback prefix, signed decimal argument order, first free of 66 diagnostic slots with copy bound 255, full-queue drop and zero return. Complete handler/name-lookup evidence uses controlled formatter/copy IO, not original platform buffering or native/browser runtime acceptance. Current named handler/generic matching path remains absent; no dedicated public rejection assertion located. Missing means named implementation, not all diagnostic services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/184",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604287583"
       ],
       "native": "PrintStringParm",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Resolved string diagnostic request and message slots",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified original contract: one supplied string value, script-name/fallback prefix, first free of 66 diagnostic slots with copy bound 255, full-queue drop and zero return. Handler formats the supplied string without a second string-table lookup; shared VM retained-source resolution is a separate published contract. Complete handler/name-lookup evidence uses controlled formatter/copy IO, not native/browser runtime acceptance. Current named handler remains absent; supported PrintSingleParm does not implement the string variant. No dedicated public rejection assertion located. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/182",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594"
       ],
       "native": "LogParms",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Eight-integer internal diagnostic log request",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified original contract: eight integer arguments, resolved script-name/fallback prefix and signed decimal argument order with the log format, returning zero. Log destination differs from the PrintParms message slots. Complete handler/name-lookup witnesses observe the log IO boundary; original log-buffer lifecycle/platform presentation and native/browser runtime are not accepted. Current named handler/generic matching path remains absent; no dedicated public rejection assertion located. Missing means named implementation, not all logging services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
     },
     {
       "owner": 5,
@@ -3365,14 +3373,16 @@
       "native": "HeaderHook",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named public SOUP function dispatch",
+      "scope": "Receiver diagnostics, separate from RAHK native-hook execution",
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/179",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604021792"
       ],
-      "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
-      "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+      "limits": "Verified original contract: zero-argument function reports receiver identity/name, resolved script association and node/AI diagnostics, returning one without receiver mutation or RAHK callback dispatch. Complete handler/name-lookup witnesses cover eight constructed cases with observed diagnostic IO; logger buffers/presentation and naturally reached gameplay are not accepted. Current named handler remains absent; the separate RAHK hook path does not implement this function. No dedicated public rejection assertion or native/browser production acceptance located. Missing means named implementation, not all hook services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun.",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28"
     },
     {
       "native": "DistanceFromLocation",
@@ -4805,7 +4815,7 @@
       "native": "IsWithinMap",
       "status": "partial",
       "owner": 5,
-      "scope": "Constant-return map query and declaration boundary",
+      "scope": "Original constant-one query and canonical zero-argument host coverage",
       "caller": "ScriptWorld::advance -> GameHost::call IsWithinMap branch",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host"
@@ -4813,10 +4823,12 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/pull/177",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603799639"
       ],
-      "limits": "Verified: current branch returns one without checking operands; installed definition declares zero arguments. Inspected synthetic fixture supplies one argument and declares that arity, asserting one. No canonical zero-argument installed-call or original/native/browser map-boundary acceptance located. Unknown: original query contract beyond declaration; source comment is not behavioral proof. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified original contract: zero-argument function returns one with stack-local writes only and reads no map bounds, actor position or world state. Independent original handler resolution/instruction contexts establish this constant query, not map-boundary behavior or native/browser runtime acceptance. Current host branch permissively returns one; inspected synthetic fixture supplies one argument and derives declaration arity from it. This leaves canonical zero-argument host admission unverified but does not prove rejection. No implementation correction or runtime completion claimed; Rust assertions inspected only, not rerun. Historical static absence cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28"
     },
     {
       "native": "SetAiType",
