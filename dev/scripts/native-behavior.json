@@ -2686,14 +2686,16 @@
       "native": "SendBroadcast",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast entry-write and global-index update contract",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/93a140576b27a7f6a1b6dfc135c28f8177558959",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614768568"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified installed one-argument declaration/exact binding/full229-byte native, no native helpers. 64,144 original-instruction contexts/15 effective controls including 2,704 full256-entry arrays. All256 global index bytes/ten signed limits/four arguments/three unmapped receiver tokens/two patterns; selected full arrays/diagnostic repair or argument0. Zero argument returns0 without array/limit reads or entry/index mutation. Nonzero stores receiver token/zero recipient/argument at global index, increments byte/signed-limit reset, re-reads context first pointer and clears newly indexed entry. Exact write order/same-slot clear alias; no receiver or destination-content reads. EDX scratch/five preserved registers/stack checked. No allocation/release. Diagnostic IO controlled returning with repair or zero argument. Unknown malformed admission, producers/capacity/ownership/lifetime/consumption, concurrency/reentrancy/natural diagnostics/VM/original/native/browser/full joint domain. No invented queue model or sibling inference. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "reviewed_revision": "1e3572e6b3be604685e529745cb9d85e9affa71f"
     },
     {
       "native": "SendMessage",
