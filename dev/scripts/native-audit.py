@@ -20,6 +20,8 @@ Run it after exporting every world:
 files that name it exactly or in snake case (a pointer for the per-native audit, not proof of behaviour).
 `--behavior-matrix` instead joins explicitly reviewed evidence from native-behavior.json.
 Unreviewed names are unaudited, never inferred missing or complete from source mentions.
+`--instruction-matrix` reports reviewed VM forms and static decoded statement counts.
+These counts do not establish execution or fidelity; absent forms remain visible.
 """
 import argparse
 import collections
@@ -102,12 +104,12 @@ def matrix(root, catalogue, used):
     return rows
 
 
-def behavior_rows(path, catalogue, used):
+def behavior_rows(path, catalogue, used, section="natives", name_field="native"):
     """Join manually reviewed scopes, preserving unknown coverage outside the audited slice."""
     data = json.loads(Path(path).read_text())
     reviewed = {}
-    for row in data["natives"]:
-        name = row["native"]
+    for row in data.get(section, []):
+        name = row[name_field]
         if name in reviewed or name not in catalogue:
             raise ValueError(f"duplicate or unknown catalogue native: {name}")
         if row["status"] not in {"done", "partial", "missing"}:
@@ -129,6 +131,42 @@ def behavior_rows(path, catalogue, used):
     return [(name, reviewed.get(name)) for name in sorted(used)]
 
 
+
+def instruction_usage(directory, pattern):
+    """Count decoded statement forms only, never nested values or execution."""
+    used = collections.defaultdict(set)
+    counts = collections.Counter()
+    for path in sorted(glob.glob(os.path.join(directory, pattern))):
+        data = json.loads(Path(path).read_text())
+        for actor in data.get("actors", {}).values():
+            for step in actor.get("program", {}).get("steps", {}).values():
+                name = step.get("operation", {}).get("type")
+                if isinstance(name, str):
+                    used[name].add(os.path.basename(path))
+                    counts[name] += 1
+    return used, counts
+
+
+def instruction_matrix(path, directory, pattern):
+    """Join reviewed VM forms with static export occurrences, including absent forms."""
+    used, counts = instruction_usage(directory, pattern)
+    if not counts:
+        raise ValueError("no decoded instruction statements found")
+    known = {"assign", "increment", "if", "goto", "gosub", "return", "end", "endint",
+             "call", "object_call", "anchor", "yield", "script_rv", "task_stop",
+             "task_pause", "task_resume", "unsupported"}
+    rows = behavior_rows(path, known, known | set(used), "instructions", "instruction")
+    print("instruction\texport_files\tstatements\tstatus\towner\tscope\tcaller\ttests\tevidence\tlimits")
+    for name, row in rows:
+        values = [name, str(len(used[name])), str(counts[name])]
+        if row is None:
+            values += ["unaudited", "-", "-", "-", "-", "-", "No behavior review recorded."]
+        else:
+            values += [row["status"], f'#{row["owner"]}', row["scope"], row["caller"],
+                       "; ".join(row.get("tests", [])) or "-", "; ".join(row["evidence"]),
+                       row["limits"]]
+        print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
@@ -145,7 +183,16 @@ def main():
         "--behavior", default=str(Path(__file__).with_name("native-behavior.json")),
         help="reviewed behavior catalogue used by --behavior-matrix",
     )
+    parser.add_argument("--instruction-matrix", action="store_true",
+                        help="review VM forms with static statement counts, not execution proof")
     args = parser.parse_args()
+    if args.instruction_matrix:
+        try:
+            instruction_matrix(args.behavior, args.scripts, args.pattern)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"invalid instruction audit: {error}", file=sys.stderr)
+            return 1
+        return 0
     catalogue, used, count = collect(args.scripts, args.pattern)
     if not used:
         print(f"no natives found in {count} script exports under {args.scripts}")

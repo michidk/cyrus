@@ -2502,5 +2502,275 @@
       "limits": "Verified by inspection: source assigns the integer to receiver combat strength; public fixture only asserts missing combat-record errors. The health/strength/armor getter fixture is not a successful setter test. Unknown: successful routed setter/readback, damage consequences, replacement and installed original/native/browser parity. Accepted duel damage and quick-health behavior do not prove these setters.",
       "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
     }
+  ],
+  "instructions": [
+    {
+      "instruction": "assign",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Evaluate formula before writing flag/local/property",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
+        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert flag8/local9 and later continuation. Unknown: all property writes, arithmetic/operand combinations and installed matched write traces. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "increment",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Wrapping read-modify-write of decoded destination",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture observes local increment0-to1 only through direct interrupt after entry blocking. Source wraps addition. Unknown: destination widths, overflow/property callbacks and installed three-host increment traces. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "if",
+      "status": "partial",
+      "owner": 5,
+      "scope": "False branch target after left-to-right condition evaluation",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::branches_fold_left_to_right_without_boolean_precedence",
+        "crates/cyrus-script/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
+        "crates/cyrus-script/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert skipped Wrong call, decrement before signed comparison and non-short-circuit OR operand effects. Unknown: every comparator/conjunction/encoding and installed three-host branch boundaries. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "goto",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Replace cursor without yielding",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture uses self-Goto to exceed execution budget; the same fixture checks sticky/contextual retention for a separate failed callback. Unknown: installed successful jump targets and matched continuation traces; runaway detection is not positive branch acceptance. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "gosub",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Overwrite actor single return continuation and jump",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
+        "crates/cyrus-script/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert shared local9/flag6 and nested overwrite never reaching OuterReturn before budget failure. Unknown: installed matched nested/routed invocation and replacement coverage for all entry/main combinations. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "return",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resume retained continuation and saved byte, or restart base without one",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::return_without_gosub_restarts_the_script_and_yields",
+        "crates/cyrus-script/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation",
+        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert null-return base restart/no failure, overwrite behavior and saved script-return3 restoration after9. Unknown: installed original/native/browser null-return and cross-invocation boundaries. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "end",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Notify host then store target and yield",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture asserts host End count and later restart, distinct from immediate continuation. Verified bounded BAT receipt includes End loops/native/browser pending task retention. Unknown: every End notification/group reset/target and entry context; BAT is not universal instruction parity. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "endint",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Reset active cursor to base and yield, preserving other continuation",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::interrupt_and_main_have_independent_continuations_and_shared_locals",
+        "crates/cyrus-script/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert interrupt0/main2 and shared locals; direct interrupt returns without removing blocking slot. Unknown: installed original/native/browser every entry/reset context and host notification boundary. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "call",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Self statement dispatch with blocking and immediate result semantics",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::blocking_completion_resumes_the_same_stage_without_restarting_the_task",
+        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
+        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert one initial Wait, continuation after completion, discard of valueless effects only as statements and call provenance. Verified bounded installed BAT/NGASTA call-form acceptance under9. Unknown: unused catalogue forms and all opcode/result/operand combinations. Call-form census is not execution proof. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "object_call",
+      "status": "partial",
+      "owner": 9,
+      "scope": "Preserve addressed-call provenance and receiver task ownership while caller continues",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
+        "crates/cyrus-script/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
+        "crates/cyrus-script/tests/runtime.rs::object_tasks_fail_before_effects_instead_of_using_the_callers_slots"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Statement fixture uses public invoke and fake host routing; receiver fixture uses public receive, preserving initial caller strings then receiver strings/locals. Unsupported local routing rejects before effects. Unknown: every installed object selector/form and matched three-host addressed statement trace; receive tests alone are not production host routing acceptance. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "anchor",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Store actor anchor byte without End notification",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture observes anchor7 and no host End. Unknown: installed original/native/browser consumers of anchor, decoder width and replacement lifetime beyond this synthetic sequence. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "yield",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Retain following cursor without host End notification",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture observes following cursor7 then4 with no initial End notification. Unknown: matched installed original/native/browser yield boundaries and every entry/body scheduling path. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "script_rv",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Compare script-return byte and conditionally save it before decoded control flow",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture matches3, saves it before Gosub and restores3 after external change9. Unknown: mismatching skip, following-Return byte decoding and all installed original/native/browser branches. Decoded Runtime behavior alone does not validate original byte-level encoding. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "task_stop",
+      "status": "partial",
+      "owner": 10,
+      "scope": "Cancel all actor slots matching decoded task label",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-script/tests/runtime.rs::routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operand"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixture asserts cancellation token1 and zero active tasks; routed-label fixture checks shared operand identity. Verified10 live replacement/new-game acceptance is broader lifecycle evidence. Unknown: matched installed original/native/browser TaskStop label executions across foreign operands; session replacement does not isolate TaskStop. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    },
+    {
+      "instruction": "task_pause",
+      "status": "partial",
+      "owner": 10,
+      "scope": "Pause matching actor slots shared by entry/main without polling",
+      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "tests": [
+        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-script/tests/runtime.rs::interrupt_controls_pause_the_shared_main_task_without_polling_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+      ],
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert argument polling stops while paused and interrupt pause preserves shared main slot. Verified10 live replacement does not isolate the instruction. Unknown: installed three-host pause label execution, all foreign-source matching and persistence phases. Status is an inferred scoped assessment, not completion from source presence.",
+      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+    }
   ]
 }

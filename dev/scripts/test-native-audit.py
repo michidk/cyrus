@@ -75,12 +75,55 @@ class BehaviorAuditTest(unittest.TestCase):
         self.assertEqual(rows['Reviewed']['status'], 'missing')
         self.assertIsNone(rows['Mentioned'])
 
+    def test_instruction_matrix_counts_statements_without_promoting_occurrences(self):
+        self.path.write_text(json.dumps({'instructions': [dict(
+            self.row, instruction='assign', native='ignored')]}))
+        (self.root / 'world.scripts').write_text(json.dumps({'actors': {
+            'ONE': {'program': {'steps': {
+                '0': {'operation': {'type': 'assign', 'formula': {'type': 'call'}}},
+                '1': {'operation': {'type': 'assign'}},
+                '2': {'operation': {'type': 'task_resume'}},
+            }}}}}))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--instruction-matrix', '--behavior', str(self.path)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {line.split('\t')[0]: line.split('\t')
+                for line in result.stdout.splitlines()[1:]}
+        self.assertEqual(rows['assign'][1:5], ['1', '2', 'partial', '#5'])
+        self.assertEqual(rows['call'][1:4], ['0', '0', 'unaudited'])
+        self.assertEqual(rows['task_resume'][1:4], ['1', '1', 'unaudited'])
+        self.assertEqual(rows['unsupported'][1:4], ['0', '0', 'unaudited'])
+
+    def test_instruction_matrix_refuses_empty_input_instead_of_claiming_a_census(self):
+        self.path.write_text(json.dumps({'instructions': []}))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--instruction-matrix', '--behavior', str(self.path)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('no decoded instruction statements found', result.stderr)
+
+    def test_instruction_review_rejects_unknown_duplicates_and_unproven_done(self):
+        (self.root / 'world.scripts').write_text(json.dumps({'actors': {
+            'ONE': {'program': {'steps': {'0': {'operation': {'type': 'yield'}}}}}}}))
+        for rows in [
+            [dict(self.row, instruction='invented')],
+            [dict(self.row, instruction='assign')] * 2,
+            [dict(self.row, instruction='assign', status='done')],
+        ]:
+            self.path.write_text(json.dumps({'instructions': rows}))
+            result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                     '--instruction-matrix', '--behavior', str(self.path)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn('invalid instruction audit', result.stderr)
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]
         self.assertTrue(data['natives'])
         self.assertEqual(len({row['native'] for row in data['natives']}), len(data['natives']))
-        for row in data['natives']:
+        for row in data['natives'] + data.get('instructions', []):
             for reference in row['tests']:
                 path, name = reference.split('::', 1)
                 self.assertIn('fn ' + name + '(', (root / path).read_text(), reference)
