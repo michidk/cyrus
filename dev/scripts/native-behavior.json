@@ -4855,8 +4855,8 @@
       "native": "Animal",
       "status": "partial",
       "owner": 5,
-      "scope": "Original two-argument no-op task versus synthetic function-only acceptance",
-      "caller": "ScriptWorld::advance -> GameHost::call Animal branch",
+      "scope": "Canonical two-argument task completion versus function-only fixture",
+      "caller": "ScriptWorld::advance -> Runtime::receive_inner -> GameHost::call Animal -> Complete(0) -> runtime result-kind guard",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host"
       ],
@@ -4867,8 +4867,8 @@
         "https://github.com/michidk/redguard-preservation/pull/175",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603671071"
       ],
-      "limits": "Verified original contract: canonical declaration is a two-argument task; independently resolved complete handler ignores input values, writes only stack locals and returns zero without actor/world access. Preservation PR175 documents this contract. Declaration kind is metadata, not proof of a runtime call-kind restriction; shared original dispatch documentation says it is discarded. Current host branch permissively ignores kind/arguments and returns zero, so no canonical-arity rejection is inferred. Synthetic fixture declares a one-argument function and asserts zero; it does not establish canonical task admission/lifetime. Unknown: named canonical task acceptance across hosts. Rust assertions inspected only, not rerun; instruction witness is not original/native/browser game-runtime acceptance. Historical static absence cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "7366bfbb7049ef725c3db197b3c1795c9e83e0e5"
+      "limits": "Verified original contract: canonical declaration is a two-argument task; complete recovered handler ignores inputs and returns zero without actor/world access. Preservation PR175 and existing instruction witness establish the direct no-op; original common dispatch documentation says a zero-return handler completes task calls immediately. Declaration kind is metadata, not proof of an original runtime call-kind restriction. Verified source review: the public helper synthesizes Function declarations from supplied operands and invokes Animal(5) as an assignment expression. GameHost Animal returns Complete(0) for every kind, but Runtime::receive_inner accepts Complete(value) only for Function and requires CompleteTask for immediate task completion. Animal is absent from the four-name zero-return task adapter. Inferred: a canonical Task call that reaches this branch fails the runtime result-kind guard instead of completing; permissive host argument handling alone does not establish canonical task admission. No canonical task integration test was executed. Unknown corrected task continuation and matched original/native/browser acceptance; no gameplay fix claimed. Static absence cannot exclude Unsupported actor bodies. Rust fixtures inspected only, not rerun.",
+      "reviewed_revision": "71532cb993b2035e1d04f85e97f539f43ca9d6cd"
     },
     {
       "native": "IsWithinMap",
