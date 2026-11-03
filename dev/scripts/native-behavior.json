@@ -3928,10 +3928,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/258"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified independent installed3-argument declaration/exact native mapping/full267-byte handler and115-byte identity reset. Masks each argument2047, replaces current pitch/yaw/roll and copies previous-angle triple before rebuild. Attribute28 exactly1 passes unchanged masked triple to alternate matrix construction; all other byte values reset identity then masked negative yaw/pitch/roll in order. Return0/no registration.5120 original contexts/22 effective semantic mutations across2 receivers/all256 mode bytes/5 argument triples/2 patterns; exact mapped memory/write order/calls/return/register/stack checks. Four numerical matrix services controlled with exact IO/destination/order/9-word effects and volatile clobbers; reset original executes. Independently retained complete numerical spans identify dependency, no formula/table-initialization/x87/numerical-integration acceptance. Selected domains; malformed/exhaustive argument/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "a450af468c45f29a314195c2d4670c51b0d65a1b"
     },
     {
       "native": "ReloadPosition",
