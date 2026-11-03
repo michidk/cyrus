@@ -4449,6 +4449,231 @@
       ],
       "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
       "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+    },
+    {
+      "native": "AnimateGXA",
+      "status": "missing",
+      "owner": 11,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 4 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Related animation/dialogue services do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "LineUp",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ObjectLineUp",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ObjectParallelLineUp",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ObjectPickupLineUp",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "WaitLineUp",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 1 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "PlayerFaceTalk",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares task with 1 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Related animation/dialogue services do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "PlayerForceTalk",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named timing/presentation dispatch",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified: installed definition declares function with 1 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Related animation/dialogue services do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "EndMySound",
+      "status": "partial",
+      "owner": 12,
+      "scope": "Receiver-routed effect stop command and channel ownership filtering",
+      "caller": "ScriptWorld::advance -> script/sound.rs::command -> ScriptSound::StopEffect -> cyrus-audio sound/script.rs -> channels.stop_matching",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_sound_commands_keep_receiver_and_authored_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/sound.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by inspected assertions: public stage emits receiver identity, effect12, owned true and return zero. Audio adapter forwards optional owner plus effect and removes matching pending browser cues. Unknown: matched channel termination, retained ownership/replacement, pending-cue cancellation and audible original/native/browser outcomes for this named call. Emitted commands and adapter source are not audible acceptance. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "EndSound",
+      "status": "partial",
+      "owner": 12,
+      "scope": "Receiver-routed effect stop command and channel ownership filtering",
+      "caller": "ScriptWorld::advance -> script/sound.rs::command -> ScriptSound::StopEffect -> cyrus-audio sound/script.rs -> channels.stop_matching",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_sound_commands_keep_receiver_and_authored_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/sound.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by inspected assertions: public stage emits receiver identity, effect12, owned false and return zero. Audio adapter forwards optional owner plus effect and removes matching pending browser cues. Unknown: matched channel termination, retained ownership/replacement, pending-cue cancellation and audible original/native/browser outcomes for this named call. Emitted commands and adapter source are not audible acceptance. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "HoldAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Receiver animation wait control",
+      "caller": "ScriptWorld::advance -> GameHost::call -> receiver playback wait control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::animation_hold_pause_and_release_take_the_receiver_and_reject_wrong_argument_counts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by source inspection: sets wait byte255 when a playback record exists; absent record returns zero. Public test checks successful calls and wrong argument counts on an actor WITHOUT playback. Unknown: public-call mutation on populated playback, countdown/release boundaries and matched visible original/native/browser playback. World helper coverage does not prove registry-to-playback composition. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "PauseAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Receiver animation wait control",
+      "caller": "ScriptWorld::advance -> GameHost::call -> receiver playback wait control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::animation_hold_pause_and_release_take_the_receiver_and_reject_wrong_argument_counts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by source inspection: sets wait to the low byte of its integer argument when a playback record exists; absent record returns zero. Public test checks successful calls and wrong argument counts on an actor WITHOUT playback. Unknown: public-call mutation on populated playback, countdown/release boundaries and matched visible original/native/browser playback. World helper coverage does not prove registry-to-playback composition. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ReleaseAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Receiver animation wait control",
+      "caller": "ScriptWorld::advance -> GameHost::call -> receiver playback wait control",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::animation_hold_pause_and_release_take_the_receiver_and_reject_wrong_argument_counts"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by source inspection: releases held playback when a playback record exists; absent record returns zero. Public test checks successful calls and wrong argument counts on an actor WITHOUT playback. Unknown: public-call mutation on populated playback, countdown/release boundaries and matched visible original/native/browser playback. World helper coverage does not prove registry-to-playback composition. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ResetGroupSync",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Clear caller posted synchronization state with current-channel guard",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GroupSync.reset_current",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::reset_group_sync_native_accepts_no_arguments_and_rejects_arguments",
+        "crates/cyrus-game/src/script/group_sync.rs::ending_clears_pending_state_and_ignored_members_do_not_block"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by source inspection: reads current attribute29, guards retained channel membership and clears posted state without changing membership/released value. Public test covers no-argument success and argument rejection, not a populated channel reset. GroupSync helper test exercises reset and subsequent group-cycle release below named dispatch; it does not cover the user reset or current-channel guard. Unknown: populated public reset, changed-channel refusal and matched original/native/browser reset sequences. General synchronized-walking acceptance does not complete these named reset calls. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+    },
+    {
+      "native": "ResetUserSync",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Clear caller posted synchronization state with current-channel guard",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GroupSync.reset_user",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::reset_user_sync_native_validates_arguments"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+      ],
+      "limits": "Verified by source inspection: reads current attribute30, guards retained channel membership and clears posted state without changing membership/released value. Public test covers no-argument success and argument rejection, not a populated channel reset. GroupSync helper test exercises reset and subsequent group-cycle release below named dispatch; it does not cover the user reset or current-channel guard. Unknown: populated public reset, changed-channel refusal and matched original/native/browser reset sequences. General synchronized-walking acceptance does not complete these named reset calls. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
+      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
     }
   ],
   "instructions": [
