@@ -1491,6 +1491,258 @@
       ],
       "limits": "Verified by source inspection: public ScriptWorld fixture uses synthetic HUD text and controller/clock input, wraps highlight and resumes with value seven on release. Verified: #36 actual native installed topic/submenu/BACK/BYE release path and #37 bounded cross-host conversation/BYE continuation. Unknown: matched original/native/browser all menu choices, mouse/gamepad and exact admission/render timing. The rejected held-key driver is excluded.",
       "reviewed_revision": "f0e316d7a3bb64b2b5ae739cda85afcf3d66a031"
+    },
+    {
+      "native": "AddFlatEffect",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Script-created environmental flat effect, descriptor, native speed and spread boundary",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> spawn_environment_effect_with_speed -> environmental effect renderer",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::add_flat_effect_retains_native_speed_and_rejects_nonzero_spread"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public-stage synthetic effect fixture checks one spawned effect, speed-dependent frame progression, descriptor variants and explicit nonzero-spread rejection. Unknown: matched installed original/native/browser imagery, lifetime and ordering for the authored caller. A retained effect and frame count do not prove rendered parity; nonzero spread remains unsupported.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "FlatAnimate",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Actor-flat animation admission, maintenance and rendering",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
+        "crates/cyrus-game/tests/script_registry.rs::ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public ordinary-update fixture advances frame zero to one on the next maintenance pass. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "FlatLikeStatic",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Actor-flat static playback sentinel and presentation",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
+        "crates/cyrus-game/tests/script_registry.rs::flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public dispatch asserts frame word 65535. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "FlatOff",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Disable and later release the receiver flat record",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
+        "crates/cyrus-game/tests/script_registry.rs::flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures",
+        "crates/cyrus-game/tests/script_registry.rs::ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public dispatch leaves an absent record absent; ordinary maintenance releases an explicitly disabled record on a later pass. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "FlatOffset",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Receiver-flat low-word offset and draw placement",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
+        "crates/cyrus-game/tests/script_registry.rs::flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures",
+        "crates/cyrus-game/tests/script_registry.rs::actor_flat_draws_place_enabled_records_at_the_pose_plus_the_rotated_offset"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: public dispatch asserts low-word offset storage; the separate draw fixture starts from an unmodified placement and does not exercise a nonzero rotated offset. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "FlatSetTexture",
+      "status": "partial",
+      "owner": 57,
+      "scope": "Installed bank/image selection and playback reset",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
+      "tests": [
+        "crates/cyrus-game/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
+        "crates/cyrus-game/src/script/registry/flat.rs::missing_banks_and_wide_images_are_contextual_errors"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/57"
+      ],
+      "limits": "Verified by inspection: reviewed native record oracle includes texture changes; no successful public ScriptWorld FlatSetTexture dispatch assertion was located. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "InKey",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Script keyboard query from sampled letters and encoded modifiers",
+      "caller": "ScriptWorld::advance -> script/registry.rs InKey -> ScriptKeys::in_key; quick_keys::sample supplies host keys",
+      "tests": [
+        "crates/cyrus-game/src/script/quick_keys.rs::in_key_tests_the_letter_and_the_modifiers_named_by_the_higher_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103"
+      ],
+      "limits": "Verified by inspection: helper assertions cover letter case, absent letter, Alt-required encoding and unsupported digit returning None. They do not dispatch InKey through ScriptWorld or exercise production input locks. Unknown: installed original/native/browser key-query/input-focus behavior and unsupported scan-code forms. #49 source/test mentions do not supply that acceptance.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "OpenShell",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Named shell admission, execution lifecycle and replacement",
+      "caller": "ScriptWorld::advance -> script/registry.rs OpenShell -> ScriptWorld::spawn_shell",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_names",
+        "crates/cyrus-game/tests/script_registry.rs::a_shell_started_after_preparation_survives_a_snapshot_roundtrip"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103"
+      ],
+      "limits": "Verified by inspection: public OrdinaryMain invocation admits a case-insensitive synthetic shell and rejects an unknown name. Snapshot fixture calls spawn_shell directly, preserves the extra shell and rejects a forged map source. Unknown: installed original/native/browser OpenShell first-update ordering, duplicate admission and active-shell replacement. Direct helper restore does not prove native admission across hosts.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "PrintSingleParm",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver-name/value output retention and host display",
+      "caller": "ScriptWorld::step -> script/registry.rs -> GameplayGlobals::print_line",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
+        "https://github.com/michidk/cyrus/issues/191"
+      ],
+      "limits": "Verified by inspection: public script step repeated seventy times retains sixty-six lines and exact ACTOR -7 text. Source documents display as host-owned; no production printed_lines display consumer was located in this review. Unknown: original/native/browser visible console delivery, ordering and lifecycle. Shared console editor completion does not prove this output path.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "QueueMovie",
+      "status": "partial",
+      "owner": 44,
+      "scope": "Play-now versus deferred script movie and destination continuation",
+      "caller": "ScriptWorld::advance -> registry QueueMovie -> GameplayGlobals -> world_request::consume -> startup movie host",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::queue_movie_plays_five_through_ten_at_once_and_queues_the_rest_for_the_next_load",
+        "crates/cyrus-game/src/script/world_request.rs::scripted_movie_prefers_play_now_and_stays_inside_the_table",
+        "crates/cyrus-startup/src/movie.rs::script_movie_entry_is_taken_once_the_book_exists"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/44#issuecomment-6542446624",
+        "https://github.com/michidk/cyrus/issues/63#issuecomment-6532589082",
+        "https://github.com/michidk/cyrus/issues/88"
+      ],
+      "limits": "Verified by inspection: public dispatcher asserts play-now five through ten, deferred queue, sentinel and replacement; lower host tests assert movie priority and one request after book creation. Verified: native authored journal activation displayed SCENE3, continued into world28 with no failures and captured unlock bits. Its later load follow-up timed out and is excluded. Unknown: matched original/browser authored queued call, active replacement/waits, physical synchronization and uninterrupted playback. #44 closure does not erase these narrower receipt limits.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "QuickRnd",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Shared random draw, mask and lifetime across routed actors/worlds",
+      "caller": "ScriptWorld::advance -> script/registry.rs QuickRnd -> EngineRandom::quick_rnd",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::random_stream_is_shared_by_routed_actors_and_survives_world_replacement",
+        "crates/cyrus-game/tests/script_registry.rs::random_handler_requires_shared_state_and_invalid_bounds_fail_stickily",
+        "crates/cyrus-game/src/random.rs::sequential_calls_match_original_results_and_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103"
+      ],
+      "limits": "Verified by inspection: public routed calls assert exact sequential results and shared state across a newly prepared world, while helper golden rows cover signed/zero masks and original arithmetic. Missing random ownership rejects before state mutation. Unknown: complete installed original/native/browser session draw-consumption order and replacement/restart equivalence. A shared generator arithmetic result does not prove gameplay random order.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "ShowBitmap",
+      "status": "partial",
+      "owner": 60,
+      "scope": "Shared power-up bitmap slots, installed-frame validation and visible lifecycle",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> ScriptHud::call -> HUD presentation renderer",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::script_powerup_dispatch_validates_installed_frames_and_retains_slot_order"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/145",
+        "https://github.com/michidk/cyrus/issues/60"
+      ],
+      "limits": "Verified by inspection: public dispatch with synthetic installed-frame data asserts two-slot order, duplicate-ID handling, clearing only the first matching ID and rejection without state mutation. #145 records original-instruction checks and native/browser START entry, but supplies no detailed per-native live receipt. Unknown: actual original/native/browser script-driven appearance/removal, retained HUD layout and replacement timing. Generic START entry does not prove these calls executed.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "UnShowBitmap",
+      "status": "partial",
+      "owner": 60,
+      "scope": "Shared power-up bitmap slots, installed-frame validation and visible lifecycle",
+      "caller": "ScriptWorld::advance -> script/registry.rs -> ScriptHud::call -> HUD presentation renderer",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::script_powerup_dispatch_validates_installed_frames_and_retains_slot_order"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/145",
+        "https://github.com/michidk/cyrus/issues/60"
+      ],
+      "limits": "Verified by inspection: public dispatch with synthetic installed-frame data asserts two-slot order, duplicate-ID handling, clearing only the first matching ID and rejection without state mutation. #145 records original-instruction checks and native/browser START entry, but supplies no detailed per-native live receipt. Unknown: actual original/native/browser script-driven appearance/removal, retained HUD layout and replacement timing. Generic START entry does not prove these calls executed.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "ViewGXA",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Task-owned installed full-screen image, elapsed lifetime and presentation",
+      "caller": "ScriptWorld::advance -> script/tasks.rs ViewGxa -> ScriptWorld::gxa_overlay -> startup OverlayPlugin",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks.rs::view_gxa_shows_its_frame_until_the_count_elapses_then_clears_it",
+        "crates/cyrus-startup/src/overlay.rs::installed_images_export_as_full_screen_frames_for_every_script_name"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103"
+      ],
+      "limits": "Verified by inspection: NativeTasks fixture checks requested name/frame and elapsed clear boundary below public ScriptWorld dispatch. Installed export test decodes three image names to 640 by 480, without rendering them. Overlay source waits for image readiness. Unknown: actual installed original/native/browser task admission, visible frame, lifetime under asynchronous loading and cancellation/replacement. Export dimensions do not establish presentation.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+    },
+    {
+      "native": "WonGame",
+      "status": "partial",
+      "owner": 44,
+      "scope": "Production ending handoff, movie/credits/book/restart and retained-task disposal",
+      "caller": "ScriptWorld::advance -> registry WonGame -> finish_world_loop -> world_request::consume -> EndingEntry / startup movie and credits",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::session_request_natives_raise_requests_for_the_host",
+        "crates/cyrus-startup/src/movie.rs::ending_plays_movie_four_once_after_the_book_exists_and_stops_effects"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/44#issuecomment-6534761024",
+        "https://github.com/michidk/cyrus/issues/44#issuecomment-6591770168",
+        "https://github.com/michidk/cyrus/issues/44#issuecomment-6590824427"
+      ],
+      "limits": "Verified by inspection: dispatcher fixture retains the request; isolated host test waits for a book then sends movie four and StopAll exactly once. Verified public receipts: original real-input fight/ending/book/New Game, native fight and ending, and browser ending/restart pass on their recorded revisions. Browser restart used a diagnostic kill; earlier production browser movie evidence used a restored diagnostic checkpoint and normal combat. Unknown: direct retained-waiting-script disposal at WonGame, physical audio timing and full unskipped parity. Post-ending SAVE availability differs explicitly in docs/DIFFERENCES.md. #44 is closed for its stated bounded acceptance; this broader behavior row remains partial.",
+      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
     }
   ]
 }
