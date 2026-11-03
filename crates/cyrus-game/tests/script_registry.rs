@@ -34989,6 +34989,102 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
 }
 
 #[test]
+fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both_jump_rows() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    for (group, bit, queued, request) in [
+        (18, 1, 8, 34),
+        (18, 2, 9, 36),
+        (30, 1, 8, 35),
+        (30, 2, 9, 37),
+        (18, 3, 8, 34),
+        (30, 3, 8, 35),
+    ] {
+        for (initial_timer, first_timer, second_ticks) in [(35, 36, 1), (255, 0, 37)] {
+            let mut scripts = cache();
+            scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
+            let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+            for (index, value) in [(1, 4), (31, 8), (32, 32), (44, group), (107, 1)] {
+                attributes.insert(format!("attr_{index}"), value);
+            }
+            for placement in &mut scripts.instances {
+                placement.active = 1;
+                placement.object_type = 1;
+                placement.map_position = [600, 20, 600];
+            }
+            scripts.content_id = scripts.content_identity().unwrap();
+            let (world, mut data, models) =
+                static_model_fixture_at(scripts.clone(), None, [600, 20, 600]);
+            let definition = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "LOGIC")
+                .unwrap();
+            definition["model_load_path"] = "animation_table".into();
+            definition["animation_groups"] = serde_json::json!(
+                [0, 18, 30, 34, 35, 36, 37, 44, 46].map(|group| serde_json::json!({
+                    "group_index":group,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]
+                }))
+            );
+            let mut world = replace_health_test_animation(
+                world,
+                &scripts,
+                &mut data,
+                0,
+                group as u16,
+                |saved| {
+                    saved["actors"][0]["control"]["directional_state"] =
+                        serde_json::json!([0x100 | bit, 0x200]);
+                    saved["actors"][0]["control"]["jump_window"] = initial_timer.into();
+                },
+            );
+            let scene = ordinary_collision_scene(world.world, models);
+            let mut random = cyrus_game::random::EngineRandom::default();
+            for promoted in [false, true] {
+                world
+                    .update_ordinary(
+                        &data,
+                        [600, 600],
+                        OrdinaryInputs {
+                            scripts: ScriptInputs {
+                                nominal_ticks: Some(if promoted { second_ticks } else { 1 }),
+                                frame_scale: Some(256),
+                                fine_ticks: Some(0),
+                                step_fps: Some(12),
+                                ..Default::default()
+                            },
+                            scene: Some(&scene),
+                        },
+                        &mut random,
+                        &mut |_, _| Ok(()),
+                        100,
+                    )
+                    .unwrap();
+                let actor = &world.actors()[0];
+                assert!(actor.failure().is_none(), "{:?}", actor.failure());
+                let control = actor.control_state().unwrap();
+                if promoted {
+                    assert_eq!(control.jump_window, 0);
+                    assert_eq!(control.directional_state, [0, 0x300]);
+                    assert_eq!(control.queued_motion, queued);
+                    let animation = &world.inspect(0, 1)["actors"][0]["animation"];
+                    assert!(
+                        animation["current_group"] == request
+                            || animation["pending_group"] == request,
+                        "{animation}"
+                    );
+                } else {
+                    assert_eq!(control.jump_window, first_timer);
+                    assert_eq!(control.directional_state, [0x100 | bit, 0x200]);
+                    assert_eq!(control.queued_motion, 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn a_support_miss_in_a_jump_group_carries_the_last_displacement_into_the_fall() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
