@@ -3725,10 +3725,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/248"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified installed4-argument native/full136-byte handler,91-byte position resolver and both predicates: source then receiver resolution, discard receiver result; source matrix transforms signed offset, wrapped source-resolved-position plus offset writes receiver local XYZ; return0/fourth-argument cleanup/no registration.900 original wrapper/predicate contexts/16 effective controls with transform controlled IO. Separately complete202-byte matrix helper432 original machine contexts/6 effective mutations match independent arithmetic reference across4 rounding modes/3 precision controls: single input and row-result stores, x87 intermediates, active-rounding signed conversion. Conditional incoming control word; composition tested in separate witnesses. Producers, malformed pointers, nonfinite matrices/unmasked exceptions/nonempty FPU stack, exhaustive domain, VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "c28b104f2cfff12f33677a5d257c2ff6eca6b62a"
     },
     {
       "native": "SetLocation",
