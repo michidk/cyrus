@@ -3573,10 +3573,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/blob/ae16e6342dd23c918e96935f10f568ad80642819/docs/engine/SOUP.md#turntoangle-native-boundary"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified independent installed one-argument declaration/exact binding/full502-byte native/original holding184/sheathing122/model130/weapon76/angle90/abs7-byte dependencies:8064 original-instruction contexts/17 effective semantic controls PASS,3458 returns/2108 animation-entry stops/2498 selected-player matrix-entry stops. Selected raw current/target angles/four attribute bytes/three scale words/eight receiver states/two receiver identities/selected-player modes, not full joint domain. Prior holding/model/sheathing exact identity audited once; new native chain executes original instructions. Exact equality/attribute choice/wrapped scaled minimum8 step/11-bit shortest difference/half-turn signs/snap/incremental yaw and return evidenced. Stops exactly at animation or matrix service entry; no substituted return values/effects/continuation or full animation/matrix parity claim. Full mapped memory/nonstack write order/domain/five preserved registers on returns/stack-canary checked; partial-register/negation interpreter check PASS. Production named dispatch missing; no acceptance inferred. Unknown dependency effects/continuation/producers/lifecycle/malformed metadata/VM/natural original/native/browser/full joint domain.",
+      "reviewed_revision": "4e4bb346cfbf5a2d37fc60b97660987725ab7784"
     },
     {
       "native": "TurnToPos",
