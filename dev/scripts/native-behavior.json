@@ -3074,5 +3074,223 @@
       "limits": "Verified by source/assertion inspection, not a Rust test rerun. Public invoke asserts-1073741824 for unsigned divide, wrapping add and signed masked shift; formula requires integer-valued operands. Source supports operators1..9 and contextual division-by-zero errors. Unknown: every operator/zero-divisor/side-effect boundary and original/native/browser literal expression traces; no blanket arithmetic parity from one chain. Broad task/restore receipts under9/10 are bounded production evidence, not isolation of every operand. Partial is an inferred assessment.",
       "reviewed_revision": "5d8fb63cc699094c0faa4047baeab07930070494"
     }
+  ],
+  "properties": [
+    {
+      "property": "pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resolved actor local signed32 Q8 position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::position_properties_read_local_coordinates_without_refreshing_pose",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_writes_change_only_the_selected_local_coordinate",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_access_keeps_attached_effective_pose_until_family_refresh"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures exercise signed32 extremes, Me/Player/Named resolution, selected-coordinate-only writes and attached effective pose retained until family refresh. Unknown: original/native/browser every descriptor dispatch and save/revisit boundary; live movement acceptance is related behavior, not direct property trace. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resolved actor local signed32 Q8 position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::position_properties_read_local_coordinates_without_refreshing_pose",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_writes_change_only_the_selected_local_coordinate",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_access_keeps_attached_effective_pose_until_family_refresh"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures exercise signed32 extremes, Me/Player/Named resolution, selected-coordinate-only writes and attached effective pose retained until family refresh. Unknown: original/native/browser every descriptor dispatch and save/revisit boundary; live movement acceptance is related behavior, not direct property trace. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Resolved actor local signed32 Q8 position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::position_properties_read_local_coordinates_without_refreshing_pose",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_writes_change_only_the_selected_local_coordinate",
+        "crates/cyrus-game/tests/script_registry.rs::position_property_access_keeps_attached_effective_pose_until_family_refresh"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures exercise signed32 extremes, Me/Player/Named resolution, selected-coordinate-only writes and attached effective pose retained until family refresh. Unknown: original/native/browser every descriptor dispatch and save/revisit boundary; live movement acceptance is related behavior, not direct property trace. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Local heading with current bounded representation; original complete32-bit field not fully supported",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver",
+        "crates/cyrus-game/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose",
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures resolve installed descriptor aliases at full references, write512 and preserve other pose fields; write4096 rejects without changing1536 heading. Preservation specifies complete32-bit field without normalization. Current source stores bounded u16 and refuses outside0..2048. This concrete representation gap remains unsupported, not full property parity. Unknown: wider installed writes and three-host continuation. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "rope",
+      "status": "partial",
+      "owner": 22,
+      "scope": "Logical rope-attached zero/nonzero query, not original rope pointer",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/22#issuecomment-6563066915"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Fixture only reads default unattached0. Source returns Boolean rope_attached while original descriptor holds a rope-record reference. Unknown: attached nonzero script read, pointer identity/write semantics, save/replacement and original/native/browser property trace. Rope gameplay acceptance cannot establish pointer-valued descriptor parity; writes remain unsupported. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "fall_flag",
+      "status": "partial",
+      "owner": 19,
+      "scope": "Unsigned motion falling-state byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/19#issuecomment-6586173487"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture writes7/reads7 and observes falling_state7. Source reads unsigned byte and writes low8. Unknown: byte-overflow property assertions, installed boundary/update/restore trace and three-host original parity. Movement tests using falling_state do not isolate this descriptor. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "jump_flag",
+      "status": "partial",
+      "owner": 18,
+      "scope": "Unsigned queued-motion byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/18#issuecomment-6528060608"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture writes7/reads7 and observes queued_motion7. Source reads unsigned byte and writes low8. Unknown: every overflow/property receiver and original/native/browser queued-state transition. Jump gameplay is distinct from property dispatch acceptance. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "torch_timer",
+      "status": "partial",
+      "owner": 38,
+      "scope": "Unsigned torch-burning byte with low8-only writes",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::torch_property_wraps_writes_and_reads_the_shared_counter_without_other_changes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6601678786"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture covers-1/0/255/256/511 and signed32 extremes for Me/Player/Named, asserting exact expected control and unchanged other actor. Property access itself does not decrement/effect torch. Unknown: installed original/native/browser direct descriptor timing/restore trace.38 Action torch acceptance is related lifecycle evidence, not isolation of property writes. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "scabbard[0]",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Signed16 first scabbard word with override readback",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-game/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture writes42/read42 in first override; separate fixture reads signed RAEX-32768 without creating overrides. Source truncates assigned value to i16. Unknown: overflow override and replacement lifetimes, installed original/native/browser script writes and downstream attachment parity for all models.30 key-path lifecycle does not isolate descriptor writes. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "scabbard[1]",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Signed16 second scabbard word with override readback",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-game/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture writes-3/read-3 in second override; separate uppercase descriptor fixture reads RAEX32767 without creating override. Unknown: signed overflow/restore and installed original/native/browser attachment behavior from property writes.30 key-path acceptance is narrower than all script overrides. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "hide",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Logical hidden-state byte presentation as Boolean",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixture writes1 then reads1/hidden true. Source stores value as low-byte nonzero Boolean, not arbitrary original byte identity; original descriptor width is one byte. Unknown: noncanonical values, model publication timing and direct original/native/browser property writes. HideMe native lifecycle is a separate caller. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    },
+    {
+      "property": "anim.current",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Signed16 current animation group read without advancing playback",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::current_animation_property_reads_signed_group_without_advancing_playback",
+        "crates/cyrus-game/tests/script_registry.rs::current_animation_property_without_an_association_returns_zero",
+        "crates/cyrus-game/tests/script_registry.rs::animation_and_torch_properties_reject_unprepared_owners_and_animation_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures read0 without association,-1 before current group,7 and signed32768-as-32768, across Me/Player/Named and assert unchanged animation inspection. Writes are unsupported. Unknown: installed original/native/browser exact script reads around request/completion/restore; visible playback does not isolate property semantics. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
+    }
   ]
 }

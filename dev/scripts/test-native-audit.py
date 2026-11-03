@@ -193,12 +193,40 @@ class BehaviorAuditTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             audit.local_target_census(self.root / 'absent', '*.scripts')
 
+    def test_property_modes_are_static_and_updates_are_not_double_counted(self):
+        prop = {'type': 'property', 'object': {'type': 'me'}, 'reference': 0}
+        data = {'definition': {'references': ['heading', 'other']}, 'actors': {
+            'A': {'program': {'steps': {
+                '0': {'operation': {'type': 'assign', 'destination': prop,
+                      'formula': {'first': {'type': 'read', 'place': prop}}}},
+                '1': {'operation': {'type': 'increment', 'destination': prop, 'delta': 1}},
+                '2': {'operation': {'type': 'if', 'conditions': [
+                      {'lhs': {'type': 'update', 'place': prop, 'delta': -1}}]}},
+            }}}}}
+        (self.root / 'one.scripts').write_text(json.dumps(data))
+        self.path.write_text(json.dumps({'properties': [dict(self.row, property='heading')]}))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--property-matrix', '--behavior', str(self.path)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {line.split('\t')[0]: line.split('\t')
+                for line in result.stdout.splitlines()[1:]}
+        self.assertEqual(rows['heading'][1:6], ['1', '1', '2', 'partial', '#5'])
+        self.assertEqual(rows['other'][1:5], ['0', '0', '0', 'unaudited'])
+        prop['reference'] = 99
+        (self.root / 'one.scripts').write_text(json.dumps(data))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--property-matrix', '--behavior', str(self.path)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('property reference 99 absent', result.stderr)
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]
         self.assertTrue(data['natives'])
         self.assertEqual(len({row['native'] for row in data['natives']}), len(data['natives']))
-        for row in data['natives'] + data.get('instructions', []) + data.get('operands', []):
+        for row in data['natives'] + data.get('instructions', []) + data.get('operands', []) + data.get('properties', []):
             for reference in row['tests']:
                 path, name = reference.split('::', 1)
                 self.assertIn('fn ' + name + '(', (root / path).read_text(), reference)

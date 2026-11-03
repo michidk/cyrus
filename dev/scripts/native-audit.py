@@ -28,6 +28,8 @@ from distinct actors. It does not establish current rejection or malformed origi
 it does not claim original byte encoding or host property behavior from VM support.
 `--local-targets` records explicit target/object uses and same-local write candidates,
 with static-only limits; ordinary local reads and writes are not object consumers.
+`--property-matrix` joins descriptor reviews with static decoded access modes; an
+update is one read-modify-write occurrence, not separate observed reads and writes.
 """
 import argparse
 import collections
@@ -267,6 +269,56 @@ def local_target_census(directory, pattern):
             "assignment_first_calls": dict(sorted(first_calls.items())),
             "limits": "Decoded exports only; unsupported bodies may hide operands. Same-slot writes are candidates, not reaching definitions or actor-reference producers. Absence does not establish live support or original reference fidelity."}
 
+
+def property_accesses(directory, pattern):
+    """Count explicit decoded reads/writes/updates; descriptors remain independent of execution."""
+    names, counts = set(), collections.defaultdict(collections.Counter)
+    files = sorted(glob.glob(os.path.join(directory, pattern)))
+    for path in files:
+        data = json.loads(Path(path).read_text())
+        references = data.get("definition", {}).get("references", [])
+        names.update(name for name in references if name)
+
+        def access(place, mode):
+            if place.get("type") == "property":
+                reference = place["reference"]
+                if not isinstance(reference, int) or not 0 <= reference < len(references):
+                    raise ValueError(f"{path}: property reference {reference} absent")
+                counts[references[reference]][mode] += 1
+
+        def walk(node):
+            if isinstance(node, dict):
+                kind = node.get("type")
+                if kind in {"assign", "increment"}:
+                    access(node.get("destination", {}), "update" if kind == "increment" else "write")
+                elif kind in {"read", "update"}:
+                    access(node.get("place", {}), kind)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        for actor in data.get("actors", {}).values():
+            walk(actor.get("program", {}))
+    if not names:
+        raise ValueError("no installed reference descriptors found")
+    return names, counts
+
+
+def property_matrix(path, directory, pattern):
+    names, counts = property_accesses(directory, pattern)
+    rows = behavior_rows(path, names, names, "properties", "property")
+    print("property\treads\twrites\tupdates\tstatus\towner\tscope\tcaller\ttests\tevidence\tlimits")
+    for name, row in rows:
+        values = [name, *(str(counts[name][mode]) for mode in ("read", "write", "update"))]
+        if row is None:
+            values += ["unaudited", "-", "-", "-", "-", "-", "No behavior review recorded."]
+        else:
+            values += [row["status"], f'#{row["owner"]}', row["scope"], row["caller"],
+                       "; ".join(row.get("tests", [])) or "-", "; ".join(row["evidence"]), row["limits"]]
+        print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
@@ -291,7 +343,16 @@ def main():
                         help="review portable values, destinations, targets and formula scopes")
     parser.add_argument("--local-targets", action="store_true",
                         help="census explicit local targets and same-slot write candidates, never execution")
+    parser.add_argument("--property-matrix", action="store_true",
+                        help="join reviewed descriptors with static read/write/update counts")
     args = parser.parse_args()
+    if args.property_matrix:
+        try:
+            property_matrix(args.behavior, args.scripts, args.pattern)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"invalid property audit: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.local_targets:
         try:
             print(json.dumps(local_target_census(args.scripts, args.pattern), indent=2))
