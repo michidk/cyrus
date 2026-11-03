@@ -3515,10 +3515,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/blob/f0d4202205ac6a8fa4552512df192d18b25c416e/docs/engine/SOUP.md#atpos-position-arrival"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified independent installed three-argument declaration/exact native/full217-byte handler/original370-byte speed query/101-byte metric/48-byte sqrt/195-byte changed-actor registration/31-byte copy.2180 original CPU contexts/17 effective semantic controls PASS,2062 returns/118 diagnostic stops. Selected arguments/positions/vertical adjustments/eight animation groups/four speed bytes/two receivers/two patterns/rounding-precision controls/queue counts0..2/capacities0..2/dedup states. Prior exact dependencies identity-audited once, new full named chain executes original bytes without numerical interception. Integer target/current truncation, vertical adjustment, strict scaled-speed threshold, position-before-registration, zero-count capacity bypass, dedup/capacity diagnostic verified. Full actor arena/head/queue/error snapshots/three preserved registers/stack on returns/x87 control/TOP checked. Sole controlled runtime diagnostic stops at error196 request after original source copy; continuation/effects/unwind/termination unknown. Production named dispatch missing; no acceptance inferred. Unknown natural CW/unmasked exceptions/nonempty FPU stack/malformed records/negative counts/list producers/lifetime/concurrency/VM/natural original/native/browser/full joint domain.",
+      "reviewed_revision": "aea12882f4cf724ba5e0da60429b5bd92190a179"
     },
     {
       "native": "AtNodePosition",
