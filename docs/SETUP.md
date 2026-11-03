@@ -98,6 +98,17 @@ render transform, so it cannot be used for this. Run one world per process.
 installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
 up there, though a mention does not prove the handler works.
 
+`--matrix` prints structural source pointers. `--behavior-matrix` prints the reviewed behavior
+scope, owning issue, public caller, inspected test assertions, evidence references and remaining
+limits for each called native. The reviewed snapshot lives in
+`dev/scripts/native-behavior.json`, with its source revision and review method. Unreviewed entries
+are `unaudited`, not `missing`. `partial` means some behavior exists but the stated scope still
+has implementation or acceptance gaps; `missing` requires an explicit review finding. `done`
+requires recorded original/native/browser acceptance for that scope. References are reviewed
+evidence, not automatically verified by the tool. A test name or source mention never promotes
+a status. Use `--behavior PATH` for a separately reviewed catalogue. Check the reporting contract
+without Cargo with `python3 dev/scripts/test-native-audit.py`.
+
 In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
 `window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
 data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key

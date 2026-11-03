@@ -1,0 +1,243 @@
+{
+  "reviewed_revision": "d3f09c1299a7ecf6da03706c8c2a7fcbcea500f5",
+  "reviewed_date": "2026-11-03",
+  "method": "Manual source/assertion and public acceptance-receipt review. Status is an inferred scope assessment; source/test mentions never establish behavior completion. Tests were inspected, not rerun by this catalogue-only change. All partial rows require the stated missing acceptance; missing means no supported behavior in scope, not merely absent evidence. Unlisted natives are unaudited.",
+  "natives": [
+    {
+      "native": "PlayAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Function request and installed multitask lifetime, including cancellation and rebinding",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (function); crates/cyrus-game/src/script/tasks.rs (multitask AnimationRequest)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::play_animation_requests_the_group_immediately_and_never_blocks_the_script",
+        "crates/cyrus-game/tests/script_animation_host.rs::installed_play_animation_multitask_retains_one_slot_across_end_and_stops_explicitly",
+        "crates/cyrus-game/tests/script_animation_host.rs::play_animation_task_encodings_reject_unrecovered_operands"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
+        "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
+      ],
+      "limits": "Verified: installed BAT native/browser pending-token continuation is accepted under #9. Unknown: all group initialization/default/model-replacement branches and rendered cue ordering under #11. A closed encoding scope does not complete the whole native."
+    },
+    {
+      "native": "PushAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Receiver-owned animation request, wait, routed identity and cancellation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (Animation)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::animation_wait_and_flags_share_one_runtime_and_separate_stages",
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously",
+        "crates/cyrus-game/tests/script_animation_host.rs::pause_resume_and_stop_keep_wait_and_animation_tokens_distinct"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
+        "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
+      ],
+      "limits": "Verified by source inspection: synthetic public-stage tests exercise requests, receiver identity and token cleanup. Unknown: matched installed original/native/browser request and replacement sequences. #11 draw/sheath observations are related playback evidence, not acceptance of every PushAnimation branch."
+    },
+    {
+      "native": "PushControlAnimation",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Animation task with held receiver turn while the requested group plays",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (ControlAnimation)",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::control_animation_turns_the_receiver_only_while_its_group_plays"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
+        "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
+      ],
+      "limits": "Verified by source inspection: task-manager call/poll test checks turn and group lifetime. It is below the public ScriptWorld caller. Unknown: installed routed dispatch, replacement and original/native/browser turn/render parity."
+    },
+    {
+      "native": "WaitAnimFrame",
+      "status": "partial",
+      "owner": 11,
+      "scope": "Task-frame wait uses receiver playback without advancing it",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (AnimationFrame)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::animation_frame_waits_resume_from_the_correct_owner_without_advancing_playback",
+        "crates/cyrus-game/tests/script_registry.rs::animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_completes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
+      ],
+      "limits": "Verified by source inspection: public calls distinguish receiver/selected playback and unavailable owner errors. Unknown: installed original/native/browser frame-boundary and cue-order comparison. The #11 browser chain does not isolate this native."
+    },
+    {
+      "native": "shoot",
+      "status": "partial",
+      "owner": 7,
+      "scope": "Create named script object at rotated creator offset with explicit orientation",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> ScriptWorld::create_object",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::shoot_creates_the_named_object_at_the_creator_with_the_given_orientation"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/7#issuecomment-6533136012",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#projectileai"
+      ],
+      "limits": "Verified by source inspection: public script test creates BALL and rejects unknown script names. #7 contact-body oracle/tests cover a different stage. Unknown: installed projectile creation/impact, generation lifetime and recycling parity across original/native/browser."
+    },
+    {
+      "native": "shootPlayer",
+      "status": "partial",
+      "owner": 7,
+      "scope": "Create named script object aimed at selected player",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> ScriptWorld::create_object",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::shoot_player_aims_the_created_object_at_the_selected_player"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/7#issuecomment-6533136012",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#projectileai"
+      ],
+      "limits": "Verified by source inspection: public script test checks created pose against selected target. Unknown: matched installed aim, dynamic actor lifetime, impact and recycling across original/native/browser. Source arithmetic is not live acceptance."
+    },
+    {
+      "native": "projectileAI",
+      "status": "partial",
+      "owner": 7,
+      "scope": "Retained flight task, parent-range completion, wall/contact body selection",
+      "caller": "ScriptWorld::update_ordinary -> crates/cyrus-game/src/script/tasks.rs (Projectile) -> crates/cyrus-game/src/script/registry/projectile.rs::fly_projectile",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_the_script",
+        "crates/cyrus-game/tests/script_registry.rs::projectile_ai_stops_at_a_wall_contact",
+        "crates/cyrus-game/tests/script_registry.rs::projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/7#issuecomment-6533136012",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#projectileai"
+      ],
+      "limits": "Verified: public ordinary-update tests check 15 flight steps, continuation and wall stop; #7 records selected-body original oracle and negative control. Unknown: live installed impact/recycling parity, authored actor order and rendered/audio response. Contact fidelity also belongs to #28."
+    },
+    {
+      "native": "DragonBreath",
+      "status": "partial",
+      "owner": 7,
+      "scope": "Smoke/fireball update, target-range/cooldown and death item swap",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/registry/dragon.rs::breathe",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::a_living_dragon_without_the_targeting_flag_keeps_breathing_and_creates_nothing",
+        "crates/cyrus-game/tests/script_registry.rs::a_dragon_closer_than_its_minimum_range_to_its_target_keeps_breathing_without_fire",
+        "crates/cyrus-game/tests/script_registry.rs::a_dead_dragon_swaps_the_taken_item_for_the_given_one_and_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#golemsteam-and-dragonbreath",
+        "https://github.com/michidk/cyrus/issues/7#issuecomment-6533136012"
+      ],
+      "limits": "Verified by source inspection: public tests cover no-target, below-range and dead-receiver swap. Unknown: actual installed smoke/fireball/cooldown sequence and original/native/browser presentation. No live dragon acceptance was found in reviewed #7 receipts."
+    },
+    {
+      "native": "DragonBreathTask",
+      "status": "partial",
+      "owner": 7,
+      "scope": "Multitask invokes shared breath update until dead receiver completes it",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (DragonBreath) -> registry/dragon.rs::breathe",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::dragon_breath_task_runs_the_update_every_invocation_and_completes_when_it_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#golemsteam-and-dragonbreath",
+        "https://github.com/michidk/cyrus/issues/7#issuecomment-6533136012"
+      ],
+      "limits": "Verified by source inspection: helper test calls Task::complete with a recording host, checks repeat/zero and missing-owner failure. It does not dispatch a public script call. Unknown: installed multitask encoding, snapshot rebinding and live original/native/browser continuation."
+    },
+    {
+      "native": "CollidePlayerWeapon",
+      "status": "partial",
+      "owner": 28,
+      "scope": "Selected drawn-weapon swing admission and retained tip sphere query",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> actor_weapon_predicates / retained weapon endpoints",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weapon"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#offset-playeroffset-playeroffsettask-and-collideplayerweapon",
+        "https://github.com/michidk/cyrus/issues/28#issuecomment-6571237901"
+      ],
+      "limits": "Verified by source inspection: the named public test checks only the no-drawn-weapon/no-swing false branch. #28 range_contact tests exercise a different contact caller, so they do not prove this native positive path. Unknown: positive/edge contact dispatch and original/native/browser comparison."
+    },
+    {
+      "native": "adjustHealth",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Selected/generic additive health modes, admission, feedback and failure ordering",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/registry/health.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::selected_native_health_routes_addition_and_retains_early_feedback",
+        "crates/cyrus-game/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/commit/b0db4d4e3378eb16375194aed034688bb66be59a",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6518880324"
+      ],
+      "limits": "Verified: published public-routing regression/original wrapper oracle covers selected addition and retained feedback. The native quick-health observation is related shared health behavior, not direct AdjustHealth acceptance. Unknown: all death modes/environmental effects, rendered/audio browser and restart parity."
+    },
+    {
+      "native": "setHealth",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Absolute health write with generic admission and death-service ownership",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> crates/cyrus-game/src/script/registry/health.rs",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/31",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6518880324"
+      ],
+      "limits": "Verified by source inspection: public script cases cover absolute value, attribute120 inhibition and missing death/weapon owners. Those contextual missing-input errors are deliberate service guards, not proof the entire behavior is missing. Unknown: direct installed original/native/browser absolute health and fatal-mode continuation."
+    },
+    {
+      "native": "health",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Receiver attribute3 query and its ownership through the public script caller",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (health/playerhealth branch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::health_strength_and_armor_queries_read_the_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#health-native-routing",
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6518880324"
+      ],
+      "limits": "Verified by source inspection: public test returns receiver values0,40,100. The quick-health live receipt measures state, not this exact query call. Unknown: a retained installed original/native/browser query observation and all receiver-form coverage. No full-native completion inferred from a simple dispatch arm."
+    },
+    {
+      "native": "isDead",
+      "status": "partial",
+      "owner": 32,
+      "scope": "Receiver dead-state predicate through public native routing",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> actor_is_dead",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::visibility_calls_return_zero_without_disabling_the_receivers_script",
+        "crates/cyrus-game/tests/script_registry.rs::mark_actor_dead_sets_the_state_is_dead_reads"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/32",
+        "https://github.com/michidk/cyrus/issues/32#issuecomment-6520491479"
+      ],
+      "limits": "Verified by source inspection: first test actually dispatches isDead for a living receiver and checks zero; second only calls mark_actor_dead and checks attribute3, despite its name. Unknown: positive dead predicate through public dispatch and matched installed original/native/browser observation. Death presentation remains #32. The native armed/unarmed death receipt observes groups121/122, not a positive isDead script result."
+    },
+    {
+      "native": "beginCombat",
+      "status": "partial",
+      "owner": 26,
+      "scope": "Synchronous idempotent combat entry and selected/nonselected retained owners",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs -> weapon::CombatReceiver::begin",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts",
+        "crates/cyrus-game/tests/script_registry.rs::combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effects"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/25#issuecomment-6521043493",
+        "https://github.com/michidk/cyrus/issues/26#issuecomment-6521888810"
+      ],
+      "limits": "Verified: public tests cover statement/expression/derived inputs and repeated entry; #25 accepts automatic START message continuation. #26 comparison corrects an earlier unmatched-frame-rate cadence claim. Unknown: all routed/reset/contact boundary branches and full pacing parity; #25 closure does not complete this broader combat scope."
+    }
+  ]
+}

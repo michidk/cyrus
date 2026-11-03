@@ -18,12 +18,15 @@ Run it after exporting every world:
 
 `--matrix` lists every called native with its kind, the number of worlds calling it and the source
 files that name it exactly or in snake case (a pointer for the per-native audit, not proof of behaviour).
+`--behavior-matrix` instead joins explicitly reviewed evidence from native-behavior.json.
+Unreviewed names are unaudited, never inferred missing or complete from source mentions.
 """
 import argparse
 import collections
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import sys
 
@@ -99,6 +102,33 @@ def matrix(root, catalogue, used):
     return rows
 
 
+def behavior_rows(path, catalogue, used):
+    """Join manually reviewed scopes, preserving unknown coverage outside the audited slice."""
+    data = json.loads(Path(path).read_text())
+    reviewed = {}
+    for row in data["natives"]:
+        name = row["native"]
+        if name in reviewed or name not in catalogue:
+            raise ValueError(f"duplicate or unknown catalogue native: {name}")
+        if row["status"] not in {"done", "partial", "missing"}:
+            raise ValueError(f"invalid behavior status: {name}")
+        if not isinstance(row["owner"], int) or row["owner"] <= 0:
+            raise ValueError(f"owning issue required: {name}")
+        for field in ("scope", "caller", "evidence", "limits"):
+            if not row[field]:
+                raise ValueError(f"{name}: {field} required")
+        if not isinstance(row["evidence"], list) or not all(
+            isinstance(reference, str) and reference for reference in row["evidence"]
+        ):
+            raise ValueError(f"{name}: evidence must be a nonempty list of references")
+        if row["status"] == "done" and not all(
+            row.get("acceptance", {}).get(host) for host in ("original", "native", "browser")
+        ):
+            raise ValueError(f"{name}: done requires original/native/browser acceptance references")
+        reviewed[name] = row
+    return [(name, reviewed.get(name)) for name in sorted(used)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
@@ -108,11 +138,35 @@ def main():
     parser.add_argument(
         "--matrix", action="store_true", help="print one tab-separated row per called native"
     )
+    parser.add_argument(
+        "--behavior-matrix", action="store_true", help="print reviewed behavior, owner and limits"
+    )
+    parser.add_argument(
+        "--behavior", default=str(Path(__file__).with_name("native-behavior.json")),
+        help="reviewed behavior catalogue used by --behavior-matrix",
+    )
     args = parser.parse_args()
     catalogue, used, count = collect(args.scripts, args.pattern)
     if not used:
         print(f"no natives found in {count} script exports under {args.scripts}")
         return 1
+    if args.behavior_matrix:
+        try:
+            rows = behavior_rows(args.behavior, catalogue, used)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"invalid behavior catalogue: {error}", file=sys.stderr)
+            return 1
+        print("native\tkind\texport_files\tstatus\towner\tscope\tcaller\ttests\tevidence\tlimits")
+        for name, row in rows:
+            values = [name, catalogue.get(name, ""), str(len(used[name]))]
+            if row is None:
+                values += ["unaudited", "-", "-", "-", "-", "-", "No behavior review recorded."]
+            else:
+                values += [row["status"], f'#{row["owner"]}', row["scope"], row["caller"],
+                           "; ".join(row.get("tests", [])) or "-",
+                           "; ".join(row["evidence"]), row["limits"]]
+            print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
+        return 0
     if args.matrix:
         for name, kind, worlds, files in matrix(args.sources, catalogue, used):
             print(f"{name}\t{kind}\t{worlds}\t{', '.join(files) or '-'}")
