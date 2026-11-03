@@ -5933,10 +5933,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
+        "https://github.com/michidk/redguard-preservation/blob/7ea3b3d/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: installed declaration is function with one argument. No exact named handler, matching generic delegate or dedicated public assertion located. Existing damage/health, kill and projectile services do not establish this differently named native. Unknown: original operand/side-effect/result contract beyond published facts/declaration; no damage, teleport or kill semantics inferred from the name. Static zero calls cannot exclude Unsupported bodies in historical schema-27 exports. Rust/runtime NOT RUN.",
-      "reviewed_revision": "1dd9045d8cdd2104d062f485233a970337e0f677"
+      "limits": "Verified: installed function1/exact native binding/full original handler independently resolved. Original instruction cases check receiver-independent selected-player byte adjustment, global bypass, signed threshold update, wrapping sum/signed ceiling before zero clamp, exact full local result publication/return for nonnegative arguments, and exact first negative-argument service entry with player/mode2. Full mapped memory/nonstack write order/canary; preserved registers/stack on returns. Unknown: negative-argument service effects/return/continuation and later service effects, natural global producers/pointer lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/runtime NOT RUN.",
+      "reviewed_revision": "49676e7747117ccfc32cfde77d4b75ec15f66a74"
     },
     {
       "native": "Rnd",
