@@ -5184,10 +5184,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/blob/d8dc041c920047f4506c62f6c16245ee74a4b3ab/docs/engine/SOUP.md#isinair-query"
       ],
-      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses sliding/falling/queued nonzero or living_state27..29. Source explicitly assumes transition lock clear/world active; those original global gates are not represented. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified independent installed zero-argument declaration/exact native binding/full original handler: 5936 instruction contexts and 12 effective semantic controls passed. Null receiver or nonzero shared mode returns zero before receiver reads; otherwise nonzero sliding/falling/queued-motion or living-state27/28/29 returns Boolean1. Each state byte independently covers all256 values; joint domain bounded. No controlled services, calls or nonstack writes; both actors/global memory, six preserved registers, stack/canary checked. Native-enable word not read. Existing public fixture only fresh-state zero/extra-argument rejection; production global mode remains unrepresented. Unknown malformed active receiver, state producers/lifetime/concurrency, VM/natural original/native/browser and exhaustive joint domain. No production acceptance inferred.",
+      "reviewed_revision": "e1bdad864681942d5da5bb9c77a0f32c7b4ca41a"
     },
     {
       "native": "IsCombatCapable",
