@@ -221,12 +221,42 @@ class BehaviorAuditTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('property reference 99 absent', result.stderr)
 
+    def test_property_groups_expand_only_explicit_members(self):
+        group = dict(self.row, properties=['Reviewed'], status='missing')
+        self.path.write_text(json.dumps({'property_groups': [group]}))
+        rows = dict(audit.behavior_rows(self.path, self.catalogue, self.used,
+                                        'properties', 'property'))
+        self.assertEqual(rows['Reviewed']['status'], 'missing')
+        self.assertEqual(rows['Reviewed']['property'], 'Reviewed')
+        self.assertIsNone(rows['Mentioned'])
+
+    def test_property_groups_reject_ambiguous_or_incomplete_reviews(self):
+        group = dict(self.row, properties=['Reviewed'], status='missing')
+        variants = [
+            {'property_groups': [dict(group, properties=[])]},
+            {'property_groups': [dict(group, properties='Reviewed')]},
+            {'property_groups': [dict(group, properties=[None])]},
+            {'property_groups': [dict(group, properties=[''])]},
+            {'property_groups': [dict(group, properties=['Unknown'])]},
+            {'property_groups': [dict(group, properties=['Reviewed', 'Reviewed'])]},
+            {'property_groups': [group, group]},
+            {'properties': [dict(self.row, property='Reviewed')],
+             'property_groups': [group]},
+            {'property_groups': [dict(group, status='done')]},
+        ]
+        for data in variants:
+            with self.subTest(data=data):
+                self.path.write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    audit.behavior_rows(self.path, self.catalogue, self.used,
+                                        'properties', 'property')
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]
         self.assertTrue(data['natives'])
         self.assertEqual(len({row['native'] for row in data['natives']}), len(data['natives']))
-        for row in data['natives'] + data.get('instructions', []) + data.get('operands', []) + data.get('properties', []):
+        for row in data['natives'] + data.get('instructions', []) + data.get('operands', []) + data.get('properties', []) + data.get('property_groups', []):
             for reference in row['tests']:
                 path, name = reference.split('::', 1)
                 self.assertIn('fn ' + name + '(', (root / path).read_text(), reference)

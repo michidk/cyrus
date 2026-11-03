@@ -116,7 +116,17 @@ def behavior_rows(path, catalogue, used, section="natives", name_field="native")
     """Join manually reviewed scopes, preserving unknown coverage outside the audited slice."""
     data = json.loads(Path(path).read_text())
     reviewed = {}
-    for row in data.get(section, []):
+    rows = list(data.get(section, []))
+    if section == "properties":
+        for group in data.get("property_groups", []):
+            members = group["properties"]
+            if not isinstance(members, list) or not members:
+                raise ValueError("property group requires explicit nonempty member names")
+            for member in members:
+                if not isinstance(member, str) or not member:
+                    raise ValueError("property group member must be a name")
+                rows.append({**group, "property": member})
+    for row in rows:
         name = row[name_field]
         if name in reviewed or name not in catalogue:
             raise ValueError(f"duplicate or unknown catalogue native: {name}")

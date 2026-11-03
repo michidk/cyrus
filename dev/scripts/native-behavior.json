@@ -3411,5 +3411,594 @@
       "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.living_state equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     }
+  ],
+  "property_groups": [
+    {
+      "properties": [
+        "name"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagA, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagA/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "A",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "attribute",
+        "data",
+        "header",
+        "hook_data",
+        "script_data",
+        "script_int",
+        "script_pc",
+        "script_return",
+        "task[0]",
+        "task[1]",
+        "task[2]",
+        "task[3]",
+        "task[4]",
+        "task[5]"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagB, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagB/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "B",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "combat"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagC, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagC/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "C",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "extra",
+        "fsphere_heap",
+        "location",
+        "runtime_local_list"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagD, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagD/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "D",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "flat"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagF, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagF/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "F",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "light"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagL, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagL/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "L",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "anim.halt_flag",
+        "anim.hold_flag",
+        "anim.loop_count",
+        "anim.max_group",
+        "anim.next_speed",
+        "anim.real_frame",
+        "anim.rep_count",
+        "anim.rewind_flag",
+        "anim.sound_handle",
+        "anim.speed",
+        "anim.speed_count",
+        "anim.stop_flag"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagM, width1 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagM/width1 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "M",
+      "descriptor_width_bytes": 1,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "anim.angle.vx",
+        "anim.angle.vy",
+        "anim.angle.vz",
+        "anim.frame",
+        "anim.last_angle.vx",
+        "anim.last_angle.vy",
+        "anim.last_angle.vz",
+        "anim.next",
+        "anim.pos.vx",
+        "anim.pos.vy",
+        "anim.pos.vz"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagM, width2 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagM/width2 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "M",
+      "descriptor_width_bytes": 2,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "anim",
+        "anim.address"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagM, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagM/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "M",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "node_map"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagN, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagN/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "N",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "linked",
+        "list",
+        "next",
+        "parent",
+        "under_object"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagO, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagO/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "O",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "sphere_object"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagS, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagS/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "S",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "anim_list"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagW, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagW/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "W",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "size.orientation"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagZ, width1 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagZ/width1 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "Z",
+      "descriptor_width_bytes": 1,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "size",
+        "size.address",
+        "size.msize.vx",
+        "size.msize.vy",
+        "size.msize.vz",
+        "size.pos.vx",
+        "size.pos.vy",
+        "size.pos.vz",
+        "size.psize.vx",
+        "size.psize.vy",
+        "size.psize.vz",
+        "size.size.vx",
+        "size.size.vy",
+        "size.size.vz"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagZ, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagZ/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "Z",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "action_time",
+        "active",
+        "ai_delay",
+        "ai_mode",
+        "ai_type",
+        "anchor",
+        "arms_time",
+        "broadcast_index",
+        "dead",
+        "disable_script",
+        "extra_time",
+        "ftype",
+        "hand_item",
+        "invisible",
+        "jump_height",
+        "jump_time",
+        "last_collide",
+        "last_collide_count",
+        "last_direction",
+        "last_valid_flag",
+        "loaded_matrix",
+        "message_index",
+        "move_counter",
+        "origin_time",
+        "rope_id",
+        "runtime_locals",
+        "script_ret_rv",
+        "script_rv",
+        "sflags",
+        "static_data",
+        "surface_time",
+        "task_pause[0]",
+        "task_pause[1]",
+        "task_pause[2]",
+        "task_pause[3]",
+        "task_pause[4]",
+        "task_pause[5]",
+        "task_status[0]",
+        "task_status[1]",
+        "task_status[2]",
+        "task_status[3]",
+        "task_status[4]",
+        "task_status[5]",
+        "under_surface",
+        "weapon_drawn"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagb, width1 scalar field descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagb/width1 identifies a valid installed scalar field; an in-range descriptor is not a malformed reference index. Underlying gameplay fields may exist or be exercised by other natives, but that does not implement direct named property dispatch. Signedness, write side effects and all lifecycle semantics still require the particular field contract. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "b",
+      "descriptor_width_bytes": 1,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "action",
+        "action_flag",
+        "ai_length",
+        "dnode",
+        "fdnode",
+        "grid",
+        "hand_angle.vx",
+        "hand_angle.vy",
+        "hand_angle.vz",
+        "hand_pos.vx",
+        "hand_pos.vy",
+        "hand_pos.vz",
+        "last_angle.vx",
+        "last_angle.vy",
+        "last_angle.vz",
+        "last_pos.vx",
+        "last_pos.vy",
+        "last_pos.vz",
+        "last_slave_angle.vx",
+        "last_slave_angle.vy",
+        "last_slave_angle.vz",
+        "last_slave_pos.vx",
+        "last_slave_pos.vy",
+        "last_slave_pos.vz",
+        "last_valid_pos.vx",
+        "last_valid_pos.vy",
+        "last_valid_pos.vz",
+        "local_index",
+        "move.vx",
+        "move.vy",
+        "move.vz",
+        "node",
+        "origin",
+        "origin_accum",
+        "ov.vx",
+        "ov.vy",
+        "ov.vz",
+        "slave_angle.vx",
+        "slave_angle.vy",
+        "slave_angle.vz",
+        "slave_pos.vx",
+        "slave_pos.vy",
+        "slave_pos.vz",
+        "start_angle.vx",
+        "start_angle.vy",
+        "start_angle.vz",
+        "start_pos.vx",
+        "start_pos.vy",
+        "start_pos.vz",
+        "string_index",
+        "task_variable2[0]",
+        "task_variable2[1]",
+        "task_variable2[2]",
+        "task_variable2[3]",
+        "task_variable2[4]",
+        "task_variable2[5]",
+        "task_variable3[0]",
+        "task_variable3[1]",
+        "task_variable3[2]",
+        "task_variable3[3]",
+        "task_variable3[4]",
+        "task_variable3[5]",
+        "task_variable4[0]",
+        "task_variable4[1]",
+        "task_variable4[2]",
+        "task_variable4[3]",
+        "task_variable4[4]",
+        "task_variable4[5]",
+        "task_variable[0]",
+        "task_variable[1]",
+        "task_variable[2]",
+        "task_variable[3]",
+        "task_variable[4]",
+        "task_variable[5]"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagd, width4 scalar field descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagd/width4 identifies a valid installed scalar field; an in-range descriptor is not a malformed reference index. Underlying gameplay fields may exist or be exercised by other natives, but that does not implement direct named property dispatch. Signedness, write side effects and all lifecycle semantics still require the particular field contract. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "d",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "object_data"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tago, width156 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tago/width156 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "o",
+      "descriptor_width_bytes": 156,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "ai_var1",
+        "ai_var2",
+        "frame",
+        "fspheres",
+        "handle",
+        "id",
+        "last_frame",
+        "last_handle",
+        "panic_group",
+        "task_timer[0]",
+        "task_timer[1]",
+        "task_timer[2]",
+        "task_timer[3]",
+        "task_timer[4]",
+        "task_timer[5]",
+        "yangle_change"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagw, width2 scalar field descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagw/width2 identifies a valid installed scalar field; an in-range descriptor is not a malformed reference index. Underlying gameplay fields may exist or be exercised by other natives, but that does not implement direct named property dispatch. Signedness, write side effects and all lifecycle semantics still require the particular field contract. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "w",
+      "descriptor_width_bytes": 2,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    },
+    {
+      "properties": [
+        "address"
+      ],
+      "status": "missing",
+      "owner": 5,
+      "scope": "Named read/write dispatch for original tagx, width4 pointer/subrecord/embedded descriptors",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagx/width4 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "descriptor_tag": "x",
+      "descriptor_width_bytes": 4,
+      "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
+    }
   ]
 }
