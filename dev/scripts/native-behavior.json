@@ -5739,10 +5739,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/blob/31652ac/docs/engine/SOUP.md"
       ],
-      "limits": "Verified installed definition: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified: independent installed function1/exact native binding/full155-byte handler/full117-byte ordered lookup. Original instructions check disabled zero return, unsigned exact/early-stop list selection, pushed-flag clear/saved32-bit value restoration/current-value return, repeated successful call without further item writes, and missing-item diagnostic-copy entry after location store. Receiver independent; full mapped memory/nonstack write order/canary/exact returns/preserved registers/stack checked on returns. Unknown: diagnostic effects/return/continuation, natural list/saved-value producers/lifecycle/full joint domain/VM/production parity. Constructed duplicate/unsorted controls do not establish natural admission. Named production support remains missing. Rust/game runtime NOT RUN.",
+      "reviewed_revision": "24322d302a7fff41b237277e10588fcf3d22050f"
     },
     {
       "native": "PushAllItems",
