@@ -5034,16 +5034,17 @@
       "native": "GetMovementSpeed",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named state query",
+      "scope": "Original zero-argument receiver animation-group speed query; named implementation missing",
       "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/pull/238"
       ],
-      "limits": "Verified: canonical definition declares zero-argument function; no exact named handler or generic matching path located. No dedicated public assertion or named production receipt found. PlayerMovementSpeed, animation fields and falling/sliding state are distinct supported services; their existence does not implement this call. Unknown: original semantics beyond declaration/published facts; no result invented from the name. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Receiver animation group selects an unsigned attribute byte without scaling; absent animation/attribute records and unmapped groups return zero. Groups18/30/142 select8;19/143 select9;20/21 select12;22/23 select13;24..27 select10;31 selects19;92/93 select17. No model or selected-player lookup, calls/intercepted services/nonstack writes. 73794 original instruction contexts/15 effective controls pass: all65536 group words with one fixture, each mapped group across all256 selected byte values and two receivers,66 missing-record cases. Actor/global/animation/attribute bytes, saved registers/stack/canary checked. No PlayerMovementSpeed equivalence inferred. Unknown: null/malformed pointers, animation/attribute producers, VM decoding and natural original/native/browser acceptance. Individual group/byte coverage is not every combination of actor state. Named implementation remains missing.",
+      "reviewed_revision": "abb683f6912710a249eeb655542aa416258fed45"
     },
     {
       "native": "IsBouncing",
