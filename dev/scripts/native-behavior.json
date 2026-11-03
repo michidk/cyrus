@@ -3371,6 +3371,219 @@
       ],
       "limits": "Verified source inspection: named handler absent. Generic Enable/Disable family only matches Script/Tasks/Object/Combat; it cannot implement Slaves. RAHK native-hook execution does not itself implement HeaderHook. No dedicated public rejection assertion located. Unknown original arguments/side effects/return/lifetime beyond declaration metadata. Missing means named handler only, not absence of every family/hook service. Static zero calls across27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser acceptance run.",
       "reviewed_revision": "e65c892a4a7ebb44194382db7355043ad3b01499"
+    },
+    {
+      "native": "DistanceFromLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "DistanceFromStart",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "AtPos",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "AtNodePosition",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "FaceLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "FaceObject",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "TurnToAngle",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "TurnToPos",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "PointAt",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP spatial/facing dispatch",
+      "caller": "GameHost::call/delegated native services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "DistanceToLocation",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rounded Q8 receiver-to-location query",
+      "caller": "GameHost::call -> SpatialActor::location_distance",
+      "tests": [
+        "crates/cyrus-game/src/script/spatial.rs::distance_to_location_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified: named handler validates one selector and prepares receiver linked position; unit fixture compares helper against literal original-emulator rows. Selector helper test checks0/1/-1/3 and rejects count2. This is helper evidence, not successful public native dispatch/runtime acceptance. Unknown all linked/fallback/service and original/native/browser selector branches. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "FaceAngle",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver facing task toward explicit heading",
+      "caller": "native_task_call -> Task::FaceAngle -> PointHost::face -> face_ordinary_angle",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified public fixture advances BODY/TASKS, headings400->416->432, completion/task counts and unchanged position; zero-rate case completes without turn. Source delegates to ordinary facing with synchronous sounds. Unknown all wrap/negative heading, missing services, routed receiver, save/reload and direct matched original/native/browser task traces. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "FacePos",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver facing task toward X/Z point",
+      "caller": "native_task_call -> Task::FacePos -> PointHost::face -> face_ordinary_point",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified public fixture turns from1000 toward distant+Z in rate16 steps ending0, asserts task completion and unchanged position. Source accepts2 point arguments and delegates ordinary facing. Unknown near threshold/all quadrants/overflow, routed receiver/save/reload and direct matched original/native/browser task traces. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "FacePlayerInertia",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Elapsed-dependent selected-player facing continuation",
+      "caller": "native_task_call -> Task::FacePlayerInertia -> spatial pose update",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::face_player_inertia_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified: task helper compares supplied pose/duration/elapsed to literal original-emulator rows. Requires player position and elapsed; duration0 returns contextual division error instead of reproducing original fault. Helper invocation is not production public dispatch; Unknown live input capture, task lifetime/routing/reload and matched native/browser behavior. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "PlayerArcTan",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Selected-player-to-receiver horizontal bearing",
+      "caller": "GameHost::call -> SpatialActor::query -> player_arctan",
+      "tests": [
+        "crates/cyrus-game/src/script/player_status.rs::the_turn_speed_and_arctan_queries_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified: named case-insensitive handler requires0 arguments and uses distance_positions before pure helper. Unit rows compare literal original-emulator displacements to helper outputs. This does not prove public query input selection, fallback/linked pose or matched original/native/browser receiver cases. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "PlayerTurnedDirection",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Sign of selected-player negated yaw change",
+      "caller": "GameHost::call -> selected player spatial history -> player_turned_direction",
+      "tests": [
+        "crates/cyrus-game/src/script/player_status.rs::the_turn_speed_and_arctan_queries_match_the_original_routines"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602504212"
+      ],
+      "limits": "Verified helper rows check heading/history direction and wrap cases. Public source requires selected-player spatial state but assumes model presence, while published original returns0 without model. Helper equality does not establish production history capture timing, no-model path or matched original/native/browser continuation. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
+      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
     }
   ],
   "instructions": [
