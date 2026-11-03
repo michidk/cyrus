@@ -5201,10 +5201,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/pull/286"
       ],
-      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses attr110 override or a combat record with animation. Source explicitly assumes transition lock clear/world active; those original global gates are not represented. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified independent installed function parms0/exact named binding/full130-byte original handler; byte-identical to PlayerArmed model dependency audited once. New direct named-entry648 contexts/10 effective controls:2 nonnull receivers/3 metadata bytes/3 enables/3 modes/2 control tokens/3 model tokens/2 patterns. Metadata carrying byte nonzero gives1 before enable/control/mode/model gates; otherwise enable/control nonzero/mode0/model nonzero gives1. Control/model not dereferenced. Initial receiver/metadata reads precede null gate, null not safe. Full both-actor/metadata/global memory/no writes/no calls/Boolean return/six regs/stack/canary, no controlled services. Unknown malformed receiver/metadata/lifetime/producers/VM/natural original/native/browser/exhaustive domain. Production unchanged; no inventory/gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "94b7207024a6fc8f1ac76f491c764c2804136b1b"
     },
     {
       "native": "PlayerHealth",
