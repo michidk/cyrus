@@ -26,6 +26,8 @@ These counts do not establish execution or fidelity; absent forms remain visible
 from distinct actors. It does not establish current rejection or malformed original data.
 `--operand-matrix` exposes reviewed portable operand scopes without requiring exports;
 it does not claim original byte encoding or host property behavior from VM support.
+`--local-targets` records explicit target/object uses and same-local write candidates,
+with static-only limits; ordinary local reads and writes are not object consumers.
 """
 import argparse
 import collections
@@ -217,6 +219,54 @@ def operand_matrix(path):
                       "; ".join(row.get("tests", [])) or "-", "; ".join(row["evidence"]), row["limits"]]
         print("\t".join(value.replace("\t", " ").replace("\n", " ") for value in values))
 
+
+def local_target_census(directory, pattern):
+    """Find explicit local targets and same-slot writes, without claiming dataflow or execution."""
+    files = sorted(glob.glob(os.path.join(directory, pattern)))
+    consumers, candidates = [], []
+    writes = collections.Counter()
+    first_calls = collections.Counter()
+    for path in files:
+        data = json.loads(Path(path).read_text())
+        for actor_name, actor in data.get("actors", {}).items():
+            steps = actor.get("program", {}).get("steps", {})
+            indices = set()
+
+            def walk(node, location):
+                if isinstance(node, dict):
+                    for key, value in node.items():
+                        if key in {"target", "object"} and isinstance(value, dict) and value.get("type") == "local":
+                            indices.add(value["index"])
+                            consumers.append({"file": os.path.basename(path), "actor": actor_name,
+                                              "path": location + "/" + key, "index": value["index"]})
+                        walk(value, location + "/" + key)
+                elif isinstance(node, list):
+                    for index, value in enumerate(node):
+                        walk(value, location + "/" + str(index))
+
+            walk(steps, "steps")
+            for offset, step in steps.items():
+                operation = step.get("operation", {})
+                destination = operation.get("destination", {})
+                if destination.get("type") != "local":
+                    continue
+                writes[operation["type"]] += 1
+                if operation["type"] == "assign":
+                    first = operation["formula"]["first"]
+                    writes["first." + first["type"]] += 1
+                    if first["type"] in {"call", "object_call"}:
+                        first_calls[first["call"]["function"]] += 1
+                if destination["index"] in indices:
+                    candidates.append({"file": os.path.basename(path), "actor": actor_name,
+                                       "step": offset, "index": destination["index"],
+                                       "operation": operation["type"]})
+    if not files:
+        raise ValueError("no script exports found")
+    return {"evidence": "STATIC_ONLY", "export_files": len(files), "consumers": consumers,
+            "same_slot_write_candidates": candidates, "local_writes": dict(sorted(writes.items())),
+            "assignment_first_calls": dict(sorted(first_calls.items())),
+            "limits": "Decoded exports only; unsupported bodies may hide operands. Same-slot writes are candidates, not reaching definitions or actor-reference producers. Absence does not establish live support or original reference fidelity."}
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--scripts", default="game-config/cache")
@@ -239,7 +289,16 @@ def main():
                         help="group historical decode failures without classifying them as missing behavior")
     parser.add_argument("--operand-matrix", action="store_true",
                         help="review portable values, destinations, targets and formula scopes")
+    parser.add_argument("--local-targets", action="store_true",
+                        help="census explicit local targets and same-slot write candidates, never execution")
     args = parser.parse_args()
+    if args.local_targets:
+        try:
+            print(json.dumps(local_target_census(args.scripts, args.pattern), indent=2))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"invalid local-target census: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.operand_matrix:
         try:
             operand_matrix(args.behavior)

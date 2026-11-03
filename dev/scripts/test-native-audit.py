@@ -163,6 +163,36 @@ class BehaviorAuditTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn('invalid operand audit', result.stderr)
 
+    def test_local_targets_exclude_plain_locals_and_only_mark_same_actor_slot_candidates(self):
+        def write(index):
+            return {'operation': {'type': 'assign', 'destination': {'type': 'local', 'index': index},
+                                  'formula': {'first': {'type': 'integer', 'value': 7}}}}
+        data = {'actors': {
+            'CONSUMER': {'program': {'steps': {
+                '0': write(1), '1': write(2),
+                '2': {'operation': {'type': 'call', 'call': {
+                    'target': {'type': 'local', 'index': 1}, 'arguments': []}}},
+                '3': {'operation': {'type': 'assign', 'destination': {'type': 'flag', 'index': 0},
+                      'formula': {'first': {'type': 'read', 'place': {'type': 'property',
+                                  'object': {'type': 'local', 'index': 1}, 'reference': 0}}}}},
+            }}},
+            'OTHER': {'program': {'steps': {'0': write(1)}}},
+        }}
+        (self.root / 'world.scripts').write_text(json.dumps(data))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--local-targets'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['evidence'], 'STATIC_ONLY')
+        self.assertEqual(len(report['consumers']), 2)
+        self.assertEqual(report['same_slot_write_candidates'], [{
+            'file': 'world.scripts', 'actor': 'CONSUMER', 'step': '0', 'index': 1,
+            'operation': 'assign'}])
+        self.assertEqual(report['local_writes']['assign'], 3)
+        self.assertIn('not reaching definitions', report['limits'])
+        with self.assertRaises(ValueError):
+            audit.local_target_census(self.root / 'absent', '*.scripts')
+
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())
         root = SCRIPT.resolve().parents[2]
