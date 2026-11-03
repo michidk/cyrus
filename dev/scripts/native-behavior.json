@@ -2242,6 +2242,265 @@
       ],
       "limits": "Verified by inspection: public dispatch swaps items1/75 in both directions, selects the replacement, uses low-word comparison and rejects closed/absent inventory. The cited fixture asserts counts/selection, not receiver attribute23. #30 draw/sheath/ownership cleanup acceptance is related weapon lifecycle, not an installed chargeWeapon caller. Unknown: actual original/native/browser charged weapon script, attachment/render/sound changes and restore/reversal boundaries.",
       "reviewed_revision": "20f78aa1f99304e3b963ecd5ca8ac2797e86a577"
+    },
+    {
+      "native": "DrawSword",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Receiver weapon admission and shared draw/sheath lifecycle",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified by inspection: public script fixture admits selected-player state20 and combat flag4; item-use variant additionally sets the weapon attribute. Verified receipt: real-key production native/browser draw91-to8 and sheath129-to0, attachment ownership cleanup and armed restore. Unknown: matched installed script-native routed admission/refusal and pending cancellation branches. Shared key-path lifecycle acceptance does not isolate every script caller or establish exact timing/audio parity.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "SheathSword",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Receiver weapon admission and shared draw/sheath lifecycle",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::sheath_sword_and_end_combat_dispatch_to_the_combat_services"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified by inspection: public script fixture checks unarmed no-op and unchanged lifecycle selector; it does not exercise a successful armed script call. Verified receipt: real-key production native/browser draw91-to8 and sheath129-to0, attachment ownership cleanup and armed restore. Unknown: matched installed script-native routed admission/refusal and pending cancellation branches. Shared key-path lifecycle acceptance does not isolate every script caller or establish exact timing/audio parity.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "IsHoldingWeapon",
+      "status": "partial",
+      "owner": 30,
+      "scope": "Routed receiver holding predicate and early attribute override",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::selected_player_weapon_validation_uses_type_ownership_animation_and_shell",
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/30#issuecomment-6574017439"
+      ],
+      "limits": "Verified by inspection: public routed query checks early holding attribute, receiver animation and unchanged attributes; selected-player validation checks shared readiness. Verified receipt: accepted weapon publication lifecycle is related downstream evidence. Unknown: installed original/native/browser query outputs across ownership, shell and routed replacement branches; visible sword presence alone is not query acceptance.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "KillMe",
+      "status": "partial",
+      "owner": 40,
+      "scope": "Receiver task, navigation, model, effect and owned-sound cleanup",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::kill_me_clears_receiver_tasks_before_marking_the_actor_dead",
+        "crates/cyrus-game/tests/script_registry.rs::kill_me_releases_the_receivers_light_and_flat_records",
+        "crates/cyrus-game/tests/script_registry.rs::actor_navigation_kill_me_releases_held_nodes_before_owned_sound_cleanup",
+        "crates/cyrus-game/tests/script_registry.rs::kill_me_releases_equipped_weapon_presentation_before_resurrection"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/40#issuecomment-6545594638"
+      ],
+      "limits": "Verified by inspection: public calls clear runtime tasks, navigation ownership, light/flat records and rendered weapon ownership. Verified receipt: installed native crossbow arrow is killed and remains without body/weapon/task at settled frame60; old executed source republishes a body. Unknown: browser crossbow, isolated arrow pixels, sound86 identity, allocator reuse and all routed cleanup branches. KillMe is not ordinary health-driven death acceptance.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "resurrect",
+      "status": "partial",
+      "owner": 40,
+      "scope": "Killed receiver revival, navigation release and selector-dependent combat reset",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes",
+        "crates/cyrus-game/tests/script_registry.rs::resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/40#issuecomment-6545594638"
+      ],
+      "limits": "Verified by inspection: public script fixtures clear killed, release held nodes/consume queued combat message, retain selector8 in one branch and reset selector6 to1 with response0 in another. Fixtures seed combat/navigation state through snapshots. Unknown: installed authored resurrection and reinitialization sequence across original/native/browser, restored presentation and allocator reuse. Native crossbow KillMe acceptance does not establish revival parity.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "Light",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Enable receiver light with signed-word radius/intensity",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6531839916",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by inspection: public dispatch checks radius50/intensity200/enabled and rejects malformed arity before allocation. Verified renderer receipt: logical-camera selection and bound Image refresh have production-system tests. Unknown: matched installed native/browser bound-material rows and original lifecycle; MGUILD recovery/protocol is explicitly NOT RUN. Logical records, expected image rows and viewer gizmos do not prove GPU output or rendered parity. Special-flat rendering under #54 is a separate scope.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "LightIntensity",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Set retained/start intensity and enable receiver light",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6531839916",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by inspection: public dispatch checks low-word65537 becomes1; source sets starting intensity, enables and clears inactive ticks. Verified renderer receipt: logical-camera selection and bound Image refresh have production-system tests. Unknown: matched installed native/browser bound-material rows and original lifecycle; MGUILD recovery/protocol is explicitly NOT RUN. Logical records, expected image rows and viewer gizmos do not prove GPU output or rendered parity. Special-flat rendering under #54 is a separate scope.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "LightOffset",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Receiver light offset and current-pose projection after replacement",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores",
+        "crates/cyrus-game/tests/script_registry.rs::moved_authored_light_uses_current_pose_after_snapshot_replacement"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6531839916",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by inspection: public dispatch checks disabled record offset; moved fixture checks current-pose logical light projection and snapshot replacement. Verified renderer receipt: logical-camera selection and bound Image refresh have production-system tests. Unknown: matched installed native/browser bound-material rows and original lifecycle; MGUILD recovery/protocol is explicitly NOT RUN. Logical records, expected image rows and viewer gizmos do not prove GPU output or rendered parity. Special-flat rendering under #54 is a separate scope.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "LightFlicker",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Retained flicker words and shared-random maintenance",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_controls_create_a_disabled_record_then_update_it_with_low_word_stores",
+        "crates/cyrus-game/tests/script_registry.rs::light_maintenance_consumes_intensity_then_radius_in_shared_actor_order",
+        "crates/cyrus-game/tests/script_registry.rs::light_maintenance_signed_phase_and_shared_random_continue_after_snapshot",
+        "crates/cyrus-game/tests/script_registry.rs::light_maintenance_disabled_record_does_not_consume_random_or_modulate"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6531839916",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by inspection: public dispatch checks flicker[7,0,9]; maintenance fixtures check ordered random consumption, signed phase and continuation, and disabled behavior. Verified renderer receipt: logical-camera selection and bound Image refresh have production-system tests. Unknown: matched installed native/browser bound-material rows and original lifecycle; MGUILD recovery/protocol is explicitly NOT RUN. Logical records, expected image rows and viewer gizmos do not prove GPU output or rendered parity. Special-flat rendering under #54 is a separate scope.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "LightOff",
+      "status": "partial",
+      "owner": 39,
+      "scope": "Disable existing record without allocation and retain disabled replacement",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::authored_light_off_survives_world_replacement_without_reenabling",
+        "crates/cyrus-game/tests/script_registry.rs::light_off_without_a_record_returns_zero_without_creating_a_light",
+        "crates/cyrus-game/tests/script_registry.rs::separate_light_cleanup_runs_with_tasks_disabled_and_uses_wrapping_byte_ticks"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6531839916",
+        "https://github.com/michidk/cyrus/issues/39#issuecomment-6600800717"
+      ],
+      "limits": "Verified by inspection: public dispatch checks no-record return0/no allocation and authored disabled state surviving replacement; cleanup uses wrapping ticks. Verified renderer receipt: logical-camera selection and bound Image refresh have production-system tests. Unknown: matched installed native/browser bound-material rows and original lifecycle; MGUILD recovery/protocol is explicitly NOT RUN. Logical records, expected image rows and viewer gizmos do not prove GPU output or rendered parity. Special-flat rendering under #54 is a separate scope.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "LightTorch",
+      "status": "partial",
+      "owner": 38,
+      "scope": "Script-routed torch admission versus shared inventory Action lifecycle",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_torch"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6600588618"
+      ],
+      "limits": "Verified by inspection: public player-targeted script fixture enters lighting state33 with burning counter0. Verified receipt: production native/browser inventory Action light/douse/relight preserves counts/health and saved counters. Unknown: installed script-native light/douse success/refusal with matched original/native/browser lifetime and audio/flame geometry. Inventory Action acceptance does not isolate these native calls.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "UnlightTorch",
+      "status": "partial",
+      "owner": 38,
+      "scope": "Script-routed torch admission versus shared inventory Action lifecycle",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_torch"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6600588618"
+      ],
+      "limits": "Verified by inspection: public player-targeted script fixture leaves a still-lighting state33/counter0 unchanged, so this fixture does not prove successful burning-torch dousing. Verified receipt: production native/browser inventory Action light/douse/relight preserves counts/health and saved counters. Unknown: installed script-native light/douse success/refusal with matched original/native/browser lifetime and audio/flame geometry. Inventory Action acceptance does not isolate these native calls.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "endCombat",
+      "status": "partial",
+      "owner": 26,
+      "scope": "Sheath admission followed by unconditional lifecycle/combat reset",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::sheath_sword_and_end_combat_dispatch_to_the_combat_services"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/25#issuecomment-6521043493",
+        "https://github.com/michidk/cyrus/issues/26"
+      ],
+      "limits": "Verified by inspection: unarmed public dispatch resets selector1/response0 and clears combat flag4 even when sheath cannot act. Source additionally delegates the shared reset. Verified receipt: coarse installed duel/message continuation exists under #25. Unknown: matched armed/routed endCombat script call, retained coordination/counter reset and timing across original/native/browser. Closed message scope is not full spacing/reset acceptance.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "isFighting",
+      "status": "partial",
+      "owner": 26,
+      "scope": "Nearest eligible ordinary attacker query with installed threshold",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::fighting_query_rejects_unprepared_ordinary_traversal"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/26"
+      ],
+      "limits": "Verified by inspection: public query rejects unprepared traversal; source filters current-generation combat actors targeting the receiver with selection state1, excludes dead actors, chooses nearest rounded3D distance then compares horizontal distance to installed threshold. Unknown: positive/boundary/tie and replacement cases through installed original/native/browser callers. Coarse duel continuation does not isolate this query.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "setArmor",
+      "status": "partial",
+      "owner": 25,
+      "scope": "Set receiver combat armor directly",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::strength_and_armor_need_a_combat_record"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/25#issuecomment-6521043493",
+        "https://github.com/michidk/cyrus/issues/31"
+      ],
+      "limits": "Verified by inspection: source assigns the integer to receiver combat armor; public fixture only asserts missing combat-record errors. The health/strength/armor getter fixture is not a successful setter test. Unknown: successful routed setter/readback, damage consequences, replacement and installed original/native/browser parity. Accepted duel damage and quick-health behavior do not prove these setters.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
+    },
+    {
+      "native": "setStrength",
+      "status": "partial",
+      "owner": 25,
+      "scope": "Set receiver combat strength directly",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::strength_and_armor_need_a_combat_record"
+      ],
+      "evidence": [
+        "https://github.com/michidk/cyrus/issues/25#issuecomment-6521043493",
+        "https://github.com/michidk/cyrus/issues/31"
+      ],
+      "limits": "Verified by inspection: source assigns the integer to receiver combat strength; public fixture only asserts missing combat-record errors. The health/strength/armor getter fixture is not a successful setter test. Unknown: successful routed setter/readback, damage consequences, replacement and installed original/native/browser parity. Accepted duel damage and quick-health behavior do not prove these setters.",
+      "reviewed_revision": "d3d2d3572911ae79a6739e3dd2dc887822a3dc6b"
     }
   ]
 }
