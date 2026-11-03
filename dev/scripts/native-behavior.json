@@ -3701,10 +3701,11 @@
       "caller": "GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/252"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified installed3-argument native/full181-byte read-only proximity function. Resolves receiver before state7 returns1; original GetMovementSpeed call target/hash confirmed and executed. Speed<<8 zero returns1; threshold is wrapping low32((2*scaled_speed-1)*time_factor) arithmetic>>8; nonpositive returns1. Positive threshold compares signed horizontal metric(targetX-resolvedX,0,targetZ-resolvedZ): greater1/equal-or-less0; targetY ignored.10800 original contexts/14 effective mutations, no nonstack writes/movement scheduling. Position/predicates/speed execute; metric result controlled with exact inputs, prior independent numerical evidence not integrated acceptance. Selected domains only; producers/x87 init/malformed admission/VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "reviewed_revision": "22b85b3eb6fc8edf6418ba92067948837a853fe4"
     },
     {
       "native": "GotoLocation",
