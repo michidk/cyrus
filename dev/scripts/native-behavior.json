@@ -3605,10 +3605,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/commit/603d4ea"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified installed zero-argument declaration/exact native binding/full113-byte handler. Original CPU handler/truncation/planar/absolute chain passes4374 selected finite binary32 target/receiver X/Z contexts, two receiver identities and three masked x87 controls; six effective original instruction mutations exit normally with complete output and semantic mismatch. Exact two-actor memory/result/CW/TOP compared. Shared target minus receiver float differences truncate before planar angle; negated masked yaw written directly, zero return, no animation/turning/matrix call. Dependency identities independently checked against accepted evidence. Unknown shared target producer/ownership/lifecycle, NaN/infinity/out-of-range conversion/INT_MIN/full domain, natural table initialization/software atan, VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance.",
+      "reviewed_revision": "b88956c8e232d91ddb039a7d2d25deec3ae31d52"
     },
     {
       "native": "DistanceToLocation",
