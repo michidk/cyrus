@@ -4751,10 +4751,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
+        "https://github.com/michidk/redguard-preservation/pull/282"
       ],
-      "limits": "Verified by source inspection: sets wait to the low byte of its integer argument when a playback record exists; absent record returns zero. Public test checks successful calls and wrong argument counts on an actor WITHOUT playback. Unknown: public-call mutation on populated playback, countdown/release boundaries and matched visible original/native/browser playback. World helper coverage does not prove registry-to-playback composition. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified independent installed function parms1/exact lowercase binding/full62-byte call-free handler. Null receiver/control returns0, argument register retained. Success replaces same control byte as HoldAnimation with low argument byte; residual return control upper24/argument low8; argument register becomes control pointer. No ordinary enable/mode gate.2304 original contexts/8 effective controls:3 receivers/3 controls/4 initial bytes/8 argument words/2 enables/2 modes/2 patterns; differing other actor pointer. Full both-actor/both-control/global memory/exact byte write order-domain/no calls/residual return/argument register output/five preserved regs/stack/canary. No controlled services. Unknown consumer/timing meaning/malformed pointers/lifetime/VM/natural original/native/browser/exhaustive domain. Production unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "3a7a4aa171d5d00d1f8cc88802c60a97e048c5c3"
     },
     {
       "native": "ReleaseAnimation",
