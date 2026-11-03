@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check evidence joins and conservative status handling without Cargo or installed data."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -268,6 +269,73 @@ class BehaviorAuditTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     audit.behavior_rows(self.path, self.catalogue, self.used,
                                         'properties', 'property')
+
+    def corpus_export(self):
+        return {'version': 27, 'world': 1, 'content_id': 'unverified-export-id',
+                'definition': {'functions': [{'name': 'Reviewed', 'kind': 'function',
+                                              'param_count': 0}]},
+                'actors': {'A': {'program': {'steps': {
+                    '0': {'operation': {'type': 'end'}},
+                    '1': {'operation': {'type': 'unsupported', 'reason': 'retained failure'}},
+                    '2': {'operation': {'type': 'unsupported', 'reason': 'retained failure'}}}}}},
+                'unsupported': {'A': 'retained failure'}}
+
+    def test_corpus_summary_separates_records_fallbacks_and_schema_catalogue_identity(self):
+        first = self.corpus_export()
+        one = self.root / 'one.scripts'
+        one.write_text(json.dumps(first))
+        second = self.corpus_export()
+        second['version'] = 29
+        second['world'] = 2
+        second['definition']['functions'][0]['param_count'] = 1
+        second['actors'] = {}
+        second['unsupported'] = {}
+        (self.root / 'two.scripts').write_text(json.dumps(second))
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--corpus-summary'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(summary['schemas'], [27, 29])
+        self.assertEqual(summary['file_count'], 2)
+        self.assertFalse(summary['catalogues_consistent'])
+        row = summary['files'][0]
+        self.assertEqual((row['actors'], row['unsupported_records'],
+                          row['actors_with_unsupported_steps'], row['unsupported_steps'],
+                          row['decoded_steps']), (1, 1, 1, 2, 1))
+        self.assertEqual(row['content_id'], 'unverified-export-id')
+        self.assertEqual(row['sha256'], hashlib.sha256(one.read_bytes()).hexdigest())
+        self.assertIn('No current-install completeness', summary['limits'])
+        second['definition'] = first['definition']
+        (self.root / 'two.scripts').write_text(json.dumps(second))
+        self.assertTrue(audit.corpus_summary(self.root, '*.scripts')['catalogues_consistent'])
+
+    def test_corpus_summary_rejects_missing_malformed_and_incomplete_inputs_without_report(self):
+        with self.assertRaisesRegex(ValueError, 'no script exports'):
+            audit.corpus_summary(self.root, '*.scripts')
+        path = self.root / 'bad.scripts'
+        mutations = [[], {'version': True}, {'definition': {'functions': []}},
+                     {'actors': []}, {'unsupported': {'A': 7}},
+                     {'actors': {'A': {'program': {'steps': []}}}},
+                     {'actors': {'A': {'program': {'steps': {'0': {'operation': {}}}}}}},
+                     {'definition': {'functions': [{'name': 'A', 'kind': 'function',
+                                                     'param_count': True}]}},
+                     {'definition': {'functions': [{'name': 'A', 'kind': 'function',
+                                                     'param_count': 0}] * 2}}]
+        for mutation in mutations:
+            data = self.corpus_export()
+            if isinstance(mutation, dict):
+                data.update(mutation)
+            else:
+                data = mutation
+            path.write_text(json.dumps(data))
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'bad.scripts'):
+                audit.corpus_summary(self.root, '*.scripts')
+        path.write_text('{broken')
+        result = subprocess.run(['python3', str(SCRIPT), '--scripts', str(self.root),
+                                 '--corpus-summary'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('bad.scripts', result.stderr)
 
     def test_checked_in_review_anchors_resolve_without_claiming_tests_ran(self):
         data = json.loads(SCRIPT.with_name('native-behavior.json').read_text())

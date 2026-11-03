@@ -24,6 +24,9 @@ files that name it exactly or in snake case (a pointer for the per-native audit,
 `--behavior-matrix` instead joins explicitly reviewed evidence from native-behavior.json.
 Unreviewed names are unaudited, never inferred missing or complete from source mentions.
 Add `--include-unused` to expose the entire catalogue, including zero-occurrence reviews.
+`--corpus-summary` records supplied file hashes, schema versions and catalogue consistency,
+plus decoded and unsupported program-step counts. It does not validate runtime content identity
+or establish current-install completeness. Malformed summary inputs fail with their file path.
 `--instruction-matrix` reports reviewed VM forms and static decoded statement counts.
 These counts do not establish execution or fidelity; absent forms remain visible.
 `--rejection-matrix` groups retained decoder failures, separating fallback statements
@@ -38,6 +41,7 @@ update is one read-modify-write occurrence, not separate observed reads and writ
 import argparse
 import collections
 import glob
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -73,6 +77,74 @@ def collect(directory, pattern):
         for actor in data.get("actors", {}).values():
             walk(actor.get("program", {}))
     return catalogue, used, len(files)
+
+
+def corpus_summary(directory, pattern):
+    """Describe supplied exports only; structural checks are not runtime validation."""
+    files = sorted(Path(directory).glob(pattern))
+    if not files:
+        raise ValueError(f"no script exports under {directory} matching {pattern}")
+    rows = []
+    for path in files:
+        try:
+            raw = path.read_bytes()
+            data = json.loads(raw)
+            version, world = data['version'], data['world']
+            if type(version) is not int or version < 1 or type(world) is not int or world < 0:
+                raise ValueError("version/world must be positive/nonnegative integers")
+            if not isinstance(data['content_id'], str) or not data['content_id']:
+                raise ValueError("content_id must be a nonempty string")
+            functions = data['definition']['functions']
+            if not isinstance(functions, list) or not functions:
+                raise ValueError("definition.functions must be a nonempty list")
+            names = set()
+            for function in functions:
+                name, kind, count = function['name'], function['kind'], function['param_count']
+                if (not isinstance(name, str) or not name or name in names
+                        or kind not in ('function', 'task', 'multitask')
+                        or type(count) is not int or not 0 <= count <= 255):
+                    raise ValueError("invalid or duplicate native declaration")
+                names.add(name)
+            actors, unsupported = data['actors'], data['unsupported']
+            if not isinstance(actors, dict) or not isinstance(unsupported, dict):
+                raise ValueError("actors/unsupported must be objects")
+            if any(not isinstance(reason, str) for reason in unsupported.values()):
+                raise ValueError("unsupported reasons must be strings")
+            decoded = fallback = fallback_actors = 0
+            for actor in actors.values():
+                steps = actor['program']['steps']
+                if not isinstance(steps, dict):
+                    raise ValueError("program.steps must be an object")
+                actor_fallback = 0
+                for step in steps.values():
+                    operation = step['operation']
+                    if not isinstance(operation['type'], str) or not operation['type']:
+                        raise ValueError("operation.type must be a nonempty string")
+                    if operation['type'] == 'unsupported':
+                        if not isinstance(operation['reason'], str):
+                            raise ValueError("unsupported operation needs a reason")
+                        actor_fallback += 1
+                    else:
+                        decoded += 1
+                fallback += actor_fallback
+                fallback_actors += bool(actor_fallback)
+            signature = json.dumps(functions, sort_keys=True, separators=(',', ':')).encode()
+            rows.append({'file': str(path), 'sha256': hashlib.sha256(raw).hexdigest(),
+                         'schema': version, 'world': world, 'content_id': data['content_id'],
+                         'catalogue_sha256': hashlib.sha256(signature).hexdigest(),
+                         'catalogue_entries': len(functions), 'actors': len(actors),
+                         'unsupported_records': len(unsupported),
+                         'actors_with_unsupported_steps': fallback_actors,
+                         'unsupported_steps': fallback, 'decoded_steps': decoded})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            raise ValueError(f"{path}: {error}") from error
+    return {'files': rows, 'file_count': len(rows),
+            'schemas': sorted({row['schema'] for row in rows}),
+            'catalogues_consistent': len({row['catalogue_sha256'] for row in rows}) == 1,
+            'limits': 'Supplied exports only. Content IDs are recorded, not verified. '
+                      'Counts include static program steps, not execution or native hooks. '
+                      'Unsupported records and fallback steps may describe the same failure. '
+                      'No current-install completeness or behavior acceptance is established.'}
 
 
 def sources(root):
@@ -361,7 +433,16 @@ def main():
                         help="census explicit local targets and same-slot write candidates, never execution")
     parser.add_argument("--property-matrix", action="store_true",
                         help="join reviewed descriptors with static read/write/update counts")
+    parser.add_argument("--corpus-summary", action="store_true",
+                        help="describe supplied export identities, schemas and unsupported coverage")
     args = parser.parse_args()
+    if args.corpus_summary:
+        try:
+            print(json.dumps(corpus_summary(args.scripts, args.pattern), indent=2))
+        except ValueError as error:
+            print(f"invalid script corpus: {error}", file=sys.stderr)
+            return 1
+        return 0
     if args.property_matrix:
         try:
             property_matrix(args.behavior, args.scripts, args.pattern)
