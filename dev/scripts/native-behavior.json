@@ -3551,10 +3551,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/commit/a8d158e"
       ],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path. Related location, point movement and ordinary turning helpers do not implement this catalogue entry. No dedicated public rejection assertion or named original/native/browser acceptance receipt located. Unknown original argument, return, coordinate and lifetime contract beyond declaration metadata. Missing means named implementation only. Zero decoded calls in27 historical exports cannot exclude hidden unsupported actor bodies. No Rust tests/runtime run.",
-      "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+      "limits": "Verified: independent installed two-argument task/exact binding/full338-byte native/full100 resolver/full377 bearing/two full7 magnitude helpers original instructions. Signed inclusive location bound/null-negative-outside fallback; wrapped local X/Z differences, planar bearing,2048 angular delta. Zero delta or truncated step returns0/no heading write. Signed-magnitude wrapping tick-deadline divisor, zero->1; fixed-point signed division and arithmetic shift. Exact half-turn adds; opposite branch subtracts; stored heading wraps32 without final angular mask. Nonzero step returns signed(deadline-1)>tick. Full mapped memory/table/nonstack writes/arguments/canary/four preserved registers/stack/result; no controlled callees. Retained original-produced bearing table hash verified under flag0/fninit only. Unknown natural initialization/software table path/malformed location pointers/signed-min coordinate magnitude/full joint domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
+      "reviewed_revision": "24046234376c38cbbe45c59d4d8eb49df9304402"
     },
     {
       "native": "FaceObject",
