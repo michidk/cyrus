@@ -5425,6 +5425,250 @@
       ],
       "limits": "Verified inspected public fixtures: zero result permits next instruction; literal group/torch/holding/selector cases select queued1/3/8/24 and request32/33/34/35/49/50/85/111, reset fall/stable state and preserve/write heading as specified. Refusals preserve fields across excluded groups/motion/living/deep-water states. Selected group19 case uses real collision query after generation restore, queues3, copies yaw and sets conditional_ticks6. These are configured public fixtures, not full visible jump arcs or natural input. Unknown: selected edge/hang branches, complete task encodings and matched installed original/native/browser timing/geometry/sound. Script Jump and ordinary jump-key arbitration are distinct entry paths. Rust assertions inspected only, not rerun. Original/native/browser NOT RUN for this catalogue audit. Historical schema-27 static counts cannot exclude Unsupported actor bodies.",
       "reviewed_revision": "59504d1c514dcc46b49ca311f6a73f33b35187c8"
+    },
+    {
+      "native": "DisplayHandItem",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "DisplayHandModel",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "DisplayHiltItem",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "DisplayHiltModel",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "ItemUsed",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "PopAllItems",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 0 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "PopItem",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "PushAllItems",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 1 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "PushItem",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 2 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "SubItem",
+      "status": "missing",
+      "owner": 38,
+      "scope": "Direct named item/presentation dispatch",
+      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified installed definition: function with 2 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "RemoveItem",
+      "status": "partial",
+      "owner": 38,
+      "scope": "Empty one authored inventory count without dependent/flag processing",
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud::remove_item -> Inventory::clear",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::charge_weapon_swaps_the_weapon_items_and_remove_item_empties_one_count"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified inspected public hud_call fixture empties item2 count5 to0; unknown item9 and missing argument reject. Source requires one u16-range operand and inventory host; clear directly sets count0 without dependent removal/flags. This is not SubItem or the general drop-list path. Unknown: installed original/native/browser named removal, selected/held cleanup and all dependent/closed-inventory boundaries. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "UseItem",
+      "status": "partial",
+      "owner": 38,
+      "scope": "Selected receiver item-use gates, shell/torch/weapon/map dispatch",
+      "caller": "ScriptWorld::advance -> GameHost -> registry/item_use.rs -> inventory/torch/draw/shell services",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_list",
+        "crates/cyrus-game/tests/script_registry.rs::scripted_item_use_preserves_the_rope_association",
+        "crates/cyrus-game/tests/script_registry.rs::a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter",
+        "crates/cyrus-game/tests/script_registry.rs::draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it",
+        "crates/cyrus-game/tests/script_registry.rs::using_the_island_map_item_raises_the_island_map_request_once"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/hud.md",
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6602947955",
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6602969495"
+      ],
+      "limits": "Verified inspected public fixtures: two attempts retain one shell under instance limit while dropping two item5 units, shell no failure and rope association preserved. Configured torch path90->88->douse/save88->relight88, weapon item sets attr23/draw state20 and map83 request takes once. Source gates selected receiver, latch, lockout/edge/inventory/shell/water/weapon/torch state before branch effects. Verified #38 actual native/browser letter-versus-burning-torch precedence and held/fresh-input recovery; multi-unit depletion is still an active peer claim. Unknown: complete item/scripts/gates and direct named original/native/browser acceptance. Actual action-key gameplay shares services but is not proof every named branch ran. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "ReplenishHealth",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Receiver health100 floor with selected HUD feedback distinct from additive health",
+      "caller": "ScriptWorld::advance -> GameHost health branch -> attribute3 / ScriptHud feedback",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::health_strength_and_armor_queries_read_the_receiver",
+        "crates/cyrus-game/tests/script_registry.rs::selected_replenish_health_uses_shared_feedback_without_additive_health_services"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/cyrus/issues/31"
+      ],
+      "limits": "Verified inspected public cases:40->100 returns1;100/255 unchanged returns0. Selected receiver with immunity still replenishes and feedback timer raises to25 or retains50; missing HUD for40 errors before write, while100/255 need none. Selected additive-health globals remain absent. Source bypasses additive health service. Unknown: installed named original/native/browser rendered feedback/retained replacement acceptance; broader selected damage/death receipts and potion use are different services. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "adjustArmor",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Wrapping receiver combat scalar adjustment",
+      "caller": "ScriptWorld::advance -> GameHost -> control.combat scalar wrapping_add",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::strength_and_armor_need_a_combat_record"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified inspected public fixture supplies100 and checks contextual missing-combat-record error for this name. Source requires one integer, wraps addition into retained combat scalar and returns0. No successful populated-combat public assertion located; setters/readbacks/health/death receipt do not establish this adjustment executes. Unknown: overflow/negative/routed/replacement and installed original/native/browser named adjustment acceptance. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+    },
+    {
+      "native": "adjustStrength",
+      "status": "partial",
+      "owner": 31,
+      "scope": "Wrapping receiver combat scalar adjustment",
+      "caller": "ScriptWorld::advance -> GameHost -> control.combat scalar wrapping_add",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::strength_and_armor_need_a_combat_record"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+      ],
+      "limits": "Verified inspected public fixture supplies100 and checks contextual missing-combat-record error for this name. Source requires one integer, wraps addition into retained combat scalar and returns0. No successful populated-combat public assertion located; setters/readbacks/health/death receipt do not establish this adjustment executes. Unknown: overflow/negative/routed/replacement and installed original/native/browser named adjustment acceptance. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
     }
   ],
   "instructions": [
