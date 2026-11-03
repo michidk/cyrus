@@ -4207,10 +4207,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/pull/269"
       ],
-      "limits": "Verified source inspection: no named handler/matching generic dispatcher or dedicated public rejection assertion located. Related LightFlicker/LightSize, flat/effect and model preparation services do not implement these distinct entries. Unknown original side effects/return/lifetime beyond declarations. Missing means named native implementation, not every effects/static service. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
-      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+      "limits": "Verified independent installed function parms8/exact mapping/full84-byte wrapper/91-byte position resolver/60+73-byte predicates/232-byte dispatcher/133-byte allocator. Adds arg1 to selected receiver position second32-bit component in place before enable/count checks. Enabled resource lookup before signed count; positive count allocates first zero-tag86-byte contiguous record, copies position/tag/resource/lifetime/companion/control words and requests mode/speed setup; zero-tag reuse retained. Disabled residual return count; enabled nonpositive0/completed count/exhaustion0, not partial allocation count.1680 original-instruction contexts/17 effective controls; full mapped memory/write order/domain/calls/return/registers/20-byte cleanup/canary checked.2 receivers/4 position branches/3 enables/5 argument octuples/7 pools/2 patterns. Controlled resource positive token/exact86-byte zero fill/velocity no-op exact record-mode-speed IO. Full original resource/velocity dependencies independently retained/static inspected, not executed. Actual resource lookup/velocity matrix-random/render/error termination/malformed pointers/unbounded zero-tag counts/global lifecycle/VM/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
+      "reviewed_revision": "a0bb31db2ede4cc3d6c01be0b12c8db263d2dda7"
     },
     {
       "native": "LoadStatic",
