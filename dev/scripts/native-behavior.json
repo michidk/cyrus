@@ -4112,10 +4112,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712",
+        "https://github.com/michidk/redguard-preservation/pull/284"
       ],
-      "limits": "Verified source computes wrapping value*frame_scale then arithmetic shift8. Public fixture supplies frame_scale256 and checks1234/-300 identity plus missing argument error. This does not prove other scales/overflow, production scale timing or original/native/browser parity. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified independent installed function parms1/exact lowercase binding/full46-byte call-free original handler. Low32 argument*shared-scale product interpreted signed then arithmetic shift8; truncation before shift, negative rounds down. Receiver ignored incl null/unmapped; argument unchanged. No ordinary enable/mode gate.6936 original contexts/8 effective controls:17 argument words/17 scale words/3 receivers/2 enables/2 modes/2 patterns. Full mapped actor/global memory/no writes/no calls/result/six regs/stack/canary, independent wrap32 then signed floor division oracle. No controlled services. Unknown scale producer/timing/lifecycle/range/VM/natural original/native/browser/exhaustive domain. Production unchanged; no gameplay/render/Cargo/runtime.",
+      "reviewed_revision": "466ce13ed42e4c661de8d507f4d3c23997c1437e"
     },
     {
       "native": "PlayerOffset",
