@@ -3060,17 +3060,19 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "901b7ccbf91271b1a0083e92847b92da6258d7de",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/234",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6608250655"
       ],
       "native": "IsShellScript",
       "status": "missing",
-      "scope": "Direct named public SOUP call dispatch",
+      "scope": "Original zero-argument shared shell-context query; named implementation missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
       "tests": [],
-      "limits": "Verified source inspection: no named handler or generic matching dispatch path located. No dedicated public rejection assertion or production acceptance receipt located. Missing means this named implementation scope, not absence of all diagnostic/input/identity functionality. Unknown original return, side effects and task lifetime; declaration metadata does not establish behavior. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests or original/native/browser runtime executed."
+      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Returns zero unless shell system enabled, shell list nonempty and receiver pointer nonnull; otherwise returns shared shell execution-context word unchanged. No Boolean normalization, receiver dereference, script identity/membership check, calls or nonstack mutation. 33280 original instruction contexts/eight effective controls pass, with every context-byte value plus selected full-word extremes, nonzero enabled/list/receiver variations and actor patterns. No intercepted services; shared state synthetic. Unknown: complete shell lifecycle producer integration, VM decoding/malformed admission and natural original/native/browser acceptance. Selected state/pointer contexts do not establish safety of malformed pointers elsewhere. Named implementation remains missing; no family inference."
     },
     {
       "owner": 5,
