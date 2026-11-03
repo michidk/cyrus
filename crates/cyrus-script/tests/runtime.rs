@@ -314,6 +314,51 @@ fn formula_wraps_uses_unsigned_division_and_signed_masked_shifts() {
     assert_eq!(flags, [-1073741824]);
 }
 #[test]
+fn division_by_zero_preserves_destination_and_does_not_repeat_expression_effects() {
+    let mut vm = runtime(vec![
+        Operation::Assign {
+            destination: Place::Flag { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 0,
+                        target: Object::Me,
+                        kind: CallKind::Function,
+                        function: "Query".into(),
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![(4, integer(0))],
+            },
+        },
+        call("After", CallKind::Function),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Service::default();
+    let mut flags = [73];
+    let first = vm
+        .invoke(Thread::Main, &mut host, &mut flags, 20)
+        .unwrap_err()
+        .to_string();
+    assert!(first.contains("world 17 actor TEST script instruction 0"));
+    assert!(first.contains("SOUP division by zero"));
+    assert_eq!(flags, [73]);
+    assert_eq!(host.calls, ["Query"]);
+    assert_eq!(host.ends, 0);
+    for thread in [Thread::Main, Thread::Interrupt] {
+        assert_eq!(
+            vm.invoke(thread, &mut host, &mut flags, 20)
+                .unwrap_err()
+                .to_string(),
+            first
+        );
+    }
+    assert_eq!(flags, [73]);
+    assert_eq!(host.calls, ["Query"]);
+    assert_eq!(host.ends, 0);
+}
+
+#[test]
 fn failed_callbacks_and_runaway_scripts_are_sticky_and_contextual() {
     let mut vm = runtime(vec![
         call("Fail", CallKind::Function),
