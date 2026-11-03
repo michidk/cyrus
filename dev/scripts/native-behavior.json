@@ -3079,10 +3079,12 @@
     },
     {
       "owner": 5,
-      "reviewed_revision": "26988424abe4ca4776fe6fa5ff97721347a16c65",
+      "reviewed_revision": "444f18061663b0f2a83c913c8636cf3687556aeb",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
+        "https://github.com/michidk/redguard-preservation/pull/200",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605931273"
       ],
       "native": "MyId",
       "status": "partial",
@@ -3091,7 +3093,7 @@
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::my_id_reads_the_runtime_identifier"
       ],
-      "limits": "Verified: source reads runtime_identifier and sign extends; fixture compares local result to the same actor field. This is field consistency, not independent original identity/allocation/reuse proof. Unknown matched original/native/browser identity after replacement and routed calls. Zero static occurrences in27 historical exports are not runtime absence proof; Rust assertions inspected, not rerun. No new three-host acceptance claim."
+      "limits": "Verified canonical zero-argument original query returns receiver stored signed 16-bit runtime identifier, without allocation, selected-player lookup or adding pool bias. Merged preservation PR200 and 1056 sampled original instruction contexts/five changed-contract controls cover signed boundaries and unrelated packed neighboring word; not exhaustive word-domain or identifier-producer execution. Inspected Rust branch returns runtime_identifier; fixture compares result with same actor field rather than an independent literal allocation expectation. This is readback consistency only. Branch has no explicit local argument-count guard; canonical declaration does not establish invalid-argument admission. Full public signed-domain/routing, missing-identifier admission, allocation/reuse/replacement and live original/native/browser acceptance remain Unknown. Rust assertions inspected, not rerun; instruction evidence is not production acceptance. Historical static absence cannot exclude Unsupported actor bodies."
     },
     {
       "owner": 5,
