@@ -3584,6 +3584,225 @@
       ],
       "limits": "Verified helper rows check heading/history direction and wrap cases. Public source requires selected-player spatial state but assumes model presence, while published original returns0 without model. Helper equality does not establish production history capture timing, no-model path or matched original/native/browser continuation. Zero static calls across27 historical schema27 exports are not absence proof. Rust assertions inspected only; no new production acceptance.",
       "reviewed_revision": "54c24a39c3f9d4aae7d9d6cafd8057e7bef4c625"
+    },
+    {
+      "native": "MoveAboveMe",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MovePos",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "GotoLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "OffsetLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "SetLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "SetObjectLocation",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "SetStartPosition",
+      "status": "missing",
+      "owner": 5,
+      "scope": "Direct named SOUP motion/location dispatch",
+      "caller": "GameHost::call/delegated services -> unsupported fallback",
+      "tests": [],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified source inspection: no named handler or matching generic path; related MovePosition/MoveToLocation/relocation helpers do not supply this differently named native. No dedicated public rejection assertion or named production acceptance located. Unknown original coordinate/argument/side-effect/return contract beyond declarations. Missing means named implementation only. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. No Rust tests/runtime run.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "Move",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Per-invocation receiver displacement task",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified: supplied-state Task::Move helper adds operand times nominal ticks and ends on elapsed duration; fixture asserts literal position progression. Named task dispatcher exists; separate receiver without runtime identifier is explicitly unsupported. Unknown successful named public dispatch, collision/relocation consequences and direct three-host traces. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveBackward",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Backward task with animation/counter lifetime",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::backward_attribute_ramp_survives_task_passes_and_world_restoration"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified public BODY/TASKS fixture asserts exact ramp positions/counters across snapshot generation replacement. Other public fixture checks group request, positive multiple-of-step displacement and completion; missing-group case does not move but completes. Unknown selected-player, hanging/edge/separate-object branches and matched original/native/browser ordering. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveLeft",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Left strafe admission and stepped movement",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified public fixture supplies lateral-step input, checks positive displacement and direction4, not exact full position path. Public missing-input/deep-water-edge/blocked fixtures distinguish refusal and service requirements. Unknown all hanging/deep-water/combat/selected-player and matched three-host collision/random order. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveRight",
+      "status": "partial",
+      "owner": 17,
+      "scope": "Right strafe admission and stepped movement",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified public fixture supplies lateral-step input, checks positive displacement and direction5, not exact full position path. Missing-input/deep-water-edge/blocked fixtures distinguish refusal and service requirements. Unknown all hanging/deep-water/combat/selected-player and matched three-host collision/random order. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveLocation",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Direct point wrapper with location selector",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified task helper records Direct/Location selector2 and tolerance-5 through fake PointHost, checks host0 completes and nonzero remains pending. Public production owner resolves stored/home location. Fake service routing is not live wrapper/map/animation behavior or named original/native/browser acceptance. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MovePosition",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Direct point wrapper with explicit Q8 destination",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified task helper records Direct/Position and unchanged destination/tolerance through fake PointHost, checks return-to-completion mapping and malformed operands. Ordinary direct point helper tests do not establish successful named production call, full relocation/collision or matched three-host traces. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveNodePosition",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Node point wrapper with explicit Q8 destination",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified task helper records Node/Position and destination/tolerance through fake PointHost, checks return-to-completion and malformed/missing service errors. Public wrapper helper tests cover state/navigation separately; not successful named installed task acceptance or full reservation/restore parity. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+    },
+    {
+      "native": "MoveToMarker",
+      "status": "partial",
+      "owner": 23,
+      "scope": "Timed marker interpolation task",
+      "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
+      "tests": [
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::move_to_marker_matches_the_original_routine"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/17"
+      ],
+      "limits": "Verified supplied-state task helper compares literal original-emulator marker/pose/duration/elapsed/frame-scale rows including slave coordinates and update requests. This timed interpolation differs from MoveMarker direct point walking. Unknown production marker inputs, routed/separate ownership and matched native/browser task lifetime. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
+      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
     }
   ],
   "instructions": [
