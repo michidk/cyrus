@@ -5008,10 +5008,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6605522792"
       ],
-      "limits": "Verified inspected public fixtures: reads backup bytes contributing to289; routed GetAttribute119 returns receiver4 in caller local; index256 fails contextually before mutation and remains sticky. Source requires one integer and index0..255. Unknown: full canonical installed read/absent-table and original/native/browser query acceptance; byte read tests do not prove downstream attribute consumers. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified canonical one-index original query reads receiver unsigned byte, returns zero for absent table and does not check index range or read selected player. Existing preservation contract independently corroborated by 3132 constructed exact instruction cases and six changed-contract controls. Out-of-range cases deliberately map sentinel bytes and do not prove safe actual reads. Inspected public Rust fixtures read backup bytes contributing to 289, return routed receiver attribute 119 value 4 in caller local and reject index 256 contextually/sticky before mutation. Current host supports indices 0..255 rather than unsafe original access. Separate-update fixture does not independently assert its initial populated 99 read. Unknown: full successful public byte-domain, absent-table admission, replacement and live original/native/browser query acceptance. Rust assertions inspected, not rerun; instruction evidence is not production acceptance or proof of downstream attribute consumers. Historical static counts cannot exclude Unsupported actor bodies.",
+      "reviewed_revision": "51bbac09c1bba9d82b503fc70a067b4434a0af68"
     },
     {
       "native": "IsInWater",
