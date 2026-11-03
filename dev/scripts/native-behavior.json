@@ -4594,10 +4594,11 @@
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
+        "https://github.com/michidk/redguard-preservation/blob/46ddaa588edb1f96f156f04177ea978b195c24b8/docs/engine/SOUP.md#pipeuser-query"
       ],
-      "limits": "Verified: installed definition declares function with1 arguments; no exact named handler or generic matching family path in current public host/delegates. No dedicated public rejection assertion or named production acceptance located. Object-call target resolution and group/user synchronization are distinct services; they do not implement pipe receiver selection or iteration. Unknown original receiver/reference selection, side effects, return and lifetime beyond declaration metadata; no semantics inferred from the name. Missing means named implementation only, not absence of all attachment/group services. Zero static calls in27 historical exports cannot exclude hidden unsupported actor bodies. Rust tests and original/native/browser runtime not run.",
-      "reviewed_revision": "a26f260cf2a984854533e6897b82917561853391"
+      "limits": "Verified independent installed one-argument declaration/exact binding/full original179-byte native and31-byte string copy:133264 cases/12 effective semantic controls PASS,133252 returns/12 stops. Full256x256 explicit argument/candidate user-byte pairs at one receiver/order/two patterns; selected out-of-byte32-bit arguments/receiver exclusions/two orders/finite acyclic lists through66 nodes. Receiver user metadata differs from argument. Independently named ChangeUser producer confirms field identity; no sibling semantic inference. Selects other actors whose unsigned user byte equals complete32-bit argument in list order; out-of-byte values select none. Normal completion writes null after selected prefix; stale tail unchanged.64th pointer stored before source-context/original string copy including null/runtime error11 request. Sole controlled IO stops exactly at request; diagnostic effects/continuation/unwind/termination unknown. Full mapped actor/metadata/head/buffer/error memory/nonstack write order/domain/five preserved registers/stack-canary checked. Copy dependency independently identity-audited. Unknown malformed/null metadata/list/cycles/producers/lifetime/concurrency/shared-buffer consumers/VM/natural original/native/browser/full joint domain. Named production dispatch remains missing; no production acceptance inferred.",
+      "reviewed_revision": "4fd6975897a965ef117a19629fcf4a4719a0e02e"
     },
     {
       "native": "AnimateGXA",
