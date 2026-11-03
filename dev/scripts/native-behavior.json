@@ -5806,10 +5806,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/commit/c331706"
       ],
-      "limits": "Verified inspected public hud_call fixture empties item2 count5 to0; unknown item9 and missing argument reject. Source requires one u16-range operand and inventory host; clear directly sets count0 without dependent removal/flags. This is not SubItem or the general drop-list path. Unknown: installed original/native/browser named removal, selected/held cleanup and all dependent/closed-inventory boundaries. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified: independent installed one-argument declaration/exact native binding/full126-byte native/full117 ordered lookup original instructions. Disabled returns0 without lookup/effects. Enabled full unsigned ID/first equal/first greater stop; matching current word cleared0 including already-zero write, returns0, receiver ignored. Pushed flag/saved word/unrelated mapped memory retained; no selection/dependent/presentation service. Full mapped memory/nonstack writes/exact complete call sequence/diagnostic args/canary; zero result/five preserved registers/stack checked on returns. Missing-ID stops at exact diagnostic-copy entry after error-context write; no fabricated effects/return. Existing public fixture only empties item2 count5; production requires u16 operand, so full unsigned original key contract not claimed implemented. Unknown diagnostic continuation/natural record producers/lifecycle/malformed cyclic lists/full domain/VM/natural native/browser parity. Unsorted/duplicate lists constructed controls. Production partial retained. No Cargo/game runtime.",
+      "reviewed_revision": "4f4e9ee7423d51b4e8c910782db88eff41582d69"
     },
     {
       "native": "UseItem",
