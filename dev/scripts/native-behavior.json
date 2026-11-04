@@ -3988,10 +3988,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/commit/6373429"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified: independent installed three-argument function/exact binding/full176-byte native/full154 planar rotation helper CPU execution. Temporary offsets rotate using masked receiver-heading-plus-angle and add receiver X/Z, but final stores copy receiver local X/Z directly to selected player; zero result, Y/headings retained, alias preserves X/Z, no ordinary update/collision services.4608 contexts/10 effective original-byte CPU controls require normal exit/full output; final original reexecution PASS. Exact full two-actor arena/result/three preserved registers/stack/canary/x87 CW/TOP. Two receivers/two player pointers including alias/four angle values/three X and two Z offsets/three headings/two XYZ triples/two masked x87 CW/two synthetic finite table modes/two patterns. Tables are controlled memory inputs; no natural trig producer/table initialization/numerical rotation-result claim. Unknown unmasked exceptions/nonempty FPU stack/null-invalid pointers/full joint domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
+      "reviewed_revision": "7b5502e032648a7bcc9774253300bff12415d7d2"
     },
     {
       "native": "PlayerTilt",
