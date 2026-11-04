@@ -9928,6 +9928,103 @@ fn ordinary_falling_caller_obeys_the_live_animation_vertical_marker() {
 }
 
 #[test]
+fn ordinary_falling_reads_the_replacement_groups_vertical_marker() {
+    use cyrus_game::script::{ObstacleEnvironment, ScriptInputs};
+    for replacement_suppressed in [false, true] {
+        let (world, scripts, mut data) = movement_fixture(
+            0,
+            true,
+            true,
+            |scripts| {
+                let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
+                attributes.insert("attr_32".into(), 32);
+                attributes.insert("attr_44".into(), 0);
+            },
+            |saved| {
+                saved["actors"][0]["control"]["falling_state"] = 1.into();
+                saved["actors"][0]["control"]["fall_timer"] = 30.into();
+                saved["actors"][0]["control"]["fall_origin_y"] = 10000.into();
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+        let mut commands = vec![];
+        if replacement_suppressed {
+            commands.push(serde_json::json!({"opcode":5}));
+        }
+        commands.push(serde_json::json!({"opcode":0,"frame_reference":56}));
+        commands.push(serde_json::json!({"opcode":2,"value":0}));
+        data.metadata["actors"][0]["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":56,"anim_id":1,"anim_type":0,"commands":commands
+            }));
+        let mut world = replace_health_test_animation(world, &scripts, &mut data, 0, 0, |_| {});
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+        let before = world.spatial(id).unwrap().local.position;
+        let fall = |world: &mut ScriptWorld| {
+            world
+                .continue_ordinary_falling(
+                    id,
+                    &data,
+                    ObstacleEnvironment {
+                        selected_player: None,
+                        auto_grab: false,
+                        item_system_ready: false,
+                        shell_execution: false,
+                        ticks: 0,
+                    },
+                    8,
+                    0,
+                    50,
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap()
+        };
+        assert_eq!(
+            world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+            0
+        );
+        assert!(fall(&mut world));
+        assert_eq!(
+            world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+            56
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.falling_state, 1);
+        assert_eq!(control.fall_origin_y, 10000);
+        assert_eq!(
+            control.fall_timer,
+            if replacement_suppressed { 30 } else { 22 }
+        );
+        let after = world.spatial(id).unwrap().local.position;
+        assert_eq!([after[0], after[2]], [before[0], before[2]]);
+        assert_eq!(
+            after[1],
+            if replacement_suppressed {
+                before[1]
+            } else {
+                1808
+            }
+        );
+    }
+}
+
+#[test]
 fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion() {
     use cyrus_game::script::ObstacleEnvironment;
     let mut scripts = cache();
