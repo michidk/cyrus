@@ -1,4 +1,5 @@
 //! Retained logical camera records; pose correction and publication share this owner.
+use crate::script::LivingState;
 use anyhow::Result;
 use cyrus_script::Native;
 use cyrus_world::transform::Matrix;
@@ -497,14 +498,14 @@ impl CameraState {
 pub fn player_slot(
     holding_weapon: bool,
     debug_override: bool,
-    living_state: u8,
+    living_state: LivingState,
     rope_attached: bool,
 ) -> Option<u8> {
     if holding_weapon {
         Some(3)
     } else if debug_override {
         Some(8)
-    } else if living_state == 15 {
+    } else if living_state == LivingState::HANGING {
         Some(4)
     } else if rope_attached {
         Some(5)

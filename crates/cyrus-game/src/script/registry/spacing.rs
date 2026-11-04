@@ -1,5 +1,6 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute, Native};
 
@@ -582,7 +583,7 @@ impl ScriptWorld {
                 || control.sliding_state != 0
                 || control.falling_state != 0
                 || control.queued_motion != 0
-                || control.living_state != 0
+                || control.living_state != LivingState::ORDINARY
             {
                 return Ok(0);
             }
@@ -793,7 +794,7 @@ impl ScriptWorld {
                 || control.sliding_state != 0
                 || control.falling_state != 0
                 || control.queued_motion != 0
-                || control.living_state != 0
+                || control.living_state != LivingState::ORDINARY
             {
                 return Ok(());
             }

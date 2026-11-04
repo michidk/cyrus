@@ -5,12 +5,10 @@
 //! the actor's lighting or dousing frame threshold. Presentation of the held torch and its light
 //! belongs to the attachment owner and is not modelled here.
 use super::{GameHost, ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
-
-const LIGHTING: u8 = 33;
-const DOUSING: u8 = 34;
 
 impl ScriptWorld {
     fn torch_gates(
@@ -30,7 +28,7 @@ impl ScriptWorld {
         Ok(inputs.item_system_ready
             && !inputs.shell
             && has_group
-            && !(27..=32).contains(&control.living_state))
+            && !control.living_state.is_bounce())
     }
 
     /// `LightTorch`: begin lighting when nothing else holds the actor. An actor that cannot light
@@ -57,14 +55,14 @@ impl ScriptWorld {
             || inputs.holding
             || control.falling_state != 0
             || control.queued_motion != 0
-            || control.living_state == 15
-            || (10..=19).contains(&control.living_state);
+            || control.living_state == LivingState::HANGING
+            || control.living_state.is_ledge();
         if refused {
             return Ok(());
         }
         self.request_ordinary_group(id, AnimationGroup::LIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
-        control.living_state = LIGHTING;
+        control.living_state = LivingState::LIGHTING_TORCH;
         control.motion_companion = 0;
         Ok(())
     }
@@ -86,7 +84,7 @@ impl ScriptWorld {
         }
         self.request_ordinary_group(id, AnimationGroup::UNLIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
-        control.living_state = DOUSING;
+        control.living_state = LivingState::DOUSING_TORCH;
         control.motion_companion = 0;
         Ok(())
     }
@@ -108,7 +106,7 @@ impl ScriptWorld {
         };
         if control.torch_burning == 0
             || self.globals.world_loop_frame & 7 != 0
-            || control.living_state == DOUSING
+            || control.living_state == LivingState::DOUSING_TORCH
         {
             return Ok(());
         }
@@ -165,8 +163,8 @@ impl ScriptWorld {
         }
         let state = control.living_state;
         let (group, threshold) = match state {
-            LIGHTING => (AnimationGroup::LIGHT_TORCH, Attribute::LightFrame),
-            DOUSING => (AnimationGroup::UNLIGHT_TORCH, Attribute::UnlightFrame),
+            LivingState::LIGHTING_TORCH => (AnimationGroup::LIGHT_TORCH, Attribute::LightFrame),
+            LivingState::DOUSING_TORCH => (AnimationGroup::UNLIGHT_TORCH, Attribute::UnlightFrame),
             _ => return Ok(()),
         };
         self.request_ordinary_group(id, group, false, ticks, sounds)?;
@@ -181,17 +179,17 @@ impl ScriptWorld {
             return Ok(());
         }
         let control = actor.control.as_mut().expect("checked control");
-        if state == LIGHTING {
+        if state == LivingState::LIGHTING_TORCH {
             if control.torch_saved == 0 {
                 control.torch_saved = torch_start()?;
             }
             control.torch_burning = control.torch_saved;
-            control.living_state = 0;
+            control.living_state = LivingState::ORDINARY;
         } else {
             let burned_out = control.torch_burning == 0;
             control.torch_saved = control.torch_burning;
             control.torch_burning = 0;
-            control.living_state = 0;
+            control.living_state = LivingState::ORDINARY;
             control.held_item = None;
             if burned_out {
                 spend(item)?;
@@ -216,13 +214,15 @@ fn lighting_or_dousing(actor: &super::ScriptActor) -> bool {
     let state = actor
         .control
         .as_ref()
-        .map_or(0, |control| control.living_state);
+        .map_or(LivingState::ORDINARY, |control| control.living_state);
     let group = actor.bound_animation_group().flatten();
-    matches!(state, LIGHTING | DOUSING)
-        || matches!(
-            group,
-            Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
-        )
+    matches!(
+        state,
+        LivingState::LIGHTING_TORCH | LivingState::DOUSING_TORCH
+    ) || matches!(
+        group,
+        Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+    )
 }
 
 impl ScriptWorld {

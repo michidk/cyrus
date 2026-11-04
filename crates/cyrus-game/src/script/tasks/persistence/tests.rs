@@ -1,5 +1,6 @@
 //! Native continuations resume through VM calls and explicit restored service bindings.
 use super::*;
+use crate::script::LivingState;
 use crate::script::tasks::{
     FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
@@ -4184,7 +4185,7 @@ fn walk_backward_matches_the_original_routine() {
     for (state, admission) in [
         (
             BackwardState {
-                living_state: 15,
+                living_state: LivingState::HANGING,
                 walk_backward_step_attribute: 8,
                 ..Default::default()
             },

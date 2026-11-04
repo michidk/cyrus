@@ -1,5 +1,6 @@
 //! Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 use super::ScriptActorId;
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Argument};
@@ -16,7 +17,7 @@ pub struct ActivationAnimation {
 /// Caller-established actor state; absence of a record means unknown, not eligible.
 #[derive(Clone, Copy, Debug)]
 pub struct ActivationActor {
-    pub state: u8,
+    pub state: LivingState,
     pub on_rope: bool,
     pub water_state: u8,
     pub torch_burning: u8,
@@ -37,11 +38,13 @@ impl ActivationActor {
         let group = actor.animation.and_then(|animation| animation.group);
         let animated = item_system_ready && !shell_execution && actor.animation.is_some();
         let climbing = animated
-            && (matches!(actor.state, 33 | 34)
-                || matches!(
-                    group,
-                    Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
-                ));
+            && (matches!(
+                actor.state,
+                LivingState::LIGHTING_TORCH | LivingState::DOUSING_TORCH
+            ) || matches!(
+                group,
+                Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+            ));
         item_system_ready
             && !shell_execution
             && !matches!(actor.water_state, 2 | 4)
@@ -60,13 +63,13 @@ impl ActivationActor {
     }
 
     fn on_edge(self) -> bool {
-        (10..=19).contains(&self.state)
+        self.state.is_ledge()
     }
 }
 
 /// Shared weapon gates for activation and ordinary default selection.
 pub(super) fn weapon_predicates(
-    state: u8,
+    state: LivingState,
     animation: Option<ActivationAnimation>,
     weapon_assigned: bool,
     weapon_drawn: bool,
@@ -76,8 +79,10 @@ pub(super) fn weapon_predicates(
 ) -> (bool, bool, bool) {
     let ready = item_system_ready && !shell_execution && animation.is_some();
     let group = animation.and_then(|animation| animation.group);
-    let drawing = ready && (state == 20 || group == Some(AnimationGroup::DRAW_SWORD));
-    let sheathing = ready && (state == 21 || group == Some(AnimationGroup::SHEATH_SWORD));
+    let drawing =
+        ready && (state == LivingState::DRAWING_SWORD || group == Some(AnimationGroup::DRAW_SWORD));
+    let sheathing = ready
+        && (state == LivingState::SHEATHING_SWORD || group == Some(AnimationGroup::SHEATH_SWORD));
     let holding =
         holding_attribute != 0 || (ready && weapon_assigned && weapon_drawn && !sheathing);
     (holding, drawing, sheathing)

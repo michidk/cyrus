@@ -1,5 +1,6 @@
 //! Automatic late collision composes retained candidates and logical actor response.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -22,7 +23,7 @@ pub(super) struct OrdinaryLateInputs<'a> {
 
 impl ScriptWorld {
     /// The ordinary surface updater. Returns its result: zero for an excluded update, the resolved
-    /// surface for an update that stores it or (falling, sliding, living states 27 to 29) returns
+    /// surface for an update that stores it or (falling, sliding, the actor-bounce living states) returns
     /// it without storing.
     fn assign_ordinary_support_surface(
         &mut self,
@@ -42,7 +43,7 @@ impl ScriptWorld {
         }
         let keep_stored = control.falling_state != 0
             || control.sliding_state != 0
-            || (27..=29).contains(&control.living_state);
+            || control.living_state.is_actor_bounce();
         if keep_stored && !selected {
             // Only the selected player's transition handler reads the returned value.
             return Ok(self.actors[id.index].surface.unwrap_or(0));
@@ -682,12 +683,20 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .expect("admitted ground control");
-            // The `BounceObject` task owns living states 30 and 31 (entry and rising): the ground
-            // response is skipped for them; state 32 (falling) takes the ordinary response.
-            if matches!(control.living_state, 30 | 31) {
+            // The `BounceObject` task owns `BOUNCE_ENTRY` and `BOUNCE_RISING`: the ground
+            // response is skipped for them; `BOUNCE_FALLING` takes the ordinary response.
+            if matches!(
+                control.living_state,
+                LivingState::BOUNCE_ENTRY | LivingState::BOUNCE_RISING
+            ) {
                 return Ok(support_found);
             }
-            if control.queued_motion != 0 && !matches!(control.living_state, 20 | 21) {
+            if control.queued_motion != 0
+                && !matches!(
+                    control.living_state,
+                    LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+                )
+            {
                 queued_handled = self.resolve_ordinary_queued_motion(
                     id,
                     query,
@@ -704,7 +713,10 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("admitted ground control")
                 .living_state;
-            if matches!(living_state, 20 | 21) {
+            if matches!(
+                living_state,
+                LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+            ) {
                 self.admit_actor_weapon_draw(
                     id,
                     weapon.context("combat ground weapon admission unavailable")?,
@@ -729,7 +741,7 @@ impl ScriptWorld {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(
-                    !matches!(control.living_state, 27..=29),
+                    !control.living_state.is_actor_bounce(),
                     "state-specific ground response owner unavailable"
                 );
                 if let Some(support) = support.as_ref() {
@@ -862,7 +874,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("late collision control unavailable")?;
-        let special = (10..=19).contains(&control.living_state);
+        let special = control.living_state.is_ledge();
         let falling = control.falling_state != 0;
         ensure!(
             !falling || !special,
@@ -896,7 +908,10 @@ impl ScriptWorld {
             .as_ref()
             .expect("admitted body control");
         if mask & 1 != 0
-            && (matches!(control.living_state, 0 | 15) || (27..=32).contains(&control.living_state))
+            && (matches!(
+                control.living_state,
+                LivingState::ORDINARY | LivingState::HANGING
+            ) || control.living_state.is_bounce())
         {
             // Ordinary entry clears the extra-contact append flag. These admitted
             // stages do not produce an appended normal; heightmap availability

@@ -1,5 +1,6 @@
 //! The leap that a route link flagged `0x4000` starts, from preservation's SOUP.md phase twelve.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::AnimationGroup;
 
@@ -46,7 +47,10 @@ impl ScriptWorld {
             || control.queued_motion != 0
             || control.falling_state != 0
             || control.sliding_state != 0
-            || !matches!(control.living_state, 0 | 15)
+            || !matches!(
+                control.living_state,
+                LivingState::ORDINARY | LivingState::HANGING
+            )
         {
             return Ok(false);
         }
@@ -58,7 +62,7 @@ impl ScriptWorld {
             .expect("validated leap control");
         control.stable_position_valid = false;
         // A hanging actor takes the hang release instead, which only the selected player has.
-        if control.living_state == 15 {
+        if control.living_state == LivingState::HANGING {
             return Ok(false);
         }
         control.fall_origin_y = origin;

@@ -38,7 +38,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("support-follow control unavailable")?;
-        let special = (10..=19).contains(&control.living_state);
+        let special = control.living_state.is_ledge();
         let Some(owner) = (if special {
             actor.model.ledge_support
         } else {
@@ -271,7 +271,9 @@ mod tests {
             (255, [0, 255], 1, 0, [0, 255]),
             (6, [128, 255], 258, 4, [0, 127]),
         ] {
-            for living_state in [0, 9, 10, 15, 17, 19, 20, 255] {
+            for living_state in
+                [0, 9, 10, 15, 17, 19, 20, 255].map(crate::script::LivingState::from_byte)
+            {
                 let mut control = ActorControlState {
                     living_state,
                     directional_state: directions,

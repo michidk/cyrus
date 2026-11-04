@@ -1,5 +1,6 @@
 //! Ordinary forward segment response retains the pre-script candidate list.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::collision_mesh::IntegerSegmentContact;
 
@@ -67,7 +68,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary forward obstacle control unavailable")?;
-        if control.living_state == 15 {
+        if control.living_state == LivingState::HANGING {
             self.resolve_ordinary_bounds_obstacle(id, query)?;
             return Ok(false);
         }

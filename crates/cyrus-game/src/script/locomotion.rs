@@ -1,5 +1,6 @@
 //! Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 //! The functions are pure: the caller owns the animation request, probe query and writes.
+use crate::script::LivingState;
 use cyrus_script::AnimationGroup;
 
 /// Receiver state read by `MoveBackward`'s admission and animation choice.
@@ -9,7 +10,7 @@ pub struct BackwardState {
     pub sliding_state: u8,
     pub falling_state: u8,
     pub queued_motion: u8,
-    pub living_state: u8,
+    pub living_state: LivingState,
     pub holding_weapon: bool,
     /// Combat flag `0x04`.
     pub combat_mode: bool,
@@ -64,7 +65,7 @@ pub fn backward_admission(
     blocked_ahead_30: impl FnOnce() -> bool,
 ) -> BackwardAdmission {
     // Unlike the strafes, MoveBackward admits only lifecycle byte 0: byte 15 is refused too.
-    if !idle_admitted(&state) || state.living_state != 0 {
+    if !idle_admitted(&state) || state.living_state != LivingState::ORDINARY {
         return BackwardAdmission::Refused;
     }
     if state.holding_weapon || state.combat_mode {
@@ -92,7 +93,9 @@ pub fn backward_admission(
 /// `WalkBackward`'s admission before its step check: the idle admission with lifecycle byte 0,
 /// plus the selected player's retained mode-one refusal.
 pub fn walk_backward_admitted(state: &BackwardState) -> bool {
-    idle_admitted(state) && state.living_state == 0 && !state.selected_player_mode_one
+    idle_admitted(state)
+        && state.living_state == LivingState::ORDINARY
+        && !state.selected_player_mode_one
 }
 
 /// The admission shared by every nonplayer stepper: no rope, sliding, falling or queued motion,
@@ -102,7 +105,10 @@ fn idle_admitted(state: &BackwardState) -> bool {
         || state.sliding_state != 0
         || state.falling_state != 0
         || state.queued_motion != 0
-        || !matches!(state.living_state, 0 | 15))
+        || !matches!(
+            state.living_state,
+            LivingState::ORDINARY | LivingState::HANGING
+        ))
 }
 
 /// Strafe direction of `MoveLeft` and `MoveRight`, per preservation's engine/SOUP.md.
@@ -204,7 +210,7 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             step: state.strafe_step_attribute,
             turn: state.strafe_turn_attribute,
         }
-    } else if state.living_state == 15 {
+    } else if state.living_state == LivingState::HANGING {
         StrafeAdmission::Ledge {
             group: strafe.ledge_group(),
         }
@@ -442,14 +448,16 @@ mod tests {
                 ..ready()
             },
             BackwardState {
-                living_state: 20,
+                living_state: LivingState::DRAWING_SWORD,
                 ..ready()
             },
         ] {
             assert_eq!(backward_admission(state, never), BackwardAdmission::Refused);
         }
         // The original runs the lifecycle test with byte 15 refused, as emulated.
-        for (living_state, admitted) in [(0, true), (15, false)] {
+        for (living_state, admitted) in
+            [(LivingState::ORDINARY, true), (LivingState::HANGING, false)]
+        {
             assert_eq!(
                 matches!(
                     backward_admission(
@@ -613,7 +621,7 @@ mod tests {
         assert_eq!(
             strafe_admission(
                 BackwardState {
-                    living_state: 15,
+                    living_state: LivingState::HANGING,
                     ..ready()
                 },
                 Strafe::Right
@@ -625,7 +633,7 @@ mod tests {
         assert_eq!(
             strafe_admission(
                 BackwardState {
-                    living_state: 15,
+                    living_state: LivingState::HANGING,
                     ..ready()
                 },
                 Strafe::Left
@@ -652,7 +660,7 @@ mod tests {
                 ..combat
             },
             BackwardState {
-                living_state: 20,
+                living_state: LivingState::DRAWING_SWORD,
                 ..combat
             },
         ] {
@@ -1780,7 +1788,7 @@ mod tests {
             ..Default::default()
         };
         assert!(forward_admitted(&BackwardState {
-            living_state: 20,
+            living_state: LivingState::DRAWING_SWORD,
             ..base
         }));
         for refused in [

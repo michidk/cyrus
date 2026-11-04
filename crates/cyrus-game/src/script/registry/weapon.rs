@@ -1,5 +1,6 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -37,8 +38,8 @@ impl super::ScriptActor {
             .as_mut()
             .context("HandItem receiver control unavailable")?;
         if matches!(surface, 2 | 4)
-            || (10..=19).contains(&control.living_state)
-            || (27..=29).contains(&control.living_state)
+            || control.living_state.is_ledge()
+            || control.living_state.is_actor_bounce()
             || control.falling_state != 0
             || control.sliding_state != 0
             || control.queued_motion != 0
@@ -121,8 +122,13 @@ impl<'a> CombatReceiver<'a> {
             .as_mut()
             .expect("validated weapon transition control");
         control.weapon_drawn = valid && control.combat.is_some();
-        if valid && matches!(control.living_state, 20 | 21) {
-            control.living_state = 0;
+        if valid
+            && matches!(
+                control.living_state,
+                LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+            )
+        {
+            control.living_state = LivingState::ORDINARY;
         }
     }
 
@@ -153,9 +159,10 @@ impl<'a> CombatReceiver<'a> {
         hud.validate_weapon(weapon)?;
         let state = control.living_state;
         let requested = match state {
-            20 => Some(AnimationGroup::DRAW_SWORD),
-            21 if actor.animation.as_ref().unwrap().playback.current_group()
-                != Some(AnimationGroup::SHEATH_SWORD) =>
+            LivingState::DRAWING_SWORD => Some(AnimationGroup::DRAW_SWORD),
+            LivingState::SHEATHING_SWORD
+                if actor.animation.as_ref().unwrap().playback.current_group()
+                    != Some(AnimationGroup::SHEATH_SWORD) =>
             {
                 Some(AnimationGroup::SHEATH_SWORD)
             }
@@ -191,24 +198,24 @@ impl<'a> CombatReceiver<'a> {
                     })?;
             animation.frame = frame.or(animation.frame);
             // A newly requested sheath group is tested on the next admitted pass.
-            if state == 21 {
+            if state == LivingState::SHEATHING_SWORD {
                 return Ok(());
             }
         }
         let (group, pending, progress) = animation.playback.frame_wait_state()?;
         let control = actor.control.as_mut().expect("validated weapon control");
-        if state == 20
+        if state == LivingState::DRAWING_SWORD
             && group == i32::from(AnimationGroup::DRAW_SWORD)
             && progress >= actor.attributes[Attribute::DrawFrame]
         {
             control.weapon_drawn = true;
-            control.living_state = 0;
-        } else if state == 21
+            control.living_state = LivingState::ORDINARY;
+        } else if state == LivingState::SHEATHING_SWORD
             && group == i32::from(AnimationGroup::SHEATH_SWORD)
             && progress >= actor.attributes[Attribute::SheathFrame]
         {
             control.weapon_drawn = false;
-            control.living_state = 0;
+            control.living_state = LivingState::ORDINARY;
             if pending == 129 {
                 animation
                     .playback
@@ -282,8 +289,11 @@ impl<'a> CombatReceiver<'a> {
                 }
             }
         }
-        if matches!(control.living_state, 20 | 21) {
-            control.living_state = 0;
+        if matches!(
+            control.living_state,
+            LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+        ) {
+            control.living_state = LivingState::ORDINARY;
             control.motion_companion = 0;
         }
         if control.weapon_drawn {
@@ -327,20 +337,20 @@ impl<'a> CombatReceiver<'a> {
             || animation.is_none()
             || inputs.shell_execution
             || control.rope_attached
-            || (27..=32).contains(&control.living_state)
+            || control.living_state.is_bounce()
             || drawing
             || sheathing
             || holding
             || control.falling_state != 0
             || control.queued_motion != 0
-            || control.living_state == 15
+            || control.living_state == LivingState::HANGING
         {
             return Ok(());
         }
         if control.held_item.is_some_and(|item| item != 0) || control.combat.is_none() {
             return self.cleanup(inputs.selected_player, nominal_ticks, sounds);
         }
-        if (10..=19).contains(&control.living_state)
+        if control.living_state.is_ledge()
             || matches!(
                 actor.surface.context("weapon draw surface unavailable")?,
                 2 | 4
@@ -353,7 +363,7 @@ impl<'a> CombatReceiver<'a> {
             .control
             .as_mut()
             .expect("admitted weapon control");
-        control.living_state = 20;
+        control.living_state = LivingState::DRAWING_SWORD;
         if self.id == inputs.selected_player {
             control
                 .combat
@@ -441,12 +451,12 @@ impl<'a> CombatReceiver<'a> {
                 self.cleanup(inputs.weapon.selected_player, inputs.nominal_ticks, sounds)?;
                 let control = self.actor.control.as_mut().expect("combat control");
                 control.weapon_drawn = true;
-                control.living_state = 0;
+                control.living_state = LivingState::ORDINARY;
             }
         } else {
             let control = self.actor.control.as_mut().expect("combat control");
             control.weapon_drawn = true;
-            control.living_state = 0;
+            control.living_state = LivingState::ORDINARY;
         }
         self.actor
             .control
@@ -767,13 +777,17 @@ mod tests {
             generation: 1,
             index: 0,
         };
-        for state in [20, 21] {
+        for state in [LivingState::DRAWING_SWORD, LivingState::SHEATHING_SWORD] {
             for threshold in [0, 1, 2, 255] {
                 let mut actor = actor();
                 actor.attributes[Attribute::Weapon] = 1;
                 actor.attributes[Attribute::SheathFrame] = threshold;
                 actor.attributes[Attribute::DrawFrame] = threshold;
-                let group = if state == 20 { 91 } else { 129 };
+                let group = if state == LivingState::DRAWING_SWORD {
+                    91
+                } else {
+                    129
+                };
                 let animation = actor.animation.as_mut().unwrap();
                 animation
                     .playback
@@ -793,7 +807,7 @@ mod tests {
                 let control = actor.control.as_mut().unwrap();
                 control.living_state = state;
                 control.motion_companion = 7;
-                control.weapon_drawn = state == 21;
+                control.weapon_drawn = state == LivingState::SHEATHING_SWORD;
                 let mut globals = Default::default();
                 CombatReceiver::new(&mut actor, &mut globals, 7, id, None)
                     .unwrap()
@@ -809,13 +823,20 @@ mod tests {
                     )
                     .unwrap();
                 let control = actor.control.as_ref().unwrap();
-                assert_eq!(control.living_state, if threshold <= 1 { 0 } else { state });
+                assert_eq!(
+                    control.living_state,
+                    if threshold <= 1 {
+                        LivingState::ORDINARY
+                    } else {
+                        state
+                    }
+                );
                 assert_eq!(
                     control.weapon_drawn,
                     if threshold <= 1 {
-                        state == 20
+                        state == LivingState::DRAWING_SWORD
                     } else {
-                        state == 21
+                        state == LivingState::SHEATHING_SWORD
                     }
                 );
                 assert_eq!(control.motion_companion, 7);
@@ -827,7 +848,7 @@ mod tests {
                 assert_eq!(playback.frame_wait_state().unwrap().2, 1);
                 assert_eq!(
                     playback.pending_group(),
-                    if state == 21 && threshold <= 1 {
+                    if state == LivingState::SHEATHING_SWORD && threshold <= 1 {
                         None
                     } else {
                         Some(AnimationGroup::from_index(group))
@@ -848,7 +869,7 @@ mod tests {
         actor.attributes[Attribute::Weapon] = 1;
         actor.attributes[Attribute::SheathFrame] = 0;
         let control = actor.control.as_mut().unwrap();
-        control.living_state = 21;
+        control.living_state = LivingState::SHEATHING_SWORD;
         control.weapon_drawn = true;
         control.motion_companion = 7;
         let mut globals = Default::default();
@@ -868,7 +889,7 @@ mod tests {
                 control.weapon_drawn,
                 control.motion_companion
             ),
-            (21, true, 7)
+            (LivingState::SHEATHING_SWORD, true, 7)
         );
         assert_eq!(
             receiver
@@ -890,7 +911,7 @@ mod tests {
                 control.weapon_drawn,
                 control.motion_companion
             ),
-            (0, false, 7)
+            (LivingState::ORDINARY, false, 7)
         );
     }
 
@@ -908,10 +929,30 @@ mod tests {
         };
         // (`attr_weapon`, combat state, living state) -> (drawn, living state, `attr_holding_weapon`, `attr_weapon`)
         for (weapon, combat, living, expected) in [
-            (1, true, 0, (true, 0, 1, 1)),
-            (1, true, 20, (true, 0, 1, 1)),
-            (1, true, 21, (true, 0, 1, 1)),
-            (1, false, 0, (false, 0, 1, 1)),
+            (
+                1,
+                true,
+                LivingState::ORDINARY,
+                (true, LivingState::ORDINARY, 1, 1),
+            ),
+            (
+                1,
+                true,
+                LivingState::DRAWING_SWORD,
+                (true, LivingState::ORDINARY, 1, 1),
+            ),
+            (
+                1,
+                true,
+                LivingState::SHEATHING_SWORD,
+                (true, LivingState::ORDINARY, 1, 1),
+            ),
+            (
+                1,
+                false,
+                LivingState::ORDINARY,
+                (false, LivingState::ORDINARY, 1, 1),
+            ),
         ] {
             let mut actor = actor();
             actor.attributes[Attribute::HoldingWeapon] = 1;
@@ -983,7 +1024,11 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 actor.control.as_ref().unwrap().living_state,
-                if held_item == Some(7) { 0 } else { 20 }
+                if held_item == Some(7) {
+                    LivingState::ORDINARY
+                } else {
+                    LivingState::DRAWING_SWORD
+                }
             );
             assert!(!actor.control.as_ref().unwrap().weapon_drawn);
         }
@@ -995,10 +1040,10 @@ mod tests {
             let control = actor.control.as_mut().unwrap();
             control.held_item = Some(7);
             match gate {
-                0 => control.living_state = 10,
-                1 => control.living_state = 19,
-                2 => control.living_state = 27,
-                3 => control.living_state = 29,
+                0 => control.living_state = LivingState::TURNING_TO_HIGH_LEDGE,
+                1 => control.living_state = LivingState::ENTERING_LEDGE,
+                2 => control.living_state = LivingState::LANDED_ON_ACTOR,
+                3 => control.living_state = LivingState::FALLING_FROM_ACTOR,
                 4 => control.falling_state = 1,
                 5 => control.sliding_state = 1,
                 6 => control.queued_motion = 1,
@@ -1025,9 +1070,12 @@ mod tests {
             generation: 1,
             index: 0,
         };
-        for (falling, sliding, queued, expected) in
-            [(0, 0, 0, 20), (1, 0, 0, 0), (0, 1, 0, 20), (0, 0, 1, 0)]
-        {
+        for (falling, sliding, queued, expected) in [
+            (0, 0, 0, LivingState::DRAWING_SWORD),
+            (1, 0, 0, LivingState::ORDINARY),
+            (0, 1, 0, LivingState::DRAWING_SWORD),
+            (0, 0, 1, LivingState::ORDINARY),
+        ] {
             let mut actor = actor();
             let control = actor.control.as_mut().unwrap();
             control.falling_state = falling;
@@ -1055,7 +1103,14 @@ mod tests {
             receiver.cleanup(id, 0, &mut |_, _| Ok(())).unwrap();
             let control = receiver.actor.control.as_ref().unwrap();
             assert_eq!(control.motion_direction, 3);
-            assert_eq!(control.motion_companion, if expected == 20 { 0 } else { 9 });
+            assert_eq!(
+                control.motion_companion,
+                if expected == LivingState::DRAWING_SWORD {
+                    0
+                } else {
+                    9
+                }
+            );
         }
     }
 }

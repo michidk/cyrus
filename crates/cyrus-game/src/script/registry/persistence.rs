@@ -1,5 +1,6 @@
 //! Complete actor and world replacements are assembled away from live execution.
 use super::*;
+use crate::script::LivingState;
 use anyhow::ensure;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,7 @@ struct ControlSnapshot {
     script_control: u8,
     death_selector: u8,
     death_response: u8,
-    living_state: u8,
+    living_state: LivingState,
     motion_companion: u8,
     sliding_state: u8,
     falling_state: u8,

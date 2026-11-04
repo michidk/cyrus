@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use crate::script::LivingState;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
@@ -311,7 +312,7 @@ pub struct ActorControlState {
     /// Companion AI mode byte, independent of the lifecycle death notification.
     pub death_response: u8,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
-    pub living_state: u8,
+    pub living_state: LivingState,
     /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
     pub motion_companion: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
@@ -2246,7 +2247,7 @@ impl ScriptWorld {
             AnimationGroup::SWIM_IDLE
         } else if control.rope_attached {
             AnimationGroup::ROPE_PANIC
-        } else if control.living_state == 15 {
+        } else if control.living_state == LivingState::HANGING {
             AnimationGroup::IDLE_LEDGE
         } else {
             let (holding, drawing, sheathing) = super::activation::weapon_predicates(
@@ -4432,7 +4433,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !armed {
             return Ok(true);
         }
-        let sheathing = control.living_state == 21
+        let sheathing = control.living_state == LivingState::SHEATHING_SWORD
             || animation.playback.current_group() == Some(AnimationGroup::SHEATH_SWORD);
         Ok(control.weapon_drawn && !sheathing)
     }
@@ -4564,15 +4565,15 @@ pub(super) fn raex_word(
 
 /// Script properties that name actor motion bytes. The engine's property descriptors (preservation
 /// engine/SOUPPROPS.md) place `rope_wait` at +0x1b0 (the companion motion byte), `slide_flag` at
-/// +0x1b1 (sliding), `fall_flag` at +0x1b2 (falling), `jump_flag` at +0x1b3 (queued motion) and
-/// `extra_flag` at +0x1b4 (living state). `extra_time` (+0x1b5) has no cyrus field and stays unsupported.
+/// +0x1b1 (sliding), `fall_flag` at +0x1b2 (falling) and `jump_flag` at +0x1b3 (queued motion);
+/// `extra_flag` at +0x1b4 is the typed living state. `extra_time` (+0x1b5) has no cyrus field and
+/// stays unsupported.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
         Property::RopeWait => &mut control.motion_companion,
         Property::SlideFlag => &mut control.sliding_state,
         Property::FallFlag => &mut control.falling_state,
         Property::JumpFlag => &mut control.queued_motion,
-        Property::ExtraFlag => &mut control.living_state,
         _ => return None,
     })
 }
@@ -4698,6 +4699,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 control.hidden
             }));
         }
+        if name == Property::ExtraFlag {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            return Ok(i32::from(control.living_state.byte()));
+        }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -4732,6 +4741,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("torch_timer control owner unavailable")?;
             control.torch_burning = value as u8;
+            return Ok(());
+        }
+        if name == Property::ExtraFlag {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            control.living_state = LivingState::from_byte(value as u8);
             return Ok(());
         }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
@@ -6035,7 +6053,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_ref()
                 .context("PlayerHanging: selected-player control unavailable")?;
             let receiver = self.registry.id(self.index)?;
-            let hanging = control.living_state == 15
+            let hanging = control.living_state == LivingState::HANGING
                 && self.registry.actors[index].model.ledge_support == Some(receiver);
             return Ok(CallResult::Complete(i32::from(hanging)));
         }
@@ -6440,7 +6458,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 inside(position[0], x1, x2) && inside(position[2], z1, z2),
             )));
         }
-        // DrawSword is the weapon draw admission: it enters state 20 when every gate allows it
+        // DrawSword is the weapon draw admission: it enters `DRAWING_SWORD` when every gate allows it
         // and otherwise leaves the actor unchanged. Its final repositioning step is disabled in
         // the shipped game.
         if function == Native::DrawSword {
@@ -6817,13 +6835,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(test(surface))));
         }
         // Receiver lifecycle bytes: MyAIType is the lifecycle selector, MyAIMode the death
-        // notification byte; IsOnEdge holds for living states 10 through 19.
+        // notification byte; IsOnEdge holds for the ledge living states.
         let control_test: Option<fn(&ActorControlState) -> i32> = match function {
             Native::MyAiType => Some(|control| i32::from(control.death_selector)),
             Native::MyAiMode => Some(|control| i32::from(control.death_response)),
-            Native::IsOnEdge => {
-                Some(|control| i32::from((10..=19).contains(&control.living_state)))
-            }
+            Native::IsOnEdge => Some(|control| i32::from(control.living_state.is_ledge())),
             // The original also answers 0 while its transition lock (global word read by
             // dozens of routines) is set; cyrus has no transition state, so it is clear.
             Native::IsInAir => Some(|control| {
@@ -6831,7 +6847,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     control.sliding_state != 0
                         || control.falling_state != 0
                         || control.queued_motion != 0
-                        || (27..=29).contains(&control.living_state),
+                        || control.living_state.is_actor_bounce(),
                 )
             }),
             _ => None,

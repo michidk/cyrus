@@ -7,6 +7,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -309,7 +310,7 @@ impl ScriptWorld {
         control.falling_state = 0;
         control.queued_motion = 0;
         control.sliding_state = 0;
-        control.living_state = 0;
+        control.living_state = LivingState::ORDINARY;
         control.directional_state = [0; 2];
         control.jump_selector = 0;
         let rope = &mut self.ropes[rope_index];

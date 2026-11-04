@@ -11,6 +11,7 @@
 //! [engine contract]: https://michidk.github.io/redguard-preservation/engine/SOUP.html#current-model-presentation
 use super::super::Pose;
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::actor_models::ActorModelCollision;
@@ -1142,10 +1143,11 @@ impl ScriptWorld {
             .animation
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
-        let hand_model =
-            control.living_state != 20 && (control.living_state == 21 || control.weapon_drawn);
+        let hand_model = control.living_state != LivingState::DRAWING_SWORD
+            && (control.living_state == LivingState::SHEATHING_SWORD || control.weapon_drawn);
         let drawn = hand_model
-            || (control.living_state != 20 && group == Some(AnimationGroup::SHEATH_SWORD));
+            || (control.living_state != LivingState::DRAWING_SWORD
+                && group == Some(AnimationGroup::SHEATH_SWORD));
         let model = if hand_model {
             &definition.hand_model
         } else {

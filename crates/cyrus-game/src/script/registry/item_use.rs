@@ -1,5 +1,6 @@
 //! `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 use super::GameHost;
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute, Native};
 
@@ -37,7 +38,7 @@ impl GameHost<'_, '_, '_, '_> {
             .control
             .as_ref()
             .context("UseItem: selected player control unavailable")?;
-        if lockout == 1 || (10..=19).contains(&control.living_state) {
+        if lockout == 1 || control.living_state.is_ledge() {
             return Ok(());
         }
         if std::mem::replace(&mut self.registry.globals.item_use_latch, true) {
@@ -56,11 +57,13 @@ impl GameHost<'_, '_, '_, '_> {
         );
         let (holding, _, _) = self.actor_weapon_predicates(selected, Native::IsHoldingWeapon)?;
         let group = player.bound_animation_group().flatten();
-        let torch_change = matches!(control.living_state, 0x21 | 0x22)
-            || matches!(
-                group,
-                Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
-            );
+        let torch_change = matches!(
+            control.living_state,
+            LivingState::LIGHTING_TORCH | LivingState::DOUSING_TORCH
+        ) || matches!(
+            group,
+            Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+        );
         let deep_water = matches!(player.surface, Some(2 | 4));
         if deep_water || holding || torch_change {
             return Ok(());
@@ -84,7 +87,7 @@ impl GameHost<'_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .context("UseItem: selected player control unavailable")?;
-            if control.living_state != 20 {
+            if control.living_state != LivingState::DRAWING_SWORD {
                 return Ok(());
             }
         }
@@ -104,7 +107,7 @@ impl GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("UseItem: selected player control unavailable")?;
             // Only a torch that began lighting is held and consumed.
-            if control.living_state != 33 {
+            if control.living_state != LivingState::LIGHTING_TORCH {
                 return Ok(());
             }
             control.held_item = Some(item as u8);

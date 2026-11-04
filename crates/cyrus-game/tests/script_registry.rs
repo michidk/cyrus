@@ -1,5 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
+use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
@@ -2750,7 +2751,10 @@ fn standalone_default_writes_use_initialized_player_control() {
             .iter()
             .find(|actor| actor.name() == "CYRUS")
             .unwrap();
-        assert_eq!(player.control_state().unwrap().living_state, 0);
+        assert_eq!(
+            player.control_state().unwrap().living_state,
+            LivingState::ORDINARY
+        );
         assert_eq!(player.attributes()[Attribute::PanicGroup], 7);
         let (_, state) = world.player_activation_state().unwrap();
         assert!(state.compass_eligible(player.attributes()[Attribute::HoldingWeapon], true, false));
@@ -7855,7 +7859,7 @@ fn overlap_response_fixture_with(
     offset: i32,
     collide: u8,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
-    overlap_response_fixture_state(weight, other_weight, offset, collide, 0)
+    overlap_response_fixture_state(weight, other_weight, offset, collide, LivingState::ORDINARY)
 }
 
 fn overlap_response_fixture_state(
@@ -7863,7 +7867,7 @@ fn overlap_response_fixture_state(
     other_weight: u8,
     offset: i32,
     collide: u8,
-    living_state: u8,
+    living_state: LivingState,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     overlap_response_fixture_tweaked(weight, other_weight, offset, collide, living_state, |_| {})
 }
@@ -7873,7 +7877,7 @@ fn overlap_response_fixture_tweaked(
     other_weight: u8,
     offset: i32,
     collide: u8,
-    living_state: u8,
+    living_state: LivingState,
     tweak: impl FnOnce(&mut Scripts),
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     overlap_response_fixture_edited(
@@ -7892,7 +7896,7 @@ fn overlap_response_fixture_edited(
     other_weight: u8,
     offset: i32,
     collide: u8,
-    living_state: u8,
+    living_state: LivingState,
     tweak: impl FnOnce(&mut Scripts),
     control_edits: &[(&str, serde_json::Value)],
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
@@ -7946,7 +7950,7 @@ fn overlap_response_fixture_edited(
     tweak(&mut scripts);
     scripts.content_id = scripts.content_identity().unwrap();
     let (mut world, data, _) = static_model_fixture(scripts.clone());
-    if living_state != 0 || !control_edits.is_empty() {
+    if living_state != LivingState::ORDINARY || !control_edits.is_empty() {
         let collision = Default::default();
         let sources = cyrus_game::script::WorldSnapshotSources {
             identity_memo: None,
@@ -7957,7 +7961,7 @@ fn overlap_response_fixture_edited(
             collision: &collision,
         };
         let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
-        saved["actors"][0]["control"]["living_state"] = living_state.into();
+        saved["actors"][0]["control"]["living_state"] = living_state.byte().into();
         for (field, value) in control_edits {
             saved["actors"][0]["control"][*field] = value.clone();
         }
@@ -8497,7 +8501,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
             control.falling_state,
             control.queued_motion
         ),
-        (27, 0, 0)
+        (LivingState::LANDED_ON_ACTOR, 0, 0)
     );
     assert_eq!(control.body_response_flags & 0x80, 0x80);
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
@@ -8899,7 +8903,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
         ordinary_obstacle_transition,
     };
     let base = ObstacleTransitionInput {
-        living_state: 0,
+        living_state: LivingState::ORDINARY,
         falling_state: 0,
         queued_motion: 0,
         logical_y: 2560,
@@ -8910,7 +8914,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     assert_eq!(
         ordinary_obstacle_transition(base),
         Some(ObstacleTransition {
-            living_state: 0,
+            living_state: LivingState::ORDINARY,
             falling_state: 0,
             queued_motion: 0,
             body_response_flags: 0,
@@ -8920,21 +8924,21 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     );
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
-            living_state: 15,
+            living_state: LivingState::HANGING,
             falling_state: 0x88,
             queued_motion: 24,
             ..base
         }),
         None
     );
-    for living in 27..=32 {
+    for living in (27..=32).map(LivingState::from_byte) {
         assert_eq!(
             ordinary_obstacle_transition(ObstacleTransitionInput {
                 living_state: living,
                 ..base
             }),
             Some(ObstacleTransition {
-                living_state: 0,
+                living_state: LivingState::ORDINARY,
                 falling_state: 1,
                 queued_motion: 0,
                 body_response_flags: 0x10,
@@ -8969,7 +8973,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
                 ..base
             }),
             Some(ObstacleTransition {
-                living_state: 0,
+                living_state: LivingState::ORDINARY,
                 falling_state: falling,
                 queued_motion: 0,
                 body_response_flags: 0x10,
@@ -8988,7 +8992,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
             ..base
         }),
         Some(ObstacleTransition {
-            living_state: 0,
+            living_state: LivingState::ORDINARY,
             falling_state: 0x81,
             queued_motion: 0,
             body_response_flags: 0x20,
@@ -8998,21 +9002,21 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     );
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
-            living_state: 26,
+            living_state: LivingState::from_byte(26),
             ..base
         })
         .unwrap()
         .living_state,
-        26
+        LivingState::from_byte(26)
     );
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
-            living_state: 33,
+            living_state: LivingState::LIGHTING_TORCH,
             ..base
         })
         .unwrap()
         .living_state,
-        33
+        LivingState::LIGHTING_TORCH
     );
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
@@ -12992,7 +12996,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             control.living_state,
             control.weapon_drawn
         ),
-        (6, 0, true)
+        (6, LivingState::ORDINARY, true)
     );
     assert_eq!(control.combat.as_ref().unwrap().taunt_active, 1);
     #[derive(Debug)]
@@ -13211,7 +13215,15 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                         control.living_state,
                         control.weapon_drawn
                     ),
-                    (6, if drawing { 20 } else { 0 }, !drawing)
+                    (
+                        6,
+                        if drawing {
+                            LivingState::DRAWING_SWORD
+                        } else {
+                            LivingState::ORDINARY
+                        },
+                        !drawing
+                    )
                 );
                 assert_eq!(control.script_control, if selected { 0 } else { 2 });
                 assert_eq!(control.combat.as_ref().unwrap().flags, 4);
@@ -13250,7 +13262,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                         control.motion_direction,
                         control.weapon_drawn
                     ),
-                    (6, 0, 0, false)
+                    (6, LivingState::ORDINARY, 0, false)
                 );
                 assert_eq!(
                     control.combat.as_ref().unwrap().flags,
@@ -13584,7 +13596,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
                     control.living_state,
                     control.combat.as_ref().unwrap().flags
                 ),
-                (6, 20, 4)
+                (6, LivingState::DRAWING_SWORD, 4)
             );
             assert_eq!(
                 world
@@ -28547,7 +28559,7 @@ fn ordinary_combat_root_retains_prefix_writes_before_spacing_service_failure() {
 #[test]
 fn grounded_overlap_admits_every_living_state_and_preserves_support_contact_order() {
     use cyrus_game::script::{ModelSupportOwners, OrdinaryOverlapMotion as Motion};
-    for state in 0..=255 {
+    for state in (0..=255).map(LivingState::from_byte) {
         for (offset, supported) in [(74, false), (74, true), (83, true)] {
             let (mut world, data) = overlap_response_fixture_state(128, 128, offset, 8, state);
             let id = world.id(0).unwrap();
@@ -28567,7 +28579,7 @@ fn grounded_overlap_admits_every_living_state_and_preserves_support_contact_orde
                 world.spatial(id).unwrap().local.position,
                 world.spatial(other).unwrap().local.position,
             ];
-            let bypass = supported && (27..=32).contains(&state) && offset == 74;
+            let bypass = supported && state.is_bounce() && offset == 74;
             assert_eq!(
                 world
                     .resolve_ordinary_actor_overlap(id, other, &data)
@@ -28622,7 +28634,7 @@ fn grounded_overlap_admits_every_living_state_and_preserves_support_contact_orde
 fn grounded_static_overlap_uses_weighted_response_for_every_living_state() {
     use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
     use cyrus_game::script::{OrdinaryOverlapMotion as Motion, ScriptInputs, ScriptStage};
-    for state in 0..=255 {
+    for state in (0..=255).map(LivingState::from_byte) {
         let (mut world, data) = overlap_response_fixture_state(128, 0, 512, 8, state);
         let id = world.id(0).unwrap();
         world
@@ -30148,7 +30160,14 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
             if fail_reset_sound { 50 } else { 43 }
         );
         let control = world.actors()[index].control_state().unwrap();
-        assert_eq!(control.living_state, if fail_reset_sound { 17 } else { 0 });
+        assert_eq!(
+            control.living_state,
+            if fail_reset_sound {
+                LivingState::DROPPING
+            } else {
+                LivingState::ORDINARY
+            }
+        );
         assert_eq!(
             control.action_transition_counter,
             if fail_reset_sound { 0 } else { 6 }
@@ -30204,7 +30223,14 @@ fn selected_health_ledge_reset_uses_torch_counter_independently_of_weapon_state(
                 )
                 .unwrap();
             let control = world.actors()[index].control_state().unwrap();
-            assert_eq!(control.living_state, if torch == 0 { 0 } else { 17 });
+            assert_eq!(
+                control.living_state,
+                if torch == 0 {
+                    LivingState::ORDINARY
+                } else {
+                    LivingState::DROPPING
+                }
+            );
             assert_eq!(
                 control.action_transition_counter,
                 if torch == 0 { 6 } else { 0 }
@@ -30259,7 +30285,7 @@ fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or
         )
         .unwrap();
     let control = world.actors()[index].control_state().unwrap();
-    assert_eq!(control.living_state, 17);
+    assert_eq!(control.living_state, LivingState::DROPPING);
     assert_eq!(control.motion_direction, 0);
     assert_eq!(control.directional_state, [0, 0]);
     assert_eq!(control.action_transition_counter, 0);
@@ -32781,11 +32807,15 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
         );
     };
     use_item(&mut world);
-    assert_eq!(torch(&world), (33, 0, 0), "lighting begins");
+    assert_eq!(
+        torch(&world),
+        (LivingState::LIGHTING_TORCH, 0, 0),
+        "lighting begins"
+    );
     progress(&mut world);
     assert_eq!(
         torch(&world),
-        (0, 90, 90),
+        (LivingState::ORDINARY, 90, 90),
         "sixty seconds burn for ninety counts"
     );
     world
@@ -32795,20 +32825,20 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
     use_item(&mut world);
     assert_eq!(
         torch(&world).0,
-        34,
+        LivingState::DOUSING_TORCH,
         "any use while burning puts the torch out"
     );
     progress(&mut world);
     assert_eq!(
         torch(&world),
-        (0, 0, 88),
+        (LivingState::ORDINARY, 0, 88),
         "the counter is saved when doused"
     );
     use_item(&mut world);
     progress(&mut world);
     assert_eq!(
         torch(&world),
-        (0, 88, 88),
+        (LivingState::ORDINARY, 88, 88),
         "relighting restores the saved counter"
     );
 }
@@ -32895,14 +32925,14 @@ fn light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_t
     run(&mut world);
     assert_eq!(
         torch(&world),
-        (33, 0),
+        (LivingState::LIGHTING_TORCH, 0),
         "LightTorch begins the lighting state"
     );
     // The torch is still lighting: dousing is not admitted, so UnlightTorch completes and changes nothing.
     run(&mut world);
     assert_eq!(
         torch(&world),
-        (33, 0),
+        (LivingState::LIGHTING_TORCH, 0),
         "UnlightTorch leaves a lighting torch alone"
     );
 }
@@ -32984,7 +33014,11 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
             .unwrap();
         let actor = &world.actors()[player.index];
         let control = actor.control_state().unwrap();
-        assert_eq!(control.living_state, 20, "item use: {item_use}");
+        assert_eq!(
+            control.living_state,
+            LivingState::DRAWING_SWORD,
+            "item use: {item_use}"
+        );
         assert_eq!(control.combat.as_ref().unwrap().flags & 4, 4);
         if item_use {
             assert_eq!(
@@ -33071,7 +33105,8 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
         assert!(world.actors()[map.index].failure().is_none(), "{function}");
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
-            control.living_state, 0,
+            control.living_state,
+            LivingState::ORDINARY,
             "{function} leaves an unarmed player idle"
         );
         if function == Native::EndCombat {
@@ -33248,8 +33283,16 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
             .unwrap()
             .living_state
     };
-    assert_eq!(draw(false), 20, "the selected sabre is drawn");
-    assert_eq!(draw(true), 0, "an activation owner keeps the key");
+    assert_eq!(
+        draw(false),
+        LivingState::DRAWING_SWORD,
+        "the selected sabre is drawn"
+    );
+    assert_eq!(
+        draw(true),
+        LivingState::ORDINARY,
+        "an activation owner keeps the key"
+    );
 }
 
 #[test]
@@ -33325,7 +33368,7 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
             hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
             hud.select_item(item).unwrap();
             let state = ActivationActor {
-                state: 0,
+                state: LivingState::ORDINARY,
                 on_rope: false,
                 water_state: 0,
                 torch_burning: 0,
@@ -33397,7 +33440,7 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
                         .control_state()
                         .unwrap()
                         .living_state,
-                    0,
+                    LivingState::ORDINARY,
                     "activation must not draw the selected sword"
                 );
                 assert_eq!(
@@ -33434,7 +33477,11 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
                     .control_state()
                     .unwrap()
                     .living_state,
-                if item == 1 { 20 } else { 0 }
+                if item == 1 {
+                    LivingState::DRAWING_SWORD
+                } else {
+                    LivingState::ORDINARY
+                }
             );
         }
     }
@@ -36435,7 +36482,7 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
     assert!(!control.stable_position_valid);
     assert_eq!(control.queued_motion, 0);
     assert_eq!(control.falling_state, 0);
-    assert_eq!(control.living_state, 0);
+    assert_eq!(control.living_state, LivingState::ORDINARY);
     assert_eq!(control.action_transition_counter, 6);
     assert_eq!(
         world.spatial(player).unwrap().local.position,
@@ -36948,7 +36995,7 @@ fn hanging_backward_releases_without_the_walk_key() {
             .unwrap();
         assert_eq!(
             world.actors()[index].control_state().unwrap().living_state,
-            0
+            LivingState::ORDINARY
         );
         assert_eq!(
             world.inspect(index, 1)["actors"][0]["animation"]["current_group"],

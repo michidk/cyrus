@@ -1,4 +1,5 @@
 //! Queued motion admission precedes its request and vertical writer.
+use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// Current receiver state and established edge-service outcome.
@@ -113,7 +114,7 @@ impl super::ScriptWorld {
     /// Begin an admitted ordinary jump through the original state writer.
     /// `native_task_active` comes from the motion-task owner; it is not inferred
     /// from script continuations. This entry accepts nonselected actors outside
-    /// state 15; selected-player admission runs through `begin_player_jump`.
+    /// `HANGING`; selected-player admission runs through `begin_player_jump`.
     /// Returns whether ordinary queued state was initialized.
     pub fn begin_ordinary_jump(
         &mut self,
@@ -139,7 +140,10 @@ impl super::ScriptWorld {
             || control.queued_motion != 0
             || control.falling_state != 0
             || control.sliding_state != 0
-            || !matches!(control.living_state, 0 | 15)
+            || !matches!(
+                control.living_state,
+                LivingState::ORDINARY | LivingState::HANGING
+            )
         {
             return Ok(false);
         }
@@ -149,7 +153,7 @@ impl super::ScriptWorld {
             self.world
         );
         anyhow::ensure!(
-            control.living_state != 15,
+            control.living_state != LivingState::HANGING,
             "world {} instance {index} jump state-15 exit service unsupported",
             self.world
         );
@@ -187,13 +191,16 @@ impl super::ScriptWorld {
             || control.queued_motion != 0
             || control.falling_state != 0
             || control.sliding_state != 0
-            || !matches!(control.living_state, 0 | 15)
+            || !matches!(
+                control.living_state,
+                LivingState::ORDINARY | LivingState::HANGING
+            )
             || (actor.attributes[Attribute::PlayerType] == 1 && (1..=4).contains(&surface))
         {
             return Ok(false);
         }
         let state = control.living_state;
-        if state == 15 {
+        if state == LivingState::HANGING {
             self.ledge_hang_release(id, query, environment, timing, sounds)?;
             return Ok(false);
         }
@@ -227,7 +234,10 @@ impl super::ScriptWorld {
             || control.queued_motion != 0
             || control.falling_state != 0
             || control.sliding_state != 0
-            || !matches!(control.living_state, 0 | 15)
+            || !matches!(
+                control.living_state,
+                LivingState::ORDINARY | LivingState::HANGING
+            )
             || matches!(
                 group,
                 AnimationGroup::FIGHT_LAND
@@ -267,7 +277,7 @@ impl super::ScriptWorld {
             .as_ref()
             .expect("admitted Jump control");
         let selected = environment.selected_player == Some(id);
-        let hanging = control.living_state == 15;
+        let hanging = control.living_state == LivingState::HANGING;
         self.actors[index]
             .control
             .as_mut()

@@ -4,13 +4,10 @@
 //!
 //! The call takes a power (how quickly the lift decays), a forward-speed scalar and a steering
 //! flag. Installed content calls it once, on the selected player, as `BounceObject(160, 40, 1)`.
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::AnimationGroup;
 
-/// Lifecycle bytes the task owns: requested-entry, rising and falling.
-const ENTRY: u8 = 30;
-const RISING: u8 = 31;
-const FALLING: u8 = 32;
 /// The animation groups the entry request waits for: weapon, torch, plain.
 const ENTRY_GROUPS: [AnimationGroup; 3] = [
     AnimationGroup::FIGHT_LAND,
@@ -43,8 +40,8 @@ pub trait BouncePort {
     fn item_system_ready(&self) -> Result<bool>;
     /// The frame scale of the invocation.
     fn frame_scale(&self) -> u32;
-    fn living_state(&self) -> u8;
-    fn set_living_state(&mut self, state: u8);
+    fn living_state(&self) -> LivingState;
+    fn set_living_state(&mut self, state: LivingState);
     /// The actor's surface value; 2 and 4 are deep water.
     fn surface(&self) -> u8;
     /// The ordinary holding-weapon predicate.
@@ -89,16 +86,16 @@ pub fn step<P: BouncePort + ?Sized>(
         state.started = true;
         let living = port.living_state();
         if !port.item_system_ready()?
-            || living == ENTRY
-            || living == RISING
-            || (10..=19).contains(&living)
+            || living == LivingState::BOUNCE_ENTRY
+            || living == LivingState::BOUNCE_RISING
+            || living.is_ledge()
             || matches!(port.surface(), 2 | 4)
             || arguments.power == 0
         {
             return Ok(true);
         }
         port.clear_motion();
-        port.set_living_state(ENTRY);
+        port.set_living_state(LivingState::BOUNCE_ENTRY);
         let group = if port.holding_weapon()? {
             ENTRY_GROUPS[0]
         } else if port.torch_burning() {
@@ -108,7 +105,7 @@ pub fn step<P: BouncePort + ?Sized>(
         };
         port.request_group(group, false)?;
     }
-    if port.living_state() == ENTRY {
+    if port.living_state() == LivingState::BOUNCE_ENTRY {
         let current = port
             .current_group()
             .context("BounceObject requires the actor's animation")?;
@@ -116,7 +113,7 @@ pub fn step<P: BouncePort + ?Sized>(
             port.clear_motion();
             return Ok(false);
         }
-        port.set_living_state(RISING);
+        port.set_living_state(LivingState::BOUNCE_RISING);
         // `attr_jump_height` is the jump height in map units.
         port.set_lift(i32::from(port.jump_height()) * 256);
     }
@@ -132,7 +129,7 @@ pub fn step<P: BouncePort + ?Sized>(
     )?;
     port.set_position(position)?;
     let decay = (256i32.wrapping_sub(arguments.power)) << 4;
-    if port.living_state() == RISING {
+    if port.living_state() == LivingState::BOUNCE_RISING {
         let mut position = port.position();
         position[1] = position[1].wrapping_sub(port.lift().wrapping_mul(scale as i32) >> 8);
         port.set_position(position)?;
@@ -157,7 +154,7 @@ pub fn step<P: BouncePort + ?Sized>(
                     true,
                 )?;
             }
-            port.set_living_state(FALLING);
+            port.set_living_state(LivingState::BOUNCE_FALLING);
         } else {
             port.request_group(
                 if weapon {
@@ -174,7 +171,7 @@ pub fn step<P: BouncePort + ?Sized>(
         return Ok(false);
     }
     if port.falling_state() == 0 {
-        port.set_living_state(0);
+        port.set_living_state(LivingState::ORDINARY);
         return Ok(true);
     }
     Ok(false)
@@ -187,7 +184,7 @@ mod tests {
     #[derive(Default)]
     struct Actor {
         item_ready: bool,
-        living: u8,
+        living: LivingState,
         surface: u8,
         holding: bool,
         drawn: bool,
@@ -212,10 +209,10 @@ mod tests {
         fn frame_scale(&self) -> u32 {
             256
         }
-        fn living_state(&self) -> u8 {
+        fn living_state(&self) -> LivingState {
             self.living
         }
-        fn set_living_state(&mut self, state: u8) {
+        fn set_living_state(&mut self, state: LivingState) {
             self.living = state;
         }
         fn surface(&self) -> u8 {
@@ -300,15 +297,15 @@ mod tests {
                 ..ready()
             },
             Actor {
-                living: 30,
+                living: LivingState::BOUNCE_ENTRY,
                 ..ready()
             },
             Actor {
-                living: 31,
+                living: LivingState::BOUNCE_RISING,
                 ..ready()
             },
             Actor {
-                living: 12,
+                living: LivingState::TURNING_TO_LOW_LEDGE,
                 ..ready()
             },
             Actor {
@@ -344,7 +341,7 @@ mod tests {
             let mut state = BounceState::default();
             assert!(!step(&mut actor, &mut state, ARGS).unwrap());
             assert_eq!(actor.requests, [(group, false)]);
-            assert_eq!(actor.living, ENTRY);
+            assert_eq!(actor.living, LivingState::BOUNCE_ENTRY);
         }
     }
 
@@ -356,11 +353,11 @@ mod tests {
         };
         let mut state = BounceState::default();
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
-        assert_eq!(actor.living, ENTRY);
+        assert_eq!(actor.living, LivingState::BOUNCE_ENTRY);
         assert_eq!(actor.position, [0; 3]);
         actor.group = Some(AnimationGroup::FIRST_LAND_GROUP);
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
-        assert_eq!(actor.living, RISING);
+        assert_eq!(actor.living, LivingState::BOUNCE_RISING);
         // Lift 80 * 256, minus the decay (256 - 160) * 16 after the first rise.
         assert_eq!(actor.position[1], -80 * 256);
         assert_eq!(actor.lift, 80 * 256 - 1536);
@@ -372,7 +369,7 @@ mod tests {
     #[test]
     fn the_apex_starts_the_ordinary_fall_and_landing_ends_the_task() {
         let mut actor = Actor {
-            living: RISING,
+            living: LivingState::BOUNCE_RISING,
             lift: 1000,
             group: Some(AnimationGroup::FIRST_LAND_GROUP),
             falling: 0,
@@ -381,19 +378,19 @@ mod tests {
         let mut state = BounceState { started: true };
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         assert!(actor.fall_started);
-        assert_eq!(actor.living, FALLING);
+        assert_eq!(actor.living, LivingState::BOUNCE_FALLING);
         assert_eq!(actor.requests, [(AnimationGroup::FALL, true)]);
         // Falling continues until the ordinary landing clears the falling byte.
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         actor.falling = 0;
         assert!(step(&mut actor, &mut state, ARGS).unwrap());
-        assert_eq!(actor.living, 0);
+        assert_eq!(actor.living, LivingState::ORDINARY);
     }
 
     #[test]
     fn a_weapon_keeps_its_descent_group_and_the_torch_chooses_the_other_group() {
         let mut kept = Actor {
-            living: RISING,
+            living: LivingState::BOUNCE_RISING,
             lift: 10,
             holding: true,
             group: Some(AnimationGroup::FIGHT_FALL_ATTACK),
@@ -402,7 +399,7 @@ mod tests {
         step(&mut kept, &mut BounceState { started: true }, ARGS).unwrap();
         assert!(kept.requests.is_empty());
         let mut weapon = Actor {
-            living: RISING,
+            living: LivingState::BOUNCE_RISING,
             lift: 10,
             drawn: true,
             group: Some(AnimationGroup::IDLE1),
@@ -411,7 +408,7 @@ mod tests {
         step(&mut weapon, &mut BounceState { started: true }, ARGS).unwrap();
         assert_eq!(weapon.requests, [(AnimationGroup::FIGHT_FALL, true)]);
         let mut torch = Actor {
-            living: RISING,
+            living: LivingState::BOUNCE_RISING,
             lift: 10,
             torch: true,
             group: Some(AnimationGroup::IDLE1),
@@ -424,7 +421,7 @@ mod tests {
     #[test]
     fn only_the_selected_player_steers() {
         let mut steered = Actor {
-            living: FALLING,
+            living: LivingState::BOUNCE_FALLING,
             falling: 1,
             heading: 100,
             selected: true,

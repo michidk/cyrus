@@ -1,5 +1,6 @@
 //! Ordinary primary body queries use the actor's initial shape and current pose.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::{
@@ -51,7 +52,7 @@ impl ScriptWorld {
             .first()
             .context("ordinary residual first sphere unavailable")?
             .radius;
-        let radius = if control.living_state == 15 {
+        let radius = if control.living_state == LivingState::HANGING {
             initial >> 1
         } else if (control.falling_state != 0 && control.motion_direction == 3)
             || control.falling_state & 127 != 0
@@ -184,7 +185,11 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary body response control unavailable")?;
-        if !matches!(control.living_state, 0 | 15 | 27..=32) {
+        if !(matches!(
+            control.living_state,
+            LivingState::ORDINARY | LivingState::HANGING
+        ) || control.living_state.is_bounce())
+        {
             return Ok(());
         }
         let sliding = control.sliding_state != 0;
@@ -209,10 +214,10 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .expect("validated ordinary control");
-            let grounded = control.living_state == 0
+            let grounded = control.living_state == LivingState::ORDINARY
                 && control.falling_state == 0
                 && control.queued_motion == 0;
-            if !grounded && control.living_state != 15 {
+            if !grounded && control.living_state != LivingState::HANGING {
                 transition(self)?;
                 flags |= self.actors[index]
                     .control
@@ -224,7 +229,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .expect("validated ordinary control");
-            let grounded = control.living_state == 0
+            let grounded = control.living_state == LivingState::ORDINARY
                 && control.falling_state == 0
                 && control.queued_motion == 0;
             match contact::resolve_wall(

@@ -2,6 +2,7 @@
 //! Rules follow preservation's engine/player.md "Armed attack input".
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::player::input::PlayerInput;
+use crate::script::LivingState;
 use anyhow::{Context, Result, bail};
 use cyrus_script::Attribute;
 
@@ -498,7 +499,13 @@ impl ScriptWorld {
         let Some(combat) = control.combat.as_ref() else {
             return Ok(());
         };
-        if held.jump || !held.action || matches!(control.living_state, 20 | 21) {
+        if held.jump
+            || !held.action
+            || matches!(
+                control.living_state,
+                LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+            )
+        {
             return Ok(());
         }
         // Only a first, second or third tap, or an idle record, may continue the combo.

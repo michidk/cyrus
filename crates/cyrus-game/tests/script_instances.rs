@@ -1,4 +1,5 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
+use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
 use cyrus_script::{AnimationGroup, Attribute, Native};
 
@@ -513,7 +514,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
         .bind_animation(player, &animations, AnimationGroup::PANIC)
         .unwrap();
     let state = ActivationActor {
-        state: 0,
+        state: LivingState::ORDINARY,
         on_rope: false,
         water_state: 0,
         torch_burning: 0,

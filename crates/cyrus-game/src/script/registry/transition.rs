@@ -1,5 +1,6 @@
 //! Obstacle motion transitions follow preservation's ordinary forward wrapper.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -7,7 +8,7 @@ use cyrus_script::{AnimationGroup, Attribute};
 /// Logical Y is Q8; `attr_jump_height` is its unsigned installed map-unit offset.
 #[derive(Clone, Copy, Debug)]
 pub struct ObstacleTransitionInput {
-    pub living_state: u8,
+    pub living_state: LivingState,
     pub falling_state: u8,
     pub queued_motion: u8,
     pub logical_y: i32,
@@ -28,7 +29,7 @@ pub struct ObstacleFallStart {
 /// retains its previous value; the host ORs these bits into existing flags.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ObstacleTransition {
-    pub living_state: u8,
+    pub living_state: LivingState,
     pub falling_state: u8,
     pub queued_motion: u8,
     pub body_response_flags: u8,
@@ -36,18 +37,22 @@ pub struct ObstacleTransition {
     pub fall_start: Option<ObstacleFallStart>,
 }
 
-fn interrupted(living: u8, queued: u8) -> bool {
-    (27..=32).contains(&living) || queued == 24
+fn interrupted(living: LivingState, queued: u8) -> bool {
+    living.is_bounce() || queued == 24
 }
 
 /// Compute the original state transition. State fifteen does nothing. Ordinary
 /// grounded state zero with neither queued nor falling motion also stays put.
 pub fn ordinary_obstacle_transition(input: ObstacleTransitionInput) -> Option<ObstacleTransition> {
-    if input.living_state == 15 {
+    if input.living_state == LivingState::HANGING {
         return None;
     }
     let clear = interrupted(input.living_state, input.queued_motion);
-    let living = if clear { 0 } else { input.living_state };
+    let living = if clear {
+        LivingState::ORDINARY
+    } else {
+        input.living_state
+    };
     let queued = if clear { 1 } else { input.queued_motion };
     let mut result = ObstacleTransition {
         living_state: living,
@@ -125,7 +130,7 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
         let living = if interrupted(control.living_state, control.queued_motion) {
-            0
+            LivingState::ORDINARY
         } else {
             control.living_state
         };

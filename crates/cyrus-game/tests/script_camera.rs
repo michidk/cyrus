@@ -1,6 +1,7 @@
 //! Logical camera replacements preserve stage order and reject unavailable terrain sources.
 use anyhow::Result;
 use cyrus_collision::collision_mesh::IntegerSegmentContact;
+use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorId, camera::*};
 use std::cell::RefCell;
 
@@ -400,11 +401,11 @@ fn location_offsets_convert_attribute_bytes_for_the_selected_record_only() {
 fn player_slot_requests_follow_the_selector_priority() {
     // (holding weapon, debug override, living state, rope) -> slot
     for (inputs, expected) in [
-        ((true, true, 15, true), Some(3)),
-        ((false, true, 15, true), Some(8)),
-        ((false, false, 15, true), Some(4)),
-        ((false, false, 14, true), Some(5)),
-        ((false, false, 14, false), None),
+        ((true, true, LivingState::HANGING, true), Some(3)),
+        ((false, true, LivingState::HANGING, true), Some(8)),
+        ((false, false, LivingState::HANGING, true), Some(4)),
+        ((false, false, LivingState::CATCHING_HANG, true), Some(5)),
+        ((false, false, LivingState::CATCHING_HANG, false), None),
     ] {
         assert_eq!(
             player_slot(inputs.0, inputs.1, inputs.2, inputs.3),

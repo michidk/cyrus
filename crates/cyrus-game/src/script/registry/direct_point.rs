@@ -7,6 +7,7 @@
 //! its default animation group and completes. Any other phase restarts from 0. Falling or queued
 //! motion interrupts every phase.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 
@@ -72,7 +73,7 @@ impl ScriptWorld {
             return Ok(1);
         }
         anyhow::ensure!(
-            control.living_state != 15,
+            control.living_state != LivingState::HANGING,
             "direct point ledge release unsupported"
         );
         let phase = self.globals.native_command.point_phase;

@@ -1,9 +1,10 @@
-//! The selected player's ledge transition (living states 10 through 19), the hang release and the
-//! climb request, from preservation's player.md. State 19 selects the first class 1 record (low
-//! ledge, state 12), else the first class 2 record (high ledge, state 10), else the hand-nearest
-//! class 3 record (catch, state 14); the edge service starts it from a fall, queued motion or the
+//! The selected player's ledge transition (the ledge living states), the hang release and the
+//! climb request, from preservation's player.md. `ENTERING_LEDGE` selects the first class 1 record (low
+//! ledge, `TURNING_TO_LOW_LEDGE`), else the first class 2 record (high ledge, `TURNING_TO_HIGH_LEDGE`), else the hand-nearest
+//! class 3 record (catch, `CATCHING_HANG`); the edge service starts it from a fall, queued motion or the
 //! selected jump entry.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -51,7 +52,7 @@ impl ScriptWorld {
             .context("ledge transition control unavailable")?;
         if environment.selected_player != Some(id)
             || actor.attributes[Attribute::PlayerType] == 1
-            || !(10..=19).contains(&control.living_state)
+            || !control.living_state.is_ledge()
         {
             return Ok(0);
         }
@@ -68,36 +69,36 @@ impl ScriptWorld {
             timing,
             table: None,
         };
-        if self.living(index) == 15 {
+        if self.living(index) == LivingState::HANGING {
             return self.ledge_hanging(&mut ctx, sounds);
         }
-        if self.living(index) == 19 && !self.ledge_enter(&mut ctx)? {
+        if self.living(index) == LivingState::ENTERING_LEDGE && !self.ledge_enter(&mut ctx)? {
             return Ok(0);
         }
-        if self.living(index) == 12
+        if self.living(index) == LivingState::TURNING_TO_LOW_LEDGE
             && let Some(result) = self.ledge_turn_low(&ctx, sounds)?
         {
             return Ok(result);
         }
-        if self.living(index) == 10
+        if self.living(index) == LivingState::TURNING_TO_HIGH_LEDGE
             && let Some(result) = self.ledge_turn_high(&ctx, sounds)?
         {
             return Ok(result);
         }
-        if self.living(index) == 14 {
+        if self.living(index) == LivingState::CATCHING_HANG {
             return self.ledge_catch(&mut ctx, sounds);
         }
         match self.living(index) {
-            13 => self.ledge_climb(
+            LivingState::LOW_CLIMB => self.ledge_climb(
                 &ctx,
                 AnimationGroup::HAND_PLANT_LEDGE,
                 &LOW_FORWARD,
                 &LOW_HEIGHT,
                 6,
             ),
-            16 => {
+            LivingState::CLIMB_FROM_HANG => {
                 self.force_ledge_group(&ctx, AnimationGroup::PULL_UP_LEDGE, sounds)?;
-                self.set_living(index, 11);
+                self.set_living(index, LivingState::HIGH_CLIMB);
                 self.actors[index]
                     .animation
                     .as_mut()
@@ -112,21 +113,21 @@ impl ScriptWorld {
                     -1,
                 )
             }
-            11 => self.ledge_climb(
+            LivingState::HIGH_CLIMB => self.ledge_climb(
                 &ctx,
                 AnimationGroup::PULL_UP_LEDGE,
                 &HIGH_FORWARD,
                 &HIGH_HEIGHT,
                 -1,
             ),
-            17 => {
+            LivingState::DROPPING => {
                 self.force_ledge_group(&ctx, AnimationGroup::FALL, sounds)?;
                 let control = self.actors[index]
                     .control
                     .as_mut()
                     .expect("validated ledge control");
                 control.action_transition_counter = 6;
-                control.living_state = 0;
+                control.living_state = LivingState::ORDINARY;
                 self.actors[index].model.ledge_support = None;
                 Ok(0)
             }
@@ -134,7 +135,7 @@ impl ScriptWorld {
         }
     }
 
-    /// For the selected player hanging with a zero action inhibition, drop: state 17 without a
+    /// For the selected player hanging with a zero action inhibition, drop: `DROPPING` without a
     /// support, then the transition. A nonzero state afterwards clears sliding, falling and
     /// queued motion.
     pub(super) fn ledge_hang_release(
@@ -146,7 +147,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<u8> {
         let index = self.resolve(id)?;
-        if environment.selected_player != Some(id) || self.living(index) != 15 {
+        if environment.selected_player != Some(id) || self.living(index) != LivingState::HANGING {
             return Ok(0);
         }
         let inhibition = self
@@ -156,10 +157,10 @@ impl ScriptWorld {
         if inhibition != 0 {
             return Ok(0);
         }
-        self.set_living(index, 17);
+        self.set_living(index, LivingState::DROPPING);
         self.actors[index].model.ledge_support = None;
         let result = self.ledge_transition(id, query, environment, timing, sounds)?;
-        if self.living(index) != 0 {
+        if self.living(index) != LivingState::ORDINARY {
             self.clear_ledge_motion(index);
         }
         Ok(result)
@@ -177,7 +178,7 @@ impl ScriptWorld {
         let index = self.resolve(id)?;
         if environment.selected_player != Some(id)
             || self.actors[index].attributes[Attribute::PlayerType] == 1
-            || self.living(index) != 15
+            || self.living(index) != LivingState::HANGING
         {
             return Ok(0);
         }
@@ -191,15 +192,15 @@ impl ScriptWorld {
         };
         let support = record.support;
         self.actors[index].model.ledge_support = self.ledge_support_id(support)?;
-        self.set_living(index, 16);
+        self.set_living(index, LivingState::CLIMB_FROM_HANG);
         let result = self.ledge_transition(id, query, environment, timing, sounds)?;
-        if self.living(index) != 0 {
+        if self.living(index) != LivingState::ORDINARY {
             self.clear_ledge_motion(index);
         }
         Ok(result)
     }
 
-    /// State 19: the scan selects the record that starts the ledge action. A scan without a
+    /// `ENTERING_LEDGE`: the scan selects the record that starts the ledge action. A scan without a
     /// usable class 3 record ends the attempt in state zero.
     fn ledge_enter(&mut self, ctx: &mut Transition<'_>) -> Result<bool> {
         let Transition {
@@ -215,12 +216,16 @@ impl ScriptWorld {
         let (record, state) = match scan.result {
             1 | 2 => (
                 scan.first(scan.result),
-                if scan.result == 1 { 12 } else { 10 },
+                if scan.result == 1 {
+                    LivingState::TURNING_TO_LOW_LEDGE
+                } else {
+                    LivingState::TURNING_TO_HIGH_LEDGE
+                },
             ),
-            _ => (scan.hand_nearest(local_y), 14),
+            _ => (scan.hand_nearest(local_y), LivingState::CATCHING_HANG),
         };
         let Some(record) = record.cloned() else {
-            self.set_living(index, 0);
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(false);
         };
         self.set_living(index, state);
@@ -230,7 +235,7 @@ impl ScriptWorld {
         Ok(true)
     }
 
-    /// State 12: turn to the low ledge, then rescan and start the climb in state 13. Returns the
+    /// `TURNING_TO_LOW_LEDGE`: turn to the low ledge, then rescan and start the climb in `LOW_CLIMB`. Returns the
     /// transition's result while turning or when the ledge is gone; `None` continues into the
     /// climb state.
     fn ledge_turn_low(
@@ -251,7 +256,7 @@ impl ScriptWorld {
             Some(point[2].wrapping_add(dz)),
         )?;
         self.force_ledge_group(ctx, AnimationGroup::HAND_PLANT_LEDGE, sounds)?;
-        self.set_living(ctx.index, 13);
+        self.set_living(ctx.index, LivingState::LOW_CLIMB);
         Ok(None)
     }
 
@@ -285,19 +290,19 @@ impl ScriptWorld {
             if turn.abs() <= 256 {
                 return Ok(Some(1));
             }
-            self.set_living(index, 0);
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(Some(0));
         }
         let scan = self.ledge_scan(id, ctx.query, ctx.environment, ctx.timing.fine_ticks, 12)?;
         if scan.result != class {
-            self.set_living(index, 0);
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(Some(0));
         }
         Ok(None)
     }
 
-    /// State 10: as state 12 toward a high ledge, rescanning for class 2, then start the climb
-    /// group two frames in and continue into state 11.
+    /// `TURNING_TO_HIGH_LEDGE`: as `TURNING_TO_LOW_LEDGE` toward a high ledge, rescanning for class 2, then start the climb
+    /// group two frames in and continue into `HIGH_CLIMB`.
     fn ledge_turn_high(
         &mut self,
         ctx: &Transition<'_>,
@@ -340,11 +345,11 @@ impl ScriptWorld {
             )?;
             animation.frame = frame.or(animation.frame);
         }
-        self.set_living(index, 11);
+        self.set_living(index, LivingState::HIGH_CLIMB);
         Ok(None)
     }
 
-    /// State 14: the hang is caught when the actor still faces the ledge.
+    /// `CATCHING_HANG`: the hang is caught when the actor still faces the ledge.
     fn ledge_catch(
         &mut self,
         ctx: &mut Transition<'_>,
@@ -357,7 +362,7 @@ impl ScriptWorld {
             .abs()
             > 256
         {
-            self.set_living(index, 0);
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(0);
         }
         let record = ctx
@@ -366,7 +371,7 @@ impl ScriptWorld {
             .and_then(|table| table.hand_nearest(own.position[1]))
             .cloned();
         let Some(record) = record else {
-            self.set_living(index, 0);
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(0);
         };
         let [dx, dz] =
@@ -386,7 +391,7 @@ impl ScriptWorld {
             },
             sounds,
         )?;
-        self.set_living(index, 15);
+        self.set_living(index, LivingState::HANGING);
         self.spatial
             .as_mut()
             .context("ledge spatial state unavailable")?
@@ -397,7 +402,7 @@ impl ScriptWorld {
         Ok(1)
     }
 
-    /// State 15: follow the nearest class 3 record, shimmy along it, then hang or climb.
+    /// `HANGING`: follow the nearest class 3 record, shimmy along it, then hang or climb.
     fn ledge_hanging(
         &mut self,
         ctx: &mut Transition<'_>,
@@ -470,7 +475,7 @@ impl ScriptWorld {
         )
     }
 
-    /// States 13 and 11: follow the climb tables while the climb group plays; leave state 18
+    /// `LOW_CLIMB` and `HIGH_CLIMB`: follow the climb tables while the climb group plays; leave `CLIMB_FINISHED`
     /// once it ends. `from_frame` is the first frame whose height is written (-1: every frame).
     fn ledge_climb(
         &mut self,
@@ -487,7 +492,7 @@ impl ScriptWorld {
             .context("ledge climb animation unavailable")?
             .playback;
         if playback.current_group() != Some(group) {
-            self.set_living(index, 18);
+            self.set_living(index, LivingState::CLIMB_FINISHED);
             self.clear_ledge_motion(index);
             return Ok(1);
         }
@@ -526,7 +531,7 @@ impl ScriptWorld {
         Ok(1)
     }
 
-    /// State 18, at the start of the ordinary update: a climb group still playing keeps it and
+    /// `CLIMB_FINISHED`, at the start of the ordinary update: a climb group still playing keeps it and
     /// drops its pending replacement; otherwise the default group is forced and the state clears.
     pub(super) fn finish_ledge_climb(
         &mut self,
@@ -535,7 +540,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        if self.living(index) != 18 {
+        if self.living(index) != LivingState::CLIMB_FINISHED {
             return Ok(());
         }
         let Some(animation) = self.actors[index].animation.as_mut() else {
@@ -552,18 +557,18 @@ impl ScriptWorld {
         if self.updates.animation_system {
             self.request_ordinary_group(id, default, true, ticks, sounds)?;
         }
-        self.set_living(index, 0);
+        self.set_living(index, LivingState::ORDINARY);
         Ok(())
     }
 
-    fn living(&self, index: usize) -> u8 {
+    fn living(&self, index: usize) -> LivingState {
         self.actors[index]
             .control
             .as_ref()
-            .map_or(0, |control| control.living_state)
+            .map_or(LivingState::ORDINARY, |control| control.living_state)
     }
 
-    fn set_living(&mut self, index: usize, state: u8) {
+    fn set_living(&mut self, index: usize, state: LivingState) {
         if let Some(control) = self.actors[index].control.as_mut() {
             control.living_state = state;
         }

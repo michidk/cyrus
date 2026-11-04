@@ -788,7 +788,7 @@ impl ScriptWorld {
             self.world
         );
         anyhow::ensure!(
-            !matches!(control.living_state, 10..=19 | 27..=32),
+            !(control.living_state.is_ledge() || control.living_state.is_bounce()),
             "world {} instance {index}: static fall entry special state unsupported",
             self.world
         );

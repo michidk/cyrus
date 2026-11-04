@@ -1,5 +1,6 @@
 //! Selected ordinary actor spheres remain separate from body-query working shapes.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
@@ -270,7 +271,7 @@ impl ScriptWorld {
             "ordinary other overlap control unavailable"
         );
         let support_bypass = control.falling_state == 0
-            && (27..=32).contains(&control.living_state)
+            && control.living_state.is_bounce()
             && self.actors[id.index].model.support.actor == Some(other);
         let separation = self.query_ordinary_actor_overlap(id, other, data)?;
         if separation > 0 && self.actors[other.index].attributes[Attribute::Collide] & 8 != 0 {
@@ -405,7 +406,7 @@ impl ScriptWorld {
     }
 
     /// Land the actor on the other: set its support, clear its sliding, falling and queued-motion
-    /// bytes and enter living state 27, unless the landing is refused (living states 10 to 19, 27
+    /// bytes and enter `LANDED_ON_ACTOR`, unless the landing is refused (the ledge living states, 27
     /// and 28, deep water, or no `anim_misc1` on the other actor). Body-response bit `0x80` is set
     /// either way. The two retained action dwords the original also clears are not modelled.
     fn land_on_actor(
@@ -423,9 +424,9 @@ impl ScriptWorld {
             .animation
             .as_ref()
             .is_some_and(|animation| animation.playback.has_group(AnimationGroup::MISC1));
-        let admitted = !(10..=19).contains(&living)
-            && living != 27
-            && living != 28
+        let admitted = !living.is_ledge()
+            && living != LivingState::LANDED_ON_ACTOR
+            && living != LivingState::BOUNCING_FROM_ACTOR
             && !matches!(surface, 2 | 4)
             && other_has_group;
         let actor = &mut self.actors[id.index];
@@ -435,7 +436,7 @@ impl ScriptWorld {
             control.sliding_state = 0;
             control.falling_state = 0;
             control.queued_motion = 0;
-            control.living_state = 27;
+            control.living_state = LivingState::LANDED_ON_ACTOR;
             actor.model.support.actor = Some(other);
         }
         Ok(OrdinaryOverlapMotion::Landing { admitted })

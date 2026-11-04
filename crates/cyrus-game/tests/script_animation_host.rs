@@ -1,5 +1,6 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
 use cyrus_assets::{animation::Animations, script::*};
+use cyrus_game::script::LivingState;
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
 use cyrus_script::Native;
@@ -1194,7 +1195,7 @@ fn activation_world_with_attributes(
     data.content_id = data.content_identity().unwrap();
     let world = ScriptWorld::prepare(&data, 7).unwrap();
     let actor = ActivationActor {
-        state: 0,
+        state: LivingState::ORDINARY,
         on_rope: false,
         water_state: 0,
         torch_burning: 0,
@@ -1340,7 +1341,10 @@ fn activation_requires_receiver_eligibility_and_matching_torch_state() {
         activate_world(&mut world, &inputs);
         assert_eq!(world.flags(), [expected], "{function} burning={burning}");
     }
-    for state in [10, 19] {
+    for state in [
+        LivingState::TURNING_TO_HIGH_LEDGE,
+        LivingState::ENTERING_LEDGE,
+    ] {
         let (mut world, mut inputs) = activation_world(Native::Activate);
         inputs.actors.get_mut(&1).unwrap().state = state;
         activate_world(&mut world, &inputs);
@@ -1405,8 +1409,8 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
             1 => inputs.dialogue_open = true,
             2 => inputs.lineup_result = 1,
             3 => inputs.actors.get_mut(&1).unwrap().on_rope = true,
-            4 => inputs.actors.get_mut(&2).unwrap().state = 20,
-            5 => inputs.actors.get_mut(&2).unwrap().state = 21,
+            4 => inputs.actors.get_mut(&2).unwrap().state = LivingState::DRAWING_SWORD,
+            5 => inputs.actors.get_mut(&2).unwrap().state = LivingState::SHEATHING_SWORD,
             6 => {
                 inputs
                     .actors
@@ -1432,8 +1436,8 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
                 player.weapon_assigned = true;
                 player.weapon_drawn = true;
             }
-            9 => inputs.actors.get_mut(&1).unwrap().state = 10,
-            10 => inputs.actors.get_mut(&1).unwrap().state = 19,
+            9 => inputs.actors.get_mut(&1).unwrap().state = LivingState::TURNING_TO_HIGH_LEDGE,
+            10 => inputs.actors.get_mut(&1).unwrap().state = LivingState::ENTERING_LEDGE,
             _ => unreachable!(),
         }
         activate_world(&mut world, &inputs);
@@ -1443,18 +1447,18 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
     }
     for gate in 0..5 {
         let (mut world, mut inputs) = activation_world(Native::Activate);
-        inputs.actors.get_mut(&2).unwrap().state = 20;
+        inputs.actors.get_mut(&2).unwrap().state = LivingState::DRAWING_SWORD;
         match gate {
             0 => inputs.item_system_ready = false,
             1 => inputs.shell_execution = true,
             2 => inputs.actors.get_mut(&2).unwrap().animation = None,
             3 => {
-                inputs.actors.get_mut(&2).unwrap().state = 0;
+                inputs.actors.get_mut(&2).unwrap().state = LivingState::ORDINARY;
                 inputs.lockout = 257;
             }
             4 => {
-                inputs.actors.get_mut(&2).unwrap().state = 0;
-                inputs.actors.get_mut(&1).unwrap().state = 20;
+                inputs.actors.get_mut(&2).unwrap().state = LivingState::ORDINARY;
+                inputs.actors.get_mut(&1).unwrap().state = LivingState::DRAWING_SWORD;
             }
             _ => unreachable!(),
         }
@@ -1483,7 +1487,11 @@ fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
         inputs.render_disabled = gate == 1;
         let player = inputs.actors.get_mut(&2).unwrap();
         player.on_rope = gate == 2;
-        player.state = if gate == 3 { 10 } else { 0 };
+        player.state = if gate == 3 {
+            LivingState::TURNING_TO_HIGH_LEDGE
+        } else {
+            LivingState::ORDINARY
+        };
         player.water_state = if gate == 4 { 4 } else { 0 };
         assert_eq!(
             world.activation_overlay(&inputs, 0, false, 24).unwrap(),
@@ -1603,7 +1611,11 @@ fn empty_rtx_text_still_activates_an_existing_entry() {
 #[test]
 fn activation_distinguishes_animation_state_from_its_current_group() {
     use cyrus_game::script::{ActivationAnimation, ScriptInputs};
-    for (state, armed) in [(20, false), (21, false), (0, true)] {
+    for (state, armed) in [
+        (LivingState::DRAWING_SWORD, false),
+        (LivingState::SHEATHING_SWORD, false),
+        (LivingState::ORDINARY, true),
+    ] {
         for (present, bound) in [(false, false), (true, false), (false, true)] {
             let (mut world, mut inputs) = activation_world(Native::Activate);
             let player = inputs.actors.get_mut(&inputs.player.index).unwrap();

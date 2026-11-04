@@ -2,6 +2,7 @@
 //! and the entry transition. The ledge living states live in `ledge_states`; the entry selects
 //! a class 1, 2 or 3 record (states 12, 10 and 14) as player.md specifies.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge_states::LedgeTiming};
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::{
@@ -52,15 +53,15 @@ impl ScriptWorld {
             )
         })?;
         if matches!(surface, 2 | 4) {
-            if control.living_state == 15 {
+            if control.living_state == LivingState::HANGING {
                 self.ledge_hang_release(id, query, environment, timing, sounds)?;
                 self.ledge_transition(id, query, environment, timing, sounds)?;
             }
             return Ok(false);
         }
         match control.living_state {
-            10..=19 => return Ok(true),
-            0 => {}
+            state if state.is_ledge() => return Ok(true),
+            LivingState::ORDINARY => {}
             _ => return Ok(false),
         }
         let result = self.ledge_enter_from_zero(id, query, environment, timing, sounds)?;
@@ -68,7 +69,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated edge service control");
-        if control.living_state != 0 {
+        if control.living_state != LivingState::ORDINARY {
             self.globals.selected_action_inhibition = Some(16);
         } else if control.action_transition_counter != 0 {
             control.queued_motion &= !0x80;
@@ -103,13 +104,15 @@ impl ScriptWorld {
             return Ok(false);
         }
         match control.living_state {
-            10..=19 => Ok(true),
-            0 => Ok(self.ledge_enter_from_zero(id, query, environment, timing, sounds)? != 0),
+            state if state.is_ledge() => Ok(true),
+            LivingState::ORDINARY => {
+                Ok(self.ledge_enter_from_zero(id, query, environment, timing, sounds)? != 0)
+            }
             _ => Ok(false),
         }
     }
 
-    /// Enter state 19 with the ledge-support reference cleared and run the transition once. A
+    /// Enter `ENTERING_LEDGE` with the ledge-support reference cleared and run the transition once. A
     /// nonzero resulting state clears the sliding, falling and queued-motion bytes.
     fn ledge_enter_from_zero(
         &mut self,
@@ -124,13 +127,13 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("ledge entry control unavailable")?
-            .living_state = 19;
+            .living_state = LivingState::ENTERING_LEDGE;
         self.actors[index].model.ledge_support = None;
         let result = self.ledge_transition(id, query, environment, timing, sounds)?;
         if self.actors[index]
             .control
             .as_ref()
-            .is_some_and(|control| control.living_state != 0)
+            .is_some_and(|control| control.living_state != LivingState::ORDINARY)
         {
             let control = self.actors[index]
                 .control
@@ -196,19 +199,20 @@ impl ScriptWorld {
             .and_then(|animation| animation.playback.current_group());
         self.updates.animation_system
             && !environment.shell_execution
-            && (actor
-                .control
-                .as_ref()
-                .is_some_and(|control| matches!(control.living_state, 33 | 34))
-                || matches!(
-                    group,
-                    Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
-                ))
+            && (actor.control.as_ref().is_some_and(|control| {
+                matches!(
+                    control.living_state,
+                    LivingState::LIGHTING_TORCH | LivingState::DOUSING_TORCH
+                )
+            }) || matches!(
+                group,
+                Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+            ))
     }
 
     /// The ledge scan result: 1 when a class 1 record exists, else 2 for class 2, else 3 for class
     /// 3, else 0. A nonzero action-transition counter or a held weapon finds none. Polygon
-    /// sidedness is disabled for the scan's queries and fit tests. Entry runs in living state 19; the caller supplies the living state.
+    /// sidedness is disabled for the scan's queries and fit tests. Entry runs in `ENTERING_LEDGE`; the caller supplies the living state.
     pub(super) fn ledge_scan(
         &self,
         id: ScriptActorId,

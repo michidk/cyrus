@@ -1,6 +1,7 @@
 //! The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 //! `script::bounce`'s; a missing input fails the native instead of continuing on a guess.
 use super::{GameHost, ScriptActorId};
+use crate::script::LivingState;
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
@@ -87,10 +88,10 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     fn frame_scale(&self) -> u32 {
         self.frame_scale
     }
-    fn living_state(&self) -> u8 {
+    fn living_state(&self) -> LivingState {
         self.control().living_state
     }
-    fn set_living_state(&mut self, state: u8) {
+    fn set_living_state(&mut self, state: LivingState) {
         self.control_mut().living_state = state;
     }
     fn surface(&self) -> u8 {

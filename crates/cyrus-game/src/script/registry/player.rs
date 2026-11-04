@@ -8,6 +8,7 @@ use crate::player::{
     turn,
     walk::WalkingStartup,
 };
+use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
@@ -176,8 +177,14 @@ impl ScriptWorld {
                 .expect("validated control");
             ensure!(
                 !control.rope_attached
-                    && (matches!(control.living_state, 0 | 20 | 21 | 33 | 34)
-                        || (10..=19).contains(&control.living_state)),
+                    && (matches!(
+                        control.living_state,
+                        LivingState::ORDINARY
+                            | LivingState::DRAWING_SWORD
+                            | LivingState::SHEATHING_SWORD
+                            | LivingState::LIGHTING_TORCH
+                            | LivingState::DOUSING_TORCH
+                    ) || control.living_state.is_ledge()),
                 "player controller requires a grounded or airborne state without rope"
             );
             // Under the slope response's slide the movement and jump helpers all refuse
@@ -240,7 +247,7 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("validated control")
                 .living_state
-                == 15
+                == LivingState::HANGING
             {
                 return world.control_ledge_player(id, query, inputs, timing, sounds);
             }
@@ -433,7 +440,7 @@ impl ScriptWorld {
         if !self.actors[id.index]
             .control
             .as_ref()
-            .is_some_and(|control| control.living_state == 15)
+            .is_some_and(|control| control.living_state == LivingState::HANGING)
         {
             return Ok(());
         }
@@ -472,7 +479,7 @@ impl ScriptWorld {
             .as_ref()
             .context("ledge controller control unavailable")?;
         if held.jump
-            && control.living_state == 15
+            && control.living_state == LivingState::HANGING
             && control.queued_motion == 0
             && control.falling_state == 0
             && self.globals.conditional_ticks()? == 0
@@ -483,7 +490,7 @@ impl ScriptWorld {
             && self.actors[id.index]
                 .control
                 .as_ref()
-                .is_some_and(|control| control.living_state == 15)
+                .is_some_and(|control| control.living_state == LivingState::HANGING)
         {
             self.ledge_climb_request(id, query, environment, timing, sounds)?;
         }
@@ -491,7 +498,7 @@ impl ScriptWorld {
             && self.actors[id.index]
                 .control
                 .as_ref()
-                .is_some_and(|control| control.living_state == 15)
+                .is_some_and(|control| control.living_state == LivingState::HANGING)
         {
             self.ledge_hang_release(id, query, environment, timing, sounds)?;
         }
@@ -662,7 +669,11 @@ impl ScriptWorld {
         // Actor bytes +0x1b2 and +0x1b3: the falling and queued-motion bytes.
         let eligible = control.falling_state == 0
             && control.queued_motion == 0
-            && (held.walk || matches!(control.living_state, 0 | 27));
+            && (held.walk
+                || matches!(
+                    control.living_state,
+                    LivingState::ORDINARY | LivingState::LANDED_ON_ACTOR
+                ));
         let running = matches!(
             self.actors[index]
                 .animation
@@ -921,7 +932,7 @@ impl ScriptWorld {
             control.queued_motion == 0
                 && control.falling_state == 0
                 && control.sliding_state == 0
-                && control.living_state == 0
+                && control.living_state == LivingState::ORDINARY
                 && control.directional_state.iter().all(|flags| flags & 3 == 0),
             "player forward query: ordinary grounded state required"
         );

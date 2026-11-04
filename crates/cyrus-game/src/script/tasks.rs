@@ -1,4 +1,5 @@
 //! Actor-owned native task tokens share waits and animation requests.
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
 use cyrus_script::program::CallKind;
@@ -1604,7 +1605,7 @@ impl Task {
                     .admission
                     .forward_admitted
                     .unwrap_or_else(|| forward_admitted(&state))
-                    || (lunge && state.living_state != 0)
+                    || (lunge && state.living_state != LivingState::ORDINARY)
                 {
                     return Ok(true);
                 }

@@ -1,5 +1,6 @@
 //! Selected-player health services retain distinct publication and death ordering.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::LivingState;
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -145,7 +146,7 @@ impl ScriptWorld {
 
     /// Reset the selected receiver's ledge action after its damage animation starts.
     /// Support clearing precedes transition admission; blocked transitions retain
-    /// state 17 and clear directional state. Follows preservation's SOUP reset rule.
+    /// `DROPPING` and clear directional state. Follows preservation's SOUP reset rule.
     fn reset_selected_reaction_action(
         &mut self,
         id: ScriptActorId,
@@ -158,7 +159,7 @@ impl ScriptWorld {
             .as_ref()
             .context("selected action control unavailable")?
             .living_state;
-        if living != 15 {
+        if living != LivingState::HANGING {
             return Ok(());
         }
         let inhibited = self
@@ -172,7 +173,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated control")
-            .living_state = 17;
+            .living_state = LivingState::DROPPING;
         self.actors[index].model.ledge_support = None;
         if self.actors[index].attributes[Attribute::PlayerType] != 1 {
             self.globals.selected_ledge_result = Some(0);
@@ -241,14 +242,14 @@ impl ScriptWorld {
                 animation.frame = frame.or(animation.frame);
                 let control = actor.control.as_mut().expect("validated control");
                 control.action_transition_counter = 6;
-                control.living_state = 0;
+                control.living_state = LivingState::ORDINARY;
             }
         }
         let control = self.actors[index]
             .control
             .as_mut()
             .expect("validated control");
-        if control.living_state != 0 {
+        if control.living_state != LivingState::ORDINARY {
             control.motion_direction = 0;
             control.directional_state = [0; 2];
         }

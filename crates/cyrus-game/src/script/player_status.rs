@@ -1,5 +1,6 @@
 //! `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 //! current animation group and movement this update.
+use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// `PlayerStatus` return codes, named after the `ps_*` list of the installed `SOUP386.DEF`.
@@ -36,7 +37,7 @@ pub struct PlayerStatusInput {
     pub queued_motion: u8,
     pub falling_state: u8,
     pub sliding_state: u8,
-    pub living_state: u8,
+    pub living_state: LivingState,
     pub group: Option<AnimationGroup>,
     /// Whether the local position differs from the one saved at the update's entry.
     pub moved: bool,
@@ -70,10 +71,13 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
     // `LedgeStartPullUp` and `LedgePullUp` repeat the tests of `StartPullUp` and `PullUp` and are
     // never returned.
     for (value, class) in [
-        (0x0a, PlayerStatus::StartPullUp),
-        (0x0b, PlayerStatus::PullUp),
-        (0x14, PlayerStatus::DrawSword),
-        (0x15, PlayerStatus::SheathSword),
+        (
+            LivingState::TURNING_TO_HIGH_LEDGE,
+            PlayerStatus::StartPullUp,
+        ),
+        (LivingState::HIGH_CLIMB, PlayerStatus::PullUp),
+        (LivingState::DRAWING_SWORD, PlayerStatus::DrawSword),
+        (LivingState::SHEATHING_SWORD, PlayerStatus::SheathSword),
     ] {
         if living_state == value {
             return class;
@@ -196,10 +200,13 @@ mod tests {
         }
         assert_eq!(status(|i| i.sliding_state = 1), PlayerStatus::Sliding);
         for (value, class) in [
-            (0x0a, PlayerStatus::StartPullUp),
-            (0x0b, PlayerStatus::PullUp),
-            (0x14, PlayerStatus::DrawSword),
-            (0x15, PlayerStatus::SheathSword),
+            (
+                LivingState::TURNING_TO_HIGH_LEDGE,
+                PlayerStatus::StartPullUp,
+            ),
+            (LivingState::HIGH_CLIMB, PlayerStatus::PullUp),
+            (LivingState::DRAWING_SWORD, PlayerStatus::DrawSword),
+            (LivingState::SHEATHING_SWORD, PlayerStatus::SheathSword),
         ] {
             assert_eq!(status(|i| i.living_state = value), class);
         }
@@ -232,7 +239,7 @@ mod tests {
         );
         assert_eq!(
             status(|i| {
-                i.living_state = 0x0a;
+                i.living_state = LivingState::TURNING_TO_HIGH_LEDGE;
                 i.group = Some(AnimationGroup::RUN);
                 i.moved = true;
             }),

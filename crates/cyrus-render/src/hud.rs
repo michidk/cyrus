@@ -1080,7 +1080,7 @@ fn update(
             }
             world.as_ref()?.player_activation_state().ok()
         });
-    let on_edge = player_state.is_some_and(|(_, actor)| (10..=19).contains(&actor.state));
+    let on_edge = player_state.is_some_and(|(_, actor)| actor.state.is_ledge());
     if let Some((id, actor)) = player_state
         && let Some(player) = world
             .as_ref()
@@ -1805,7 +1805,7 @@ mod tests {
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let state = ActivationActor {
-            state: 0,
+            state: cyrus_game::script::LivingState::ORDINARY,
             on_rope: false,
             water_state: 0,
             torch_burning: 0,
@@ -2404,7 +2404,7 @@ mod tests {
             .actors
             .get_mut(&1)
             .unwrap()
-            .state = 10;
+            .state = cyrus_game::script::LivingState::TURNING_TO_HIGH_LEDGE;
         app.update();
         assert!(!app.world().resource::<HudState>().compass_on);
         app.world_mut()
@@ -2412,7 +2412,7 @@ mod tests {
             .actors
             .get_mut(&1)
             .unwrap()
-            .state = 0;
+            .state = cyrus_game::script::LivingState::ORDINARY;
         app.update();
         assert!(
             app.world().resource::<HudState>().compass_on,
@@ -2433,8 +2433,14 @@ mod tests {
                         actor.weapon_assigned = true;
                         actor.weapon_drawn = true;
                     }
-                    5 => inputs.actors.get_mut(&1).unwrap().state = 33,
-                    6 => inputs.actors.get_mut(&1).unwrap().state = 34,
+                    5 => {
+                        inputs.actors.get_mut(&1).unwrap().state =
+                            cyrus_game::script::LivingState::LIGHTING_TORCH
+                    }
+                    6 => {
+                        inputs.actors.get_mut(&1).unwrap().state =
+                            cyrus_game::script::LivingState::DOUSING_TORCH
+                    }
                     7 | 8 => {
                         inputs.actors.get_mut(&1).unwrap().animation =
                             Some(cyrus_game::script::ActivationAnimation {

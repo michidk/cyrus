@@ -164,6 +164,7 @@ module where it is defined and regenerate.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
 - `src/script/lineup.rs` — The pickup and plain player-alignment movers, as decision logic over a port.
+- `src/script/living_state.rs` — The actor's living-state byte (`extra_flag`): its current special action. Names follow
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 - `src/script/maintenance.rs` — Ordered sound maintenance follows preservation's engine/sound.md.
 - `src/script/markers.rs` — Marker queries use preservation's SOUP node-marker distance contract: a loaded world's own
@@ -205,7 +206,7 @@ module where it is defined and regenerate.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
 - `src/script/registry/leap.rs` — The leap that a route link flagged `0x4000` starts, from preservation's SOUP.md phase twelve.
 - `src/script/registry/ledge.rs` — Selected-player ledge entry: the edge service, the ledge scan with its record classification,
-- `src/script/registry/ledge_states.rs` — The selected player's ledge transition (living states 10 through 19), the hang release and the
+- `src/script/registry/ledge_states.rs` — The selected player's ledge transition (the ledge living states), the hang release and the
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update

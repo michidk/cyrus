@@ -1,5 +1,6 @@
 //! Live session camera services: first pose establishment and one atomic update.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::LivingState;
 use crate::script::camera::{
     CameraGeometry, CameraHitSelection, CameraPose, CameraUpdateInputs, CameraUpdateSettings,
     GlidePlayer,
@@ -66,7 +67,7 @@ impl ScriptWorld {
     }
 
     /// The slot the ordinary camera update chooses for the selected player: 3 while it holds a
-    /// weapon, 4 while it hangs (living state 15), 5 while it hangs on a rope, otherwise the
+    /// weapon, 4 while it hangs (`HANGING`), 5 while it hangs on a rope, otherwise the
     /// default slot zero. The shared debug word is zero. The rope above/below slots and the
     /// free-look key are not modelled.
     fn automatic_camera_slot(&self, inputs: super::ScriptInputs<'_>) -> Result<u8> {
@@ -99,7 +100,7 @@ impl ScriptWorld {
         if holding {
             return Ok(3);
         }
-        if control.living_state == 15 {
+        if control.living_state == LivingState::HANGING {
             return Ok(4);
         }
         // **Inferred** from `showPlayer`'s slot table: a rope association selects the rope slot.

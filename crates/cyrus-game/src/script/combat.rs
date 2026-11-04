@@ -1,5 +1,6 @@
 //! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
+use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
@@ -527,7 +528,7 @@ pub(super) fn sheath_eligible(
         .combat
         .as_ref()
         .is_some_and(|combat| combat.cooldown == 0)
-        && !(27..=32).contains(&control.living_state)
+        && !control.living_state.is_bounce()
         && !drawing
         && !sheathing
         && holding
@@ -536,7 +537,7 @@ pub(super) fn sheath_eligible(
 /// Enter the sheathing state: lifecycle byte 21, companion byte cleared, combat flag 0x04
 /// cleared and a 24-tick cooldown.
 pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) {
-    control.living_state = 21;
+    control.living_state = LivingState::SHEATHING_SWORD;
     control.motion_companion = 0;
     let combat = control
         .combat
@@ -618,7 +619,7 @@ mod sheath_tests {
         let mut cooling = armed();
         cooling.combat.as_mut().unwrap().cooldown = 1;
         let mut moving = armed();
-        moving.living_state = 27;
+        moving.living_state = LivingState::LANDED_ON_ACTOR;
         for (control, holding, drawing, sheathing) in [
             (&no_combat, true, false, false),
             (&cooling, true, false, false),
@@ -669,7 +670,10 @@ mod sheath_tests {
         control.motion_companion = 9;
         begin_sheathing(&mut control);
         let combat = control.combat.unwrap();
-        assert_eq!((control.living_state, control.motion_companion), (21, 0));
+        assert_eq!(
+            (control.living_state, control.motion_companion),
+            (LivingState::SHEATHING_SWORD, 0)
+        );
         assert_eq!((combat.flags, combat.cooldown), (0x03, 24));
     }
 }
