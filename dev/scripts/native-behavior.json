@@ -5684,10 +5684,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/commit/f2a981c"
       ],
-      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified independent installed function parms4/exact binding/full129-byte native/full633-byte distinct hilt-model helper/full117-byte original ordered lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three XYZ tuples/two lookup-enable values/six finite lists/two model pointers/two patterns. Native clears shared temporary pointer before lookup, including missing-item diagnostic; match independently reads same item hand-model field as DisplayHandItem then forwards receiver/model/XYZ to distinct helper. Helper clears temporary pointer; null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack arguments/canary/stack/preserved regs checked. Independently mapped79-byte named DisplayHiltModel wrapper differs from633 helper. No fabricated downstream IO/return/continuation. Unknown allocator/geometry/drawing/diagnostic effects/continuation, malformed pointers/list producers/lifecycle/full joint domain/VM admission/native/browser/pixel/gameplay parity. Installed declaration/native ABI4; no encoded-call admission claim. Production remains missing; no inventory/render implementation edits.",
+      "reviewed_revision": "8a8a81dcf7fb7f4eb3de74237cefa3c17eaf55d9"
     },
     {
       "native": "DisplayHiltModel",
