@@ -912,6 +912,7 @@ fn update(
     mut images: ResMut<Assets<Image>>,
     (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
     compass: CompassInputs,
+    codes: cyrus_game::player::input::InputCodes,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -1146,9 +1147,8 @@ fn update(
 
     // Select the overlay path before cycling; timer zero crossings keep their entry path.
     let bindings = state.bindings;
-    let scan = |action: usize| cyrus_game::player::input::scan_key(bindings[action]);
-    let pressed = |action: usize| scan(action).is_some_and(|k| keys.just_pressed(k));
-    let held = |action: usize| scan(action).is_some_and(|k| keys.pressed(k));
+    let pressed = |action: usize| codes.just_pressed(bindings[action]);
+    let held = |action: usize| codes.pressed(bindings[action]);
     let fallback_overlay = if state.player_type == 1 {
         ActivationOverlay::Hidden
     } else {

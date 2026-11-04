@@ -88,6 +88,7 @@ const LETTERS: [KeyCode; 26] = [
 #[allow(clippy::too_many_arguments)] // Bevy supplies each independent input lock as a parameter.
 pub(super) fn sample(
     keys: Option<Res<ButtonInput<KeyCode>>>,
+    codes: crate::player::input::InputCodes,
     suppressed: Option<Res<crate::player::input::InputSuppressed>>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
@@ -135,10 +136,9 @@ pub(super) fn sample(
         *quick = QuickKeys::default();
         return;
     };
-    let key = |slot: usize| crate::player::input::scan_key(bindings[slot]);
-    quick.sword = key(SWORD_SLOT).is_some_and(|key| keys.pressed(key));
-    quick.health = key(HEALTH_SLOT).is_some_and(|key| keys.just_pressed(key));
-    quick.use_selected = key(ACTION_SLOT).is_some_and(|key| keys.just_pressed(key));
+    quick.sword = codes.pressed(bindings[SWORD_SLOT]);
+    quick.health = codes.just_pressed(bindings[HEALTH_SLOT]);
+    quick.use_selected = codes.just_pressed(bindings[ACTION_SLOT]);
 }
 
 #[cfg(test)]

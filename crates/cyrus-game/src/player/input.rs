@@ -51,9 +51,21 @@ pub struct JoystickState {
     pub right: bool,
     pub up: bool,
     pub down: bool,
+    /// Codes 132 to 139 as bits 0 to 7 at the previous poll, for press edges.
+    previous: u8,
 }
 
 impl JoystickState {
+    fn mask(&self) -> u8 {
+        (132..=139).fold(0, |mask, code| {
+            mask | u8::from(self.pressed(code)) << (code - 132)
+        })
+    }
+
+    fn just_pressed(&self, code: u8) -> bool {
+        self.pressed(code) && self.previous >> (code - 132) & 1 == 0
+    }
+
     /// Input code of the first held button (132 to 135), for Controls capture.
     pub fn button_code(&self) -> Option<u8> {
         (132..=135).find(|code| self.buttons[usize::from(code - 132)])
@@ -249,6 +261,59 @@ pub fn mouse_release_code(mouse: &ButtonInput<MouseButton>) -> Option<u8> {
         .map(|(_, code)| code)
 }
 
+/// The original's shared input table as consumers read it: a keyboard scancode held, a mouse
+/// button release (128 or 129, one update) or a joystick code (132 to 139, held). Every
+/// rebindable action reads its code through this, whatever the device. A joystick press edge
+/// is **Inferred** from the table: the original's consumers clear a code once they consume it.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct InputCodes<'w> {
+    keys: Option<Res<'w, ButtonInput<KeyCode>>>,
+    mouse: Option<Res<'w, ButtonInput<MouseButton>>>,
+    joystick: Option<Res<'w, JoystickState>>,
+}
+
+impl InputCodes<'_> {
+    /// Whether the table entry for `code` is set this update.
+    pub fn pressed(&self, code: u8) -> bool {
+        self.read(
+            code,
+            |keys, key| keys.pressed(key),
+            |state| state.pressed(code),
+        )
+    }
+
+    /// Whether `code` was set this update and not at the previous one.
+    pub fn just_pressed(&self, code: u8) -> bool {
+        self.read(
+            code,
+            |keys, key| keys.just_pressed(key),
+            |state| state.just_pressed(code),
+        )
+    }
+
+    fn read(
+        &self,
+        code: u8,
+        key: impl Fn(&ButtonInput<KeyCode>, KeyCode) -> bool,
+        joystick: impl Fn(&JoystickState) -> bool,
+    ) -> bool {
+        match code {
+            128 => self.mouse_released(MouseButton::Left),
+            129 => self.mouse_released(MouseButton::Right),
+            132..=139 => self.joystick.as_deref().is_some_and(joystick),
+            _ => scan_key(code)
+                .zip(self.keys.as_deref())
+                .is_some_and(|(scan, keys)| key(keys, scan)),
+        }
+    }
+
+    fn mouse_released(&self, button: MouseButton) -> bool {
+        self.mouse
+            .as_ref()
+            .is_some_and(|mouse| mouse.just_released(button))
+    }
+}
+
 // Bevy supplies the independent input locks and output resources.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sample(
@@ -311,6 +376,7 @@ pub(super) fn poll_gamepads(
             *held |= pad.pressed(button);
         }
     }
+    next.previous = state.mask();
     if *state != next {
         *state = next;
     }
@@ -386,8 +452,45 @@ mod tests {
         app.update();
         assert_eq!(
             *app.world().resource::<JoystickState>(),
-            JoystickState::default()
+            JoystickState {
+                previous: 1 << 4,
+                ..default()
+            }
         );
+    }
+
+    #[test]
+    fn input_codes_read_keys_mouse_releases_and_joystick_edges() {
+        fn read(world: &mut World, code: u8) -> (bool, bool) {
+            let mut state = bevy::ecs::system::SystemState::<InputCodes>::new(world);
+            let codes = state.get(world).unwrap();
+            (codes.pressed(code), codes.just_pressed(code))
+        }
+        let mut world = World::new();
+        world.init_resource::<ButtonInput<KeyCode>>();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        world.init_resource::<JoystickState>();
+        assert_eq!(read(&mut world, 129), (false, false));
+        world
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyI);
+        assert_eq!(read(&mut world, 23), (true, true));
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        assert_eq!(read(&mut world, 129), (false, false));
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .release(MouseButton::Right);
+        assert_eq!(read(&mut world, 129), (true, true));
+        // A joystick button held across polls is pressed on both and new only on the first.
+        let mut state = JoystickState::default();
+        state.buttons[1] = true;
+        *world.resource_mut::<JoystickState>() = state;
+        assert_eq!(read(&mut world, 133), (true, true));
+        state.previous = state.mask();
+        *world.resource_mut::<JoystickState>() = state;
+        assert_eq!(read(&mut world, 133), (true, false));
     }
 
     #[test]

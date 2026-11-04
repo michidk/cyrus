@@ -232,6 +232,7 @@ pub(crate) fn register(app: &mut bevy::prelude::App) {
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
+    codes: crate::player::input::InputCodes,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut keyboard: bevy::prelude::MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut screen: bevy::prelude::ResMut<LogbookScreen>,
@@ -266,9 +267,7 @@ fn drive(
         .ok()
         .and_then(|p| p.as_ref())
         .map_or(screen.bindings, |p| p.bindings);
-    let held = |index: usize| {
-        crate::player::input::scan_key(bindings[index]).is_some_and(|key| keys.pressed(key))
-    };
+    let held = |index: usize| codes.pressed(bindings[index]);
     let closing = held(12) || held(7) || keys.pressed(KeyCode::Escape);
     if screen.waiting_for_release {
         if !closing {
@@ -286,8 +285,7 @@ fn drive(
         return;
     }
     if !screen.open {
-        let opening =
-            crate::player::input::scan_key(bindings[12]).is_some_and(|key| keys.just_pressed(key));
+        let opening = codes.just_pressed(bindings[12]);
         if !opening || !screen.ready || screen.inventory_open || console.is_some_and(|c| c.open) {
             return;
         }
@@ -404,7 +402,7 @@ fn drive(
         }
         return;
     }
-    if crate::player::input::scan_key(bindings[6]).is_some_and(|key| keys.just_pressed(key)) {
+    if codes.just_pressed(bindings[6]) {
         screen.manual_entry = Some(String::new());
         screen.manual_cursor_visible = false;
         screen.manual_waiting_for_release = keys.any_pressed([KeyCode::Enter, KeyCode::Escape]);

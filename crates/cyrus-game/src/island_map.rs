@@ -142,6 +142,7 @@ fn artwork(
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
+    codes: crate::player::input::InputCodes,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<IslandMapScreen>,
     (hud, mut actors, logbook, inventory, console): (
@@ -196,11 +197,11 @@ fn drive(
     else {
         return;
     };
-    let map_key = crate::player::input::scan_key(bindings[MAP_SLOT]);
-    let map_held = map_key.is_some_and(|key| keys.pressed(key));
+    let map_code = bindings[MAP_SLOT];
+    let map_held = codes.pressed(map_code);
     match screen.phase {
         Phase::Closed => {
-            let pressed = map_key.is_some_and(|key| keys.just_pressed(key));
+            let pressed = codes.just_pressed(map_code);
             if !(pressed || requested)
                 || console.is_some_and(|console| console.open)
                 || logbook.is_some_and(|screen| screen.suspended())

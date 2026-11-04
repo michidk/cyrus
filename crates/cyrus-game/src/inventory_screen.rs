@@ -211,6 +211,7 @@ fn publish_lock(
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
+    codes: crate::player::input::InputCodes,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<InventoryScreen>,
     (hud, actors, logbook, console): (
@@ -261,9 +262,7 @@ fn drive(
     else {
         return;
     };
-    let held = |slot: usize| {
-        crate::player::input::scan_key(bindings[slot]).is_some_and(|key| keys.pressed(key))
-    };
+    let held = |slot: usize| codes.pressed(bindings[slot]);
     let escape = keys.pressed(KeyCode::Escape);
     let enter = keys.pressed(KeyCode::Enter);
     if screen.waiting_for_release {
@@ -277,8 +276,7 @@ fn drive(
         return;
     }
     if !screen.open {
-        let opening = crate::player::input::scan_key(bindings[INVENTORY])
-            .is_some_and(|key| keys.just_pressed(key));
+        let opening = codes.just_pressed(bindings[INVENTORY]);
         if !opening
             || console.is_some_and(|c| c.open)
             || logbook.is_some_and(|screen| screen.suspended())
