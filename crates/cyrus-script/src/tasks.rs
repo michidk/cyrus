@@ -184,7 +184,7 @@ impl Runtime {
         match host.call(
             &Target::Me,
             call.kind,
-            &call.function,
+            call.function,
             &arguments,
             invocation,
             flags,

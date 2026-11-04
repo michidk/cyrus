@@ -6,6 +6,7 @@
 //! belongs to the attachment owner and is not modelled here.
 use super::{GameHost, ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 
 const LIGHTING: u8 = 33;
@@ -328,7 +329,7 @@ impl ScriptWorld {
 }
 
 impl GameHost<'_, '_, '_, '_> {
-    pub(super) fn torch_inputs(&self, index: usize, function: &str) -> Result<TorchInputs> {
+    pub(super) fn torch_inputs(&self, index: usize, function: Native) -> Result<TorchInputs> {
         let (holding, drawing, sheathing) = self.actor_weapon_predicates(index, function)?;
         Ok(TorchInputs {
             item_system_ready: self

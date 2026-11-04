@@ -6,6 +6,7 @@ use cyrus_game::script::{
     WorldSnapshotSources,
 };
 use cyrus_script::Attribute;
+use cyrus_script::Native;
 use cyrus_script::Thread;
 use cyrus_script::program::*;
 use serde_json::json;
@@ -52,7 +53,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
     let show_player = Operation::Call {
         call: Call {
             function_id: 1,
-            function: "showPlayer".into(),
+            function: Native::ShowPlayer,
             target: Object::Me,
             kind: CallKind::Task,
             arguments: vec![],
@@ -122,12 +123,12 @@ fn scripts(standalone: &[&str]) -> Scripts {
         world: 17,
         definition: Definition {
             functions: [
-                ("NullFunction", 0, CallKind::Function),
-                ("showPlayer", 0, CallKind::Task),
+                (Native::NullFunction, 0, CallKind::Function),
+                (Native::ShowPlayer, 0, CallKind::Task),
             ]
             .into_iter()
             .map(|(name, param_count, kind)| Function {
-                name: name.into(),
+                name,
                 param_count,
                 kind,
             })
@@ -317,7 +318,7 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
 fn show_player_pan_task_runs_to_completion_and_restores_the_selection() {
     let mut data = scripts(&["CYRUS", "CAMERA"]);
     data.definition.functions[1] = Function {
-        name: "showPlayerPan".into(),
+        name: Native::ShowPlayerPan,
         param_count: 1,
         kind: CallKind::Task,
     };
@@ -331,7 +332,7 @@ fn show_player_pan_task_runs_to_completion_and_restores_the_selection() {
         .operation = Operation::Call {
         call: Call {
             function_id: 1,
-            function: "showPlayerPan".into(),
+            function: Native::ShowPlayerPan,
             target: Object::Me,
             kind: CallKind::Task,
             arguments: vec![Value::Integer { value: 3 }],
@@ -410,10 +411,10 @@ fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
 }
 
 /// The standalone roles plus a map actor whose only camera call is `name(arguments)`.
-fn scripts_calling(name: &str, arguments: &[i32]) -> Scripts {
+fn scripts_calling(name: Native, arguments: &[i32]) -> Scripts {
     let mut data = scripts(&["CYRUS", "CAMERA"]);
     data.definition.functions[1] = Function {
-        name: name.into(),
+        name,
         param_count: arguments.len() as u8,
         kind: CallKind::Task,
     };
@@ -427,7 +428,7 @@ fn scripts_calling(name: &str, arguments: &[i32]) -> Scripts {
         .operation = Operation::Call {
         call: Call {
             function_id: 1,
-            function: name.into(),
+            function: name,
             target: Object::Me,
             kind: CallKind::Task,
             arguments: arguments
@@ -452,7 +453,7 @@ fn prepared(data: &mut Scripts) -> ScriptWorld {
 
 #[test]
 fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
-    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 3]);
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 3]);
     let mut world = prepared(&mut data);
     let hud = ScriptHud::default();
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
@@ -488,7 +489,7 @@ fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
 
 #[test]
 fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
-    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 3]);
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 3]);
     // A nonzero slave attribute selects the composed pose: the master's pose plus the offset.
     let mut master = actor(vec![Operation::End { target: 0 }], 900);
     master.attributes[Attribute::Master] = 1;
@@ -531,7 +532,7 @@ fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
 
 #[test]
 fn world_snapshot_resumes_an_object_pan_mid_flight() {
-    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 4]);
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 4]);
     let mut live = prepared(&mut data);
     let animations = Animations {
         version: 2,
@@ -582,7 +583,7 @@ fn world_snapshot_resumes_an_object_pan_mid_flight() {
 
 #[test]
 fn look_task_fixes_the_orientation_until_it_finishes() {
-    let mut data = scripts_calling("lookObj", &[3]);
+    let mut data = scripts_calling(Native::LookObj, &[3]);
     let mut world = prepared(&mut data);
     let hud = ScriptHud::default();
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
@@ -602,7 +603,7 @@ fn look_task_fixes_the_orientation_until_it_finishes() {
 
 #[test]
 fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() {
-    let mut data = scripts_calling("showCyrusPan", &[3, -2, 5, 3]);
+    let mut data = scripts_calling(Native::ShowCyrusPan, &[3, -2, 5, 3]);
     let mut world = prepared(&mut data);
     let hud = ScriptHud::default();
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
@@ -612,7 +613,7 @@ fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() 
     );
     assert_eq!(world.camera().unwrap().scripted_active, 1);
 
-    let mut data = scripts_calling("showCyrusPan", &[3, -2, 5, 3]);
+    let mut data = scripts_calling(Native::ShowCyrusPan, &[3, -2, 5, 3]);
     data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
     let mut world = prepared(&mut data);
     let before = world.camera().unwrap().clone();
@@ -628,7 +629,7 @@ fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() 
 
 #[test]
 fn show_obj_rot_completes_without_touching_the_camera() {
-    let mut data = scripts_calling("showObjRot", &[1, 2, 3, 4]);
+    let mut data = scripts_calling(Native::ShowObjRot, &[1, 2, 3, 4]);
     let mut world = prepared(&mut data);
     let hud = ScriptHud::default();
     let before = world.camera().unwrap().clone();
@@ -869,7 +870,11 @@ mod live {
         )
     }
 
-    fn location_world(name: &str, arguments: &[i32], holding: bool) -> (ScriptWorld, PoseService) {
+    fn location_world(
+        name: Native,
+        arguments: &[i32],
+        holding: bool,
+    ) -> (ScriptWorld, PoseService) {
         let mut data = scripts_calling(name, arguments);
         data.camera = CameraSettings {
             offset_pos: [0, 2560, 0],
@@ -893,10 +898,10 @@ mod live {
     #[test]
     fn location_natives_run_the_pose_update_and_publish_the_camera_actor() {
         for (name, arguments) in [
-            ("showObjLoc", vec![3, -2, 5]),
-            ("showObj", vec![3, -2, 5]),
-            ("showObjWorld", vec![3, -2, 5]),
-            ("showCyrusLoc", vec![3, -2, 5]),
+            (Native::ShowObjLoc, vec![3, -2, 5]),
+            (Native::ShowObj, vec![3, -2, 5]),
+            (Native::ShowObjWorld, vec![3, -2, 5]),
+            (Native::ShowCyrusLoc, vec![3, -2, 5]),
         ] {
             let (mut world, service) = location_world(name, &arguments, false);
             run_with(&mut world, BODY, Some(&service)).unwrap();
@@ -915,7 +920,7 @@ mod live {
                 "{name}: the camera actor carries the published pose"
             );
             let receiver = world.spatial(world.id(0).unwrap()).unwrap().local;
-            let expected = if name == "showCyrusLoc" {
+            let expected = if name == Native::ShowCyrusLoc {
                 ([4000, 9000, -6000], [100, 1900, 20])
             } else {
                 (receiver.position, receiver.angles)
@@ -941,11 +946,11 @@ mod live {
     }
 
     fn reset_world() -> (ScriptWorld, PoseService) {
-        function_world("XResetCamera")
+        function_world(Native::XResetCamera)
     }
 
     /// The scripts of [`function_world`]: its map actor calls `name` as a function.
-    fn function_scripts(name: &str) -> Scripts {
+    fn function_scripts(name: Native) -> Scripts {
         let mut data = scripts_calling(name, &[]);
         data.definition.functions[1].kind = CallKind::Function;
         let step = data
@@ -969,7 +974,7 @@ mod live {
     }
 
     /// A world whose map actor calls the argument-free camera function `name` once.
-    fn function_world(name: &str) -> (ScriptWorld, PoseService) {
+    fn function_world(name: Native) -> (ScriptWorld, PoseService) {
         world_from(function_scripts(name))
     }
 
@@ -987,16 +992,16 @@ mod live {
 
     #[test]
     fn x_reset_camera_clears_the_task_slots_of_the_player_and_camera_actors() {
-        let mut data = function_scripts("XResetCamera");
+        let mut data = function_scripts(Native::XResetCamera);
         data.definition.functions.push(Function {
-            name: "showPlayer".into(),
+            name: Native::ShowPlayer,
             param_count: 0,
             kind: CallKind::Task,
         });
         let show_player = Operation::Call {
             call: Call {
                 function_id: 2,
-                function: "showPlayer".into(),
+                function: Native::ShowPlayer,
                 target: Object::Me,
                 kind: CallKind::Task,
                 arguments: vec![],
@@ -1066,7 +1071,7 @@ mod live {
 
     #[test]
     fn camera_controller_runs_one_pose_update_and_publishes_the_camera_actor() {
-        let (mut world, service) = function_world("cameraController");
+        let (mut world, service) = function_world(Native::CameraController);
         run_with(&mut world, BODY, Some(&service)).unwrap();
         let camera = world.camera().unwrap();
         assert_ne!(camera.current, start(), "the pose updated");
@@ -1093,7 +1098,7 @@ mod live {
 
     #[test]
     fn camera_controller_without_the_update_service_changes_nothing() {
-        let (mut world, _) = function_world("cameraController");
+        let (mut world, _) = function_world(Native::CameraController);
         let before = world.camera().unwrap().clone();
         let error = run_with(&mut world, BODY, None).unwrap_err();
         assert!(
@@ -1118,7 +1123,7 @@ mod live {
 
     #[test]
     fn location_native_without_the_update_service_fails_before_changing_the_camera() {
-        let (mut world, _) = location_world("showObjLoc", &[3, -2, 5], false);
+        let (mut world, _) = location_world(Native::ShowObjLoc, &[3, -2, 5], false);
         let before = world.camera().unwrap().clone();
         let error = run_with(&mut world, BODY, None).unwrap_err();
         assert!(
@@ -1134,7 +1139,7 @@ mod live {
 
     #[test]
     fn failed_pose_update_leaves_the_camera_and_the_actor_untouched() {
-        let (mut world, mut service) = location_world("showObjLoc", &[3, -2, 5], false);
+        let (mut world, mut service) = location_world(Native::ShowObjLoc, &[3, -2, 5], false);
         service.fail = true;
         let before = world.camera().unwrap().clone();
         let actor = world.id(CAMERA).unwrap();
@@ -1152,7 +1157,7 @@ mod live {
 
     #[test]
     fn show_cyrus_loc_does_nothing_while_the_player_holds_a_weapon() {
-        let (mut world, service) = location_world("showCyrusLoc", &[3, -2, 5], true);
+        let (mut world, service) = location_world(Native::ShowCyrusLoc, &[3, -2, 5], true);
         let before = world.camera().unwrap().clone();
         run_with(&mut world, BODY, Some(&service)).unwrap();
         let camera = world.camera().unwrap();

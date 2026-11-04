@@ -1,6 +1,6 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_script::{AnimationGroup, Attribute, Native};
 
 #[test]
 fn installed_island_flags_advance_through_ordinary_updates() {
@@ -739,7 +739,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
             actor
                 .native_hook
                 .as_ref()
-                .is_some_and(|call| call.function == "AtNodeMarker")
+                .is_some_and(|call| call.function == Native::AtNodeMarker)
         })
         .unwrap()
         .0;
@@ -782,7 +782,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
         .unwrap_err();
     let error = format!("{error:#}");
     assert!(error.contains("actor MARINE"), "{error}");
-    assert!(error.contains("AtNodeMarker"), "{error}");
+    assert!(error.contains(Native::AtNodeMarker.name()), "{error}");
     assert!(
         error.contains("marker 262144: outside the world's marker table"),
         "{error}"

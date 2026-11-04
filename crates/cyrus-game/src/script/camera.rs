@@ -1,5 +1,6 @@
 //! Retained logical camera records; pose correction and publication share this owner.
 use anyhow::Result;
+use cyrus_script::Native;
 use cyrus_world::transform::Matrix;
 
 /// One initialized camera record. Coordinates have eight fractional bits.
@@ -743,17 +744,17 @@ pub enum ObjectPanCommand {
 }
 
 impl ObjectPanCommand {
-    pub fn name(self) -> &'static str {
+    pub fn native(self) -> Native {
         match self {
-            Self::Object => "showObjPan",
-            Self::ObjectLoc => "showObjPanLoc",
-            Self::ObjectWorld => "showObjWorldPan",
-            Self::Cyrus => "showCyrusPan",
-            Self::CyrusLoc => "showCyrusPanLoc",
+            Self::Object => Native::ShowObjPan,
+            Self::ObjectLoc => Native::ShowObjPanLoc,
+            Self::ObjectWorld => Native::ShowObjWorldPan,
+            Self::Cyrus => Native::ShowCyrusPan,
+            Self::CyrusLoc => Native::ShowCyrusPanLoc,
         }
     }
 
-    pub fn named(function: &str) -> Option<Self> {
+    pub fn named(function: Native) -> Option<Self> {
         [
             Self::Object,
             Self::ObjectLoc,
@@ -762,7 +763,7 @@ impl ObjectPanCommand {
             Self::CyrusLoc,
         ]
         .into_iter()
-        .find(|command| command.name().eq_ignore_ascii_case(function))
+        .find(|command| command.native() == function)
     }
 
     /// The axes the pan's vector is given in once any world-position conversion is done.
@@ -796,17 +797,17 @@ pub enum LocationCommand {
 }
 
 impl LocationCommand {
-    pub fn name(self) -> &'static str {
+    pub fn native(self) -> Native {
         match self {
-            Self::Object => "showObj",
-            Self::ObjectLoc => "showObjLoc",
-            Self::ObjectWorld => "showObjWorld",
-            Self::Cyrus => "showCyrus",
-            Self::CyrusLoc => "showCyrusLoc",
+            Self::Object => Native::ShowObj,
+            Self::ObjectLoc => Native::ShowObjLoc,
+            Self::ObjectWorld => Native::ShowObjWorld,
+            Self::Cyrus => Native::ShowCyrus,
+            Self::CyrusLoc => Native::ShowCyrusLoc,
         }
     }
 
-    pub fn named(function: &str) -> Option<Self> {
+    pub fn named(function: Native) -> Option<Self> {
         [
             Self::Object,
             Self::ObjectLoc,
@@ -815,7 +816,7 @@ impl LocationCommand {
             Self::CyrusLoc,
         ]
         .into_iter()
-        .find(|command| command.name().eq_ignore_ascii_case(function))
+        .find(|command| command.native() == function)
     }
 
     /// The axes the vector argument is given in; a world position is not a vector.

@@ -1393,7 +1393,7 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyrus_script::AnimationGroup;
+    use cyrus_script::{AnimationGroup, Native};
     use std::collections::BTreeMap;
 
     fn frames(candle: &mut Candle, health: u8, n: usize) -> Vec<u16> {
@@ -1630,7 +1630,7 @@ mod tests {
         }
     }
 
-    fn prepare_script(app: &mut App, requests: &[(&str, &[i32])]) {
+    fn prepare_script(app: &mut App, requests: &[(Native, &[i32])]) {
         use cyrus_assets::script::*;
         use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
         use cyrus_script::program::*;
@@ -1671,7 +1671,7 @@ mod tests {
                             function_id: 1,
                             kind: CallKind::Function,
                             target: Object::Me,
-                            function: "Activate".into(),
+                            function: Native::Activate,
                             arguments: vec![Value::Integer {
                                 value: i32::from_le_bytes(*b"#OPN"),
                             }],
@@ -1737,12 +1737,12 @@ mod tests {
             definition: Definition {
                 functions: vec![
                     Function {
-                        name: "NullFunction".into(),
+                        name: Native::NullFunction,
                         param_count: 0,
                         kind: CallKind::Function,
                     },
                     Function {
-                        name: "Activate".into(),
+                        name: Native::Activate,
                         param_count: 1,
                         kind: CallKind::Function,
                     },
@@ -1773,7 +1773,7 @@ mod tests {
             for (index, (function, arguments)) in requests.iter().enumerate() {
                 let function_id = scripts.definition.functions.len() as u16;
                 scripts.definition.functions.push(Function {
-                    name: (*function).into(),
+                    name: *function,
                     param_count: arguments.len().try_into().unwrap(),
                     kind: CallKind::Function,
                 });
@@ -1786,7 +1786,7 @@ mod tests {
                                 function_id,
                                 kind: CallKind::Function,
                                 target: Object::Me,
-                                function: (*function).into(),
+                                function: *function,
                                 arguments: arguments
                                     .iter()
                                     .map(|value| Value::Integer { value: *value })
@@ -1889,8 +1889,8 @@ mod tests {
         prepare_script(
             &mut app,
             &[
-                ("ShowBitmap", &[0, 0]),
-                ("AddLog", &[i32::from_le_bytes(*b"TEST")]),
+                (Native::ShowBitmap, &[0, 0]),
+                (Native::AddLog, &[i32::from_le_bytes(*b"TEST")]),
             ],
         );
         app.update();
@@ -1912,7 +1912,10 @@ mod tests {
             Visibility::Inherited
         );
         assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Inherited);
-        prepare_script(&mut app, &[("AddLog", &[i32::from_le_bytes(*b"MORE")])]);
+        prepare_script(
+            &mut app,
+            &[(Native::AddLog, &[i32::from_le_bytes(*b"MORE")])],
+        );
         app.world_mut().resource_mut::<ActivationInputs>().lockout = 1;
         app.update();
         assert_eq!(
@@ -2219,11 +2222,11 @@ mod tests {
                 Val::Percent(13.541666)
             )
         );
-        prepare_script(&mut app, &[("LockoutPlayer", &[1])]);
+        prepare_script(&mut app, &[(Native::LockoutPlayer, &[1])]);
         app.update();
         assert_eq!(app.world().resource::<HudState>().compass_frame, None);
         assert!(app.world().resource::<HudState>().compass_on);
-        prepare_script(&mut app, &[("LockoutPlayer", &[0])]);
+        prepare_script(&mut app, &[(Native::LockoutPlayer, &[0])]);
         app.update();
         assert_eq!(app.world().resource::<HudState>().compass_frame, Some(16));
         use_key(&mut app, false);
@@ -2259,7 +2262,10 @@ mod tests {
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
         use_key(&mut app, false);
-        prepare_script(&mut app, &[("AddItem", &[0, 8]), ("SelectItem", &[0])]);
+        prepare_script(
+            &mut app,
+            &[(Native::AddItem, &[0, 8]), (Native::SelectItem, &[0])],
+        );
         app.world_mut().remove_resource::<ActivationInputs>();
         app.update();
         let state = app.world().resource::<HudState>();
@@ -2290,7 +2296,7 @@ mod tests {
             "deep water rejects use"
         );
         use_key(&mut app, false);
-        prepare_script(&mut app, &[("LockoutPlayer", &[0])]);
+        prepare_script(&mut app, &[(Native::LockoutPlayer, &[0])]);
         app.world_mut().remove_resource::<ActivationInputs>();
         app.world_mut().remove_resource::<HudState>();
         app.update();

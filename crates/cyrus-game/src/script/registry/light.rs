@@ -1,5 +1,6 @@
 //! Retained actor light controls follow preservation's script light lifecycle.
 use cyrus_assets::script::Instance;
+use cyrus_script::Native;
 use serde::{Deserialize, Serialize};
 
 /// Logical light state stays with its actor across world retention and replacement.
@@ -79,8 +80,8 @@ impl super::ScriptActor {
         };
         if light.enabled || light.locked {
             for (function, amplitude) in [
-                ("LightFlicker", light.flicker[0] as i16),
-                ("LightSize", light.size[0] as i16),
+                (Native::LightFlicker, light.flicker[0] as i16),
+                (Native::LightSize, light.size[0] as i16),
             ] {
                 anyhow::ensure!(
                     amplitude >= 0,

@@ -588,9 +588,12 @@ impl ScriptWorld {
             random,
             // The lunge is a forward step of `attr_fight_lunge_speed`; it requests no animation and so no sound.
             |world, id, _distance, _mode| {
-                world.step_player(id, "Lunge", inputs, &mut |_, _| {
-                    bail!("selected-player lunge sound unsupported")
-                })
+                world.step_player_operation(
+                    id,
+                    super::super::tasks::LocomotionOperation::Lunge,
+                    inputs,
+                    &mut |_, _| bail!("selected-player lunge sound unsupported"),
+                )
             },
             sounds,
         )

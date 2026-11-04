@@ -4,6 +4,7 @@ use crate::clock::{ClockStep, SimulationClock, bios_tick};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
+use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{animation::AnimationRequest, sound::SoundCue};
 
@@ -67,9 +68,14 @@ impl ScriptWorld {
         self.task_calls
             .values()
             .filter(|call| {
-                ["RTX", "RTXp", "rtxAnim", "RTXpAnim", "AmbientRtx"]
-                    .iter()
-                    .any(|name| call.function.eq_ignore_ascii_case(name))
+                [
+                    Native::Rtx,
+                    Native::RTXp,
+                    Native::RtxAnim,
+                    Native::RTXpAnim,
+                    Native::AmbientRtx,
+                ]
+                .contains(&call.function)
             })
             .filter_map(|call| match call.arguments.first() {
                 Some(cyrus_script::program::Value::Integer { value }) => Some(value.to_le_bytes()),

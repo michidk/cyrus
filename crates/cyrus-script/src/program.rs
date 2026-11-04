@@ -84,7 +84,7 @@ pub struct Call {
     pub function_id: u16,
     pub kind: CallKind,
     pub target: Object,
-    pub function: String,
+    pub function: crate::Native,
     pub arguments: Vec<Value>,
 }
 
@@ -204,7 +204,7 @@ impl Program {
 /// Installed function declaration; call-site kind is retained separately.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
-    pub name: String,
+    pub name: crate::Native,
     pub param_count: u8,
     pub kind: CallKind,
 }

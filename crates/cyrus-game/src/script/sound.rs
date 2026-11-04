@@ -1,15 +1,15 @@
 //! Immediate script sound commands follow preservation's channel ownership rules.
 use anyhow::Result;
 use cyrus_script::Argument;
+use cyrus_script::Native;
 pub use cyrus_world::sound::ScriptSound;
 
-pub(super) fn command(name: &str, arguments: &[Argument]) -> Result<Option<ScriptSound>> {
-    let count = if name.eq_ignore_ascii_case("FlatSound") {
+pub(super) fn command(name: Native, arguments: &[Argument]) -> Result<Option<ScriptSound>> {
+    let count = if name == Native::FlatSound {
         3
-    } else if name.eq_ignore_ascii_case("EndSound") || name.eq_ignore_ascii_case("EndMySound") {
+    } else if name == Native::EndSound || name == Native::EndMySound {
         1
-    } else if name.eq_ignore_ascii_case("EndMySounds") || name.eq_ignore_ascii_case("StopAllSounds")
-    {
+    } else if name == Native::EndMySounds || name == Native::StopAllSounds {
         0
     } else {
         return Ok(None);
@@ -24,9 +24,9 @@ pub(super) fn command(name: &str, arguments: &[Argument]) -> Result<Option<Scrip
     } else if count == 1 {
         ScriptSound::StopEffect {
             effect: arguments[0].integer()?,
-            owned: name.eq_ignore_ascii_case("EndMySound"),
+            owned: name == Native::EndMySound,
         }
-    } else if name.eq_ignore_ascii_case("StopAllSounds") {
+    } else if name == Native::StopAllSounds {
         ScriptSound::StopAll
     } else {
         ScriptSound::StopOwned

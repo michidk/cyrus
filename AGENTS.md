@@ -216,8 +216,10 @@ untracked working memory. Each crate has a `README.md` with its commands.
   written.
 - Use the real names of engine fields, never bare indices or placeholder
   names such as `attr_31` or `group 93`. Actor attributes go through the typed
-  `cyrus_script::Attribute` and animation groups through
-  `cyrus_script::AnimationGroup`, both named after the installed `SOUP386.DEF`.
+  `cyrus_script::Attribute`, animation groups through
+  `cyrus_script::AnimationGroup` and native functions through
+  `cyrus_script::Native`, all named after the installed `SOUP386.DEF`; never
+  match a native function by its name string.
   Translate installed names or indices to typed values once, where the data
   enters cyrus, and keep code, tests, comments and errors typed and named after
   that. Raw indices remain only where the index itself is data, such as a

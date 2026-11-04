@@ -2,18 +2,19 @@
 //! ownership is established when spatial state is prepared and is not rebound by a write.
 use anyhow::{Context, Result};
 use cyrus_script::Argument;
+use cyrus_script::Native;
 use cyrus_script::{Attribute, Attributes};
 
 pub(super) fn call(
-    name: &str,
+    name: Native,
     arguments: &[Argument],
     attributes: &mut Attributes,
     control: Option<&mut super::ActorControlState>,
 ) -> Result<Option<i32>> {
-    let get = name.eq_ignore_ascii_case("GetAttribute");
-    let get_my = name.eq_ignore_ascii_case("GetMyAttr");
-    let set = name.eq_ignore_ascii_case("SetAttribute");
-    let set_my = name.eq_ignore_ascii_case("SetMyAttr");
+    let get = name == Native::GetAttribute;
+    let get_my = name == Native::GetMyAttr;
+    let set = name == Native::SetAttribute;
+    let set_my = name == Native::SetMyAttr;
     if !get && !get_my && !set && !set_my {
         return Ok(None);
     }
@@ -63,7 +64,7 @@ mod tests {
         let mut attributes = Attributes::default();
         for index in [25usize, 26, 27, 28, 33] {
             let result = call(
-                "SetAttribute",
+                Native::SetAttribute,
                 &[Argument::Integer(index as i32), Argument::Integer(0x123)],
                 &mut attributes,
                 None,

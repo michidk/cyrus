@@ -5,6 +5,7 @@ use crate::script::spatial::query_bearing;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::distance::rounded_distance;
 use cyrus_script::Attribute;
+use cyrus_script::Native;
 
 /// Death selector that marks a killed receiver.
 const KILLED_SELECTOR: u8 = 8;
@@ -37,7 +38,7 @@ fn fireball_angles(delta: [i32; 3]) -> Result<[u16; 3]> {
 impl GameHost<'_, '_, '_, '_> {
     /// One of the receiver's RAEX attachment vertices (`grip0`, `grip1`, `scabbard0`, `scabbard1`)
     /// rotated by the receiver's orientation, relative to its position.
-    pub(super) fn attachment_offset(&mut self, native: &str, field: &str) -> Result<[i32; 3]> {
+    pub(super) fn attachment_offset(&mut self, native: Native, field: &str) -> Result<[i32; 3]> {
         let data = self
             .inputs
             .animations
@@ -90,7 +91,7 @@ impl GameHost<'_, '_, '_, '_> {
             } else {
                 "scabbard1"
             };
-            let rotated = self.attachment_offset("DragonBreath", field)?;
+            let rotated = self.attachment_offset(Native::DragonBreath, field)?;
             let position = self.registry.spatial(id)?.local.position;
             let point = std::array::from_fn(|axis| rotated[axis].wrapping_add(position[axis]));
             self.registry
@@ -120,8 +121,8 @@ impl GameHost<'_, '_, '_, '_> {
         {
             return Ok(true);
         }
-        let grip0 = self.attachment_offset("DragonBreath", "grip0")?;
-        let grip1 = self.attachment_offset("DragonBreath", "grip1")?;
+        let grip0 = self.attachment_offset(Native::DragonBreath, "grip0")?;
+        let grip1 = self.attachment_offset(Native::DragonBreath, "grip1")?;
         let delta: [i32; 3] = std::array::from_fn(|axis| grip1[axis].wrapping_sub(grip0[axis]));
         let angles = fireball_angles(delta)?;
         let position = std::array::from_fn(|axis| grip0[axis].wrapping_add(own[axis]));

@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes};
 mod activation;
@@ -3250,7 +3251,7 @@ struct GameHost<'a, 'sound, 'input, 'random> {
 impl<'input> GameHost<'_, '_, 'input, '_> {
     fn native_task_call(
         &mut self,
-        (function, mode): (&str, super::tasks::NativeTaskMode),
+        (function, mode): (Native, super::tasks::NativeTaskMode),
         arguments: &[Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<CallResult>> {
@@ -3277,16 +3278,20 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
-        let operation =
-            if kind != CallKind::Function && arguments.len() == 1 && arguments[0].integer().is_ok()
+        let operation = match mode {
+            super::tasks::NativeTaskMode::SynchronousMovement(operation) => Some(operation),
+            super::tasks::NativeTaskMode::Script(_)
+                if kind != CallKind::Function
+                    && arguments.len() == 1
+                    && arguments[0].integer().is_ok() =>
             {
                 super::tasks::LocomotionOperation::named(function)
-            } else {
-                None
-            };
+            }
+            super::tasks::NativeTaskMode::Script(_) => None,
+        };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
-        let player_face_requested = function.eq_ignore_ascii_case("PlayerFaceObj");
+        let player_face_requested = function == Native::PlayerFaceObj;
         let player_face = player_face_requested.then(|| self.player_face_state());
         let mut player_face_outcome = super::tasks::PlayerFaceOutcome::default();
         let camera_update_handle = self.inputs.camera_update;
@@ -3492,9 +3497,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 &mut spatial_call,
                 services,
             ),
-            super::tasks::NativeTaskMode::SynchronousMovement => {
+            super::tasks::NativeTaskMode::SynchronousMovement(operation) => {
                 actor.tasks.call_synchronous_movement(
-                    function,
+                    operation,
                     arguments,
                     invocation,
                     &mut animation,
@@ -3634,7 +3639,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .as_ref()
             .ok_or("showPlayer selected-player control unavailable")?;
         let (holding_weapon, _, _) = self
-            .actor_weapon_predicates(index, "IsHoldingWeapon")
+            .actor_weapon_predicates(index, Native::IsHoldingWeapon)
             .map_err(describe)?;
         Ok(super::camera::player_slot(
             holding_weapon,
@@ -3687,7 +3692,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         })()
         .map_err(describe);
         let holding_weapon = if guard_weapon {
-            self.actor_weapon_predicates(index, "IsHoldingWeapon")
+            self.actor_weapon_predicates(index, Native::IsHoldingWeapon)
                 .map(|(holding, _, _)| holding)
                 .map_err(describe)
         } else {
@@ -3752,7 +3757,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .map_err(describe)?
             .local;
         let (holding_weapon, _, _) = self
-            .actor_weapon_predicates(index, "IsHoldingWeapon")
+            .actor_weapon_predicates(index, Native::IsHoldingWeapon)
             .map_err(describe)?;
         let combat_mode = control
             .combat
@@ -3853,7 +3858,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     /// `SheathSword`'s action: when the receiver can sheathe it enters the sheathing state. The
     /// selected player also refreshes the HUD health timer and returns to camera slot zero.
-    fn sheath_sword(&mut self, function: &str, id: ScriptActorId) -> Result<()> {
+    fn sheath_sword(&mut self, function: Native, id: ScriptActorId) -> Result<()> {
         let selected = self.selected_player() == Some(id);
         let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
         let actor = &mut self.registry.actors[self.index];
@@ -3890,7 +3895,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .as_ref()
             .ok_or("locomotion control state unavailable")?;
         let (holding_weapon, _, _) = self
-            .receiver_weapon_predicates("MoveBackward")
+            .receiver_weapon_predicates(Native::MoveBackward)
             .map_err(|error| format!("{error:#}"))?;
         Ok(super::locomotion::BackwardState {
             rope_attached: control.rope_attached,
@@ -4312,9 +4317,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .map(|controller| controller.held.forward);
         // Only a taken mask-8 transition needs the weapon predicate, so its error is deferred.
         let armed = (selected_player && forward_held == Some(true))
-            .then(|| self.actor_weapon_predicates(self.index, "IsHoldingWeapon"))
+            .then(|| self.actor_weapon_predicates(self.index, Native::IsHoldingWeapon))
             .map(|predicates| predicates.map(|(holding, _, _)| holding));
-        let mut walk_step: Option<&'static str> = None;
+        let mut walk_step: Option<Native> = None;
         let camera = &mut self.registry.camera;
         let effects = &mut self.registry.effects;
         let actor = &mut self.registry.actors[self.index];
@@ -4357,9 +4362,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         // A held weapon runs the armed walk step (`anim_fight_run`), otherwise the
                         // ordinary forward step.
                         walk_step = Some(if matches!(holding, Some(Ok(true))) {
-                            "WalkForward"
+                            Native::WalkForward
                         } else {
-                            "MoveForward"
+                            Native::MoveForward
                         });
                         Ok(cyrus_world::animation::TransitionDecision::Yield)
                     }
@@ -4432,21 +4437,31 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(control.weapon_drawn && !sheathing)
     }
 
-    fn receiver_weapon_predicates(&self, function: &str) -> Result<(bool, bool, bool)> {
+    fn receiver_weapon_predicates(&self, function: Native) -> Result<(bool, bool, bool)> {
         self.actor_weapon_predicates(self.index, function)
     }
 
-    fn actor_weapon_predicates(&self, index: usize, function: &str) -> Result<(bool, bool, bool)> {
-        let actor = &self.registry.actors[index];
-        if function.eq_ignore_ascii_case("IsHoldingWeapon")
-            && actor.attributes[Attribute::HoldingWeapon] != 0
+    fn actor_weapon_predicates(
+        &self,
+        index: usize,
+        function: Native,
+    ) -> Result<(bool, bool, bool)> {
+        if function == Native::IsHoldingWeapon
+            && self.registry.actors[index].attributes[Attribute::HoldingWeapon] != 0
         {
             return Ok((true, false, false));
         }
+        self.weapon_predicates(index)
+            .with_context(|| function.to_string())
+    }
+
+    /// Holding, drawing and sheathing for an actor, without `IsHoldingWeapon`'s attribute test.
+    fn weapon_predicates(&self, index: usize) -> Result<(bool, bool, bool)> {
+        let actor = &self.registry.actors[index];
         let ready = self
             .inputs
             .hud
-            .with_context(|| format!("{function}: inventory owner unavailable"))?
+            .context("inventory owner unavailable")?
             .inventory_ready()?;
         if !ready || actor.animation.is_none() {
             return Ok((false, false, false));
@@ -4454,11 +4469,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let shell = self
             .inputs
             .shell_execution
-            .with_context(|| format!("{function}: shell context unavailable"))?;
+            .context("shell context unavailable")?;
         let control = actor
             .control
             .as_ref()
-            .with_context(|| format!("{function}: receiver control unavailable"))?;
+            .context("receiver control unavailable")?;
         Ok(super::activation::weapon_predicates(
             control.living_state,
             actor
@@ -4790,7 +4805,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         &mut self,
         target: &Target,
         kind: CallKind,
-        function: &str,
+        function: Native,
         arguments: &[Argument],
         invocation: cyrus_script::Invocation,
         flags: &mut [i32],
@@ -4806,15 +4821,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // The original's function table keeps only each handler, not the declared kind, so a task
         // or multitask call of a function native runs the handler once and a zero return completes
         // the task at once. Only natives whose handler is shown to return zero take this form.
-        if ["SetAction", "ResetAction", "ResetAllAction"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+        if [
+            Native::SetAction,
+            Native::ResetAction,
+            Native::ResetAllAction,
+        ]
+        .contains(&function)
         {
             anyhow::ensure!(
                 kind == CallKind::Function,
                 "{function}: task completion of a void native is unsupported"
             );
-            let expected = usize::from(!function.eq_ignore_ascii_case("ResetAllAction"));
+            let expected = usize::from(function != Native::ResetAllAction);
             anyhow::ensure!(
                 arguments.len() == expected,
                 "{function} requires {expected} arguments"
@@ -4829,9 +4847,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .control
                 .as_mut()
                 .context("action native: control unavailable")?;
-            if function.eq_ignore_ascii_case("ResetAllAction") {
+            if function == Native::ResetAllAction {
                 control.directional_state = [0; 2];
-            } else if function.eq_ignore_ascii_case("ResetAction") {
+            } else if function == Native::ResetAction {
                 control
                     .directional_state
                     .iter_mut()
@@ -4872,16 +4890,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         control.directional_state[0] |= 3;
                         control.jump_window = 0;
                     } else {
-                        self.call(target, kind, "Jump", &[], invocation, flags)?;
+                        self.call(target, kind, Native::Jump, &[], invocation, flags)?;
                     }
                 }
             }
             return Ok(CallResult::CompleteWithoutValue);
         }
         if kind != CallKind::Function
-            && ["FlatAnimate", "FlatSound", "ResetRotation", "Jump"]
-                .iter()
-                .any(|name| function.eq_ignore_ascii_case(name))
+            && [
+                Native::FlatAnimate,
+                Native::FlatSound,
+                Native::ResetRotation,
+                Native::Jump,
+            ]
+            .contains(&function)
         {
             return Ok(
                 match self.call(
@@ -4897,7 +4919,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("Jump") {
+        if kind == CallKind::Function && function == Native::Jump {
             anyhow::ensure!(arguments.is_empty(), "Jump requires no arguments");
             if !self
                 .registry
@@ -4966,34 +4988,32 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("PlayerLineUp") {
+        if function == Native::PlayerLineUp {
             // Unknown until the native stores this invocation's return value.
             self.registry.globals.lineup_result = None;
         }
         if kind == CallKind::Function
             && [
-                "Light",
-                "LightRadius",
-                "LightIntensity",
-                "LightOffset",
-                "LightFlicker",
-                "FlickerLight",
-                "LightFlickerOff",
-                "LightSize",
-                "LightSizeOff",
+                Native::Light,
+                Native::LightRadius,
+                Native::LightIntensity,
+                Native::LightOffset,
+                Native::LightFlicker,
+                Native::FlickerLight,
+                Native::LightFlickerOff,
+                Native::LightSize,
+                Native::LightSizeOff,
             ]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+            .contains(&function)
         {
             let values = arguments
                 .iter()
                 .map(|argument| argument.integer())
                 .collect::<Result<Vec<_>>>()?;
-            let name = function.to_ascii_lowercase();
-            let expected = match name.as_str() {
-                "light" | "lightflicker" | "lightsize" => 2,
-                "lightoffset" => 3,
-                "lightflickeroff" | "lightsizeoff" => 0,
+            let expected = match function {
+                Native::Light | Native::LightFlicker | Native::LightSize => 2,
+                Native::LightOffset => 3,
+                Native::LightFlickerOff | Native::LightSizeOff => 0,
                 _ => 1,
             };
             anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
@@ -5006,49 +5026,48 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .light
                 .get_or_insert_with(|| light::LightState::dynamic(position));
             // Stored values keep their low sixteen bits, as the original's word stores do.
-            match name.as_str() {
-                "light" => {
+            match function {
+                Native::Light => {
                     light.enabled = true;
                     light.starting_radius = values[0] as i16;
                     light.radius = values[0] as i16;
                     light.starting_intensity = values[1] as i16;
                     light.intensity = values[1] as i16;
                 }
-                "lightradius" => {
+                Native::LightRadius => {
                     light.starting_radius = values[0] as i16;
                     light.radius = values[0] as i16;
                     light.enabled = true;
                     light.inactive_ticks = 0;
                 }
-                "lightintensity" => {
+                Native::LightIntensity => {
                     light.starting_intensity = values[0] as i16;
                     light.intensity = values[0] as i16;
                     light.enabled = true;
                     light.inactive_ticks = 0;
                 }
-                "lightoffset" => {
+                Native::LightOffset => {
                     light.offset = [values[0] as i16, values[1] as i16, values[2] as i16]
                 }
-                "lightflicker" => light.flicker = [values[0] as u16, 0, values[1] as u16],
-                "lightsize" => light.size = [values[0] as u16, 0, values[1] as u16],
-                "lightsizeoff" => light.size[0] = 0,
-                "flickerlight" => light.flicker = [values[0] as u16, 0, 1],
+                Native::LightFlicker => light.flicker = [values[0] as u16, 0, values[1] as u16],
+                Native::LightSize => light.size = [values[0] as u16, 0, values[1] as u16],
+                Native::LightSizeOff => light.size[0] = 0,
+                Native::FlickerLight => light.flicker = [values[0] as u16, 0, 1],
                 _ => light.flicker[0] = 0,
             }
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function
             && [
-                "Flat",
-                "FlatSetTexture",
-                "FlatOff",
-                "FlatOffset",
-                "FlatAnimate",
-                "FlatStop",
-                "FlatLikeStatic",
+                Native::Flat,
+                Native::FlatSetTexture,
+                Native::FlatOff,
+                Native::FlatOffset,
+                Native::FlatAnimate,
+                Native::FlatStop,
+                Native::FlatLikeStatic,
             ]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+            .contains(&function)
         {
             let values = arguments
                 .iter()
@@ -5063,21 +5082,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function
-            && ["menuNew", "menuAddItem", "menuSelection"]
-                .iter()
-                .any(|name| function.eq_ignore_ascii_case(name))
+            && [Native::MenuNew, Native::MenuAddItem, Native::MenuSelection].contains(&function)
         {
             let values = arguments
                 .iter()
                 .map(|argument| argument.integer())
                 .collect::<Result<Vec<_>>>()?;
-            let name = function.to_ascii_lowercase();
-            let expected = if name == "menuadditem" { 3 } else { 0 };
+            let expected = if function == Native::MenuAddItem {
+                3
+            } else {
+                0
+            };
             anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
             let globals = &mut self.registry.globals;
-            match name.as_str() {
-                "menunew" => globals.menu.clear(),
-                "menuselection" => return Ok(CallResult::Complete(globals.menu.selection())),
+            match function {
+                Native::MenuNew => globals.menu.clear(),
+                Native::MenuSelection => return Ok(CallResult::Complete(globals.menu.selection())),
                 _ => {
                     let limit = globals
                         .dialogue
@@ -5111,7 +5131,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
+        if kind == CallKind::Function && function == Native::LightOff {
             anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
             let actor = &mut self.registry.actors[self.index];
             if let Some(light) = &mut actor.light {
@@ -5121,7 +5141,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetUserSync") {
+        if kind == CallKind::Function && function == Native::ResetUserSync {
             anyhow::ensure!(arguments.is_empty(), "ResetUserSync requires no arguments");
             let channel = self.registry.actors[self.index].attributes[Attribute::User];
             self.registry
@@ -5130,7 +5150,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_user(self.index, channel);
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetGroupSync") {
+        if kind == CallKind::Function && function == Native::ResetGroupSync {
             anyhow::ensure!(arguments.is_empty(), "ResetGroupSync requires no arguments");
             // The native clears this actor's posted value.  The channel update retains the
             // released byte; the next world-loop update observes this member as unposted.
@@ -5140,7 +5160,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
+        if kind == CallKind::Function && function == Native::BeginCombat {
             anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
             let inputs = match self.inputs.combat_entry {
                 Some(inputs) => inputs,
@@ -5214,12 +5234,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::CompleteWithoutValue);
         }
         if kind == CallKind::Function
-            && (function.eq_ignore_ascii_case("ShowItem")
-                || function.eq_ignore_ascii_case("ShowItemNoRtx"))
+            && (function == Native::ShowItem || function == Native::ShowItemNoRtx)
         {
             // ShowItem(item, text, first, second) ignores its text argument here; ShowItemNoRtx
             // has no text argument. Both leave the viewer request pending.
-            let rtx = function.eq_ignore_ascii_case("ShowItem");
+            let rtx = function == Native::ShowItem;
             let values = arguments
                 .iter()
                 .map(|argument| argument.integer())
@@ -5236,7 +5255,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             request.words = words;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("AddItem") {
+        if kind == CallKind::Function && function == Native::AddItem {
             let [item, amount] = arguments else {
                 anyhow::bail!("AddItem requires two arguments")
             };
@@ -5246,8 +5265,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function
-            && (function.eq_ignore_ascii_case("LightTorch")
-                || function.eq_ignore_ascii_case("UnlightTorch"))
+            && (function == Native::LightTorch || function == Native::UnlightTorch)
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let inputs = self.torch_inputs(self.index, function)?;
@@ -5259,7 +5277,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .sounds
                 .as_deref_mut()
                 .with_context(|| format!("{function} sound handler unavailable"))?;
-            if function.eq_ignore_ascii_case("LightTorch") {
+            if function == Native::LightTorch {
                 self.registry.light_torch(id, inputs, ticks, sounds)?;
             } else {
                 self.registry.unlight_torch(id, inputs, ticks, sounds)?;
@@ -5272,10 +5290,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // yaw is the bearing of the raw difference, pitch the elevation of the difference
         // normalized to length 65536, roll zero. The receiver becomes the object's parent record.
         if kind == CallKind::Function
-            && (function.eq_ignore_ascii_case("shoot")
-                || function.eq_ignore_ascii_case("shootPlayer"))
+            && (function == Native::Shoot || function == Native::ShootPlayer)
         {
-            let player_form = function.eq_ignore_ascii_case("shootPlayer");
+            let player_form = function == Native::ShootPlayer;
             anyhow::ensure!(
                 arguments.len() == if player_form { 4 } else { 7 },
                 "{function}: wrong argument count"
@@ -5336,7 +5353,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // InKey(code): whether the key of the code's low byte is down, with the modifiers the
         // higher bytes name. Only the debug shell and a few bridge and door scripts call it.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("InKey") {
+        if kind == CallKind::Function && function == Native::InKey {
             let [code] = arguments else {
                 anyhow::bail!("InKey requires one argument")
             };
@@ -5352,7 +5369,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // GolemSteam: once every few updates, a puff of steam at one of the receiver's four weapon
         // attachment vertices (a grip or a scabbard point), in the alternating effect variants.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("GolemSteam") {
+        if kind == CallKind::Function && function == Native::GolemSteam {
             anyhow::ensure!(arguments.is_empty(), "GolemSteam requires no arguments");
             let excluded = self.registry.actors[self.index]
                 .control
@@ -5370,7 +5387,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             let field = ["grip0", "scabbard1", "grip1", "scabbard0"][random.rnd(4)? as usize];
             let id = self.registry.id(self.index)?;
-            let rotated = self.attachment_offset("GolemSteam", field)?;
+            let rotated = self.attachment_offset(Native::GolemSteam, field)?;
             let position = self.registry.spatial(id)?.local.position;
             let point = std::array::from_fn(|axis| rotated[axis].wrapping_add(position[axis]));
             let descriptor = if self.registry.globals.world_loop_frame & 1 != 0 {
@@ -5383,13 +5400,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // DragonBreath: the dragon's smoke, fireball and death item swap; `DragonBreathTask` runs the
         // same update as a multitask. The return is one while the dragon keeps breathing.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("DragonBreath") {
+        if kind == CallKind::Function && function == Native::DragonBreath {
             anyhow::ensure!(arguments.is_empty(), "DragonBreath requires no arguments");
             return Ok(CallResult::Complete(i32::from(self.breathe()?)));
         }
         // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect
         // at a Q8 point. The installed spread is zero; the animation speed is retained.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("AddFlatEffect") {
+        if kind == CallKind::Function && function == Native::AddFlatEffect {
             let [x, y, z, spread, descriptor, speed] = arguments else {
                 anyhow::bail!("AddFlatEffect requires six arguments")
             };
@@ -5405,14 +5422,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         // OpenShell(name) starts the named shell script; it runs from the next update.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("OpenShell") {
+        if kind == CallKind::Function && function == Native::OpenShell {
             let [Argument::String(name)] = arguments else {
                 anyhow::bail!("OpenShell requires one script name")
             };
             self.registry.spawn_shell(name)?;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("UseItem") {
+        if kind == CallKind::Function && function == Native::UseItem {
             let [item] = arguments else {
                 anyhow::bail!("UseItem requires one argument")
             };
@@ -5421,7 +5438,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.use_item(item)?;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("RemoveItem") {
+        if kind == CallKind::Function && function == Native::RemoveItem {
             let [item] = arguments else {
                 anyhow::bail!("RemoveItem requires one argument")
             };
@@ -5437,7 +5454,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // other operand swaps back: add the new item, record it as the weapon attribute, empty the
         // old item and select the new one. A closed inventory skips the adds and removals, and the
         // selection then fails as the original's does.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("chargeWeapon") {
+        if kind == CallKind::Function && function == Native::ChargeWeapon {
             let [charge] = arguments else {
                 anyhow::bail!("chargeWeapon requires one argument")
             };
@@ -5456,7 +5473,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             hud.select_item(take)?;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("ActiveItem") {
+        if kind == CallKind::Function && function == Native::ActiveItem {
             anyhow::ensure!(arguments.is_empty(), "ActiveItem requires no arguments");
             let selected = self
                 .inputs
@@ -5465,7 +5482,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .active_item()?;
             return Ok(CallResult::Complete(i32::from(selected)));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("HandItem") {
+        if kind == CallKind::Function && function == Native::HandItem {
             let [item] = arguments else {
                 anyhow::bail!("HandItem requires one argument")
             };
@@ -5486,7 +5503,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let hud = self.inputs.hud.context("script HUD host unavailable")?;
             return Ok(CallResult::Complete(hud.call(function, arguments)?));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("LockoutPlayer") {
+        if kind == CallKind::Function && function == Native::LockoutPlayer {
             let [value] = arguments else {
                 anyhow::bail!("LockoutPlayer requires one argument")
             };
@@ -5509,8 +5526,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if kind == CallKind::Function {
             let automatic;
             let activation = if self.inputs.activation.is_none()
-                && (function.eq_ignore_ascii_case("Activate")
-                    || function.eq_ignore_ascii_case("TorchActivate"))
+                && (function == Native::Activate || function == Native::TorchActivate)
                 && let Some(use_held) = self.inputs.activation_use_held
             {
                 anyhow::ensure!(
@@ -5566,11 +5582,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             kind
         );
         // KillMyTasks clears all six of the receiver's task slots at once, without running a handler.
-        if function.eq_ignore_ascii_case("KillMyTasks") {
+        if function == Native::KillMyTasks {
             anyhow::ensure!(arguments.is_empty(), "KillMyTasks requires no arguments");
             return Ok(CallResult::CompleteAfterClearingTasks(0));
         }
-        if function.eq_ignore_ascii_case("ResetRotation") {
+        if function == Native::ResetRotation {
             anyhow::ensure!(
                 arguments.len() == 3,
                 "ResetRotation requires three arguments"
@@ -5587,7 +5603,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation(axes)?;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("ResetPosition") {
+        if function == Native::ResetPosition {
             anyhow::ensure!(
                 arguments.len() == 3,
                 "ResetPosition requires three arguments"
@@ -5618,7 +5634,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("MovePlayerAboveMe") {
+        if function == Native::MovePlayerAboveMe {
             anyhow::ensure!(
                 arguments.len() == 4,
                 "MovePlayerAboveMe requires four arguments"
@@ -5653,7 +5669,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.pending_player_placement = Some((position, (yaw & 0x7ff) as u16));
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("cameraController") {
+        if function == Native::CameraController {
             anyhow::ensure!(
                 arguments.is_empty(),
                 "cameraController requires no arguments"
@@ -5665,7 +5681,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.run_camera_controller(service, self.inputs)?;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("XResetCamera") {
+        if function == Native::XResetCamera {
             anyhow::ensure!(arguments.is_empty(), "XResetCamera requires no arguments");
             let service = self
                 .inputs
@@ -5698,7 +5714,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("ReloadRotation") {
+        if function == Native::ReloadRotation {
             anyhow::ensure!(arguments.is_empty(), "ReloadRotation requires no arguments");
             self.registry
                 .spatial
@@ -5708,7 +5724,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation([false; 3])?;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("Resurrect") {
+        if function == Native::Resurrect {
             anyhow::ensure!(arguments.is_empty(), "Resurrect requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
             let resurrected = {
@@ -5757,7 +5773,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("KillMe") {
+        if function == Native::KillMe {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
             let control = self.registry.actors[self.index]
@@ -5780,7 +5796,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             // its runtime is still borrowed by the invocation.
             return Ok(CallResult::CompleteAfterClearingTasks(0));
         }
-        if function.eq_ignore_ascii_case("HideMe") || function.eq_ignore_ascii_case("ShowMe") {
+        if function == Native::HideMe || function == Native::ShowMe {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let control = self.registry.actors[self.index]
                 .control
@@ -5788,7 +5804,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| {
                     format!("{function}: receiver visibility lifecycle unavailable")
                 })?;
-            control.hidden = function.eq_ignore_ascii_case("HideMe");
+            control.hidden = function == Native::HideMe;
             if control.hidden {
                 self.registry.actors[self.index].model.current = None;
             } else if self.registry.actors[self.index]
@@ -5825,31 +5841,28 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         if [
-            "IsHoldingWeapon",
-            "IsDrawingSword",
-            "IsSheathingSword",
-            "IsDrawingOrSheathing",
+            Native::IsHoldingWeapon,
+            Native::IsDrawingSword,
+            Native::IsSheathingSword,
+            Native::IsDrawingOrSheathing,
         ]
-        .iter()
-        .any(|name| function.eq_ignore_ascii_case(name))
+        .contains(&function)
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
-            let result = if function.eq_ignore_ascii_case("IsHoldingWeapon") {
+            let result = if function == Native::IsHoldingWeapon {
                 holding
-            } else if function.eq_ignore_ascii_case("IsDrawingSword") {
+            } else if function == Native::IsDrawingSword {
                 drawing
-            } else if function.eq_ignore_ascii_case("IsDrawingOrSheathing") {
+            } else if function == Native::IsDrawingOrSheathing {
                 drawing || sheathing
             } else {
                 sheathing
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
-        if function.eq_ignore_ascii_case("SetHealth")
-            || function.eq_ignore_ascii_case("AdjustHealth")
-        {
-            let set = function.eq_ignore_ascii_case("SetHealth");
+        if function == Native::SetHealth || function == Native::AdjustHealth {
+            let set = function == Native::SetHealth;
             anyhow::ensure!(
                 arguments.len() == if set { 1 } else { 2 },
                 "{function}: wrong argument count"
@@ -5888,7 +5901,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::Complete(0));
             }
             if attributes[Attribute::Npc] != 0
-                && !self.receiver_weapon_predicates("IsHoldingWeapon")?.0
+                && !self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0
                 && self.registry.actors[self.index]
                     .control
                     .as_ref()
@@ -5937,7 +5950,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // PlayerMoved compares the selected player's position with its snapshot taken at the
         // ordinary actor-update boundary.
-        if function.eq_ignore_ascii_case("PlayerMoved") {
+        if function == Native::PlayerMoved {
             anyhow::ensure!(arguments.is_empty(), "PlayerMoved requires no arguments");
             let player = self
                 .selected_player()
@@ -5955,19 +5968,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // PlayerTurned, PlayerTurnedDirection and PlayerMovementSpeed read the selected player; the
         // original also returns zero for an actor without its model handle, assumed present here.
         if [
-            "PlayerTurned",
-            "PlayerTurnedDirection",
-            "PlayerMovementSpeed",
+            Native::PlayerTurned,
+            Native::PlayerTurnedDirection,
+            Native::PlayerMovementSpeed,
         ]
-        .iter()
-        .any(|name| function.eq_ignore_ascii_case(name))
+        .contains(&function)
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let player = self
                 .selected_player()
                 .with_context(|| format!("{function}: selected player unavailable"))?;
             let index = self.registry.resolve(player)?;
-            if function.eq_ignore_ascii_case("PlayerMovementSpeed") {
+            if function == Native::PlayerMovementSpeed {
                 let actor = &self.registry.actors[index];
                 let animation = actor
                     .animation
@@ -5986,7 +5998,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_ref()
                 .context("spatial state not prepared")?
                 .actor(index)?;
-            let value = if function.eq_ignore_ascii_case("PlayerTurned") {
+            let value = if function == Native::PlayerTurned {
                 super::player_status::player_turned(spatial.local.angles, spatial.angle_history)
             } else {
                 super::player_status::player_turned_direction(
@@ -5997,7 +6009,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(value));
         }
         // PlayerOnScape: the selected player's last ground response was a terrain contact.
-        if function.eq_ignore_ascii_case("PlayerOnScape") {
+        if function == Native::PlayerOnScape {
             anyhow::ensure!(arguments.is_empty(), "PlayerOnScape requires no arguments");
             let player = self
                 .selected_player()
@@ -6015,7 +6027,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // model. The ledge transition retains the supporting actor separately from ordinary
         // ground ownership; static ledges therefore return zero. This is the identity contract
         // published by preservation's PlayerHanging native.
-        if function.eq_ignore_ascii_case("PlayerHanging") {
+        if function == Native::PlayerHanging {
             anyhow::ensure!(arguments.is_empty(), "PlayerHanging requires no arguments");
             let player = self
                 .selected_player()
@@ -6032,7 +6044,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // PlayerStatus classifies the selected player; the motion bytes are the inferred
         // actor bytes +0x1b1 through +0x1b3 and the living state +0x1b4.
-        if function.eq_ignore_ascii_case("PlayerStatus") {
+        if function == Native::PlayerStatus {
             anyhow::ensure!(arguments.is_empty(), "PlayerStatus requires no arguments");
             let player = self
                 .selected_player()
@@ -6066,18 +6078,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
         // owner is not yet identified; that write is not modelled.
-        if let Some((dialogue, begin)) = [
-            ("DialogBegin", true, true),
-            ("DialogEnd", true, false),
-            ("MenuBegin", false, true),
-            ("MenuEnd", false, false),
-        ]
-        .into_iter()
-        .find_map(|(name, dialogue, begin)| {
-            function
-                .eq_ignore_ascii_case(name)
-                .then_some((dialogue, begin))
-        }) {
+        if let Some((dialogue, begin)) = match function {
+            Native::DialogBegin => Some((true, true)),
+            Native::DialogEnd => Some((true, false)),
+            Native::MenuBegin => Some((false, true)),
+            Native::MenuEnd => Some((false, false)),
+            _ => None,
+        } {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             match (dialogue, begin) {
                 (true, begin) => self.registry.globals.set_dialogue_state(begin),
@@ -6088,11 +6095,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // IsWithinMap is constant true. LoadWorld, WonGame, PushPlayer and PopPlayer only raise
         // a request that the original's main loop consumes; the host takes it from the globals.
-        if function.eq_ignore_ascii_case("IsWithinMap") {
+        if function == Native::IsWithinMap {
             return Ok(CallResult::Complete(1));
         }
         // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
-        if function.eq_ignore_ascii_case("MyId") {
+        if function == Native::MyId {
             return Ok(CallResult::Complete(i32::from(
                 self.registry.actors[self.index]
                     .runtime_identifier
@@ -6100,10 +6107,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )));
         }
         // Animal ignores its arguments and returns zero.
-        if function.eq_ignore_ascii_case("Animal") {
+        if function == Native::Animal {
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("SpeedScale") {
+        if kind == CallKind::Function && function == Native::SpeedScale {
             let [value] = arguments else {
                 anyhow::bail!("SpeedScale requires one argument")
             };
@@ -6115,7 +6122,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 value.integer()?.wrapping_mul(scale as i32) >> 8,
             ));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("MainloopExit") {
+        if kind == CallKind::Function && function == Native::MainloopExit {
             let [code] = arguments else {
                 anyhow::bail!("MainloopExit requires one argument")
             };
@@ -6126,24 +6133,25 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         // updatePlayerViewAttrib is an empty routine in the original, with no portable result.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("updatePlayerViewAttrib") {
+        if kind == CallKind::Function && function == Native::UpdatePlayerViewAttrib {
             anyhow::ensure!(
                 arguments.is_empty(),
                 "updatePlayerViewAttrib requires no arguments"
             );
             return Ok(CallResult::CompleteWithoutValue);
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("QueueMovie") {
+        if kind == CallKind::Function && function == Native::QueueMovie {
             let [movie] = arguments else {
                 anyhow::bail!("QueueMovie requires one argument")
             };
             self.registry.globals.queue_movie(movie.integer()?);
             return Ok(CallResult::Complete(0));
         }
-        if let Some(enabled) = [("EnableNodeMaps", true), ("DisableNodeMaps", false)]
-            .into_iter()
-            .find_map(|(name, enabled)| function.eq_ignore_ascii_case(name).then_some(enabled))
-        {
+        if let Some(enabled) = match function {
+            Native::EnableNodeMaps => Some(true),
+            Native::DisableNodeMaps => Some(false),
+            _ => None,
+        } {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             self.registry.set_all_walk_maps_enabled(enabled)?;
             return Ok(CallResult::Complete(0));
@@ -6151,14 +6159,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // HoldAnimation, PauseAnimation and ReleaseAnimation write the receiver's animation wait
         // byte: 255 holds, a pause value counts nominal ticks, release clears only a hold.
         if kind == CallKind::Function
-            && ["HoldAnimation", "PauseAnimation", "ReleaseAnimation"]
-                .iter()
-                .any(|name| function.eq_ignore_ascii_case(name))
+            && [
+                Native::HoldAnimation,
+                Native::PauseAnimation,
+                Native::ReleaseAnimation,
+            ]
+            .contains(&function)
         {
-            let wait = match (arguments, function.to_ascii_lowercase().as_str()) {
-                ([], "holdanimation") => Some(u8::MAX),
-                ([value], "pauseanimation") => Some(value.integer()? as u8),
-                ([], "releaseanimation") => None,
+            let wait = match (arguments, function) {
+                ([], Native::HoldAnimation) => Some(u8::MAX),
+                ([value], Native::PauseAnimation) => Some(value.integer()? as u8),
+                ([], Native::ReleaseAnimation) => None,
                 _ => anyhow::bail!("{function}: wrong argument count"),
             };
             if let Some(animation) = self.registry.actors[self.index].animation.as_mut() {
@@ -6169,7 +6180,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("LoadWorld") {
+        if function == Native::LoadWorld {
             let [world, a, b] = arguments else {
                 anyhow::bail!("LoadWorld requires three arguments")
             };
@@ -6177,14 +6188,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Some([world.integer()?, a.integer()?, b.integer()?]);
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("WonGame") {
+        if function == Native::WonGame {
             self.registry.globals.request_mut().won_game = true;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("PushPlayer") || function.eq_ignore_ascii_case("PopPlayer")
-        {
+        if function == Native::PushPlayer || function == Native::PopPlayer {
             let request = self.registry.globals.request_mut();
-            if function.eq_ignore_ascii_case("PushPlayer") {
+            if function == Native::PushPlayer {
                 request.push_player = true;
             } else {
                 request.pop_player = true;
@@ -6192,9 +6202,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         // IsMaster and IsSlave test attr_master and attr_slave; TrueFunction ignores both arguments.
-        if function.eq_ignore_ascii_case("IsMaster") || function.eq_ignore_ascii_case("IsSlave") {
+        if function == Native::IsMaster || function == Native::IsSlave {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let attribute = if function.eq_ignore_ascii_case("IsMaster") {
+            let attribute = if function == Native::IsMaster {
                 Attribute::Master
             } else {
                 Attribute::Slave
@@ -6203,21 +6213,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[self.index].attributes[attribute] != 0,
             )));
         }
-        if function.eq_ignore_ascii_case("TrueFunction") {
+        if function == Native::TrueFunction {
             anyhow::ensure!(arguments.len() == 2, "TrueFunction: wrong argument count");
             return Ok(CallResult::Complete(1));
         }
         // SetAIType and SetAIMode store the low byte of their argument in the bytes that
         // MyAIType and MyAIMode read back.
-        if function.eq_ignore_ascii_case("SetAIType") || function.eq_ignore_ascii_case("SetAIMode")
-        {
+        if function == Native::SetAiType || function == Native::SetAiMode {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let value = arguments[0].integer()? as u8;
             let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
-            if function.eq_ignore_ascii_case("SetAIType") {
+            if function == Native::SetAiType {
                 control.death_selector = value;
             } else {
                 control.death_response = value;
@@ -6226,18 +6235,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // `attr_health` is `attr_health`; Strength and Armor read the combat record.
         if [
-            "Health",
-            "PlayerHealth",
-            "Strength",
-            "Armor",
-            "ReplenishHealth",
+            Native::Health,
+            Native::PlayerHealth,
+            Native::Strength,
+            Native::Armor,
+            Native::ReplenishHealth,
         ]
-        .iter()
-        .any(|name| function.eq_ignore_ascii_case(name))
+        .contains(&function)
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let lower = function.to_ascii_lowercase();
-            let index = if lower == "playerhealth" {
+            let index = if function == Native::PlayerHealth {
                 self.selected_player()
                     .context("PlayerHealth: selected player unavailable")?
                     .index
@@ -6248,9 +6255,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .selected_player()
                 .is_some_and(|player| player.index == index);
             let actor = &mut self.registry.actors[index];
-            let value = match lower.as_str() {
-                "health" | "playerhealth" => i32::from(actor.attributes[Attribute::Health]),
-                "replenishhealth" => {
+            let value = match function {
+                Native::Health | Native::PlayerHealth => {
+                    i32::from(actor.attributes[Attribute::Health])
+                }
+                Native::ReplenishHealth => {
                     if actor.attributes[Attribute::Health] >= 100 {
                         0
                     } else {
@@ -6272,7 +6281,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .with_context(|| {
                             format!("{function}: receiver combat record unavailable")
                         })?;
-                    if lower == "strength" {
+                    if function == Native::Strength {
                         combat.strength
                     } else {
                         combat.armor
@@ -6281,11 +6290,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(value));
         }
-        if function.eq_ignore_ascii_case("IsCombatCapable")
-            || function.eq_ignore_ascii_case("PlayerArmed")
-        {
+        if function == Native::IsCombatCapable || function == Native::PlayerArmed {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let armed = function.eq_ignore_ascii_case("PlayerArmed");
+            let armed = function == Native::PlayerArmed;
             let index = if armed {
                 self.selected_player()
                     .context("PlayerArmed: selected player unavailable")?
@@ -6297,25 +6304,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.combat_capable(index, armed)?,
             )));
         }
-        if function.eq_ignore_ascii_case("DisableHook")
-            || function.eq_ignore_ascii_case("EnableHook")
-        {
+        if function == Native::DisableHook || function == Native::EnableHook {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: receiver script-control unavailable"))?;
             // Bit 0x02 of the script-control byte suppresses the native hook.
-            if function.eq_ignore_ascii_case("DisableHook") {
+            if function == Native::DisableHook {
                 control.script_control |= 2;
             } else {
                 control.script_control &= !2;
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("SetPotion") || function.eq_ignore_ascii_case("GetPotion")
-        {
-            let set = function.eq_ignore_ascii_case("SetPotion");
+        if function == Native::SetPotion || function == Native::GetPotion {
+            let set = function == Native::SetPotion;
             anyhow::ensure!(
                 arguments.len() == 1 + usize::from(set),
                 "{function}: wrong argument count"
@@ -6330,9 +6334,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(self.registry.globals.potions[slot]));
         }
-        if function.eq_ignore_ascii_case("AdjustStrength")
-            || function.eq_ignore_ascii_case("AdjustArmor")
-        {
+        if function == Native::AdjustStrength || function == Native::AdjustArmor {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let delta = arguments[0].integer()?;
             let combat = self.registry.actors[self.index]
@@ -6340,7 +6342,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .with_context(|| format!("{function}: receiver combat record unavailable"))?;
-            let value = if function.eq_ignore_ascii_case("AdjustStrength") {
+            let value = if function == Native::AdjustStrength {
                 &mut combat.strength
             } else {
                 &mut combat.armor
@@ -6348,8 +6350,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             *value = value.wrapping_add(delta);
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("setStrength") || function.eq_ignore_ascii_case("setArmor")
-        {
+        if function == Native::SetStrength || function == Native::SetArmor {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let value = arguments[0].integer()?;
             let combat = self.registry.actors[self.index]
@@ -6357,14 +6358,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .with_context(|| format!("{function}: receiver combat record unavailable"))?;
-            if function.eq_ignore_ascii_case("setStrength") {
+            if function == Native::SetStrength {
                 combat.strength = value;
             } else {
                 combat.armor = value;
             }
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("PlayAnimation") {
+        if kind == CallKind::Function && function == Native::PlayAnimation {
             let [group, modifier] = arguments else {
                 anyhow::bail!("PlayAnimation requires two arguments")
             };
@@ -6421,7 +6422,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             animation.frame = frame.or(animation.frame);
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("GetFramePassed") {
+        if function == Native::GetFramePassed {
             anyhow::ensure!(arguments.is_empty(), "GetFramePassed requires no arguments");
             let ticks = self
                 .inputs
@@ -6431,7 +6432,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 i32::try_from(ticks).context("GetFramePassed ticks exceed the signed range")?,
             ));
         }
-        if function.eq_ignore_ascii_case("InRectangle") {
+        if function == Native::InRectangle {
             let [x1, z1, x2, z2] = arguments else {
                 anyhow::bail!("InRectangle requires four arguments")
             };
@@ -6445,12 +6446,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // DrawSword is the weapon draw admission: it enters state 20 when every gate allows it
         // and otherwise leaves the actor unchanged. Its final repositioning step is disabled in
         // the shipped game.
-        if function.eq_ignore_ascii_case("DrawSword") {
+        if function == Native::DrawSword {
             anyhow::ensure!(arguments.is_empty(), "DrawSword requires no arguments");
             self.draw_sword(id)?;
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("SheathSword") {
+        if function == Native::SheathSword {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
             self.sheath_sword(function, id)?;
             return Ok(CallResult::Complete(0));
@@ -6458,7 +6459,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // endCombat runs SheathSword's action, then unconditionally resets the lifecycle selector
         // and mode bytes, re-enables the hook, leaves combat mode and clears the close-distance
         // pass counter and the coordination selection state.
-        if function.eq_ignore_ascii_case("endCombat") {
+        if function == Native::EndCombat {
             anyhow::ensure!(arguments.is_empty(), "endCombat requires no arguments");
             self.sheath_sword(function, id)?;
             let control = self.registry.actors[self.index]
@@ -6471,17 +6472,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("isFighting") {
+        if function == Native::IsFighting {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             return Ok(CallResult::Complete(i32::from(self.is_fighting()?)));
         }
-        if function.eq_ignore_ascii_case("isDead") {
+        if function == Native::IsDead {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             return Ok(CallResult::Complete(i32::from(
                 self.actor_is_dead(self.index)?,
             )));
         }
-        if function.eq_ignore_ascii_case("Rnd") || function.eq_ignore_ascii_case("QuickRnd") {
+        if function == Native::Rnd || function == Native::QuickRnd {
             let [operand] = arguments else {
                 anyhow::bail!("{function} requires one argument")
             };
@@ -6490,7 +6491,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .random
                 .as_deref_mut()
                 .with_context(|| format!("{function}: shared engine random stream unavailable"))?;
-            let value = if function.eq_ignore_ascii_case("Rnd") {
+            let value = if function == Native::Rnd {
                 random.rnd(operand)?
             } else {
                 random.quick_rnd(operand)
@@ -6499,18 +6500,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // Enable*/Disable* clear and set one bit of the script-control byte: 0x01 script,
         // 0x04 tasks, 0x08 object, 0x10 combat (0x02 is the hook, handled above).
-        let control_bit = [
-            ("Script", 0x01),
-            ("Tasks", 0x04),
-            ("Object", 0x08),
-            ("Combat", 0x10),
-        ]
-        .into_iter()
-        .find_map(|(suffix, bit)| {
-            let enable = function.eq_ignore_ascii_case(&format!("Enable{suffix}"));
-            (enable || function.eq_ignore_ascii_case(&format!("Disable{suffix}")))
-                .then_some((enable, bit))
-        });
+        let control_bit = match function {
+            Native::EnableScript => Some((true, 0x01)),
+            Native::DisableScript => Some((false, 0x01)),
+            Native::EnableTasks => Some((true, 0x04)),
+            Native::DisableTasks => Some((false, 0x04)),
+            Native::EnableObject => Some((true, 0x08)),
+            Native::DisableObject => Some((false, 0x08)),
+            Native::EnableCombat => Some((true, 0x10)),
+            Native::DisableCombat => Some((false, 0x10)),
+            _ => None,
+        };
         if let Some((enable, bit)) = control_bit {
             anyhow::ensure!(arguments.is_empty(), "{function}: wrong argument count");
             let control = self.registry.actors[self.index]
@@ -6524,7 +6524,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("Sound") {
+        if function == Native::Sound {
             let [effect, volume, rate] = arguments else {
                 anyhow::bail!("Sound requires three arguments")
             };
@@ -6566,34 +6566,33 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .runtime_identifier
             .is_none()
             && [
-                "Wander",
-                "MoveByAxis",
-                "MoveAlongAxis",
-                "WanderToLocation",
-                "sMoveByAxis",
-                "MoveObjectAxis",
-                "MoveToLocation",
-                "RotateByAxis",
-                "sRotateByAxis",
-                "RotateToAxis",
-                "Move",
-                "Rotate",
-                "sMove",
-                "sRotate",
-                "sMoveAlongAxis",
-                "MoveMarker",
-                "MoveLocation",
-                "MovePosition",
-                "MoveNodeMarker",
-                "MoveNodeLocation",
-                "MoveNodePosition",
+                Native::Wander,
+                Native::MoveByAxis,
+                Native::MoveAlongAxis,
+                Native::WanderToLocation,
+                Native::SMoveByAxis,
+                Native::MoveObjectAxis,
+                Native::MoveToLocation,
+                Native::RotateByAxis,
+                Native::SRotateByAxis,
+                Native::RotateToAxis,
+                Native::Move,
+                Native::Rotate,
+                Native::SMove,
+                Native::SRotate,
+                Native::SMoveAlongAxis,
+                Native::MoveMarker,
+                Native::MoveLocation,
+                Native::MovePosition,
+                Native::MoveNodeMarker,
+                Native::MoveNodeLocation,
+                Native::MoveNodePosition,
             ]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+            .contains(&function)
         {
             anyhow::bail!("{function}: separate movement/relocation owner unavailable");
         }
-        if function.eq_ignore_ascii_case("Wander") {
+        if function == Native::Wander {
             let [radius, tolerance] = arguments else {
                 anyhow::bail!("Wander requires two arguments")
             };
@@ -6646,7 +6645,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.actors[self.index].attributes[Attribute::NodeInUse] = 1;
             return Ok(CallResult::Complete(result));
         }
-        if function.eq_ignore_ascii_case("AtNodeMarker") {
+        if function == Native::AtNodeMarker {
             let [marker, distance] = arguments else {
                 anyhow::bail!("AtNodeMarker requires two arguments")
             };
@@ -6669,7 +6668,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // Offset attaches the calling actor (the original's current script actor, which differs from
         // the receiver when the call is routed) to the receiver; UnOffset detaches the receiver.
         // PlayerOffset places the selected player relative to the receiver once.
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("Offset") {
+        if kind == CallKind::Function && function == Native::Offset {
             let [x, y, z] = arguments else {
                 anyhow::bail!("Offset requires three arguments")
             };
@@ -6681,12 +6680,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("UnOffset") {
+        if kind == CallKind::Function && function == Native::UnOffset {
             anyhow::ensure!(arguments.is_empty(), "UnOffset requires no arguments");
             self.registry.unoffset_actor(self.index)?;
             return Ok(CallResult::Complete(0));
         }
-        if kind == CallKind::Function && function.eq_ignore_ascii_case("PlayerOffset") {
+        if kind == CallKind::Function && function == Native::PlayerOffset {
             let [x, y, z] = arguments else {
                 anyhow::bail!("PlayerOffset requires three arguments")
             };
@@ -6699,7 +6698,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // AtNodeLocation compares a receiver location with the receiver's own position; the height
         // limit is half the actor's total Y extent (positive plus negative extent).
-        if function.eq_ignore_ascii_case("AtNodeLocation") {
+        if function == Native::AtNodeLocation {
             let [location, distance] = arguments else {
                 anyhow::bail!("AtNodeLocation requires two arguments")
             };
@@ -6717,16 +6716,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .actor(self.index)?
                 .local
                 .position;
-            let target = self.receiver_location("AtNodeLocation", location.integer()?)?;
+            let target = self.receiver_location("node location", location.integer()?)?;
             return Ok(CallResult::Complete(i32::from(
                 point_tasks::within_location(position, target, total_height, distance.integer()?)?,
             )));
         }
         // PlayerCollide holds while the selected player stands on the receiver or its body touched
         // the receiver; PlayerCollideStatic only reads the contact list.
-        if function.eq_ignore_ascii_case("PlayerCollide")
-            || function.eq_ignore_ascii_case("PlayerCollideStatic")
-        {
+        if function == Native::PlayerCollide || function == Native::PlayerCollideStatic {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let player = self
                 .selected_player()
@@ -6736,7 +6733,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 index: self.index,
             };
             let contacts = &self.registry.globals.player_contacts;
-            let touching = if function.eq_ignore_ascii_case("PlayerCollide") {
+            let touching = if function == Native::PlayerCollide {
                 self.registry.actors[self.registry.resolve(player)?]
                     .model
                     .support
@@ -6750,13 +6747,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // CollidePlayerWeapon(x, y, z, radius): while the selected player swings a drawn weapon,
         // whether the weapon tip is within the radius of the point offset from the receiver.
-        if function.eq_ignore_ascii_case("CollidePlayerWeapon") {
+        if function == Native::CollidePlayerWeapon {
             anyhow::ensure!(arguments.len() == 4, "{function} requires four arguments");
             let player = self
                 .selected_player()
                 .context("CollidePlayerWeapon selected player unavailable")?;
             let player_index = self.registry.resolve(player)?;
-            let (holding, _, _) = self.actor_weapon_predicates(player_index, "IsHoldingWeapon")?;
+            let (holding, _, _) =
+                self.actor_weapon_predicates(player_index, Native::IsHoldingWeapon)?;
             let actor = &self.registry.actors[player_index];
             let swinging = actor
                 .control
@@ -6790,7 +6788,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 ),
             )));
         }
-        if function.eq_ignore_ascii_case("PlayerStand") {
+        if function == Native::PlayerStand {
             anyhow::ensure!(arguments.is_empty(), "PlayerStand requires no arguments");
             let player = self
                 .selected_player()
@@ -6808,10 +6806,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )));
         }
         // Surface classes 1..=4 are the water classes, 2 and 4 the deep ones, 5 lava.
-        let surface_test: Option<fn(u8) -> bool> = match function.to_ascii_lowercase().as_str() {
-            "isindeepwater" => Some(|surface| matches!(surface, 2 | 4)),
-            "isinwater" => Some(|surface| (1..=4).contains(&surface)),
-            "isinlava" => Some(|surface| surface == 5),
+        let surface_test: Option<fn(u8) -> bool> = match function {
+            Native::IsInDeepWater => Some(|surface| matches!(surface, 2 | 4)),
+            Native::IsInWater => Some(|surface| (1..=4).contains(&surface)),
+            Native::IsInLava => Some(|surface| surface == 5),
             _ => None,
         };
         if let Some(test) = surface_test {
@@ -6823,23 +6821,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // Receiver lifecycle bytes: MyAIType is the lifecycle selector, MyAIMode the death
         // notification byte; IsOnEdge holds for living states 10 through 19.
-        let control_test: Option<fn(&ActorControlState) -> i32> =
-            match function.to_ascii_lowercase().as_str() {
-                "myaitype" => Some(|control| i32::from(control.death_selector)),
-                "myaimode" => Some(|control| i32::from(control.death_response)),
-                "isonedge" => Some(|control| i32::from((10..=19).contains(&control.living_state))),
-                // The original also answers 0 while its transition lock (global word read by
-                // dozens of routines) is set; cyrus has no transition state, so it is clear.
-                "isinair" => Some(|control| {
-                    i32::from(
-                        control.sliding_state != 0
-                            || control.falling_state != 0
-                            || control.queued_motion != 0
-                            || (27..=29).contains(&control.living_state),
-                    )
-                }),
-                _ => None,
-            };
+        let control_test: Option<fn(&ActorControlState) -> i32> = match function {
+            Native::MyAiType => Some(|control| i32::from(control.death_selector)),
+            Native::MyAiMode => Some(|control| i32::from(control.death_response)),
+            Native::IsOnEdge => {
+                Some(|control| i32::from((10..=19).contains(&control.living_state)))
+            }
+            // The original also answers 0 while its transition lock (global word read by
+            // dozens of routines) is set; cyrus has no transition state, so it is clear.
+            Native::IsInAir => Some(|control| {
+                i32::from(
+                    control.sliding_state != 0
+                        || control.falling_state != 0
+                        || control.queued_motion != 0
+                        || (27..=29).contains(&control.living_state),
+                )
+            }),
+            _ => None,
+        };
         if let Some(test) = control_test {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let control = self.registry.actors[self.index]
@@ -6848,7 +6847,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             return Ok(CallResult::Complete(test(control)));
         }
-        if function.eq_ignore_ascii_case("PrintSingleParm") {
+        if function == Native::PrintSingleParm {
             let [value] = arguments else {
                 anyhow::bail!("{function} requires one argument");
             };
@@ -6857,7 +6856,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.globals.print_line(format!("{name} {value}"));
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("PlayerInSight") {
+        if function == Native::PlayerInSight {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let player = self
                 .selected_player()
@@ -6894,7 +6893,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(visible)));
         }
-        if function.eq_ignore_ascii_case("DistanceToLocation") {
+        if function == Native::DistanceToLocation {
             let [location] = arguments else {
                 anyhow::bail!("DistanceToLocation requires one argument")
             };
@@ -6913,12 +6912,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.location_distance(location.integer()?, inputs)?,
             ));
         }
-        if function.eq_ignore_ascii_case("PlayerDistance")
-            || function.eq_ignore_ascii_case("AcuratePlayerDistance")
-            || function.eq_ignore_ascii_case("PlayerFacing")
-            || function.eq_ignore_ascii_case("PlayerLooking")
-            || function.eq_ignore_ascii_case("PlayerArc")
-            || function.eq_ignore_ascii_case("PlayerArctan")
+        if function == Native::PlayerDistance
+            || function == Native::AcuratePlayerDistance
+            || function == Native::PlayerFacing
+            || function == Native::PlayerLooking
+            || function == Native::PlayerArc
+            || function == Native::PlayerArcTan
         {
             let mut inputs = self
                 .inputs
@@ -6940,7 +6939,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if let Some(value) = self.registry.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
         }
-        if function.eq_ignore_ascii_case("SetAttribute")
+        if function == Native::SetAttribute
             && let [index, value] = arguments
             && index.integer()? == 44
         {

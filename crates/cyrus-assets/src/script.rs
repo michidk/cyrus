@@ -594,7 +594,8 @@ impl Scripts {
                 .functions
                 .first()
                 .is_some_and(
-                    |function| function.name == "NullFunction" && function.param_count == 0
+                    |function| function.name == cyrus_script::Native::NullFunction
+                        && function.param_count == 0
                 ),
             "world {}: null function metadata absent",
             self.world

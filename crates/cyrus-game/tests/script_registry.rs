@@ -1,6 +1,7 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
+use cyrus_script::Native;
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_script::{Attribute, Attributes};
@@ -12,7 +13,7 @@ impl Host for NoServices {
         &mut self,
         _: &Target,
         _: CallKind,
-        _: &str,
+        _: Native,
         _: &[Argument],
         _: cyrus_script::Invocation,
         _: &mut [i32],
@@ -123,7 +124,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: "NullFunction".into(),
+                name: Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -175,7 +176,7 @@ fn cache() -> Scripts {
 #[test]
 fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
     use cyrus_game::script::ScriptInputs;
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.definition.references = vec!["angle.vy".into()];
     scripts.instances[0].angles[1] = 111;
@@ -188,7 +189,7 @@ fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
             0,
             Step {
                 next: 1,
-                operation: wait(1, "KillMe", CallKind::Function, vec![]),
+                operation: wait(1, Native::KillMe, CallKind::Function, vec![]),
             },
         ),
         (
@@ -276,7 +277,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         scripts.definition.references = vec!["angle.vy".into()];
         let kill = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: "KillMe".into(),
+            name: Native::KillMe,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -294,7 +295,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
                 0,
                 Step {
                     next: 1,
-                    operation: wait(kill, "KillMe", CallKind::Function, vec![]),
+                    operation: wait(kill, Native::KillMe, CallKind::Function, vec![]),
                 },
             ),
             (
@@ -783,7 +784,7 @@ fn inspection_steps_logical_state_and_rejects_stale_generations() {
 fn researched_attribute_query_reads_unsigned_bytes_and_checks_bounds() {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "GetMyAttr".into(),
+        name: Native::GetMyAttr,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -797,7 +798,7 @@ fn researched_attribute_query_reads_unsigned_bytes_and_checks_bounds() {
                     function_id: 1,
                     target: Object::Me,
                     kind: CallKind::Function,
-                    function: "GetMyAttr".into(),
+                    function: Native::GetMyAttr,
                     arguments: vec![Value::Integer { value: 0 }],
                 }),
             },
@@ -1007,7 +1008,12 @@ fn retained_world_wait_task_continues_its_saved_invocation_counter() {
     use cyrus_game::script::{ScriptActors, WorldSnapshotSources};
     use cyrus_world::lifecycle::PreparedWorld;
     let scripts = wait_cache(vec![
-        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        wait(
+            1,
+            Native::Wait,
+            CallKind::Task,
+            vec![Value::Integer { value: 4 }],
+        ),
         set_flag(7),
         Operation::End { target: 0 },
     ]);
@@ -1180,12 +1186,12 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
 
 #[test]
 fn native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate() {
-    let native = |id, name: &str| Value::Call {
+    let native = |id, name: Native| Value::Call {
         call: Box::new(Call {
             function_id: id,
             kind: CallKind::Function,
             target: Object::Me,
-            function: name.into(),
+            function: name,
             arguments: vec![Value::Integer { value: 0 }],
         }),
     };
@@ -1206,16 +1212,21 @@ fn native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate() 
         scripts.definition.flags[0].flag_type = kind.into();
         scripts.definition.flags[0].initial_value = initial;
         scripts.definition.functions.extend(
-            ["SetGlobalFlag", "ResetGlobalFlag", "TestGlobalFlag"].map(|name| Function {
-                name: name.into(),
+            [
+                Native::SetGlobalFlag,
+                Native::ResetGlobalFlag,
+                Native::TestGlobalFlag,
+            ]
+            .map(|name| Function {
+                name,
                 param_count: 1,
                 kind: CallKind::Function,
             }),
         );
         let ops = vec![
-            assign(0, native(1, "SetGlobalFlag")),
-            assign(0, native(1, "SetGlobalFlag")),
-            assign(1, native(3, "TestGlobalFlag")),
+            assign(0, native(1, Native::SetGlobalFlag)),
+            assign(0, native(1, Native::SetGlobalFlag)),
+            assign(1, native(3, Native::TestGlobalFlag)),
             assign(
                 2,
                 Value::Read {
@@ -1223,8 +1234,8 @@ fn native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate() 
                 },
             ),
             Operation::Yield,
-            assign(0, native(2, "ResetGlobalFlag")),
-            assign(1, native(3, "TestGlobalFlag")),
+            assign(0, native(2, Native::ResetGlobalFlag)),
+            assign(1, native(3, Native::TestGlobalFlag)),
             assign(
                 2,
                 Value::Read {
@@ -1232,8 +1243,8 @@ fn native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate() 
                 },
             ),
             Operation::Yield,
-            assign(0, native(1, "SetGlobalFlag")),
-            assign(1, native(3, "TestGlobalFlag")),
+            assign(0, native(1, Native::SetGlobalFlag)),
+            assign(1, native(3, Native::TestGlobalFlag)),
             assign(
                 2,
                 Value::Read {
@@ -1286,17 +1297,17 @@ fn wait_cache(ops: Vec<Operation>) -> Scripts {
     let mut scripts = cache();
     scripts.definition.functions.extend([
         Function {
-            name: "Wait".into(),
+            name: Native::Wait,
             param_count: 1,
             kind: CallKind::Task,
         },
         Function {
-            name: "WaitOnTasks".into(),
+            name: Native::WaitOnTasks,
             param_count: 0,
             kind: CallKind::Task,
         },
         Function {
-            name: "WaitNonMulti".into(),
+            name: Native::WaitNonMulti,
             param_count: 0,
             kind: CallKind::Task,
         },
@@ -1317,11 +1328,11 @@ fn wait_cache(ops: Vec<Operation>) -> Scripts {
     scripts.content_id = scripts.content_identity().unwrap();
     scripts
 }
-fn wait(id: u16, name: &str, kind: CallKind, args: Vec<Value>) -> Operation {
+fn wait(id: u16, name: Native, kind: CallKind, args: Vec<Value>) -> Operation {
     Operation::Call {
         call: Call {
             function_id: id,
-            function: name.into(),
+            function: name,
             target: Object::Me,
             kind,
             arguments: args,
@@ -1340,7 +1351,12 @@ fn set_flag(value: i32) -> Operation {
 #[test]
 fn wait_continues_to_flag_change_and_missing_scale_does_not_poison_actor() {
     let scripts = wait_cache(vec![
-        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        wait(
+            1,
+            Native::Wait,
+            CallKind::Task,
+            vec![Value::Integer { value: 4 }],
+        ),
         set_flag(7),
         Operation::End { target: 0 },
     ]);
@@ -1383,7 +1399,7 @@ fn a_multitask_call_of_a_function_native_runs_it_as_the_function() {
         let mut scripts = wait_cache(vec![
             wait(
                 4,
-                "FlatAnimate",
+                Native::FlatAnimate,
                 kind,
                 [(1 << 7) | 2, 0, 0]
                     .map(|value| Value::Integer { value })
@@ -1392,7 +1408,7 @@ fn a_multitask_call_of_a_function_native_runs_it_as_the_function() {
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions.push(Function {
-            name: "FlatAnimate".into(),
+            name: Native::FlatAnimate,
             param_count: 3,
             kind: CallKind::Function,
         });
@@ -1409,7 +1425,7 @@ fn wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot() {
         let scripts = wait_cache(vec![
             wait(
                 1,
-                "Wait",
+                Native::Wait,
                 CallKind::Task,
                 vec![Value::Integer { value: duration }],
             ),
@@ -1425,7 +1441,7 @@ fn wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot() {
         world.step(id, Thread::Main, 20).unwrap();
         assert_eq!(world.flags()[0], if duration == i32::MIN { 12 } else { 7 });
     }
-    for (id, name) in [(2, "WaitOnTasks"), (3, "WaitNonMulti")] {
+    for (id, name) in [(2, Native::WaitOnTasks), (3, Native::WaitNonMulti)] {
         let scripts = wait_cache(vec![
             wait(id, name, CallKind::Task, vec![]),
             set_flag(7),
@@ -1447,17 +1463,17 @@ fn wait_on_tasks_ignores_paused_slots_and_stop_clears_native_bookkeeping() {
     let scripts = wait_cache(vec![
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         ),
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         ),
-        wait(2, "WaitOnTasks", CallKind::Multitask, vec![]),
+        wait(2, Native::WaitOnTasks, CallKind::Multitask, vec![]),
         Operation::Yield,
         Operation::TaskPause { label: 0 },
         Operation::TaskPause { label: 1 },
@@ -1496,17 +1512,17 @@ fn wait_non_multi_counts_blocking_slots_and_observes_same_pass_completion() {
         Operation::TaskPause { label: 6 },
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Task,
             vec![Value::Integer { value: 100 }],
         ),
         Operation::TaskResume { label: 6 },
-        wait(3, "WaitNonMulti", CallKind::Task, vec![]),
+        wait(3, Native::WaitNonMulti, CallKind::Task, vec![]),
         set_flag(7),
         Operation::Endint,
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Task,
             vec![Value::Integer { value: 100 }],
         ),
@@ -1533,17 +1549,17 @@ fn wait_non_multi_ignores_multiple_unpaused_multitasks() {
     let scripts = wait_cache(vec![
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         ),
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         ),
-        wait(3, "WaitNonMulti", CallKind::Task, vec![]),
+        wait(3, Native::WaitNonMulti, CallKind::Task, vec![]),
         set_flag(7),
         Operation::End { target: 0 },
     ]);
@@ -1599,7 +1615,7 @@ fn routed_cache(caller: Vec<Operation>, receiver: Vec<Operation>) -> Scripts {
     scripts
 }
 fn object_wait(target: Object, kind: CallKind, duration: Value) -> Operation {
-    let Operation::Call { mut call } = wait(1, "Wait", kind, vec![duration]) else {
+    let Operation::Call { mut call } = wait(1, Native::Wait, kind, vec![duration]) else {
         unreachable!()
     };
     call.target = target;
@@ -1643,12 +1659,12 @@ fn offset_world(caller: Vec<Operation>, slave: bool) -> ScriptWorld {
     let mut scripts = routed_cache(caller, vec![Operation::End { target: 0 }]);
     scripts.definition.functions.extend([
         Function {
-            name: "Offset".into(),
+            name: Native::Offset,
             param_count: 3,
             kind: CallKind::Function,
         },
         Function {
-            name: "UnOffset".into(),
+            name: Native::UnOffset,
             param_count: 0,
             kind: CallKind::Function,
         },
@@ -1672,7 +1688,7 @@ fn offset_call(arguments: [i32; 3]) -> Operation {
     Operation::ObjectCall {
         call: Call {
             function_id: 4,
-            function: "Offset".into(),
+            function: Native::Offset,
             target: Object::Named { string: 0 },
             kind: CallKind::Function,
             arguments: arguments.map(|value| Value::Integer { value }).to_vec(),
@@ -1737,7 +1753,7 @@ fn offset_attaches_the_caller_to_a_rotated_receiver_and_unoffset_restores_its_po
     let mut detached = offset_world(
         vec![
             offset_call([0, 0, 0]),
-            wait(5, "UnOffset", CallKind::Function, vec![]),
+            wait(5, Native::UnOffset, CallKind::Function, vec![]),
             end(),
         ],
         false,
@@ -1752,7 +1768,7 @@ fn offset_attaches_the_caller_to_a_rotated_receiver_and_unoffset_restores_its_po
     let mut shifted = offset_world(
         vec![
             offset_call([256, -512, 768]),
-            wait(5, "UnOffset", CallKind::Function, vec![]),
+            wait(5, Native::UnOffset, CallKind::Function, vec![]),
             end(),
         ],
         false,
@@ -1784,7 +1800,7 @@ fn source_operand_identity_keeps_equal_cursors_distinct_and_receiver_labels_loca
         vec![
             wait(
                 1,
-                "Wait",
+                Native::Wait,
                 CallKind::Multitask,
                 vec![Value::Integer { value: 100 }],
             ),
@@ -1832,7 +1848,7 @@ fn named_functions_resolve_namespace_and_receiver_arguments_case_insensitively()
         function_id: 4,
         target: Object::Named { string: 0 },
         kind: CallKind::Function,
-        function: "GetMyAttr".into(),
+        function: Native::GetMyAttr,
         arguments: vec![Value::Read {
             place: Place::Local { index: 0 },
         }],
@@ -1853,7 +1869,7 @@ fn named_functions_resolve_namespace_and_receiver_arguments_case_insensitively()
         vec![Operation::End { target: 0 }],
     );
     scripts.definition.functions.push(Function {
-        name: "GetMyAttr".into(),
+        name: Native::GetMyAttr,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -2154,7 +2170,7 @@ fn registering_an_existing_identifier_keeps_the_first_namespace_only() {
     assert_eq!(world.actors()[3].runtime().unwrap().active_tasks(), 0);
 }
 
-fn attribute_call(id: u16, name: &str, index: i32, value: Option<i32>) -> Call {
+fn attribute_call(id: u16, name: Native, index: i32, value: Option<i32>) -> Call {
     let mut arguments = vec![Value::Integer { value: index }];
     if let Some(value) = value {
         arguments.push(Value::Integer { value });
@@ -2163,7 +2179,7 @@ fn attribute_call(id: u16, name: &str, index: i32, value: Option<i32>) -> Call {
         function_id: id,
         target: Object::Me,
         kind: CallKind::Function,
-        function: name.into(),
+        function: name,
         arguments,
     }
 }
@@ -2171,13 +2187,13 @@ fn attribute_cache(operations: Vec<Operation>) -> Scripts {
     let mut scripts = wait_cache(operations);
     scripts.definition.functions.truncate(1);
     for (name, param_count) in [
-        ("SetAttribute", 2),
-        ("SetMyAttr", 2),
-        ("GetAttribute", 1),
-        ("GetMyAttr", 1),
+        (Native::SetAttribute, 2),
+        (Native::SetMyAttr, 2),
+        (Native::GetAttribute, 1),
+        (Native::GetMyAttr, 1),
     ] {
         scripts.definition.functions.push(Function {
-            name: name.into(),
+            name,
             kind: CallKind::Function,
             param_count,
         });
@@ -2192,31 +2208,31 @@ fn attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes() {
             destination: Place::Local { index: 0 },
             formula: Formula {
                 first: Value::Call {
-                    call: Box::new(attribute_call(1, "SetAttribute", 1, Some(-2))),
+                    call: Box::new(attribute_call(1, Native::SetAttribute, 1, Some(-2))),
                 },
                 rest: vec![],
             },
         },
         Operation::Yield,
         Operation::Call {
-            call: attribute_call(1, "SetAttribute", 6, Some(0x123)),
+            call: attribute_call(1, Native::SetAttribute, 6, Some(0x123)),
         },
         Operation::Call {
-            call: attribute_call(2, "SetMyAttr", 1, Some(511)),
+            call: attribute_call(2, Native::SetMyAttr, 1, Some(511)),
         },
         Operation::Call {
-            call: attribute_call(2, "SetMyAttr", 6, Some(-1)),
+            call: attribute_call(2, Native::SetMyAttr, 6, Some(-1)),
         },
         Operation::Assign {
             destination: Place::Local { index: 0 },
             formula: Formula {
                 first: Value::Call {
-                    call: Box::new(attribute_call(3, "GetAttribute", 115, None)),
+                    call: Box::new(attribute_call(3, Native::GetAttribute, 115, None)),
                 },
                 rest: vec![(
                     1,
                     Value::Call {
-                        call: Box::new(attribute_call(4, "GetMyAttr", 119, None)),
+                        call: Box::new(attribute_call(4, Native::GetMyAttr, 119, None)),
                     },
                 )],
             },
@@ -2245,7 +2261,7 @@ fn set_my_attribute_ignores_out_of_range_indices_without_mutation() {
                 destination: Place::Local { index: 0 },
                 formula: Formula {
                     first: Value::Call {
-                        call: Box::new(attribute_call(2, "SetMyAttr", index, Some(5))),
+                        call: Box::new(attribute_call(2, Native::SetMyAttr, index, Some(5))),
                     },
                     rest: vec![],
                 },
@@ -2260,12 +2276,12 @@ fn set_my_attribute_ignores_out_of_range_indices_without_mutation() {
 }
 #[test]
 fn routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage() {
-    let mut write = attribute_call(1, "SetAttribute", 1, Some(0));
+    let mut write = attribute_call(1, Native::SetAttribute, 1, Some(0));
     write.target = Object::Named { string: 0 };
     write.arguments[1] = Value::Read {
         place: Place::Local { index: 0 },
     };
-    let mut read = attribute_call(3, "GetAttribute", 119, None);
+    let mut read = attribute_call(3, Native::GetAttribute, 119, None);
     read.target = Object::Named { string: 0 };
     let mut scripts = attribute_cache(vec![
         Operation::ObjectCall { call: write },
@@ -2295,9 +2311,9 @@ fn routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage
 #[test]
 fn unsupported_attribute_access_fails_before_mutation_and_remains_sticky() {
     for (id, name, index, value, reason) in [
-        (1, "SetAttribute", -1, Some(9), "index outside"),
-        (1, "SetAttribute", 256, Some(9), "index outside"),
-        (3, "GetAttribute", 256, None, "index outside"),
+        (1, Native::SetAttribute, -1, Some(9), "index outside"),
+        (1, Native::SetAttribute, 256, Some(9), "index outside"),
+        (3, Native::GetAttribute, 256, None, "index outside"),
     ] {
         let scripts = attribute_cache(vec![
             Operation::Call {
@@ -2411,21 +2427,23 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
         fallback_position: None,
         linked_position: Some(None),
     };
-    assert!(actor.query("PlayerDistance", &[], inputs).is_err());
+    assert!(actor.query(Native::PlayerDistance, &[], inputs).is_err());
     inputs.distance_override = Some(false);
     assert_eq!(
-        actor.query("PlayerDistance", &[], inputs).unwrap(),
+        actor.query(Native::PlayerDistance, &[], inputs).unwrap(),
         Some(1536)
     );
     // The accurate form is the rounded Euclidean length: sqrt(256² + 512² + 768²) is 957.8.
     assert_eq!(
-        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
+        actor
+            .query(Native::AcuratePlayerDistance, &[], inputs)
+            .unwrap(),
         Some(958)
     );
     assert_eq!(
         actor
             .query(
-                "PlayerFacing",
+                Native::PlayerFacing,
                 &[Argument::Integer(0), Argument::Integer(1)],
                 inputs
             )
@@ -2435,7 +2453,7 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
     assert_eq!(
         actor
             .query(
-                "PlayerFacing",
+                Native::PlayerFacing,
                 &[Argument::Integer(0), Argument::Integer(-1)],
                 inputs
             )
@@ -2446,26 +2464,33 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
     assert!(
         actor
             .query(
-                "PlayerFacing",
+                Native::PlayerFacing,
                 &[Argument::Integer(0), Argument::Integer(1)],
                 inputs
             )
             .is_err()
     );
-    assert!(actor.query("PlayerDistance", &[], inputs).is_err());
+    assert!(actor.query(Native::PlayerDistance, &[], inputs).is_err());
     inputs.fallback_position = Some([1, 2, 3]);
-    assert_eq!(actor.query("PlayerDistance", &[], inputs).unwrap(), Some(6));
     assert_eq!(
-        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
+        actor.query(Native::PlayerDistance, &[], inputs).unwrap(),
+        Some(6)
+    );
+    assert_eq!(
+        actor
+            .query(Native::AcuratePlayerDistance, &[], inputs)
+            .unwrap(),
         Some(4)
     );
     inputs.distance_override = Some(true);
     assert_eq!(
-        actor.query("PlayerDistance", &[], inputs).unwrap(),
+        actor.query(Native::PlayerDistance, &[], inputs).unwrap(),
         Some(9_999_999)
     );
     assert_eq!(
-        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
+        actor
+            .query(Native::AcuratePlayerDistance, &[], inputs)
+            .unwrap(),
         Some(9_999_999)
     );
 }
@@ -2525,7 +2550,7 @@ fn ordered_world() -> ScriptWorld {
         })
         .collect();
     data.definition.functions.push(Function {
-        name: "SetMyAttr".into(),
+        name: Native::SetMyAttr,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -2542,7 +2567,7 @@ fn ordered_world() -> ScriptWorld {
                         function_id: 1,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: "SetMyAttr".into(),
+                        function: Native::SetMyAttr,
                         arguments: vec![Value::Integer { value: 113 }, Value::Integer { value: 0 }],
                     },
                 },
@@ -2642,7 +2667,7 @@ fn ordinary_actor_window_uses_the_original_upper_edge_origin() {
 fn living_map_default_writes_do_not_change_the_combat_death_default() {
     use cyrus_assets::animation::Animations;
     for combat_attribute in [0, 1] {
-        for (function, name) in [(1, "SetAttribute"), (2, "SetMyAttr")] {
+        for (function, name) in [(1, Native::SetAttribute), (2, Native::SetMyAttr)] {
             let mut scripts = attribute_cache(vec![
                 Operation::Call {
                     call: attribute_call(function, name, 44, Some(-2)),
@@ -2651,7 +2676,7 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
                     destination: Place::Local { index: 0 },
                     formula: Formula {
                         first: Value::Call {
-                            call: Box::new(attribute_call(3, "GetAttribute", 44, None)),
+                            call: Box::new(attribute_call(3, Native::GetAttribute, 44, None)),
                         },
                         rest: vec![],
                     },
@@ -2709,7 +2734,7 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
 
 #[test]
 fn standalone_default_writes_use_initialized_player_control() {
-    for (function, name) in [(1, "SetAttribute"), (2, "SetMyAttr")] {
+    for (function, name) in [(1, Native::SetAttribute), (2, Native::SetMyAttr)] {
         let mut write = attribute_call(function, name, 44, Some(7));
         write.target = Object::Player;
         let mut scripts = attribute_cache(vec![
@@ -2738,11 +2763,11 @@ fn map_default_selection_observes_script_writes_and_updates_the_shared_frame() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = attribute_cache(vec![
         Operation::Call {
-            call: attribute_call(1, "SetAttribute", 44, Some(262)),
+            call: attribute_call(1, Native::SetAttribute, 44, Some(262)),
         },
         Operation::Yield,
         Operation::Call {
-            call: attribute_call(2, "SetMyAttr", 110, Some(1)),
+            call: attribute_call(2, Native::SetMyAttr, 110, Some(1)),
         },
         Operation::End { target: 0 },
     ]);
@@ -2873,13 +2898,13 @@ fn native_hook_updates_only_its_receiver_without_advancing_the_script() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "SetMyAttr".into(),
+        name: Native::SetMyAttr,
         param_count: 2,
         kind: CallKind::Function,
     });
     scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
         function_id: 1,
-        function: "SetMyAttr".into(),
+        function: Native::SetMyAttr,
         kind: CallKind::Function,
         target: Object::Me,
         arguments: vec![Value::Integer { value: 6 }, Value::Integer { value: 19 }],
@@ -2914,12 +2939,12 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = cache();
     for (name, param_count, kind) in [
-        ("DisableScript", 0, CallKind::Function),
-        ("EnableScript", 0, CallKind::Function),
-        ("Wait", 1, CallKind::Task),
+        (Native::DisableScript, 0, CallKind::Function),
+        (Native::EnableScript, 0, CallKind::Function),
+        (Native::Wait, 1, CallKind::Task),
     ] {
         scripts.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count,
             kind,
         });
@@ -2927,11 +2952,10 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
     let control_call = |enabled| Call {
         function_id: if enabled { 2 } else { 1 },
         function: if enabled {
-            "EnableScript"
+            Native::EnableScript
         } else {
-            "DisableScript"
-        }
-        .into(),
+            Native::DisableScript
+        },
         kind: CallKind::Function,
         target: Object::Me,
         arguments: vec![],
@@ -2942,7 +2966,7 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
         Operation::Call {
             call: Call {
                 function_id: 3,
-                function: "Wait".into(),
+                function: Native::Wait,
                 kind: CallKind::Multitask,
                 target: Object::Me,
                 arguments: vec![Value::Integer { value: 100 }],
@@ -3014,7 +3038,7 @@ fn ordinary_hook_observes_unpaused_multitasks_and_installed_task_switch() {
         for paused in [false, true] {
             let mut operations = vec![wait(
                 1,
-                "Wait",
+                Native::Wait,
                 CallKind::Multitask,
                 vec![Value::Integer { value: 100 }],
             )];
@@ -3025,13 +3049,13 @@ fn ordinary_hook_observes_unpaused_multitasks_and_installed_task_switch() {
             let mut scripts = wait_cache(operations);
             scripts.updates.task_system = task_system;
             scripts.definition.functions.push(Function {
-                name: "SetMyAttr".into(),
+                name: Native::SetMyAttr,
                 param_count: 2,
                 kind: CallKind::Function,
             });
             scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
                 function_id: 4,
-                function: "SetMyAttr".into(),
+                function: Native::SetMyAttr,
                 kind: CallKind::Function,
                 target: Object::Me,
                 arguments: vec![Value::Integer { value: 6 }, Value::Integer { value: 19 }],
@@ -3064,7 +3088,12 @@ fn ordinary_hook_observes_unpaused_multitasks_and_installed_task_switch() {
 fn disabled_task_system_preserves_main_continuation_and_task_state() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = wait_cache(vec![
-        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 3 }]),
+        wait(
+            1,
+            Native::Wait,
+            CallKind::Task,
+            vec![Value::Integer { value: 3 }],
+        ),
         set_flag(99),
         Operation::End { target: 0 },
     ]);
@@ -3113,12 +3142,12 @@ fn marker_world(position: [i32; 3], marker: i32, distance: i32) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.extend([
         Function {
-            name: "MoveByAxis".into(),
+            name: Native::MoveByAxis,
             param_count: 3,
             kind: CallKind::Task,
         },
         Function {
-            name: "AtNodeMarker".into(),
+            name: Native::AtNodeMarker,
             param_count: 2,
             kind: CallKind::Function,
         },
@@ -3129,7 +3158,7 @@ fn marker_world(position: [i32; 3], marker: i32, distance: i32) -> ScriptWorld {
         .map(|(axis, value)| {
             wait(
                 1,
-                "MoveByAxis",
+                Native::MoveByAxis,
                 CallKind::Multitask,
                 vec![
                     Value::Integer { value: axis as i32 },
@@ -3145,7 +3174,7 @@ fn marker_world(position: [i32; 3], marker: i32, distance: i32) -> ScriptWorld {
             first: Value::Call {
                 call: Box::new(Call {
                     function_id: 2,
-                    function: "AtNodeMarker".into(),
+                    function: Native::AtNodeMarker,
                     kind: CallKind::Function,
                     target: Object::Me,
                     arguments: vec![
@@ -3286,7 +3315,7 @@ fn routed_node_marker_query_reads_the_receivers_local_attached_position() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "AtNodeMarker".into(),
+        name: Native::AtNodeMarker,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -3303,7 +3332,7 @@ fn routed_node_marker_query_reads_the_receivers_local_attached_position() {
                         first: Value::Call {
                             call: Box::new(Call {
                                 function_id: 1,
-                                function: "AtNodeMarker".into(),
+                                function: Native::AtNodeMarker,
                                 kind: CallKind::Function,
                                 target: Object::Named { string: 0 },
                                 arguments: vec![
@@ -3377,10 +3406,10 @@ fn routed_node_marker_query_reads_the_receivers_local_attached_position() {
     );
 }
 
-fn random_scripts(function: &str, arguments: Vec<Value>, target: Object) -> Scripts {
+fn random_scripts(function: Native, arguments: Vec<Value>, target: Object) -> Scripts {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: function.into(),
+        name: function,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -3397,7 +3426,7 @@ fn random_scripts(function: &str, arguments: Vec<Value>, target: Object) -> Scri
                         first: Value::Call {
                             call: Box::new(Call {
                                 function_id: 1,
-                                function: function.into(),
+                                function,
                                 kind: CallKind::Function,
                                 target,
                                 arguments,
@@ -3420,7 +3449,7 @@ fn random_scripts(function: &str, arguments: Vec<Value>, target: Object) -> Scri
     scripts
 }
 
-fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -> Step {
+fn assign_call(next: u32, function_id: u16, function: Native, arguments: &[i32]) -> Step {
     Step {
         next,
         operation: Operation::Assign {
@@ -3429,7 +3458,7 @@ fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -
                 first: Value::Call {
                     call: Box::new(Call {
                         function_id,
-                        function: function.into(),
+                        function,
                         kind: CallKind::Function,
                         target: Object::Me,
                         arguments: arguments
@@ -3445,22 +3474,22 @@ fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -
 }
 
 /// Runs the given native calls in order on one logical actor and returns its first local.
-fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
+fn run_native_calls(calls: &[(Native, &[i32])]) -> anyhow::Result<i32> {
     Ok(run_native_world(calls)?.actors()[0]
         .runtime()
         .unwrap()
         .variables()[0])
 }
 
-fn run_native_world(calls: &[(&str, &[i32])]) -> anyhow::Result<ScriptWorld> {
+fn run_native_world(calls: &[(Native, &[i32])]) -> anyhow::Result<ScriptWorld> {
     run_native_world_with(calls, false)
 }
 
-fn run_native_world_with(calls: &[(&str, &[i32])], spatial: bool) -> anyhow::Result<ScriptWorld> {
-    let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+fn run_native_world_with(calls: &[(Native, &[i32])], spatial: bool) -> anyhow::Result<ScriptWorld> {
+    let mut scripts = random_scripts(Native::Rnd, vec![], Object::Me);
     scripts.definition.functions.clear();
     scripts.definition.functions.push(Function {
-        name: "NullFunction".into(),
+        name: Native::NullFunction,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -3468,7 +3497,7 @@ fn run_native_world_with(calls: &[(&str, &[i32])], spatial: bool) -> anyhow::Res
     for (name, arguments) in calls {
         ids.entry(*name).or_insert_with(|| {
             scripts.definition.functions.push(Function {
-                name: (*name).into(),
+                name: *name,
                 param_count: arguments.len() as u8,
                 kind: CallKind::Function,
             });
@@ -3479,7 +3508,7 @@ fn run_native_world_with(calls: &[(&str, &[i32])], spatial: bool) -> anyhow::Res
     for (index, (name, arguments)) in calls.iter().enumerate() {
         steps.insert(
             index as u32,
-            assign_call(index as u32 + 1, ids[name], name, arguments),
+            assign_call(index as u32 + 1, ids[name], *name, arguments),
         );
     }
     steps.insert(
@@ -3513,17 +3542,23 @@ fn run_native_world_with(calls: &[(&str, &[i32])], spatial: bool) -> anyhow::Res
 
 #[test]
 fn potion_counters_start_zero_keep_values_per_index_and_reject_unknown_indices() {
-    assert_eq!(run_native_calls(&[("GetPotion", &[2])]).unwrap(), 0);
-    assert_eq!(run_native_calls(&[("SetPotion", &[2, 7])]).unwrap(), 1);
+    assert_eq!(run_native_calls(&[(Native::GetPotion, &[2])]).unwrap(), 0);
     assert_eq!(
-        run_native_calls(&[("SetPotion", &[2, 7]), ("GetPotion", &[2])]).unwrap(),
+        run_native_calls(&[(Native::SetPotion, &[2, 7])]).unwrap(),
+        1
+    );
+    assert_eq!(
+        run_native_calls(&[(Native::SetPotion, &[2, 7]), (Native::GetPotion, &[2])]).unwrap(),
         7
     );
     assert_eq!(
-        run_native_calls(&[("SetPotion", &[2, 7]), ("GetPotion", &[3])]).unwrap(),
+        run_native_calls(&[(Native::SetPotion, &[2, 7]), (Native::GetPotion, &[3])]).unwrap(),
         0
     );
-    for call in [("GetPotion", &[4][..]), ("SetPotion", &[-1, 1][..])] {
+    for call in [
+        (Native::GetPotion, &[4][..]),
+        (Native::SetPotion, &[-1, 1][..]),
+    ] {
         let error = run_native_calls(&[call]).unwrap_err();
         assert!(format!("{error:#}").contains("outside 0..4"), "{error:#}");
     }
@@ -3537,7 +3572,8 @@ fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() 
     };
     let (x, z) = (origin[0], origin[2]);
     let call = |x1: i32, z1: i32, x2: i32, z2: i32| {
-        let world = run_native_world_with(&[("InRectangle", &[x1, z1, x2, z2])], true).unwrap();
+        let world =
+            run_native_world_with(&[(Native::InRectangle, &[x1, z1, x2, z2])], true).unwrap();
         world.actors()[0].runtime().unwrap().variables()[0]
     };
     assert_eq!(call(x - 1, z - 1, x + 1, z + 1), 1);
@@ -3549,25 +3585,25 @@ fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() 
     assert_eq!(call(x, z, x, z), 1, "edges are inclusive");
     assert_eq!(call(x + 1, z - 1, x + 5, z + 1), 0);
     assert_eq!(call(x - 1, z + 1, x + 1, z + 5), 0);
-    assert!(run_native_world(&[("InRectangle", &[0, 0, 1, 1])]).is_err());
+    assert!(run_native_world(&[(Native::InRectangle, &[0, 0, 1, 1])]).is_err());
 }
 
 #[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let light = |calls: &[(&str, &[i32])]| {
+    let light = |calls: &[(Native, &[i32])]| {
         run_native_world(calls).unwrap().actors()[0]
             .light_state()
             .unwrap()
     };
-    let fresh = light(&[("LightOffset", &[1, 2, 3])]);
+    let fresh = light(&[(Native::LightOffset, &[1, 2, 3])]);
     assert_eq!(fresh["enabled"], false);
     assert_eq!(
         (fresh["intensity"].clone(), fresh["radius"].clone()),
         (256.into(), 100.into())
     );
     assert_eq!(fresh["offset"], serde_json::json!([1, 2, 3]));
-    let lit = light(&[("Light", &[50, 200])]);
+    let lit = light(&[(Native::Light, &[50, 200])]);
     assert_eq!(lit["enabled"], true);
     assert_eq!(
         (lit["radius"].clone(), lit["intensity"].clone()),
@@ -3575,33 +3611,37 @@ fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores()
     );
     assert_eq!(lit["starting_radius"], 50);
     assert_eq!(
-        light(&[("LightIntensity", &[65537])])["intensity"],
+        light(&[(Native::LightIntensity, &[65537])])["intensity"],
         1,
         "low word kept"
     );
-    assert_eq!(light(&[("LightRadius", &[70])])["enabled"], true);
+    assert_eq!(light(&[(Native::LightRadius, &[70])])["enabled"], true);
     assert_eq!(
-        light(&[("LightFlicker", &[7, 9])])["flicker"],
+        light(&[(Native::LightFlicker, &[7, 9])])["flicker"],
         serde_json::json!([7, 0, 9])
     );
     assert_eq!(
-        light(&[("FlickerLight", &[7])])["flicker"],
+        light(&[(Native::FlickerLight, &[7])])["flicker"],
         serde_json::json!([7, 0, 1])
     );
     assert_eq!(
-        light(&[("LightFlicker", &[7, 9]), ("LightFlickerOff", &[])])["flicker"],
+        light(&[
+            (Native::LightFlicker, &[7, 9]),
+            (Native::LightFlickerOff, &[])
+        ])["flicker"],
         serde_json::json!([0, 0, 9])
     );
     assert_eq!(
-        light(&[("LightSize", &[7, 9])])["size"],
+        light(&[(Native::LightSize, &[7, 9])])["size"],
         serde_json::json!([7, 0, 9])
     );
     assert_eq!(
-        light(&[("LightSize", &[7, 9]), ("LightSizeOff", &[])])["size"],
+        light(&[(Native::LightSize, &[7, 9]), (Native::LightSizeOff, &[])])["size"],
         serde_json::json!([0, 0, 9]),
         "the size effect has its own words, apart from the flicker's"
     );
-    let mut malformed = random_scripts("Light", vec![Value::Integer { value: 1 }], Object::Me);
+    let mut malformed =
+        random_scripts(Native::Light, vec![Value::Integer { value: 1 }], Object::Me);
     malformed.definition.functions[1].param_count = 1;
     let mut world = ScriptWorld::prepare(&malformed, 1).unwrap();
     let error = world
@@ -3624,12 +3664,12 @@ fn player_hanging_is_false_outside_the_hanging_state() {
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "PlayerHanging".into(),
+            name: Native::PlayerHanging,
             param_count: 0,
             kind: CallKind::Function,
         });
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-            assign_call(1, id, "PlayerHanging", &[]).operation,
+            assign_call(1, id, Native::PlayerHanging, &[]).operation,
             set_flag(7),
             Operation::End { target: 0 },
         ]
@@ -3681,96 +3721,116 @@ fn player_hanging_is_false_outside_the_hanging_state() {
 #[test]
 fn speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000() {
     // The helper's frame scale is 256, which maps values to themselves with the sign kept.
-    assert_eq!(run_native_calls(&[("SpeedScale", &[1234])]).unwrap(), 1234);
-    assert_eq!(run_native_calls(&[("SpeedScale", &[-300])]).unwrap(), -300);
+    assert_eq!(
+        run_native_calls(&[(Native::SpeedScale, &[1234])]).unwrap(),
+        1234
+    );
+    assert_eq!(
+        run_native_calls(&[(Native::SpeedScale, &[-300])]).unwrap(),
+        -300
+    );
     let exit = |code: i32| {
-        let mut world = run_native_world(&[("MainloopExit", &[code])]).unwrap();
+        let mut world = run_native_world(&[(Native::MainloopExit, &[code])]).unwrap();
         world.globals_mut().take_host_requests().mainloop_exit
     };
     assert_eq!(exit(4999), None);
     assert_eq!(exit(5000), Some(5000));
     assert_eq!(exit(-7), None, "the comparison is signed");
-    assert!(run_native_world(&[("SpeedScale", &[])]).is_err());
+    assert!(run_native_world(&[(Native::SpeedScale, &[])]).is_err());
 }
 
 #[test]
 fn animation_hold_pause_and_release_take_the_receiver_and_reject_wrong_argument_counts() {
     // The wait byte itself is covered in cyrus-world; an actor without playback has no record.
     for calls in [
-        &[("HoldAnimation", &[][..])][..],
-        &[("PauseAnimation", &[7][..])][..],
-        &[("ReleaseAnimation", &[][..])][..],
+        &[(Native::HoldAnimation, &[][..])][..],
+        &[(Native::PauseAnimation, &[7][..])][..],
+        &[(Native::ReleaseAnimation, &[][..])][..],
     ] {
         run_native_world(calls).unwrap();
     }
-    assert!(run_native_world(&[("HoldAnimation", &[1])]).is_err());
-    assert!(run_native_world(&[("PauseAnimation", &[])]).is_err());
-    assert!(run_native_world(&[("ReleaseAnimation", &[1])]).is_err());
+    assert!(run_native_world(&[(Native::HoldAnimation, &[1])]).is_err());
+    assert!(run_native_world(&[(Native::PauseAnimation, &[])]).is_err());
+    assert!(run_native_world(&[(Native::ReleaseAnimation, &[1])]).is_err());
 }
 
 #[test]
 fn queue_movie_plays_five_through_ten_at_once_and_queues_the_rest_for_the_next_load() {
-    let queued = |calls: &[(&str, &[i32])]| {
+    let queued = |calls: &[(Native, &[i32])]| {
         let mut world = run_native_world(calls).unwrap();
         let play = world.globals_mut().take_host_requests().play_movie;
         (world.globals().queued_movie(), play)
     };
-    assert_eq!(queued(&[("QueueMovie", &[3])]), (Some(3), None));
-    assert_eq!(queued(&[("QueueMovie", &[11])]), (Some(11), None));
+    assert_eq!(queued(&[(Native::QueueMovie, &[3])]), (Some(3), None));
+    assert_eq!(queued(&[(Native::QueueMovie, &[11])]), (Some(11), None));
     assert_eq!(
-        queued(&[("QueueMovie", &[-1])]),
+        queued(&[(Native::QueueMovie, &[-1])]),
         (None, None),
         "-1 is the empty queue"
     );
-    assert_eq!(queued(&[("QueueMovie", &[-2])]), (Some(-2), None));
-    assert_eq!(queued(&[("QueueMovie", &[5])]), (None, Some(5)));
+    assert_eq!(queued(&[(Native::QueueMovie, &[-2])]), (Some(-2), None));
+    assert_eq!(queued(&[(Native::QueueMovie, &[5])]), (None, Some(5)));
     assert_eq!(
-        queued(&[("QueueMovie", &[3]), ("QueueMovie", &[10])]),
+        queued(&[(Native::QueueMovie, &[3]), (Native::QueueMovie, &[10])]),
         (None, Some(10)),
         "playing at once empties the queue"
     );
-    assert!(run_native_world(&[("QueueMovie", &[])]).is_err());
+    assert!(run_native_world(&[(Native::QueueMovie, &[])]).is_err());
 }
 
 #[test]
 fn menu_natives_start_empty_and_need_installed_text_to_add_items() {
     assert_eq!(
-        run_native_calls(&[("menuNew", &[]), ("menuSelection", &[])]).unwrap(),
+        run_native_calls(&[(Native::MenuNew, &[]), (Native::MenuSelection, &[])]).unwrap(),
         0
     );
-    let error = run_native_world(&[("menuAddItem", &[1, 0, 5])])
+    let error = run_native_world(&[(Native::MenuAddItem, &[1, 0, 5])])
         .err()
         .unwrap();
-    assert!(format!("{error:#}").contains("menuAddItem"), "{error:#}");
-    assert!(run_native_world(&[("menuNew", &[1])]).is_err());
+    assert!(
+        format!("{error:#}").contains(Native::MenuAddItem.name()),
+        "{error:#}"
+    );
+    assert!(run_native_world(&[(Native::MenuNew, &[1])]).is_err());
 }
 
 #[test]
 fn flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures() {
-    let flat = |calls: &[(&str, &[i32])]| run_native_world(calls).unwrap().actors()[0].flat_state();
-    assert_eq!(flat(&[("FlatOff", &[])]), None, "no record is created");
-    let shown = flat(&[("Flat", &[300]), ("FlatOffset", &[1, -2, 3])]).unwrap();
+    let flat =
+        |calls: &[(Native, &[i32])]| run_native_world(calls).unwrap().actors()[0].flat_state();
+    assert_eq!(
+        flat(&[(Native::FlatOff, &[])]),
+        None,
+        "no record is created"
+    );
+    let shown = flat(&[(Native::Flat, &[300]), (Native::FlatOffset, &[1, -2, 3])]).unwrap();
     assert_eq!(shown["enabled"], true);
     assert_eq!(shown["texture"], 300);
     assert_eq!(shown["offset"], serde_json::json!([1, 65534, 3]));
-    let hidden = flat(&[("Flat", &[300]), ("FlatOff", &[])]).unwrap();
+    let hidden = flat(&[(Native::Flat, &[300]), (Native::FlatOff, &[])]).unwrap();
     assert_eq!(hidden["enabled"], false);
-    assert_eq!(flat(&[("FlatLikeStatic", &[300])]).unwrap()["frame"], 65535);
-    let error = run_native_world(&[("FlatAnimate", &[(1 << 7) | 2, 0, 0])])
+    assert_eq!(
+        flat(&[(Native::FlatLikeStatic, &[300])]).unwrap()["frame"],
+        65535
+    );
+    let error = run_native_world(&[(Native::FlatAnimate, &[(1 << 7) | 2, 0, 0])])
         .err()
         .unwrap();
     assert!(format!("{error:#}").contains("not installed"), "{error:#}");
-    assert!(run_native_world(&[("FlatOffset", &[1])]).is_err());
+    assert!(run_native_world(&[(Native::FlatOffset, &[1])]).is_err());
 }
 
 #[test]
 fn frame_passed_reports_the_shared_nominal_tick_increment() {
-    assert_eq!(run_native_calls(&[("GetFramePassed", &[])]).unwrap(), 3);
+    assert_eq!(
+        run_native_calls(&[(Native::GetFramePassed, &[])]).unwrap(),
+        3
+    );
 }
 
 #[test]
 fn hook_toggles_set_and_clear_only_the_native_hook_suppression_bit() {
-    let hook_bit = |calls: &[(&str, &[i32])]| {
+    let hook_bit = |calls: &[(Native, &[i32])]| {
         let world = run_native_world(calls).unwrap();
         let control = world.actors()[0].control_state().unwrap();
         (
@@ -3778,17 +3838,22 @@ fn hook_toggles_set_and_clear_only_the_native_hook_suppression_bit() {
             world.actors()[1].control_state().unwrap().script_control,
         )
     };
-    assert_eq!(hook_bit(&[("DisableHook", &[])]), (2, 0));
+    assert_eq!(hook_bit(&[(Native::DisableHook, &[])]), (2, 0));
     assert_eq!(
-        hook_bit(&[("DisableHook", &[]), ("EnableHook", &[])]),
+        hook_bit(&[(Native::DisableHook, &[]), (Native::EnableHook, &[])]),
         (0, 0)
     );
-    assert_eq!(hook_bit(&[("EnableHook", &[])]), (0, 0));
+    assert_eq!(hook_bit(&[(Native::EnableHook, &[])]), (0, 0));
 }
 
 #[test]
 fn strength_and_armor_need_a_combat_record() {
-    for name in ["setStrength", "setArmor", "AdjustStrength", "AdjustArmor"] {
+    for name in [
+        Native::SetStrength,
+        Native::SetArmor,
+        Native::AdjustStrength,
+        Native::AdjustArmor,
+    ] {
         let error = run_native_calls(&[(name, &[100][..])]).unwrap_err();
         assert!(
             format!("{error:#}").contains("receiver combat record unavailable"),
@@ -3801,7 +3866,7 @@ fn strength_and_armor_need_a_combat_record() {
 fn random_stream_is_shared_by_routed_actors_and_survives_world_replacement() {
     use cyrus_game::{random::EngineRandom, script::ScriptStage};
     let scripts = random_scripts(
-        "QuickRnd",
+        Native::QuickRnd,
         vec![Value::Integer { value: -1 }],
         Object::Named { string: 0 },
     );
@@ -3847,13 +3912,13 @@ fn random_handler_requires_shared_state_and_invalid_bounds_fail_stickily() {
     use cyrus_game::{random::EngineRandom, script::ScriptStage};
     for (function, bound, supplied, message) in [
         (
-            "QuickRnd",
+            Native::QuickRnd,
             127,
             false,
             "shared engine random stream unavailable",
         ),
-        ("Rnd", 0, true, "positive bound"),
-        ("Rnd", -1, true, "positive bound"),
+        (Native::Rnd, 0, true, "positive bound"),
+        (Native::Rnd, -1, true, "positive bound"),
     ] {
         let scripts = random_scripts(function, vec![Value::Integer { value: bound }], Object::Me);
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -3893,7 +3958,7 @@ fn random_handler_requires_shared_state_and_invalid_bounds_fail_stickily() {
 #[test]
 fn rnd_script_masks_before_reducing_and_consumes_one_draw() {
     use cyrus_game::{random::EngineRandom, script::ScriptStage};
-    let scripts = random_scripts("Rnd", vec![Value::Integer { value: 3 }], Object::Me);
+    let scripts = random_scripts(Native::Rnd, vec![Value::Integer { value: 3 }], Object::Me);
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let mut random = EngineRandom::default();
     world
@@ -3915,12 +3980,12 @@ fn wander_world(radius: i32, movement: i32, maps: serde_json::Value) -> ScriptWo
     let mut scripts = cache();
     scripts.definition.functions.extend([
         Function {
-            name: "MoveByAxis".into(),
+            name: Native::MoveByAxis,
             param_count: 3,
             kind: CallKind::Task,
         },
         Function {
-            name: "Wander".into(),
+            name: Native::Wander,
             param_count: 2,
             kind: CallKind::Function,
         },
@@ -3930,7 +3995,7 @@ fn wander_world(radius: i32, movement: i32, maps: serde_json::Value) -> ScriptWo
     for (axis, delta) in [(0, movement), (1, 256)] {
         operations.push(wait(
             1,
-            "MoveByAxis",
+            Native::MoveByAxis,
             CallKind::Multitask,
             vec![
                 Value::Integer { value: axis },
@@ -3945,7 +4010,7 @@ fn wander_world(radius: i32, movement: i32, maps: serde_json::Value) -> ScriptWo
             first: Value::Call {
                 call: Box::new(Call {
                     function_id: 2,
-                    function: "Wander".into(),
+                    function: Native::Wander,
                     kind: CallKind::Function,
                     target: Object::Me,
                     arguments: vec![
@@ -4105,7 +4170,11 @@ fn wander_with_maps_picks_the_nearest_node_as_its_destination_and_ends_on_arriva
 #[test]
 fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    for (function, hidden) in [("HideMe", true), ("ShowMe", false), ("isDead", false)] {
+    for (function, hidden) in [
+        (Native::HideMe, true),
+        (Native::ShowMe, false),
+        (Native::IsDead, false),
+    ] {
         let mut scripts = random_scripts(function, vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;
         scripts.content_id = scripts.content_identity().unwrap();
@@ -4141,9 +4210,9 @@ fn update_player_view_attrib_is_an_empty_call_and_reset_position_keeps_the_home_
     // updatePlayerViewAttrib is an empty routine in the original: it completes and changes nothing.
     // ResetPosition on an actor already at home leaves it there.
     for (function, arguments, param_count) in [
-        ("updatePlayerViewAttrib", vec![], 0),
+        (Native::UpdatePlayerViewAttrib, vec![], 0),
         (
-            "ResetPosition",
+            Native::ResetPosition,
             vec![
                 Value::Integer { value: 1 },
                 Value::Integer { value: 1 },
@@ -4154,7 +4223,7 @@ fn update_player_view_attrib_is_an_empty_call_and_reset_position_keeps_the_home_
     ] {
         let mut scripts = random_scripts(function, arguments, Object::Me);
         scripts.definition.functions[1].param_count = param_count;
-        if function == "updatePlayerViewAttrib" {
+        if function == Native::UpdatePlayerViewAttrib {
             // Installed scripts call it as a statement: the routine has no numeric result.
             let step = scripts
                 .actors
@@ -4208,7 +4277,7 @@ fn move_player_above_me_names_the_missing_input_instead_of_guessing_a_placement(
     // The placement needs the selected player and the installed standing height, which the ground
     // service supplies; a world without them stops with an error that names the native.
     let mut scripts = random_scripts(
-        "MovePlayerAboveMe",
+        Native::MovePlayerAboveMe,
         [0, 0, 0, 512]
             .map(|value| Value::Integer { value })
             .to_vec(),
@@ -4234,7 +4303,7 @@ fn move_player_above_me_names_the_missing_input_instead_of_guessing_a_placement(
         )
         .unwrap_err();
     assert!(
-        format!("{error:#}").contains("MovePlayerAboveMe"),
+        format!("{error:#}").contains(Native::MovePlayerAboveMe.name()),
         "{error:#}"
     );
 }
@@ -4242,7 +4311,7 @@ fn move_player_above_me_names_the_missing_input_instead_of_guessing_a_placement(
 #[test]
 fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -4275,15 +4344,15 @@ fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
 #[test]
 fn kill_me_releases_the_receivers_light_and_flat_records() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions.push(Function {
-        name: "Light".into(),
+        name: Native::Light,
         param_count: 2,
         kind: CallKind::Function,
     });
     let light_id = scripts.definition.functions.len() as u16 - 1;
     scripts.definition.functions.push(Function {
-        name: "FlatOffset".into(),
+        name: Native::FlatOffset,
         param_count: 3,
         kind: CallKind::Function,
     });
@@ -4291,8 +4360,8 @@ fn kill_me_releases_the_receivers_light_and_flat_records() {
     let steps = &mut scripts.actors.get_mut("LOGIC").unwrap().program.steps;
     let kill = steps.remove(&0).unwrap();
     let end = steps.remove(&1).unwrap();
-    steps.insert(0, assign_call(1, light_id, "Light", &[50, 200]));
-    steps.insert(1, assign_call(2, flat_id, "FlatOffset", &[1, 2, 3]));
+    steps.insert(0, assign_call(1, light_id, Native::Light, &[50, 200]));
+    steps.insert(1, assign_call(2, flat_id, Native::FlatOffset, &[1, 2, 3]));
     steps.insert(2, Step { next: 3, ..kill });
     steps.insert(3, Step { next: 4, ..end });
     scripts.definition.functions[1].param_count = 0;
@@ -4342,7 +4411,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         placement.active = 1;
     }
     scripts.definition.functions.push(Function {
-        name: "PlayerFacing".into(),
+        name: Native::PlayerFacing,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -4360,7 +4429,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             first: Value::Call {
                 call: Box::new(Call {
                     function_id: 1,
-                    function: "PlayerFacing".into(),
+                    function: Native::PlayerFacing,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments: vec![Value::Integer { value: 0 }, Value::Integer { value: 0 }],
@@ -4370,7 +4439,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         },
     };
     scripts.definition.functions.push(Function {
-        name: "PlayerDistance".into(),
+        name: Native::PlayerDistance,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -4397,7 +4466,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
                     first: Value::Call {
                         call: Box::new(Call {
                             function_id: 2,
-                            function: "PlayerDistance".into(),
+                            function: Native::PlayerDistance,
                             target: Object::Me,
                             kind: CallKind::Function,
                             arguments: vec![],
@@ -5107,7 +5176,7 @@ fn placed_distance_queries_use_receiver_owned_initial_link_state() {
     let mut scripts = cache();
     scripts.instances[1].map_position = [10, 0, 0];
     scripts.definition.functions.push(Function {
-        name: "PlayerDistance".into(),
+        name: Native::PlayerDistance,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -5125,7 +5194,7 @@ fn placed_distance_queries_use_receiver_owned_initial_link_state() {
             first: Value::Call {
                 call: Box::new(Call {
                     function_id: 1,
-                    function: "PlayerDistance".into(),
+                    function: Native::PlayerDistance,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments: vec![],
@@ -5169,16 +5238,16 @@ fn placed_distance_queries_use_receiver_owned_initial_link_state() {
 fn surface_class_queries_read_receivers_stored_surface_without_a_support_query() {
     let cases = [
         (
-            "IsInDeepWater",
+            Native::IsInDeepWater,
             (|surface| surface == 2 || surface == 4) as fn(u8) -> bool,
         ),
-        ("IsInWater", |surface| (1..=4).contains(&surface)),
-        ("IsInLava", |surface| surface == 5),
+        (Native::IsInWater, |surface| (1..=4).contains(&surface)),
+        (Native::IsInLava, |surface| surface == 5),
     ];
     for (name, hit) in cases {
         let mut scripts = cache();
         scripts.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -5198,7 +5267,7 @@ fn surface_class_queries_read_receivers_stored_surface_without_a_support_query()
                         function_id: 1,
                         target: Object::Me,
                         kind: CallKind::Function,
-                        function: name.into(),
+                        function: name,
                         arguments: vec![],
                     }),
                 },
@@ -5238,7 +5307,7 @@ fn surface_class_queries_read_receivers_stored_surface_without_a_support_query()
 fn fresh_player_deep_water_query_has_zero_surface_before_grounded_updates() {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "IsInDeepWater".into(),
+        name: Native::IsInDeepWater,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -5254,7 +5323,7 @@ fn fresh_player_deep_water_query_has_zero_surface_before_grounded_updates() {
                     function_id: 1,
                     target: Object::Me,
                     kind: CallKind::Function,
-                    function: "IsInDeepWater".into(),
+                    function: Native::IsInDeepWater,
                     arguments: vec![],
                 }),
             },
@@ -5284,7 +5353,7 @@ fn object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target() 
     ] {
         let mut scripts = cache();
         scripts.definition.functions.push(Function {
-            name: "MoveObjectAxis".into(),
+            name: Native::MoveObjectAxis,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -5299,7 +5368,7 @@ fn object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target() 
             .unwrap()
             .operation = wait(
             1,
-            "MoveObjectAxis",
+            Native::MoveObjectAxis,
             CallKind::Task,
             vec![
                 Value::Integer { value: axis },
@@ -5368,7 +5437,7 @@ fn deferred_movement_relocates_cells_and_retains_nearby_cached_order() {
         scripts.instances[0].map_position = [1024, 0, 512];
         scripts.instances[1].map_position = [512, 0, 512];
         scripts.definition.functions.push(Function {
-            name: "MoveObjectAxis".into(),
+            name: Native::MoveObjectAxis,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -5382,7 +5451,7 @@ fn deferred_movement_relocates_cells_and_retains_nearby_cached_order() {
             .unwrap()
             .operation = wait(
             1,
-            "MoveObjectAxis",
+            Native::MoveObjectAxis,
             CallKind::Task,
             vec![
                 Value::Integer { value: 0 },
@@ -5454,7 +5523,7 @@ fn deferred_movement_relocates_cells_and_retains_nearby_cached_order() {
 fn positional_sound_uses_the_routed_receivers_pose_and_returns_zero() {
     use cyrus_game::script::{ScriptSound, ScriptStage};
     let mut scripts = random_scripts(
-        "Sound",
+        Native::Sound,
         vec![
             Value::Integer { value: 7 },
             Value::Integer { value: -40 },
@@ -5645,7 +5714,7 @@ fn model_records_retain_presentation_pose_until_admitted_refresh() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -5656,7 +5725,7 @@ fn model_records_retain_presentation_pose_until_admitted_refresh() {
                 next: 1,
                 operation: wait(
                     1,
-                    "MoveByAxis",
+                    Native::MoveByAxis,
                     CallKind::Multitask,
                     vec![
                         Value::Integer { value: 1 },
@@ -5733,10 +5802,10 @@ fn model_records_retain_presentation_pose_until_admitted_refresh() {
 #[test]
 fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("HideMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::HideMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.definition.functions.push(Function {
-        name: "ShowMe".into(),
+        name: Native::ShowMe,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -5745,7 +5814,7 @@ fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
             0,
             Step {
                 next: 1,
-                operation: wait(1, "HideMe", CallKind::Function, vec![]),
+                operation: wait(1, Native::HideMe, CallKind::Function, vec![]),
             },
         ),
         (
@@ -5759,7 +5828,7 @@ fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
             2,
             Step {
                 next: 3,
-                operation: wait(2, "ShowMe", CallKind::Function, vec![]),
+                operation: wait(2, Native::ShowMe, CallKind::Function, vec![]),
             },
         ),
         (
@@ -5813,7 +5882,7 @@ fn show_refreshes_static_coordinates_even_without_a_retained_resource() {
         ("none", [0.0; 3]),
         ("animation_table", [0.0; 3]),
     ] {
-        let mut scripts = random_scripts("ShowMe", vec![], Object::Me);
+        let mut scripts = random_scripts(Native::ShowMe, vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;
         for placement in &mut scripts.instances {
             placement.object_type = 1;
@@ -5864,7 +5933,7 @@ fn animated_model_selection_retains_radius_when_hidden_and_clears_missing_geomet
     use cyrus_assets::{animation::AnimationModel, collision::ActorCollisionModels};
     use cyrus_collision::actor_models::ActorModelCollision;
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("HideMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::HideMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     for placement in &mut scripts.instances {
         placement.object_type = 1;
@@ -6655,7 +6724,7 @@ fn ordinary_ground_retains_live_owner_excludes_self_and_has_no_player_fallback()
     use cyrus_game::script::{ModelSupportOwners, OrdinaryGroundQuery, ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -6666,7 +6735,7 @@ fn ordinary_ground_retains_live_owner_excludes_self_and_has_no_player_fallback()
                 next: 1,
                 operation: wait(
                     1,
-                    "MoveByAxis",
+                    Native::MoveByAxis,
                     CallKind::Multitask,
                     vec![
                         Value::Integer { value: 1 },
@@ -6874,7 +6943,7 @@ fn ordinary_collision_admission_is_retained_across_script_movement() {
     use cyrus_game::script::{OrdinaryGroundQuery, ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -6886,7 +6955,7 @@ fn ordinary_collision_admission_is_retained_across_script_movement() {
                 next: offset + 1,
                 operation: wait(
                     1,
-                    "MoveByAxis",
+                    Native::MoveByAxis,
                     CallKind::Multitask,
                     vec![
                         Value::Integer { value: 0 },
@@ -7123,7 +7192,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             placement.angles = [0, 344, 0];
         }
         scripts.definition.functions.push(Function {
-            name: "MoveByAxis".into(),
+            name: Native::MoveByAxis,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -7137,7 +7206,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
                     next: offset + 1,
                     operation: wait(
                         1,
-                        "MoveByAxis",
+                        Native::MoveByAxis,
                         CallKind::Multitask,
                         vec![
                             Value::Integer { value: axis },
@@ -7283,7 +7352,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             placement.angles = [0, 344, 0];
         }
         scripts.definition.functions.push(Function {
-            name: "MoveByAxis".into(),
+            name: Native::MoveByAxis,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -7295,7 +7364,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                     next: offset + 1,
                     operation: wait(
                         1,
-                        "MoveByAxis",
+                        Native::MoveByAxis,
                         CallKind::Multitask,
                         vec![
                             Value::Integer { value: axis },
@@ -7541,7 +7610,7 @@ fn ordinary_actor_overlap_reads_current_local_pose_and_excludes_self() {
     use cyrus_game::script::{ScriptActorId, ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -7553,7 +7622,7 @@ fn ordinary_actor_overlap_reads_current_local_pose_and_excludes_self() {
                 next: offset + 1,
                 operation: wait(
                     1,
-                    "MoveByAxis",
+                    Native::MoveByAxis,
                     CallKind::Multitask,
                     vec![
                         Value::Integer { value: 0 },
@@ -7829,7 +7898,7 @@ fn overlap_response_fixture_edited(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -7845,7 +7914,7 @@ fn overlap_response_fixture_edited(
                 next: 1,
                 operation: wait(
                     1,
-                    "MoveByAxis",
+                    Native::MoveByAxis,
                     CallKind::Multitask,
                     vec![
                         Value::Integer { value: 0 },
@@ -10875,11 +10944,11 @@ fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
     for kind in [CallKind::Function, CallKind::Task, CallKind::Multitask] {
         let mut scripts = cache();
         for (name, kind) in [
-            ("RotateByAxis", CallKind::Multitask),
-            ("ResetRotation", CallKind::Function),
+            (Native::RotateByAxis, CallKind::Multitask),
+            (Native::ResetRotation, CallKind::Function),
         ] {
             scripts.definition.functions.push(Function {
-                name: name.into(),
+                name,
                 param_count: 3,
                 kind,
             });
@@ -10887,9 +10956,14 @@ fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
         let reset = [1, 0, 1].map(|value| Value::Integer { value });
         let rotate = [1, 512, 1].map(|value| Value::Integer { value });
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-            wait(1, "RotateByAxis", CallKind::Multitask, rotate.to_vec()),
+            wait(
+                1,
+                Native::RotateByAxis,
+                CallKind::Multitask,
+                rotate.to_vec(),
+            ),
             Operation::Yield,
-            wait(2, "ResetRotation", kind, reset.to_vec()),
+            wait(2, Native::ResetRotation, kind, reset.to_vec()),
             Operation::End { target: 0 },
         ]
         .into_iter()
@@ -10939,20 +11013,25 @@ fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
     use cyrus_world::transform::Matrix;
     let mut scripts = cache();
     for (name, kind, count) in [
-        ("RotateByAxis", CallKind::Multitask, 3),
-        ("ReloadRotation", CallKind::Function, 0),
+        (Native::RotateByAxis, CallKind::Multitask, 3),
+        (Native::ReloadRotation, CallKind::Function, 0),
     ] {
         scripts.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count: count,
             kind,
         });
     }
     let rotate = [1, 512, 1].map(|value| Value::Integer { value });
     scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-        wait(1, "RotateByAxis", CallKind::Multitask, rotate.to_vec()),
+        wait(
+            1,
+            Native::RotateByAxis,
+            CallKind::Multitask,
+            rotate.to_vec(),
+        ),
         Operation::Yield,
-        wait(2, "ReloadRotation", CallKind::Function, vec![]),
+        wait(2, Native::ReloadRotation, CallKind::Function, vec![]),
         Operation::End { target: 0 },
     ]
     .into_iter()
@@ -11000,7 +11079,7 @@ fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_r
     use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveByAxis".into(),
+        name: Native::MoveByAxis,
         param_count: 3,
         kind: CallKind::Multitask,
     });
@@ -11031,7 +11110,7 @@ fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_r
                         next: 1,
                         operation: wait(
                             1,
-                            "MoveByAxis",
+                            Native::MoveByAxis,
                             CallKind::Multitask,
                             vec![
                                 Value::Integer { value: 0 },
@@ -11119,11 +11198,11 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
     for enabled in [false, true] {
         let mut scripts = cache();
         for (name, kind) in [
-            ("MoveByAxis", CallKind::Multitask),
-            ("RotateByAxis", CallKind::Multitask),
+            (Native::MoveByAxis, CallKind::Multitask),
+            (Native::RotateByAxis, CallKind::Multitask),
         ] {
             scripts.definition.functions.push(Function {
-                name: name.into(),
+                name,
                 param_count: 3,
                 kind,
             });
@@ -11139,7 +11218,7 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
                     next: 1,
                     operation: wait(
                         1,
-                        "MoveByAxis",
+                        Native::MoveByAxis,
                         CallKind::Multitask,
                         vec![
                             Value::Integer { value: 0 },
@@ -11155,7 +11234,7 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
                     next: 2,
                     operation: wait(
                         2,
-                        "RotateByAxis",
+                        Native::RotateByAxis,
                         CallKind::Multitask,
                         vec![
                             Value::Integer { value: 1 },
@@ -11785,7 +11864,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
     let mut scripts = wait_cache(vec![
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Task,
             vec![Value::Integer { value: 100 }],
         ),
@@ -11820,7 +11899,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
 #[test]
 fn separate_kill_me_releases_the_actor_runtime_and_owned_sounds() {
     use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptSound};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     for instance in &mut scripts.instances {
@@ -11916,19 +11995,19 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
     let mut scripts = cache();
     scripts.definition.functions.extend([
         Function {
-            name: "GetAttribute".into(),
+            name: Native::GetAttribute,
             param_count: 1,
             kind: CallKind::Function,
         },
         Function {
-            name: "SetAttribute".into(),
+            name: Native::SetAttribute,
             param_count: 2,
             kind: CallKind::Function,
         },
     ]);
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.attributes[Attribute::Active] = 99;
-    let get = attribute_call(1, "GetAttribute", 0, None);
+    let get = attribute_call(1, Native::GetAttribute, 0, None);
     actor.program.steps = BTreeMap::from([
         (
             0,
@@ -11950,7 +12029,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
             Step {
                 next: 2,
                 operation: Operation::Call {
-                    call: attribute_call(2, "SetAttribute", 0, Some(7)),
+                    call: attribute_call(2, Native::SetAttribute, 0, Some(7)),
                 },
             },
         ),
@@ -12042,12 +12121,12 @@ fn separate_disabled_tasks_preserve_locals_and_maintain_authored_lights() {
 #[test]
 fn wait_on_dialog_uses_initialized_shared_records_and_yields_before_completion() {
     let mut scripts = wait_cache(vec![
-        wait(4, "WaitOnDialog", CallKind::Task, vec![]),
+        wait(4, Native::WaitOnDialog, CallKind::Task, vec![]),
         set_flag(7),
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "WaitOnDialog".into(),
+        name: Native::WaitOnDialog,
         param_count: 0,
         kind: CallKind::Task,
     });
@@ -12072,12 +12151,12 @@ fn wait_on_dialog_uses_initialized_shared_records_and_yields_before_completion()
 #[test]
 fn dialogue_lines_block_other_receivers_and_reuse_only_cleared_records() {
     let mut scripts = wait_cache(vec![
-        wait(4, "WaitOnDialog", CallKind::Task, vec![]),
+        wait(4, Native::WaitOnDialog, CallKind::Task, vec![]),
         set_flag(7),
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "WaitOnDialog".into(),
+        name: Native::WaitOnDialog,
         param_count: 0,
         kind: CallKind::Task,
     });
@@ -12425,7 +12504,7 @@ fn player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "RTXp",
+            Native::RTXp,
             CallKind::Task,
             vec![Value::Integer {
                 value: i32::from_le_bytes(*b"TEST"),
@@ -12435,7 +12514,7 @@ fn player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup() {
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "RTXp".into(),
+        name: Native::RTXp,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -12703,13 +12782,13 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             instance.object_type = 1;
         }
         scripts.definition.functions.push(Function {
-            name: "beginCombat".into(),
+            name: Native::BeginCombat,
             param_count: 0,
             kind: CallKind::Function,
         });
         scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
             function_id: 1,
-            function: "beginCombat".into(),
+            function: Native::BeginCombat,
             target: Object::Me,
             kind: CallKind::Function,
             arguments: vec![],
@@ -13220,7 +13299,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
     ] {
         let call = Call {
             function_id: 4,
-            function: "beginCombat".into(),
+            function: Native::BeginCombat,
             target: if selected_receiver {
                 Object::Player
             } else {
@@ -13255,7 +13334,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions.push(Function {
-            name: "beginCombat".into(),
+            name: Native::BeginCombat,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -13380,7 +13459,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
             Operation::Call {
                 call: Call {
                     function_id: 4,
-                    function: "beginCombat".into(),
+                    function: Native::BeginCombat,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments: vec![],
@@ -13390,7 +13469,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions.push(Function {
-            name: "beginCombat".into(),
+            name: Native::BeginCombat,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -13534,7 +13613,7 @@ fn flag_snapshot_scripts() -> Scripts {
         })
         .collect();
     scripts.definition.functions.push(Function {
-        name: "SetGlobalFlag".into(),
+        name: Native::SetGlobalFlag,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -13542,7 +13621,7 @@ fn flag_snapshot_scripts() -> Scripts {
         .map(|index| Operation::Call {
             call: Call {
                 function_id: 1,
-                function: "SetGlobalFlag".into(),
+                function: Native::SetGlobalFlag,
                 target: Object::Me,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: index }],
@@ -13840,7 +13919,7 @@ fn player_walking_fixture_with(
     ]);
     let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
     scripts.definition.functions.push(Function {
-        name: "SetMyAttr".into(),
+        name: Native::SetMyAttr,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -13855,7 +13934,7 @@ fn player_walking_fixture_with(
         .operation = Operation::Call {
         call: Call {
             function_id,
-            function: "SetMyAttr".into(),
+            function: Native::SetMyAttr,
             target: Object::Me,
             kind: CallKind::Function,
             arguments: vec![
@@ -13868,13 +13947,13 @@ fn player_walking_fixture_with(
     };
     let hook_id = u16::try_from(scripts.definition.functions.len()).unwrap();
     scripts.definition.functions.push(Function {
-        name: "playermain".into(),
+        name: Native::PlayerMain,
         param_count: 0,
         kind: CallKind::Function,
     });
     scripts.actors.get_mut("CYRUS").unwrap().native_hook = Some(Call {
         function_id: hook_id,
-        function: "playermain".into(),
+        function: Native::PlayerMain,
         target: Object::Me,
         kind: CallKind::Function,
         arguments: vec![],
@@ -15028,7 +15107,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
 fn scripted_walk_steps_move_the_selected_player_through_the_support_check() {
     use cyrus_game::script::{OrdinaryGroundQuery, ScriptActorSource, ScriptInputs};
     // Walking forward advances Z along the heading (zero: +Z); walking backward reverses it.
-    for (function, direction) in [("WalkForward", 1), ("WalkBackward", -1)] {
+    for (function, direction) in [(Native::WalkForward, 1), (Native::WalkBackward, -1)] {
         let (_, mut world, data, scene) = player_walking_fixture();
         let index = world
             .actors()
@@ -15581,7 +15660,7 @@ fn restored_alternate_entity_survives_ordinary_binding_updates() {
 fn a_type_four_object_starts_with_its_placement_intensity_and_radius_and_no_colour() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = random_scripts(
-        "LightFlicker",
+        Native::LightFlicker,
         vec![Value::Integer { value: 7 }, Value::Integer { value: 9 }],
         Object::Me,
     );
@@ -15635,7 +15714,7 @@ fn a_type_four_object_starts_with_its_placement_intensity_and_radius_and_no_colo
 #[test]
 fn snapshot_marks_only_type_six_placements_as_map_lights() {
     use cyrus_game::script::WorldSnapshotSources;
-    let mut scripts = random_scripts("LightKinds", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
     for (placement, object_type) in scripts.instances.iter_mut().zip([6, 4]) {
@@ -15671,7 +15750,7 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
     use cyrus_game::script::{
         GameplayGlobals, ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,
     };
-    let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::LightOff, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     let placement = &mut scripts.instances[0];
@@ -15742,7 +15821,7 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
 
 #[test]
 fn type_three_placement_starts_with_an_enabled_flat_record_of_its_texture() {
-    let mut scripts = random_scripts("FlatThree", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
     scripts.instances[0].object_type = 3;
@@ -15758,7 +15837,7 @@ fn type_three_placement_starts_with_an_enabled_flat_record_of_its_texture() {
 
 #[test]
 fn actor_flat_draws_place_enabled_records_at_the_pose_plus_the_rotated_offset() {
-    let mut scripts = random_scripts("FlatThree", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
     scripts.instances[0].object_type = 3;
@@ -15780,7 +15859,7 @@ fn actor_flat_draws_place_enabled_records_at_the_pose_plus_the_rotated_offset() 
 #[test]
 fn type_four_object_light_survives_world_replacement() {
     use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
-    let mut scripts = random_scripts("LightFour", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     let placement = &mut scripts.instances[0];
@@ -15817,7 +15896,7 @@ fn type_four_object_light_survives_world_replacement() {
 #[test]
 fn light_off_without_a_record_returns_zero_without_creating_a_light() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::LightOff, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -15840,7 +15919,7 @@ fn light_off_without_a_record_returns_zero_without_creating_a_light() {
 fn separate_light_cleanup_runs_with_tasks_disabled_and_uses_wrapping_byte_ticks() {
     use cyrus_game::script::{ScriptInputs, ScriptStage, WorldSnapshotSources};
     for (ticks, retained) in [(32, true), (33, false), (256, true)] {
-        let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+        let mut scripts = random_scripts(Native::LightOff, vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;
         scripts.updates.task_system = false;
         scripts.instances.truncate(1);
@@ -15973,7 +16052,11 @@ fn player_looking_uses_signed_tolerance_and_quantized_position_bearing() {
         };
         assert_eq!(
             actor
-                .query("PlayerLooking", &[Argument::Integer(tolerance)], inputs)
+                .query(
+                    Native::PlayerLooking,
+                    &[Argument::Integer(tolerance)],
+                    inputs
+                )
                 .unwrap(),
             Some(expected),
             "{position:?}/{heading}/{tolerance}"
@@ -15999,29 +16082,29 @@ fn player_looking_preserves_attached_then_linked_position_priority() {
     };
     let args = [Argument::Integer(0)];
     assert_eq!(
-        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        actor.query(Native::PlayerLooking, &args, inputs).unwrap(),
         Some(1)
     );
     inputs.linked_position = Some(None);
     assert_eq!(
-        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        actor.query(Native::PlayerLooking, &args, inputs).unwrap(),
         Some(0)
     );
     inputs.linked_position = None;
-    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerLooking, &args, inputs).is_err());
     actor.parent = Some(1);
     actor.effective = None;
-    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerLooking, &args, inputs).is_err());
     let mut effective = actor.local;
     effective.position = [0; 3];
     actor.effective = Some(effective);
     assert_eq!(
-        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        actor.query(Native::PlayerLooking, &args, inputs).unwrap(),
         Some(1)
     );
     inputs.player = None;
-    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
-    assert!(actor.query("PlayerLooking", &[], inputs).is_err());
+    assert!(actor.query(Native::PlayerLooking, &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerLooking, &[], inputs).is_err());
 }
 
 #[test]
@@ -16029,7 +16112,7 @@ fn player_looking_dispatch_returns_result_to_script_local() {
     use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
     for (heading, expected) in [(1024, 1), (1023, 0)] {
         let scripts = random_scripts(
-            "PlayerLooking",
+            Native::PlayerLooking,
             vec![Value::Integer { value: 0 }],
             Object::Me,
         );
@@ -16073,7 +16156,7 @@ fn player_stand_reads_selected_player_support_without_changing_it() {
         (None, Object::Me, 0),
         (Some(2), Object::Player, 1),
     ] {
-        let mut scripts = random_scripts("PlayerStand", vec![], receiver);
+        let mut scripts = random_scripts(Native::PlayerStand, vec![], receiver);
         scripts.definition.functions[1].param_count = 0;
         add_standalone_receivers(&mut scripts);
         let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -16100,7 +16183,7 @@ fn player_stand_rejects_missing_player_and_arguments() {
             "requires no arguments",
         ),
     ] {
-        let mut scripts = random_scripts("PlayerStand", arguments, Object::Me);
+        let mut scripts = random_scripts(Native::PlayerStand, arguments, Object::Me);
         if !player {
             scripts.definition.functions[1].param_count = 0;
         }
@@ -16127,7 +16210,7 @@ fn player_stand_validates_explicit_selected_identity() {
             Some("activation player is not the selected player"),
         ),
     ] {
-        let mut scripts = random_scripts("PlayerStand", vec![], Object::Me);
+        let mut scripts = random_scripts(Native::PlayerStand, vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;
         add_standalone_receivers(&mut scripts);
         let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -16217,7 +16300,7 @@ fn player_arc_uses_receiver_heading_signed_offset_and_inclusive_tolerance() {
         assert_eq!(
             actor
                 .query(
-                    "PlayerArc",
+                    Native::PlayerArc,
                     &[Argument::Integer(offset), Argument::Integer(tolerance)],
                     inputs
                 )
@@ -16246,24 +16329,33 @@ fn player_arc_distinguishes_linked_position_from_attached_heading() {
         distance_override: None,
         fallback_position: None,
     };
-    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(0));
+    assert_eq!(
+        actor.query(Native::PlayerArc, &args, inputs).unwrap(),
+        Some(0)
+    );
     inputs.linked_position = Some(Some([0, 0, 100]));
-    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(1));
+    assert_eq!(
+        actor.query(Native::PlayerArc, &args, inputs).unwrap(),
+        Some(1)
+    );
     actor.parent = Some(1);
     let mut effective = actor.local;
     effective.position = [0, 0, -100];
     effective.angles[1] = 1024;
     actor.effective = Some(effective);
-    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(1));
+    assert_eq!(
+        actor.query(Native::PlayerArc, &args, inputs).unwrap(),
+        Some(1)
+    );
     actor.effective = None;
-    assert!(actor.query("PlayerArc", &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerArc, &args, inputs).is_err());
     actor.parent = None;
     inputs.linked_position = None;
-    assert!(actor.query("PlayerArc", &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerArc, &args, inputs).is_err());
     inputs.linked_position = Some(None);
     inputs.player = None;
-    assert!(actor.query("PlayerArc", &args, inputs).is_err());
-    assert!(actor.query("PlayerArc", &args[..1], inputs).is_err());
+    assert!(actor.query(Native::PlayerArc, &args, inputs).is_err());
+    assert!(actor.query(Native::PlayerArc, &args[..1], inputs).is_err());
 }
 
 #[test]
@@ -16271,7 +16363,7 @@ fn player_arc_dispatch_returns_receiver_relative_result() {
     use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
     for (offset_delta, expected) in [(0, 1), (1, 0)] {
         let mut scripts = random_scripts(
-            "PlayerArc",
+            Native::PlayerArc,
             vec![Value::Integer { value: 0 }, Value::Integer { value: 0 }],
             Object::Me,
         );
@@ -16969,7 +17061,7 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "SyncWithGroup",
+            Native::SyncWithGroup,
             CallKind::Task,
             vec![Value::Integer { value: 3 }],
         ),
@@ -16977,7 +17069,7 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "SyncWithGroup".into(),
+        name: Native::SyncWithGroup,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -17611,7 +17703,10 @@ fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes(
 fn animation_frame_waits_resume_from_the_correct_owner_without_advancing_playback() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    for (function, selected) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+    for (function, selected) in [
+        (Native::WaitAnimFrame, false),
+        (Native::WaitPlayerAnimFrame, true),
+    ] {
         let mut scripts = wait_cache(vec![
             wait(
                 1,
@@ -17623,7 +17718,7 @@ fn animation_frame_waits_resume_from_the_correct_owner_without_advancing_playbac
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions[1] = Function {
-            name: function.into(),
+            name: function,
             param_count: 2,
             kind: CallKind::Task,
         };
@@ -17740,7 +17835,10 @@ fn animation_frame_waits_resume_from_the_correct_owner_without_advancing_playbac
 
 #[test]
 fn animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_completes() {
-    for (function, completes) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+    for (function, completes) in [
+        (Native::WaitAnimFrame, false),
+        (Native::WaitPlayerAnimFrame, true),
+    ] {
         let mut scripts = wait_cache(vec![
             wait(
                 1,
@@ -17752,7 +17850,7 @@ fn animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_comp
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions[1] = Function {
-            name: function.into(),
+            name: function,
             param_count: 2,
             kind: CallKind::Task,
         };
@@ -17979,11 +18077,11 @@ fn step_hazard_is_a_steep_destination_surface_unless_both_points_are_floors() {
 #[test]
 fn lifecycle_byte_queries_read_the_fresh_receiver_state() {
     for name in [
-        "MyAIType",
-        "MyAIMode",
-        "IsOnEdge",
-        "IsInAir",
-        "IsCombatCapable",
+        Native::MyAiType,
+        Native::MyAiMode,
+        Native::IsOnEdge,
+        Native::IsInAir,
+        Native::IsCombatCapable,
     ] {
         assert_eq!(run_native_calls(&[(name, &[])]).unwrap(), 0, "{name}");
         let error = run_native_calls(&[(name, &[1])]).unwrap_err();
@@ -17993,29 +18091,37 @@ fn lifecycle_byte_queries_read_the_fresh_receiver_state() {
 
 #[test]
 fn health_strength_and_armor_queries_read_the_receiver() {
-    assert_eq!(run_native_calls(&[("Health", &[])]).unwrap(), 0);
+    assert_eq!(run_native_calls(&[(Native::Health, &[])]).unwrap(), 0);
     assert_eq!(
-        run_native_calls(&[("SetMyAttr", &[3, 40]), ("Health", &[])]).unwrap(),
+        run_native_calls(&[(Native::SetMyAttr, &[3, 40]), (Native::Health, &[])]).unwrap(),
         40
     );
     assert_eq!(
-        run_native_calls(&[("SetMyAttr", &[3, 40]), ("ReplenishHealth", &[])]).unwrap(),
+        run_native_calls(&[
+            (Native::SetMyAttr, &[3, 40]),
+            (Native::ReplenishHealth, &[])
+        ])
+        .unwrap(),
         1
     );
     assert_eq!(
         run_native_calls(&[
-            ("SetMyAttr", &[3, 40]),
-            ("ReplenishHealth", &[]),
-            ("Health", &[])
+            (Native::SetMyAttr, &[3, 40]),
+            (Native::ReplenishHealth, &[]),
+            (Native::Health, &[])
         ])
         .unwrap(),
         100
     );
     assert_eq!(
-        run_native_calls(&[("SetMyAttr", &[3, 100]), ("ReplenishHealth", &[])]).unwrap(),
+        run_native_calls(&[
+            (Native::SetMyAttr, &[3, 100]),
+            (Native::ReplenishHealth, &[])
+        ])
+        .unwrap(),
         0
     );
-    for name in ["Strength", "Armor"] {
+    for name in [Native::Strength, Native::Armor] {
         let error = run_native_calls(&[(name, &[])]).unwrap_err();
         assert!(
             format!("{error:#}").contains("receiver combat record unavailable"),
@@ -18034,7 +18140,7 @@ fn selected_replenish_health_uses_shared_feedback_without_additive_health_servic
         (255, 0, false, 255, 0),
         (40, 0, false, 40, 0),
     ] {
-        let mut scripts = random_scripts("ReplenishHealth", vec![], Object::Player);
+        let mut scripts = random_scripts(Native::ReplenishHealth, vec![], Object::Player);
         scripts.definition.functions[1].param_count = 0;
         add_standalone_receivers(&mut scripts);
         let player = scripts.actors.get_mut("CYRUS").unwrap();
@@ -18086,11 +18192,11 @@ fn selected_replenish_health_uses_shared_feedback_without_additive_health_servic
 fn selected_native_health_routes_addition_and_retains_early_feedback() {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage};
     for (function, change, mode, initialized, expected, error) in [
-        ("AdjustHealth", 7, 0, true, 47, None),
-        ("AdjustHealth", 300, 0, true, 100, None),
-        ("AdjustHealth", i32::MAX, 0, true, 0, None),
+        (Native::AdjustHealth, 7, 0, true, 47, None),
+        (Native::AdjustHealth, 300, 0, true, 100, None),
+        (Native::AdjustHealth, i32::MAX, 0, true, 0, None),
         (
-            "AdjustHealth",
+            Native::AdjustHealth,
             -7,
             0,
             true,
@@ -18098,16 +18204,16 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             Some("random stream unavailable"),
         ),
         (
-            "AdjustHealth",
+            Native::AdjustHealth,
             7,
             0,
             false,
             40,
             Some("health initialization unavailable"),
         ),
-        ("AdjustHealth", 7, 2, true, 47, None),
+        (Native::AdjustHealth, 7, 2, true, 47, None),
         (
-            "AdjustHealth",
+            Native::AdjustHealth,
             -7,
             2,
             true,
@@ -18115,7 +18221,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             Some("random stream unavailable"),
         ),
         (
-            "AdjustHealth",
+            Native::AdjustHealth,
             -40,
             2,
             true,
@@ -18123,23 +18229,23 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             Some("random stream unavailable"),
         ),
         (
-            "AdjustHealth",
+            Native::AdjustHealth,
             -40,
             3,
             true,
             0,
             Some("native source unavailable"),
         ),
-        ("AdjustHealth", -40, 4, true, 0, None),
-        ("AdjustHealth", -40, 5, true, 0, None),
-        ("AdjustHealth", -40, 6, true, 0, None),
-        ("AdjustHealth", i32::MAX, 8, true, 0, None),
-        ("AdjustHealth", -40, 9, true, 0, None),
-        ("AdjustHealth", -40, 10, true, 0, None),
-        ("AdjustHealth", -40, 11, true, 0, None),
-        ("SetHealth", 60, 0, true, 40, None),
-        ("SetHealth", 0, 12, true, 0, None),
-        ("SetHealth", 60, 13, true, 60, None),
+        (Native::AdjustHealth, -40, 4, true, 0, None),
+        (Native::AdjustHealth, -40, 5, true, 0, None),
+        (Native::AdjustHealth, -40, 6, true, 0, None),
+        (Native::AdjustHealth, i32::MAX, 8, true, 0, None),
+        (Native::AdjustHealth, -40, 9, true, 0, None),
+        (Native::AdjustHealth, -40, 10, true, 0, None),
+        (Native::AdjustHealth, -40, 11, true, 0, None),
+        (Native::SetHealth, 60, 0, true, 40, None),
+        (Native::SetHealth, 0, 12, true, 0, None),
+        (Native::SetHealth, 60, 13, true, 60, None),
     ] {
         let (mut scripts, _, mut data, scene) = player_walking_fixture();
         for (attribute, value) in [
@@ -18192,8 +18298,8 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
         }
         let function_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: function.into(),
-            param_count: if function == "SetHealth" { 1 } else { 2 },
+            name: function,
+            param_count: if function == Native::SetHealth { 1 } else { 2 },
             kind: CallKind::Function,
         });
         scripts
@@ -18207,10 +18313,10 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             .operation = Operation::ObjectCall {
             call: Call {
                 function_id,
-                function: function.into(),
+                function,
                 kind: CallKind::Function,
                 target: Object::Player,
-                arguments: if function == "SetHealth" {
+                arguments: if function == Native::SetHealth {
                     vec![Value::Integer { value: change }]
                 } else {
                     vec![
@@ -18531,21 +18637,25 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
 
 #[test]
 fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
-    let health = |calls: &[(&str, &[i32])]| {
+    let health = |calls: &[(Native, &[i32])]| {
         let mut calls = calls.to_vec();
-        calls.push(("Health", &[]));
+        calls.push((Native::Health, &[]));
         run_native_calls(&calls)
     };
-    assert_eq!(health(&[("SetHealth", &[60])]).unwrap(), 60);
+    assert_eq!(health(&[(Native::SetHealth, &[60])]).unwrap(), 60);
     assert_eq!(
-        health(&[("SetHealth", &[60]), ("AdjustHealth", &[-20, 1])]).unwrap(),
+        health(&[
+            (Native::SetHealth, &[60]),
+            (Native::AdjustHealth, &[-20, 1])
+        ])
+        .unwrap(),
         40
     );
-    assert_eq!(health(&[("AdjustHealth", &[300, 0])]).unwrap(), 255);
-    assert_eq!(health(&[("AdjustHealth", &[-5, 0])]).unwrap(), 0);
+    assert_eq!(health(&[(Native::AdjustHealth, &[300, 0])]).unwrap(), 255);
+    assert_eq!(health(&[(Native::AdjustHealth, &[-5, 0])]).unwrap(), 0);
     for calls in [
-        &[("AdjustHealth", &[-5, 1][..])][..],
-        &[("SetHealth", &[0][..])][..],
+        &[(Native::AdjustHealth, &[-5, 1][..])][..],
+        &[(Native::SetHealth, &[0][..])][..],
     ] {
         let error = health(calls).unwrap_err();
         assert!(
@@ -18555,10 +18665,10 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     }
     // Attribute 120 ignores changes; attribute 97 needs the combat-record gate.
     assert_eq!(
-        health(&[("SetMyAttr", &[120, 1]), ("SetHealth", &[60])]).unwrap(),
+        health(&[(Native::SetMyAttr, &[120, 1]), (Native::SetHealth, &[60])]).unwrap(),
         0
     );
-    let error = health(&[("SetMyAttr", &[97, 1]), ("SetHealth", &[60])]).unwrap_err();
+    let error = health(&[(Native::SetMyAttr, &[97, 1]), (Native::SetHealth, &[60])]).unwrap_err();
     assert!(
         format!("{error:#}").contains("IsHoldingWeapon: inventory owner unavailable"),
         "{error:#}"
@@ -18568,34 +18678,37 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
 #[test]
 fn ai_setters_master_slave_and_true_function_follow_their_bytes() {
     assert_eq!(
-        run_native_calls(&[("SetAIType", &[300]), ("MyAIType", &[])]).unwrap(),
+        run_native_calls(&[(Native::SetAiType, &[300]), (Native::MyAiType, &[])]).unwrap(),
         44
     );
     assert_eq!(
-        run_native_calls(&[("SetAIMode", &[7]), ("MyAIMode", &[])]).unwrap(),
+        run_native_calls(&[(Native::SetAiMode, &[7]), (Native::MyAiMode, &[])]).unwrap(),
         7
     );
-    assert_eq!(run_native_calls(&[("IsMaster", &[])]).unwrap(), 0);
+    assert_eq!(run_native_calls(&[(Native::IsMaster, &[])]).unwrap(), 0);
     assert_eq!(
-        run_native_calls(&[("SetMyAttr", &[26, 3]), ("IsSlave", &[])]).unwrap(),
+        run_native_calls(&[(Native::SetMyAttr, &[26, 3]), (Native::IsSlave, &[])]).unwrap(),
         1
     );
     assert_eq!(
-        run_native_calls(&[("SetMyAttr", &[25, 3]), ("IsMaster", &[])]).unwrap(),
+        run_native_calls(&[(Native::SetMyAttr, &[25, 3]), (Native::IsMaster, &[])]).unwrap(),
         1
     );
-    assert_eq!(run_native_calls(&[("TrueFunction", &[0, 5])]).unwrap(), 1);
+    assert_eq!(
+        run_native_calls(&[(Native::TrueFunction, &[0, 5])]).unwrap(),
+        1
+    );
 }
 
 #[test]
 fn player_moved_needs_a_selected_player_with_spatial_state() {
-    let error = run_native_world_with(&[("PlayerMoved", &[])], true)
+    let error = run_native_world_with(&[(Native::PlayerMoved, &[])], true)
         .map(|_| ())
         .unwrap_err();
     assert!(format!("{error:#}").contains("selected player unavailable"));
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "PlayerMoved".into(),
+        name: Native::PlayerMoved,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -18611,7 +18724,7 @@ fn player_moved_needs_a_selected_player_with_spatial_state() {
                     function_id: 1,
                     target: Object::Me,
                     kind: CallKind::Function,
-                    function: "PlayerMoved".into(),
+                    function: Native::PlayerMoved,
                     arguments: vec![],
                 }),
             },
@@ -18643,23 +18756,26 @@ fn player_moved_needs_a_selected_player_with_spatial_state() {
 
 #[test]
 fn enable_and_disable_natives_toggle_their_script_control_bit() {
-    let bits = |calls: &[(&str, &[i32])]| {
+    let bits = |calls: &[(Native, &[i32])]| {
         run_native_world(calls).unwrap().actors()[0]
             .control_state()
             .unwrap()
             .script_control
     };
-    for (suffix, bit) in [("Script", 1), ("Tasks", 4), ("Object", 8), ("Combat", 16)] {
-        let disable = format!("Disable{suffix}");
-        let enable = format!("Enable{suffix}");
-        assert_eq!(bits(&[(&disable, &[])]), bit, "{disable}");
-        assert_eq!(bits(&[(&disable, &[]), (&enable, &[])]), 0, "{enable}");
+    for (disable, enable, bit) in [
+        (Native::DisableScript, Native::EnableScript, 1),
+        (Native::DisableTasks, Native::EnableTasks, 4),
+        (Native::DisableObject, Native::EnableObject, 8),
+        (Native::DisableCombat, Native::EnableCombat, 16),
+    ] {
+        assert_eq!(bits(&[(disable, &[])]), bit, "{disable}");
+        assert_eq!(bits(&[(disable, &[]), (enable, &[])]), 0, "{enable}");
     }
     assert_eq!(
         bits(&[
-            ("DisableTasks", &[]),
-            ("DisableCombat", &[]),
-            ("EnableTasks", &[])
+            (Native::DisableTasks, &[]),
+            (Native::DisableCombat, &[]),
+            (Native::EnableTasks, &[])
         ]),
         16
     );
@@ -18669,10 +18785,10 @@ fn enable_and_disable_natives_toggle_their_script_control_bit() {
 fn session_request_natives_raise_requests_for_the_host() {
     use cyrus_game::script::HostRequests;
     let mut world = run_native_world(&[
-        ("LoadWorld", &[7, 11, -3]),
-        ("WonGame", &[]),
-        ("PushPlayer", &[1]),
-        ("PopPlayer", &[1]),
+        (Native::LoadWorld, &[7, 11, -3]),
+        (Native::WonGame, &[]),
+        (Native::PushPlayer, &[1]),
+        (Native::PopPlayer, &[1]),
     ])
     .unwrap();
     assert_eq!(
@@ -18694,27 +18810,27 @@ fn session_request_natives_raise_requests_for_the_host() {
         world.globals_mut().take_host_requests(),
         HostRequests::default()
     );
-    assert_eq!(run_native_calls(&[("IsWithinMap", &[1])]).unwrap(), 1);
-    assert_eq!(run_native_calls(&[("Animal", &[5])]).unwrap(), 0);
-    assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
+    assert_eq!(run_native_calls(&[(Native::IsWithinMap, &[1])]).unwrap(), 1);
+    assert_eq!(run_native_calls(&[(Native::Animal, &[5])]).unwrap(), 0);
+    assert!(run_native_calls(&[(Native::LoadWorld, &[1])]).is_err());
 }
 
 /// Fixture whose `LOGIC` script calls the given natives on every ordinary update.
 fn player_swap_fixture(
-    calls: &[(&str, &[i32])],
+    calls: &[(Native, &[i32])],
 ) -> (Scripts, ScriptWorld, cyrus_assets::animation::Animations) {
     let (scripts, world, data, _) = player_walking_fixture_with(|scripts| {
         let mut steps = BTreeMap::new();
         for (index, (name, arguments)) in calls.iter().enumerate() {
             scripts.definition.functions.push(Function {
-                name: (*name).into(),
+                name: *name,
                 param_count: arguments.len() as u8,
                 kind: CallKind::Function,
             });
             let id = scripts.definition.functions.len() as u16 - 1;
             steps.insert(
                 index as u32,
-                assign_call(index as u32 + 1, id, name, arguments),
+                assign_call(index as u32 + 1, id, *name, arguments),
             );
         }
         steps.insert(
@@ -18752,7 +18868,7 @@ fn update_player_swap_world(world: &mut ScriptWorld, data: &cyrus_assets::animat
 #[test]
 fn push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration() {
     use cyrus_game::script::{ScriptActorSource, WorldLoopOutcome};
-    let (_, mut world, mut data) = player_swap_fixture(&[("PushPlayer", &[1])]);
+    let (_, mut world, mut data) = player_swap_fixture(&[(Native::PushPlayer, &[1])]);
     data.metadata["markers"] = serde_json::json!([]);
     data.metadata["walk_node_maps"] = serde_json::json!([]);
     update_player_swap_world(&mut world, &data);
@@ -18794,11 +18910,17 @@ fn push_and_pop_player_exchange_the_roles_at_the_end_of_a_continuing_iteration()
 #[test]
 fn pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration_as_push() {
     use cyrus_game::script::WorldLoopOutcome;
-    type Calls<'a> = &'a [(&'a str, &'a [i32])];
+    type Calls<'a> = &'a [(Native, &'a [i32])];
     let cases: [(Calls, bool); 3] = [
-        (&[("PopPlayer", &[1])], false),
-        (&[("PushPlayer", &[1]), ("PopPlayer", &[1])], false),
-        (&[("PushPlayer", &[1]), ("PushPlayer", &[1])], true),
+        (&[(Native::PopPlayer, &[1])], false),
+        (
+            &[(Native::PushPlayer, &[1]), (Native::PopPlayer, &[1])],
+            false,
+        ),
+        (
+            &[(Native::PushPlayer, &[1]), (Native::PushPlayer, &[1])],
+            true,
+        ),
     ];
     for (calls, swapped) in cases {
         let (_, mut world, mut data) = player_swap_fixture(calls);
@@ -18867,7 +18989,7 @@ fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "RTX",
+            Native::Rtx,
             CallKind::Task,
             vec![Value::Integer {
                 value: i32::from_le_bytes(*b"TEST"),
@@ -18877,7 +18999,7 @@ fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "RTX".into(),
+        name: Native::Rtx,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -18995,17 +19117,17 @@ fn kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive() {
     let build = |kill: bool| {
         let mut ops = vec![wait(
             4,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         )];
         if kill {
-            ops.push(wait(5, "KillMyTasks", CallKind::Function, vec![]));
+            ops.push(wait(5, Native::KillMyTasks, CallKind::Function, vec![]));
         }
         ops.extend([
             wait(
                 4,
-                "Wait",
+                Native::Wait,
                 CallKind::Multitask,
                 vec![Value::Integer { value: 100 }],
             ),
@@ -19015,12 +19137,12 @@ fn kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive() {
         let mut scripts = wait_cache(ops);
         scripts.definition.functions.extend([
             Function {
-                name: "Wait".into(),
+                name: Native::Wait,
                 param_count: 1,
                 kind: CallKind::Multitask,
             },
             Function {
-                name: "KillMyTasks".into(),
+                name: Native::KillMyTasks,
                 param_count: 0,
                 kind: CallKind::Function,
             },
@@ -19045,21 +19167,21 @@ fn kill_me_clears_receiver_tasks_before_marking_the_actor_dead() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "Wait",
+            Native::Wait,
             CallKind::Multitask,
             vec![Value::Integer { value: 100 }],
         ),
-        wait(5, "KillMe", CallKind::Function, vec![]),
+        wait(5, Native::KillMe, CallKind::Function, vec![]),
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.extend([
         Function {
-            name: "Wait".into(),
+            name: Native::Wait,
             param_count: 1,
             kind: CallKind::Multitask,
         },
         Function {
-            name: "KillMe".into(),
+            name: Native::KillMe,
             param_count: 0,
             kind: CallKind::Function,
         },
@@ -19097,7 +19219,7 @@ fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
         if task {
             ops.push(wait(
                 4,
-                "SyncWithGroup",
+                Native::SyncWithGroup,
                 CallKind::Task,
                 vec![Value::Integer { value: 3 }],
             ));
@@ -19105,7 +19227,7 @@ fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
         ops.extend([set_flag(7), Operation::End { target: 0 }]);
         let mut scripts = wait_cache(ops);
         scripts.definition.functions.push(Function {
-            name: "SyncWithGroup".into(),
+            name: Native::SyncWithGroup,
             param_count: 1,
             kind: CallKind::Task,
         });
@@ -19138,7 +19260,7 @@ fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "SyncWithGroup",
+            Native::SyncWithGroup,
             CallKind::Task,
             vec![Value::Integer { value: 3 }],
         ),
@@ -19146,7 +19268,7 @@ fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "SyncWithGroup".into(),
+        name: Native::SyncWithGroup,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -19164,13 +19286,13 @@ fn group_sync_completes_when_attribute_writes_select_an_unregistered_channel() {
         let mut scripts = wait_cache(vec![
             wait(
                 4,
-                "SetMyAttr",
+                Native::SetMyAttr,
                 CallKind::Function,
                 vec![Value::Integer { value: 29 }, Value::Integer { value: 6 }],
             ),
             wait(
                 5,
-                "SyncWithGroup",
+                Native::SyncWithGroup,
                 CallKind::Task,
                 vec![Value::Integer { value: 3 }],
             ),
@@ -19179,12 +19301,12 @@ fn group_sync_completes_when_attribute_writes_select_an_unregistered_channel() {
         ]);
         scripts.definition.functions.extend([
             Function {
-                name: "SetMyAttr".into(),
+                name: Native::SetMyAttr,
                 param_count: 2,
                 kind: CallKind::Function,
             },
             Function {
-                name: "SyncWithGroup".into(),
+                name: Native::SyncWithGroup,
                 param_count: 1,
                 kind: CallKind::Task,
             },
@@ -19208,7 +19330,7 @@ fn live_world_entry_and_reload_register_group_members_before_task_polling() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "SyncWithGroup",
+            Native::SyncWithGroup,
             CallKind::Task,
             vec![Value::Integer { value: 3 }],
         ),
@@ -19216,7 +19338,7 @@ fn live_world_entry_and_reload_register_group_members_before_task_polling() {
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: "SyncWithGroup".into(),
+        name: Native::SyncWithGroup,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -19252,7 +19374,7 @@ fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
         let mut scripts = wait_cache(vec![
             wait(
                 4,
-                "SyncWithUser",
+                Native::SyncWithUser,
                 CallKind::Task,
                 vec![Value::Integer { value }],
             ),
@@ -19260,7 +19382,7 @@ fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions.push(Function {
-            name: "SyncWithUser".into(),
+            name: Native::SyncWithUser,
             param_count: 1,
             kind: CallKind::Task,
         });
@@ -19283,8 +19405,10 @@ fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
 
 #[test]
 fn reset_user_sync_native_validates_arguments() {
-    run_native_world(&[("ResetUserSync", &[])]).unwrap();
-    let error = run_native_world(&[("ResetUserSync", &[1])]).err().unwrap();
+    run_native_world(&[(Native::ResetUserSync, &[])]).unwrap();
+    let error = run_native_world(&[(Native::ResetUserSync, &[1])])
+        .err()
+        .unwrap();
     assert!(format!("{error:#}").contains("ResetUserSync requires no arguments"));
 }
 
@@ -19292,8 +19416,8 @@ fn reset_user_sync_native_validates_arguments() {
 fn reset_group_sync_native_accepts_no_arguments_and_rejects_arguments() {
     // The channel state itself is covered by GroupSync's algorithm tests; this exercises the
     // registry's installed function entry, including its zero-argument contract.
-    run_native_world(&[("ResetGroupSync", &[])]).unwrap();
-    let error = match run_native_world(&[("ResetGroupSync", &[1])]) {
+    run_native_world(&[(Native::ResetGroupSync, &[])]).unwrap();
+    let error = match run_native_world(&[(Native::ResetGroupSync, &[1])]) {
         Ok(_) => panic!("ResetGroupSync accepted an argument"),
         Err(error) => error,
     };
@@ -19302,26 +19426,29 @@ fn reset_group_sync_native_accepts_no_arguments_and_rejects_arguments() {
 
 #[test]
 fn dialog_and_menu_natives_write_their_mode_words() {
-    let state = |calls: &[(&str, &[i32])]| {
+    let state = |calls: &[(Native, &[i32])]| {
         let world = run_native_world(calls).unwrap();
         (
             world.globals().dialogue_state(),
             world.globals().menu_state(),
         )
     };
-    assert_eq!(state(&[("DialogBegin", &[])]), (Some(1), 0));
+    assert_eq!(state(&[(Native::DialogBegin, &[])]), (Some(1), 0));
     assert_eq!(
-        state(&[("DialogBegin", &[]), ("DialogEnd", &[])]),
+        state(&[(Native::DialogBegin, &[]), (Native::DialogEnd, &[])]),
         (Some(0), 0)
     );
-    assert_eq!(state(&[("MenuBegin", &[])]), (None, 1));
-    assert_eq!(state(&[("MenuBegin", &[]), ("MenuEnd", &[])]), (None, 0));
-    assert!(run_native_calls(&[("DialogBegin", &[1])]).is_err());
+    assert_eq!(state(&[(Native::MenuBegin, &[])]), (None, 1));
+    assert_eq!(
+        state(&[(Native::MenuBegin, &[]), (Native::MenuEnd, &[])]),
+        (None, 0)
+    );
+    assert!(run_native_calls(&[(Native::DialogBegin, &[1])]).is_err());
 }
 
 #[test]
 fn my_id_reads_the_runtime_identifier() {
-    let world = run_native_world(&[("MyId", &[])]).unwrap();
+    let world = run_native_world(&[(Native::MyId, &[])]).unwrap();
     let actor = &world.actors()[0];
     let expected = i32::from(actor.runtime_identifier.unwrap());
     assert_eq!(actor.runtime().unwrap().variables()[0], expected);
@@ -20632,7 +20759,7 @@ fn ground_prevalidation_does_not_turn_an_unsupported_first_query_into_success() 
 fn native_failure_preserves_written_flags_and_restores_runtime() {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "PlayerLineUp".into(),
+        name: Native::PlayerLineUp,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -20648,7 +20775,7 @@ fn native_failure_preserves_written_flags_and_restores_runtime() {
             1,
             Step {
                 next: 2,
-                operation: wait(1, "PlayerLineUp", CallKind::Function, vec![]),
+                operation: wait(1, Native::PlayerLineUp, CallKind::Function, vec![]),
             },
         ),
         (
@@ -21037,7 +21164,7 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
     };
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "WalkForward".into(),
+        name: Native::WalkForward,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -21048,7 +21175,7 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                 next: 1,
                 operation: wait(
                     1,
-                    "WalkForward",
+                    Native::WalkForward,
                     CallKind::Task,
                     vec![Value::Integer { value: 4 }],
                 ),
@@ -25097,10 +25224,10 @@ fn actor_navigation_restore_rejects_unknown_maps_and_unsupported_negative_indice
 #[test]
 fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.definition.functions.push(Function {
-        name: "Resurrect".into(),
+        name: Native::Resurrect,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -25114,7 +25241,7 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
         && let Value::Call { call } = &mut formula.first
     {
         call.function_id = 2;
-        call.function = "Resurrect".into();
+        call.function = Native::Resurrect;
     }
     actor.program.steps = BTreeMap::from([
         (0, Step { next: 1, ..first }),
@@ -25173,7 +25300,7 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
 #[test]
 fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let mut scripts = random_scripts("Resurrect", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::Resurrect, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.content_id = scripts.content_identity().unwrap();
     let (_, _, mut data) = navigation_owner_fixture();
@@ -25210,7 +25337,7 @@ fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
 #[test]
 fn actor_navigation_kill_me_releases_held_nodes_before_owned_sound_cleanup() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.content_id = scripts.content_identity().unwrap();
     let (_, _, mut data) = navigation_owner_fixture();
@@ -25406,7 +25533,12 @@ fn perception_waits_at_equality_wraps_ticks_and_reacquires_through_live_owners()
 fn native_command_slots_restore_and_pass_shared_state_between_actors() {
     use cyrus_game::script::NativeCommandState;
     let scripts = wait_cache(vec![
-        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        wait(
+            1,
+            Native::Wait,
+            CallKind::Task,
+            vec![Value::Integer { value: 4 }],
+        ),
         Operation::End { target: 0 },
     ]);
     let data = cyrus_assets::animation::Animations {
@@ -25466,7 +25598,7 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
             function_id: 4,
             target: Object::Me,
             kind: CallKind::Function,
-            function: "Health".into(),
+            function: Native::Health,
             arguments: vec![],
         };
         let operation = if encoding == 0 {
@@ -25493,7 +25625,7 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
         let mut scripts = wait_cache(vec![
             wait(
                 1,
-                "Wait",
+                Native::Wait,
                 CallKind::Multitask,
                 vec![Value::Integer { value: 100 }],
             ),
@@ -25502,7 +25634,7 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
             Operation::End { target: 0 },
         ]);
         scripts.definition.functions.push(Function {
-            name: "Health".into(),
+            name: Native::Health,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -25655,7 +25787,7 @@ fn disable_and_enable_node_maps_set_every_map_flag_and_need_prepared_navigation(
     assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), -1);
     world.set_all_walk_maps_enabled(true).unwrap();
     assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), 1);
-    for name in ["DisableNodeMaps", "EnableNodeMaps"] {
+    for name in [Native::DisableNodeMaps, Native::EnableNodeMaps] {
         assert!(run_native_world(&[(name, &[])]).is_err());
         assert!(run_native_world(&[(name, &[1])]).is_err());
     }
@@ -25762,7 +25894,12 @@ fn point_wrapper_fixture(
     use cyrus_game::script::NativeCommandState;
     let (_, _, mut data) = navigation_owner_fixture();
     let mut scripts = wait_cache(vec![
-        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        wait(
+            1,
+            Native::Wait,
+            CallKind::Task,
+            vec![Value::Integer { value: 4 }],
+        ),
         Operation::End { target: 0 },
     ]);
     for placement in &mut scripts.instances {
@@ -27452,7 +27589,7 @@ fn coordinate_walking_reports_live_walk_admission_instead_of_using_run() {
         error.contains("world 7 actor 0 coordinate walking"),
         "{error}"
     );
-    assert!(error.contains("WalkForward"), "{error}");
+    assert!(error.contains(Native::WalkForward.name()), "{error}");
     assert!(
         error.contains("forward step check input unavailable"),
         "{error}"
@@ -30465,7 +30602,7 @@ fn alternate_main_retains_native_source_before_decoding_strings() {
     let disable = Operation::Call {
         call: Call {
             function_id: 4,
-            function: "DisableTasks".into(),
+            function: Native::DisableTasks,
             kind: CallKind::Function,
             target: Object::Me,
             arguments: vec![],
@@ -30474,7 +30611,7 @@ fn alternate_main_retains_native_source_before_decoding_strings() {
     let decode = Operation::Call {
         call: Call {
             function_id: 5,
-            function: "SetAIType".into(),
+            function: Native::SetAiType,
             kind: CallKind::Function,
             target: Object::Me,
             arguments: vec![Value::String { index: 1 }],
@@ -30491,12 +30628,12 @@ fn alternate_main_retains_native_source_before_decoding_strings() {
     );
     scripts.definition.functions.extend([
         Function {
-            name: "DisableTasks".into(),
+            name: Native::DisableTasks,
             param_count: 0,
             kind: CallKind::Function,
         },
         Function {
-            name: "SetAIType".into(),
+            name: Native::SetAiType,
             param_count: 1,
             kind: CallKind::Function,
         },
@@ -30812,7 +30949,8 @@ fn world_loop_exit_system_publishes_native_world_transition_at_last() {
     use bevy::ecs::system::RunSystemOnce;
     use bevy::prelude::*;
     use cyrus_game::script::{OrdinaryContext, ScriptActors, ScriptPlugin, WorldLoopOutcome};
-    let world = run_native_world(&[("LoadWorld", &[7, 11, -3]), ("WonGame", &[])]).unwrap();
+    let world =
+        run_native_world(&[(Native::LoadWorld, &[7, 11, -3]), (Native::WonGame, &[])]).unwrap();
     let mut app = App::new();
     app.add_plugins(ScriptPlugin)
         .init_resource::<Assets<cyrus_assets::animation::Animations>>()
@@ -31186,13 +31324,13 @@ fn player_looking_facing_and_arc_match_the_original_routines() {
             linked_position: Some(None),
         };
         let (function, arguments) = match name.as_str() {
-            "looking" => ("PlayerLooking", vec![Argument::Integer(second)]),
+            "looking" => (Native::PlayerLooking, vec![Argument::Integer(second)]),
             "facing" => (
-                "PlayerFacing",
+                Native::PlayerFacing,
                 vec![Argument::Integer(first), Argument::Integer(second)],
             ),
             _ => (
-                "PlayerArc",
+                Native::PlayerArc,
                 vec![Argument::Integer(first), Argument::Integer(second)],
             ),
         };
@@ -31270,9 +31408,9 @@ fn player_distance_natives_match_the_original_routines() {
             linked_position: Some(None),
         };
         let function = if name == "distance" {
-            "PlayerDistance"
+            Native::PlayerDistance
         } else {
-            "AcuratePlayerDistance"
+            Native::AcuratePlayerDistance
         };
         assert_eq!(
             actor.query(function, &[], inputs).unwrap(),
@@ -31302,30 +31440,40 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
     // The pickup and parallel natives add their offsets unrotated; PlayerLineUp rotates them by the
     // reference heading plus the angle (half a turn here) and picks its mode from the distance.
     'cases: for (function, lineup_distance, z_offset, continuation) in [
-        ("PlayerParallelLineUp", None, 2048, Normal),
-        ("PlayerPickupLineUp", None, 2048, Normal),
-        ("PlayerLineUp", Some(0), -2048, Normal),
-        ("PlayerLineUp", Some(6655), -2048, Normal),
-        ("PlayerLineUp", Some(6656), -2048, Normal),
-        ("PlayerLineUp", Some(i32::MAX), -2048, Normal),
-        ("PlayerLineUp", Some(i32::MAX), 2048, Normal),
-        ("PlayerLineUp", Some(i32::MAX), -2048, MoveReference),
-        ("PlayerLineUp", Some(i32::MAX), -8192, MissingCollision),
-        ("PlayerLineUp", Some(i32::MAX), -8192, KillReceiver),
-        ("PlayerLineUp", Some(i32::MAX), -8192, KillCreatedReceiver),
+        (Native::PlayerParallelLineUp, None, 2048, Normal),
+        (Native::PlayerPickupLineUp, None, 2048, Normal),
+        (Native::PlayerLineUp, Some(0), -2048, Normal),
+        (Native::PlayerLineUp, Some(6655), -2048, Normal),
+        (Native::PlayerLineUp, Some(6656), -2048, Normal),
+        (Native::PlayerLineUp, Some(i32::MAX), -2048, Normal),
+        (Native::PlayerLineUp, Some(i32::MAX), 2048, Normal),
+        (Native::PlayerLineUp, Some(i32::MAX), -2048, MoveReference),
+        (
+            Native::PlayerLineUp,
+            Some(i32::MAX),
+            -8192,
+            MissingCollision,
+        ),
+        (Native::PlayerLineUp, Some(i32::MAX), -8192, KillReceiver),
+        (
+            Native::PlayerLineUp,
+            Some(i32::MAX),
+            -8192,
+            KillCreatedReceiver,
+        ),
     ] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = lineup_distance;
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: function.into(),
+                name: function,
                 param_count: 3,
                 kind: CallKind::Task,
             });
             scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
             let kill_id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: "KillMe".into(),
+                name: Native::KillMe,
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -31373,7 +31521,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     0,
                     Step {
                         next: 1,
-                        operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                        operation: wait(kill_id, Native::KillMe, CallKind::Function, vec![]),
                     },
                 );
                 program.steps.insert(
@@ -31587,7 +31735,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 }
                 continue 'cases;
             }
-            if function == "PlayerLineUp" && world.flags() != [7] {
+            if function == Native::PlayerLineUp && world.flags() != [7] {
                 crossed_distance_boundary |= distance(&world) > lineup_distance.unwrap();
                 let collision = cyrus_assets::collision::CollisionScene::default();
                 let saved = world
@@ -31665,7 +31813,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 0
             );
         }
-        let target_z = if function == "PlayerLineUp" {
+        let target_z = if function == Native::PlayerLineUp {
             -z_offset
         } else {
             z_offset
@@ -31700,7 +31848,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
         scripts.lineup_distance = Some(i32::MAX);
         let id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: "PlayerLineUp".into(),
+            name: Native::PlayerLineUp,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -31715,7 +31863,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
             .unwrap()
             .operation = wait(
             id,
-            "PlayerLineUp",
+            Native::PlayerLineUp,
             CallKind::Task,
             vec![
                 Value::Integer { value: 1024 },
@@ -31725,7 +31873,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
         );
         let kill_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: "KillMe".into(),
+            name: Native::KillMe,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -31741,7 +31889,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
                 0,
                 Step {
                     next: 1,
-                    operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                    operation: wait(kill_id, Native::KillMe, CallKind::Function, vec![]),
                 },
             ),
             (
@@ -32266,7 +32414,7 @@ fn check_scripted_item_use(on_rope: bool) {
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "UseItem".into(),
+            name: Native::UseItem,
             param_count: 1,
             kind: CallKind::Function,
         });
@@ -32277,7 +32425,7 @@ fn check_scripted_item_use(on_rope: bool) {
         let call = Operation::ObjectCall {
             call: Call {
                 function_id: id,
-                function: "UseItem".into(),
+                function: Native::UseItem,
                 target: Object::Player,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: 4 }],
@@ -32462,7 +32610,7 @@ fn open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_nam
         let mut scripts = cache();
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "OpenShell".into(),
+            name: Native::OpenShell,
             param_count: 1,
             kind: CallKind::Function,
         });
@@ -32476,7 +32624,7 @@ fn open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_nam
             Operation::Call {
                 call: Call {
                     function_id: id,
-                    function: "OpenShell".into(),
+                    function: Native::OpenShell,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments: vec![Value::String { index: 0 }],
@@ -32524,14 +32672,14 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "UseItem".into(),
+            name: Native::UseItem,
             param_count: 1,
             kind: CallKind::Function,
         });
         let call = Operation::ObjectCall {
             call: Call {
                 function_id: id,
-                function: "UseItem".into(),
+                function: Native::UseItem,
                 target: Object::Player,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: 45 }],
@@ -32650,17 +32798,17 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
 fn light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_torch() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
-        let mut call = |name: &str| {
+        let mut call = |name: Native| {
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: name.into(),
+                name,
                 param_count: 0,
                 kind: CallKind::Function,
             });
             Operation::ObjectCall {
                 call: Call {
                     function_id: id,
-                    function: name.into(),
+                    function: name,
                     target: Object::Player,
                     kind: CallKind::Function,
                     arguments: vec![],
@@ -32669,9 +32817,9 @@ fn light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_t
         };
         // The first update lights the torch and parks the continuation on the dousing call.
         let steps = [
-            call("LightTorch"),
+            call(Native::LightTorch),
             Operation::End { target: 2 },
-            call("UnlightTorch"),
+            call(Native::UnlightTorch),
             Operation::End { target: 2 },
         ];
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps
@@ -32745,17 +32893,21 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     for item_use in [false, true] {
         let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
-            let name = if item_use { "UseItem" } else { "DrawSword" };
+            let name = if item_use {
+                Native::UseItem
+            } else {
+                Native::DrawSword
+            };
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: name.into(),
+                name,
                 param_count: u8::from(item_use),
                 kind: CallKind::Function,
             });
             let call = Operation::ObjectCall {
                 call: Call {
                     function_id: id,
-                    function: name.into(),
+                    function: name,
                     target: Object::Player,
                     kind: CallKind::Function,
                     arguments: if item_use {
@@ -32830,18 +32982,18 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     // An unarmed player cannot sheathe, so SheathSword completes without a state change; endCombat
     // still runs its unconditional reset of the lifecycle selector, AI mode and combat flag.
-    for function in ["SheathSword", "endCombat"] {
+    for function in [Native::SheathSword, Native::EndCombat] {
         let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: function.into(),
+                name: function,
                 param_count: 0,
                 kind: CallKind::Function,
             });
             let call = Operation::ObjectCall {
                 call: Call {
                     function_id: id,
-                    function: function.into(),
+                    function,
                     target: Object::Player,
                     kind: CallKind::Function,
                     arguments: vec![],
@@ -32903,7 +33055,7 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
             control.living_state, 0,
             "{function} leaves an unarmed player idle"
         );
-        if function == "endCombat" {
+        if function == Native::EndCombat {
             assert_eq!(control.death_selector, 1);
             assert_eq!(control.death_response, 0);
             assert_eq!(control.combat.as_ref().unwrap().flags & 4, 0);
@@ -32919,11 +33071,11 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
 #[test]
 fn player_collide_natives_read_the_selected_players_contact_lists() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let run = |function: &str, touched: Option<usize>| {
+    let run = |function: Native, touched: Option<usize>| {
         let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: function.into(),
+                name: function,
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -32965,7 +33117,7 @@ fn player_collide_natives_read_the_selected_players_contact_lists() {
             .unwrap();
         world.actors()[0].runtime().unwrap().variables()[0]
     };
-    for function in ["PlayerCollide", "PlayerCollideStatic"] {
+    for function in [Native::PlayerCollide, Native::PlayerCollideStatic] {
         assert_eq!(run(function, None), 0, "{function} without contact");
         assert_eq!(
             run(function, Some(0)),
@@ -33091,23 +33243,29 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
             let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
                 let activate = scripts.definition.functions.len() as u16;
                 scripts.definition.functions.push(Function {
-                    name: "Activate".into(),
+                    name: Native::Activate,
                     param_count: 1,
                     kind: CallKind::Function,
                 });
                 scripts.definition.functions.push(Function {
-                    name: "Deactivate".into(),
+                    name: Native::Deactivate,
                     param_count: 0,
                     kind: CallKind::Function,
                 });
                 let mut operations = vec![
-                    assign_call(1, activate, "Activate", &[i32::from_le_bytes(*b"TEST")]).operation,
+                    assign_call(
+                        1,
+                        activate,
+                        Native::Activate,
+                        &[i32::from_le_bytes(*b"TEST")],
+                    )
+                    .operation,
                 ];
                 if deactivate {
                     operations.push(Operation::Call {
                         call: Call {
                             function_id: activate + 1,
-                            function: "Deactivate".into(),
+                            function: Native::Deactivate,
                             target: Object::Me,
                             kind: CallKind::Function,
                             arguments: vec![],
@@ -33359,12 +33517,12 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "CollidePlayerWeapon".into(),
+            name: Native::CollidePlayerWeapon,
             param_count: 4,
             kind: CallKind::Function,
         });
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-            assign_call(1, id, "CollidePlayerWeapon", &[0, 0, 0, 10240]).operation,
+            assign_call(1, id, Native::CollidePlayerWeapon, &[0, 0, 0, 10240]).operation,
             set_flag(7),
             Operation::End { target: 0 },
         ]
@@ -33433,9 +33591,9 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
     effects.images.insert(0, effects.images[&0x2380].clone());
     let spawn = |spread: i32, speed: i32, descriptor: i32| {
         let mut world = {
-            let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+            let mut scripts = random_scripts(Native::Rnd, vec![], Object::Me);
             scripts.definition.functions.push(Function {
-                name: "AddFlatEffect".into(),
+                name: Native::AddFlatEffect,
                 param_count: 6,
                 kind: CallKind::Function,
             });
@@ -33444,7 +33602,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                 assign_call(
                     1,
                     id,
-                    "AddFlatEffect",
+                    Native::AddFlatEffect,
                     &[2560, 5120, 7680, spread, descriptor, speed],
                 )
                 .operation,
@@ -33521,12 +33679,12 @@ fn dragon_breath_once(flags: u8) -> (anyhow::Result<i32>, usize, f64) {
         |scripts| {
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: "DragonBreath".into(),
+                name: Native::DragonBreath,
                 param_count: 0,
                 kind: CallKind::Function,
             });
             scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-                assign_call(1, id, "DragonBreath", &[]).operation,
+                assign_call(1, id, Native::DragonBreath, &[]).operation,
                 Operation::End { target: 0 },
             ]
             .into_iter()
@@ -33600,10 +33758,10 @@ fn a_dead_dragon_swaps_the_taken_item_for_the_given_one_and_returns_zero() {
     use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let mut steps = Vec::new();
-        for name in ["KillMe", "DragonBreath"] {
+        for name in [Native::KillMe, Native::DragonBreath] {
             let id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
-                name: name.into(),
+                name,
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -33661,15 +33819,15 @@ fn a_dead_dragon_swaps_the_taken_item_for_the_given_one_and_returns_zero() {
 fn golem_steam_acts_on_one_draw_in_four_and_needs_animation_data_then() {
     use cyrus_game::random::EngineRandom;
     let run = |state: u32| {
-        let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+        let mut scripts = random_scripts(Native::Rnd, vec![], Object::Me);
         scripts.definition.functions.push(Function {
-            name: "GolemSteam".into(),
+            name: Native::GolemSteam,
             param_count: 0,
             kind: CallKind::Function,
         });
         let id = u16::try_from(scripts.definition.functions.len() - 1).unwrap();
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
-            assign_call(1, id, "GolemSteam", &[]).operation,
+            assign_call(1, id, Native::GolemSteam, &[]).operation,
             Operation::End { target: 0 },
         ]
         .into_iter()
@@ -33802,13 +33960,13 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
             scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
             let lineup_id = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
-                name: "PlayerLineUp".into(),
+                name: Native::PlayerLineUp,
                 param_count: 3,
                 kind: CallKind::Task,
             });
             let kill_id = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
-                name: "KillMe".into(),
+                name: Native::KillMe,
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -33819,7 +33977,7 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
                     0,
                     Step {
                         next: 1,
-                        operation: wait(kill_id, "KillMe", CallKind::Function, vec![]),
+                        operation: wait(kill_id, Native::KillMe, CallKind::Function, vec![]),
                     },
                 ),
                 (
@@ -33835,7 +33993,7 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
                         next: 4,
                         operation: wait(
                             lineup_id,
-                            "PlayerLineUp",
+                            Native::PlayerLineUp,
                             CallKind::Task,
                             vec![
                                 Value::Integer { value: 1024 },
@@ -34019,14 +34177,14 @@ fn created_object_killed_by_its_hook_does_not_run_main() {
     let mut scripts = cache();
     let kill_id = scripts.definition.functions.len() as u16;
     scripts.definition.functions.push(Function {
-        name: "KillMe".into(),
+        name: Native::KillMe,
         param_count: 0,
         kind: CallKind::Function,
     });
     let template = scripts.actors.get_mut("LOGIC").unwrap();
     template.native_hook = Some(Call {
         function_id: kill_id,
-        function: "KillMe".into(),
+        function: Native::KillMe,
         target: Object::Me,
         kind: CallKind::Function,
         arguments: vec![],
@@ -34128,7 +34286,7 @@ fn shoot_creates_the_named_object_at_the_creator_with_the_given_orientation() {
         scripts.actors.insert("BALL".into(), projectile);
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "shoot".into(),
+            name: Native::Shoot,
             param_count: 7,
             kind: CallKind::Function,
         });
@@ -34140,7 +34298,7 @@ fn shoot_creates_the_named_object_at_the_creator_with_the_given_orientation() {
             Operation::Call {
                 call: Call {
                     function_id: id,
-                    function: "shoot".into(),
+                    function: Native::Shoot,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments,
@@ -34211,7 +34369,7 @@ fn shoot_player_aims_the_created_object_at_the_selected_player() {
         scripts.actors.insert("BALL".into(), projectile);
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "shootPlayer".into(),
+            name: Native::ShootPlayer,
             param_count: 4,
             kind: CallKind::Function,
         });
@@ -34221,7 +34379,7 @@ fn shoot_player_aims_the_created_object_at_the_selected_player() {
             Operation::Call {
                 call: Call {
                     function_id: id,
-                    function: "shootPlayer".into(),
+                    function: Native::ShootPlayer,
                     target: Object::Me,
                     kind: CallKind::Function,
                     arguments: vec![
@@ -35313,7 +35471,7 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
             ops.push(Operation::Call {
                 call: Call {
                     function_id: 5,
-                    function: "KillMe".into(),
+                    function: Native::KillMe,
                     kind: CallKind::Function,
                     target: Object::Me,
                     arguments: vec![],
@@ -35321,12 +35479,12 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
             });
         }
         ops.push(Operation::Call {
-            call: attribute_call(1, "SetAttribute", 44, Some(0x123)),
+            call: attribute_call(1, Native::SetAttribute, 44, Some(0x123)),
         });
         ops.push(Operation::End { target: 0 });
         let mut scripts = attribute_cache(ops);
         scripts.definition.functions.push(Function {
-            name: "KillMe".into(),
+            name: Native::KillMe,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -35368,12 +35526,12 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
     let mut scripts = cache();
     scripts.definition.functions.extend([
         Function {
-            name: "projectileAI".into(),
+            name: Native::ProjectileAI,
             param_count: 0,
             kind: CallKind::Task,
         },
         Function {
-            name: "KillMe".into(),
+            name: Native::KillMe,
             param_count: 0,
             kind: CallKind::Function,
         },
@@ -35391,14 +35549,14 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
             0,
             Step {
                 next: 1,
-                operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+                operation: wait(1, Native::ProjectileAI, CallKind::Task, vec![]),
             },
         ),
         (
             1,
             Step {
                 next: 2,
-                operation: wait(2, "KillMe", CallKind::Function, vec![]),
+                operation: wait(2, Native::KillMe, CallKind::Function, vec![]),
             },
         ),
         (
@@ -35485,12 +35643,12 @@ fn projectile_ai_stops_at_a_wall_contact() {
         let mut scripts = cache();
         scripts.definition.functions.extend([
             Function {
-                name: "projectileAI".into(),
+                name: Native::ProjectileAI,
                 param_count: 0,
                 kind: CallKind::Task,
             },
             Function {
-                name: "KillMe".into(),
+                name: Native::KillMe,
                 param_count: 0,
                 kind: CallKind::Function,
             },
@@ -35508,14 +35666,14 @@ fn projectile_ai_stops_at_a_wall_contact() {
                 0,
                 Step {
                     next: 1,
-                    operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+                    operation: wait(1, Native::ProjectileAI, CallKind::Task, vec![]),
                 },
             ),
             (
                 1,
                 Step {
                     next: 2,
-                    operation: wait(2, "KillMe", CallKind::Function, vec![]),
+                    operation: wait(2, Native::KillMe, CallKind::Function, vec![]),
                 },
             ),
             (
@@ -35775,13 +35933,13 @@ fn script_jump_fixture(
         true,
         |scripts| {
             scripts.definition.functions.push(Function {
-                name: "Jump".into(),
+                name: Native::Jump,
                 param_count: 0,
                 kind: CallKind::Function,
             });
             let function_id = scripts.definition.functions.len() as u16 - 1;
             scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
-                (0, assign_call(1, function_id, "Jump", &[])),
+                (0, assign_call(1, function_id, Native::Jump, &[])),
                 (
                     1,
                     Step {
@@ -36024,7 +36182,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
     let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
         let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "Jump".into(),
+            name: Native::Jump,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -36032,7 +36190,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
         cyrus
             .program
             .steps
-            .insert(0, assign_call(1, function_id, "Jump", &[]));
+            .insert(0, assign_call(1, function_id, Native::Jump, &[]));
     });
     let player_index = world
         .actors()
@@ -36139,7 +36297,7 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
     let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
         let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "Jump".into(),
+            name: Native::Jump,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -36147,7 +36305,7 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
         cyrus
             .program
             .steps
-            .insert(0, assign_call(1, function_id, "Jump", &[]));
+            .insert(0, assign_call(1, function_id, Native::Jump, &[]));
     });
     let player_index = world
         .actors()
@@ -36279,12 +36437,12 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
     };
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "MoveObjectAxis".into(),
+        name: Native::MoveObjectAxis,
         param_count: 3,
         kind: CallKind::Task,
     });
     scripts.definition.functions.push(Function {
-        name: "LightOffset".into(),
+        name: Native::LightOffset,
         param_count: 3,
         kind: CallKind::Function,
     });
@@ -36301,7 +36459,7 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
         .unwrap()
         .operation = wait(
         1,
-        "MoveObjectAxis",
+        Native::MoveObjectAxis,
         CallKind::Task,
         vec![
             Value::Integer { value: 0 },
@@ -36315,7 +36473,7 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
         .unwrap()
         .program
         .steps
-        .insert(0, assign_call(1, 2, "LightOffset", &[256, -128, 512]));
+        .insert(0, assign_call(1, 2, Native::LightOffset, &[256, -128, 512]));
     scripts.content_id = scripts.content_identity().unwrap();
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = cyrus_assets::collision::CollisionScene::default();
@@ -36379,9 +36537,9 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
 fn action_statement_resets_preserve_high_words_through_snapshot_restore() {
     use cyrus_game::script::ScriptInputs;
     for (name, arguments, expected) in [
-        ("ResetAction", vec![-2147483647], [258, 514]),
-        ("ResetAllAction", vec![], [0, 0]),
-        ("SetAction", vec![1], [2147483907, 2147484162]),
+        (Native::ResetAction, vec![-2147483647], [258, 514]),
+        (Native::ResetAllAction, vec![], [0, 0]),
+        (Native::SetAction, vec![1], [2147483907, 2147484162]),
     ] {
         let (mut world, _, _) = movement_fixture(
             18,
@@ -36389,7 +36547,7 @@ fn action_statement_resets_preserve_high_words_through_snapshot_restore() {
             true,
             |scripts| {
                 scripts.definition.functions.push(Function {
-                    name: name.into(),
+                    name,
                     param_count: arguments.len() as u8,
                     kind: CallKind::Function,
                 });
@@ -36455,14 +36613,14 @@ fn using_the_island_map_item_raises_the_island_map_request_once() {
     let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: "UseItem".into(),
+            name: Native::UseItem,
             param_count: 1,
             kind: CallKind::Function,
         });
         let call = Operation::ObjectCall {
             call: Call {
                 function_id: id,
-                function: "UseItem".into(),
+                function: Native::UseItem,
                 target: Object::Player,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: 83 }],
@@ -36907,7 +37065,7 @@ fn bind_scheduler_environment(
     handle
 }
 
-fn light_maintenance_scripts(kind: u8, count: usize, calls: &[(&str, &[i32])]) -> Scripts {
+fn light_maintenance_scripts(kind: u8, count: usize, calls: &[(Native, &[i32])]) -> Scripts {
     let mut scripts = cache();
     scripts.instances.truncate(count);
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
@@ -36917,13 +37075,13 @@ fn light_maintenance_scripts(kind: u8, count: usize, calls: &[(&str, &[i32])]) -
     for (index, (name, arguments)) in calls.iter().enumerate() {
         let function = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: (*name).into(),
+            name: *name,
             param_count: arguments.len() as u8,
             kind: CallKind::Function,
         });
         actor.program.steps.insert(
             index as u32,
-            assign_call(index as u32 + 1, function, name, arguments),
+            assign_call(index as u32 + 1, function, *name, arguments),
         );
     }
     let end = calls.len() as u32;
@@ -36995,9 +37153,9 @@ fn light_maintenance_precedes_ordinary_scripts_but_follows_separate_scripts() {
             kind,
             1,
             &[
-                ("LightFlicker", &[18, 1]),
-                ("LightSize", &[8, 1]),
-                ("Rnd", &[255]),
+                (Native::LightFlicker, &[18, 1]),
+                (Native::LightSize, &[8, 1]),
+                (Native::Rnd, &[255]),
             ],
         );
         scripts
@@ -37034,8 +37192,14 @@ fn light_maintenance_precedes_ordinary_scripts_but_follows_separate_scripts() {
 
 #[test]
 fn light_maintenance_consumes_intensity_then_radius_in_shared_actor_order() {
-    let scripts =
-        light_maintenance_scripts(6, 2, &[("LightFlicker", &[18, 1]), ("LightSize", &[8, 1])]);
+    let scripts = light_maintenance_scripts(
+        6,
+        2,
+        &[
+            (Native::LightFlicker, &[18, 1]),
+            (Native::LightSize, &[8, 1]),
+        ],
+    );
     let (_, mut world, data) = light_maintenance_world(scripts);
     let mut random = cyrus_game::random::EngineRandom::default();
     assert_eq!(
@@ -37092,8 +37256,11 @@ fn light_maintenance_uses_signed_thresholds_one_draw_and_word_clamps() {
         ([0, 1], [0, 1], 1, 256, -9, 1, 256, 1, 0, 1),
         ([65536, 1], [0, 1], 1, 256, 100, 1, 256, 100, 0, 1),
     ] {
-        let mut scripts =
-            light_maintenance_scripts(6, 1, &[("LightFlicker", &flicker), ("LightSize", &size)]);
+        let mut scripts = light_maintenance_scripts(
+            6,
+            1,
+            &[(Native::LightFlicker, &flicker), (Native::LightSize, &size)],
+        );
         scripts.instances[0].light_intensity = start_intensity;
         scripts.instances[0].light_radius = start_radius;
         let (_, mut world, data) = light_maintenance_world(scripts);
@@ -37113,8 +37280,14 @@ fn light_maintenance_uses_signed_thresholds_one_draw_and_word_clamps() {
 #[test]
 fn light_maintenance_signed_phase_and_shared_random_continue_after_snapshot() {
     use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
-    let scripts =
-        light_maintenance_scripts(6, 1, &[("LightFlicker", &[18, 1]), ("LightSize", &[8, 1])]);
+    let scripts = light_maintenance_scripts(
+        6,
+        1,
+        &[
+            (Native::LightFlicker, &[18, 1]),
+            (Native::LightSize, &[8, 1]),
+        ],
+    );
     let (scripts, mut world, data) = light_maintenance_world(scripts);
     let mut random = cyrus_game::random::EngineRandom::default();
     light_maintenance_update(&mut world, &data, true, 32768, &mut random);
@@ -37166,9 +37339,9 @@ fn light_maintenance_disabled_record_does_not_consume_random_or_modulate() {
         6,
         1,
         &[
-            ("LightFlicker", &[18, 0]),
-            ("LightSize", &[8, 0]),
-            ("LightOff", &[]),
+            (Native::LightFlicker, &[18, 0]),
+            (Native::LightSize, &[8, 0]),
+            (Native::LightOff, &[]),
         ],
     );
     let (_, mut world, data) = light_maintenance_world(scripts);
@@ -37192,7 +37365,10 @@ fn light_maintenance_rejects_negative_wrapped_amplitude_before_mutation_or_draws
         let scripts = light_maintenance_scripts(
             6,
             1,
-            &[("LightFlicker", &[18, 0]), ("LightSize", &[amplitude, 0])],
+            &[
+                (Native::LightFlicker, &[18, 0]),
+                (Native::LightSize, &[amplitude, 0]),
+            ],
         );
         let (_, mut world, data) = light_maintenance_world(scripts);
         world
@@ -37225,7 +37401,7 @@ fn light_maintenance_rejects_negative_wrapped_amplitude_before_mutation_or_draws
 
 #[test]
 fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance() {
-    let mut scripts = light_maintenance_scripts(4, 1, &[("FlatAnimate", &[129, 1, 1])]);
+    let mut scripts = light_maintenance_scripts(4, 1, &[(Native::FlatAnimate, &[129, 1, 1])]);
     scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
     let (_, mut world, data) = light_maintenance_world(scripts);
     let mut random = cyrus_game::random::EngineRandom::default();
@@ -37236,7 +37412,8 @@ fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance
     light_maintenance_update(&mut world, &data, false, 1, &mut random);
     assert_eq!(world.actors()[0].flat_state().unwrap()["frame"], 1);
 
-    let scripts = light_maintenance_scripts(4, 1, &[("Flat", &[129]), ("FlatOff", &[])]);
+    let scripts =
+        light_maintenance_scripts(4, 1, &[(Native::Flat, &[129]), (Native::FlatOff, &[])]);
     let (_, mut world, data) = light_maintenance_world(scripts);
     light_maintenance_update(&mut world, &data, false, 33, &mut random);
     let actor = &world.actors()[0];
@@ -37253,9 +37430,9 @@ fn light_maintenance_keeps_hidden_ordinary_actor_phases_and_random_unchanged() {
         4,
         1,
         &[
-            ("LightFlicker", &[18, 0]),
-            ("LightSize", &[8, 0]),
-            ("HideMe", &[]),
+            (Native::LightFlicker, &[18, 0]),
+            (Native::LightSize, &[8, 0]),
+            (Native::HideMe, &[]),
         ],
     );
     let (_, mut world, data) = light_maintenance_world(scripts);
@@ -37298,12 +37475,12 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         let mut scripts = cache();
         scripts.definition.functions.extend([
             Function {
-                name: "projectileAI".into(),
+                name: Native::ProjectileAI,
                 param_count: 0,
                 kind: CallKind::Task,
             },
             Function {
-                name: "KillMe".into(),
+                name: Native::KillMe,
                 param_count: 0,
                 kind: CallKind::Function,
             },
@@ -37321,14 +37498,14 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
                 0,
                 Step {
                     next: 1,
-                    operation: wait(1, "projectileAI", CallKind::Task, vec![]),
+                    operation: wait(1, Native::ProjectileAI, CallKind::Task, vec![]),
                 },
             ),
             (
                 1,
                 Step {
                     next: 2,
-                    operation: wait(2, "KillMe", CallKind::Function, vec![]),
+                    operation: wait(2, Native::KillMe, CallKind::Function, vec![]),
                 },
             ),
             (
@@ -37346,7 +37523,7 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
             placement.map_position = [600, 20, z];
         }
         scripts.definition.functions.push(Function {
-            name: "PlayAnimation".into(),
+            name: Native::PlayAnimation,
             param_count: 2,
             kind: CallKind::Function,
         });
@@ -37361,7 +37538,7 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
                                 .unwrap(),
                             kind: CallKind::Function,
                             target: Object::Me,
-                            function: "PlayAnimation".into(),
+                            function: Native::PlayAnimation,
                             arguments: vec![
                                 Value::Integer { value: group },
                                 Value::Integer { value: 0 },
@@ -37883,10 +38060,10 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
 fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
     use cyrus_assets::animation::AnimationModel;
     use cyrus_game::script::{ScriptInputs, WeaponInputs};
-    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.definition.functions.push(Function {
-        name: "Resurrect".into(),
+        name: Native::Resurrect,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -37895,7 +38072,7 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         .attributes
         .extend([(Attribute::Combat, 1), (Attribute::Weapon, 1)]);
     actor.program.steps = BTreeMap::from([
-        (0, assign_call(1, 1, "KillMe", &[])),
+        (0, assign_call(1, 1, Native::KillMe, &[])),
         (
             1,
             Step {
@@ -37903,7 +38080,7 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
                 operation: Operation::End { target: 2 },
             },
         ),
-        (2, assign_call(3, 2, "Resurrect", &[])),
+        (2, assign_call(3, 2, Native::Resurrect, &[])),
         (
             3,
             Step {
@@ -38296,14 +38473,14 @@ fn created_effects_maintain_before_scripts_and_preserve_hidden_phases_after_rest
     use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
     for restore in [false, true] {
         for hidden in [false, true] {
-            let mut calls: Vec<(&str, &[i32])> = vec![
-                ("Light", &[256, 100]),
-                ("LightFlicker", &[18, 1]),
-                ("LightSize", &[8, 1]),
-                ("FlatAnimate", &[129, 1, 1]),
+            let mut calls: Vec<(Native, &[i32])> = vec![
+                (Native::Light, &[256, 100]),
+                (Native::LightFlicker, &[18, 1]),
+                (Native::LightSize, &[8, 1]),
+                (Native::FlatAnimate, &[129, 1, 1]),
             ];
             if hidden {
-                calls.push(("HideMe", &[]));
+                calls.push((Native::HideMe, &[]));
             }
             let mut scripts = light_maintenance_scripts(4, 1, &calls);
             scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
@@ -38371,7 +38548,7 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
     let mut scripts = wait_cache(vec![
         wait(
             4,
-            "RTX",
+            Native::Rtx,
             CallKind::Task,
             vec![Value::Integer {
                 value: i32::from_le_bytes(*b"BETA"),
@@ -38379,7 +38556,7 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
         ),
         wait(
             5,
-            "RTXpAnim",
+            Native::RTXpAnim,
             CallKind::Task,
             vec![
                 Value::Integer {
@@ -38392,7 +38569,7 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
         ),
         wait(
             4,
-            "RTX",
+            Native::Rtx,
             CallKind::Task,
             vec![Value::Integer {
                 value: i32::from_le_bytes(*b"BETA"),
@@ -38400,7 +38577,7 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
         ),
         wait(
             4,
-            "RTX",
+            Native::Rtx,
             CallKind::Task,
             vec![Value::Read {
                 place: Place::Local { index: 0 },
@@ -38408,7 +38585,7 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
         ),
         wait(
             1,
-            "Wait",
+            Native::Wait,
             CallKind::Task,
             vec![Value::Integer {
                 value: i32::from_le_bytes(*b"NOPE"),
@@ -38418,12 +38595,12 @@ fn dialogue_preparation_reads_literal_labels_without_running_dormant_scripts() {
     ]);
     scripts.definition.functions.extend([
         Function {
-            name: "RTX".into(),
+            name: Native::Rtx,
             param_count: 1,
             kind: CallKind::Task,
         },
         Function {
-            name: "RTXpAnim".into(),
+            name: Native::RTXpAnim,
             param_count: 4,
             kind: CallKind::Task,
         },
@@ -38568,7 +38745,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
             if native_jump {
                 let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
                 scripts.definition.functions.push(Function {
-                    name: "Jump".into(),
+                    name: Native::Jump,
                     param_count: 0,
                     kind: CallKind::Function,
                 });
@@ -38578,7 +38755,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                     .unwrap()
                     .program
                     .steps
-                    .insert(0, assign_call(1, function_id, "Jump", &[]));
+                    .insert(0, assign_call(1, function_id, Native::Jump, &[]));
             }
         });
         let index = world

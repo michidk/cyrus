@@ -2,6 +2,7 @@
 use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
 use cyrus_assets::animation::Animations;
+use cyrus_script::Native;
 use cyrus_script::program::{CallKind, Program};
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
@@ -106,7 +107,7 @@ impl Host for AnimationHost<'_, '_> {
         &mut self,
         target: &Target,
         kind: CallKind,
-        function: &str,
+        function: Native,
         arguments: &[Argument],
         invocation: cyrus_script::Invocation,
         _: &mut [i32],
@@ -116,7 +117,7 @@ impl Host for AnimationHost<'_, '_> {
             "target {target:?} unsupported by animation host"
         );
         anyhow::ensure!(
-            kind == CallKind::Task && function.eq_ignore_ascii_case("PushAnimation"),
+            kind == CallKind::Task && function == Native::PushAnimation,
             "task {function} unsupported"
         );
         self.tasks

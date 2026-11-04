@@ -1,11 +1,25 @@
 //! Public invocation contracts use independently authored portable programs.
+use cyrus_script::Native;
 use cyrus_script::program::*;
 use cyrus_script::*;
 use std::collections::BTreeMap;
 
+// Stand-ins: these interpreter contracts hold for any native, so the DEF's spare natives serve.
+const QUERY: Native = Native::Spare0Parm0;
+const NO_VALUE: Native = Native::Spare1Parm0;
+const INSTANT: Native = Native::Spare0Parm1;
+const FAIL: Native = Native::Spare1Parm1;
+const OBSERVE: Native = Native::Spare0Parm2;
+const EFFECT: Native = Native::Spare1Parm2;
+const CLEAR_TASKS: Native = Native::Spare1Parm3;
+const OUTER_RETURN: Native = Native::Spare0Parm4;
+const INNER_RETURN: Native = Native::Spare1Parm4;
+const WRONG: Native = Native::Spare0Parm5;
+const AFTER: Native = Native::Spare1Parm5;
+
 #[derive(Default)]
 struct Service {
-    calls: Vec<String>,
+    calls: Vec<Native>,
     ready: bool,
     ends: usize,
     polls: usize,
@@ -17,19 +31,19 @@ impl Host for Service {
         &mut self,
         target: &Target,
         _: CallKind,
-        function: &str,
+        function: Native,
         _: &[Argument],
         _: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         assert_eq!(target, &Target::Me);
-        self.calls.push(function.into());
+        self.calls.push(function);
         match function {
-            "Wait" => Ok(CallResult::Pending(9)),
-            "Query" => Ok(CallResult::Complete(17)),
-            "NoValue" => Ok(CallResult::CompleteWithoutValue),
-            "Instant" => Ok(CallResult::CompleteTask),
-            "Fail" => anyhow::bail!("cue failed"),
+            Native::Wait => Ok(CallResult::Pending(9)),
+            QUERY => Ok(CallResult::Complete(17)),
+            NO_VALUE => Ok(CallResult::CompleteWithoutValue),
+            INSTANT => Ok(CallResult::CompleteTask),
+            FAIL => anyhow::bail!("cue failed"),
             _ => Ok(CallResult::Complete(0)),
         }
     }
@@ -70,13 +84,13 @@ fn assign(destination: Place, value: i32) -> Operation {
         },
     }
 }
-fn call(name: &str, kind: CallKind) -> Operation {
+fn call(name: Native, kind: CallKind) -> Operation {
     Operation::Call {
         call: Call {
             function_id: 0,
             target: Object::Me,
             kind,
-            function: name.into(),
+            function: name,
             arguments: vec![],
         },
     }
@@ -118,7 +132,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
             &mut self,
             _: &Target,
             kind: CallKind,
-            _: &str,
+            _: Native,
             arguments: &[Argument],
             _: cyrus_script::Invocation,
             _: &mut [i32],
@@ -149,7 +163,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
         }
     }
     for kind in [CallKind::Function, CallKind::Task] {
-        let Operation::Call { call: mut outer } = call("Observe", kind) else {
+        let Operation::Call { call: mut outer } = call(OBSERVE, kind) else {
             unreachable!()
         };
         outer.arguments = vec![
@@ -204,24 +218,24 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
 fn immediate_statements_run_through_end_and_restart_only_on_a_later_stage() {
     let mut vm = runtime(vec![
         assign(Place::Flag { index: 0 }, 8),
-        call("Observe", CallKind::Function),
+        call(OBSERVE, CallKind::Function),
         Operation::End { target: 0 },
     ]);
     let mut host = Service::default();
     let mut flags = [0];
     vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
     assert_eq!(flags, [8]);
-    assert_eq!(host.calls, ["Observe"]);
+    assert_eq!(host.calls, [OBSERVE]);
     assert_eq!(host.ends, 1);
     assert_eq!(vm.program_counter(Thread::Main), Some(0));
     vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
-    assert_eq!(host.calls, ["Observe", "Observe"]);
+    assert_eq!(host.calls, [OBSERVE, OBSERVE]);
     assert_eq!(host.ends, 2);
 }
 #[test]
 fn blocking_completion_resumes_the_same_stage_without_restarting_the_task() {
     let mut vm = runtime(vec![
-        call("Wait", CallKind::Task),
+        call(Native::Wait, CallKind::Task),
         assign(Place::Flag { index: 0 }, 4),
         Operation::End { target: 0 },
     ]);
@@ -231,11 +245,11 @@ fn blocking_completion_resumes_the_same_stage_without_restarting_the_task() {
     assert_eq!(vm.waiting(Thread::Main), Some(9));
     assert_eq!(flags, [0]);
     vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
-    assert_eq!(host.calls, ["Wait"]);
+    assert_eq!(host.calls, [Native::Wait]);
     assert_eq!(flags, [0]);
     host.ready = true;
     vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
-    assert_eq!(host.calls, ["Wait"]);
+    assert_eq!(host.calls, [Native::Wait]);
     assert_eq!(flags, [4]);
     assert_eq!(vm.waiting(Thread::Main), None);
 }
@@ -246,7 +260,7 @@ fn subroutines_share_locals_and_resume_the_actor_return_continuation() {
         assign(Place::Flag { index: 0 }, 6),
         Operation::End { target: 0 },
         assign(Place::Local { index: 0 }, 9),
-        call("Observe", CallKind::Function),
+        call(OBSERVE, CallKind::Function),
         Operation::Return,
     ]);
     let mut host = Service::default();
@@ -254,7 +268,7 @@ fn subroutines_share_locals_and_resume_the_actor_return_continuation() {
     vm.invoke(Thread::Main, &mut host, &mut flags, 20).unwrap();
     assert_eq!(vm.variables(), [9]);
     assert_eq!(flags, [6]);
-    assert_eq!(host.calls, ["Observe"]);
+    assert_eq!(host.calls, [OBSERVE]);
 }
 #[test]
 fn return_without_gosub_restarts_the_script_and_yields() {
@@ -324,14 +338,14 @@ fn division_by_zero_preserves_destination_and_does_not_repeat_expression_effects
                         function_id: 0,
                         target: Object::Me,
                         kind: CallKind::Function,
-                        function: "Query".into(),
+                        function: QUERY,
                         arguments: vec![],
                     }),
                 },
                 rest: vec![(4, integer(0))],
             },
         },
-        call("After", CallKind::Function),
+        call(AFTER, CallKind::Function),
         Operation::End { target: 0 },
     ]);
     let mut host = Service::default();
@@ -343,7 +357,7 @@ fn division_by_zero_preserves_destination_and_does_not_repeat_expression_effects
     assert!(first.contains("world 17 actor TEST script instruction 0"));
     assert!(first.contains("SOUP division by zero"));
     assert_eq!(flags, [73]);
-    assert_eq!(host.calls, ["Query"]);
+    assert_eq!(host.calls, [QUERY]);
     assert_eq!(host.ends, 0);
     for thread in [Thread::Main, Thread::Interrupt] {
         assert_eq!(
@@ -354,14 +368,14 @@ fn division_by_zero_preserves_destination_and_does_not_repeat_expression_effects
         );
     }
     assert_eq!(flags, [73]);
-    assert_eq!(host.calls, ["Query"]);
+    assert_eq!(host.calls, [QUERY]);
     assert_eq!(host.ends, 0);
 }
 
 #[test]
 fn failed_callbacks_and_runaway_scripts_are_sticky_and_contextual() {
     let mut vm = runtime(vec![
-        call("Fail", CallKind::Function),
+        call(FAIL, CallKind::Function),
         Operation::End { target: 0 },
     ]);
     let mut host = Service::default();
@@ -376,7 +390,7 @@ fn failed_callbacks_and_runaway_scripts_are_sticky_and_contextual() {
             .unwrap_err()
             .to_string()
     );
-    assert_eq!(host.calls, ["Fail"]);
+    assert_eq!(host.calls, [FAIL]);
     let mut vm = runtime(vec![Operation::Goto { target: 0 }]);
     assert!(
         vm.invoke(Thread::Main, &mut host, &mut [], 3)
@@ -398,7 +412,7 @@ fn branches_fold_left_to_right_without_boolean_precedence() {
             conditions: vec![condition(1, 1, 2), condition(1, 0, 1), condition(1, 0, 0)],
             target: 2,
         },
-        call("Wrong", CallKind::Function),
+        call(WRONG, CallKind::Function),
         Operation::End { target: 0 },
     ]);
     let mut host = Service::default();
@@ -484,10 +498,10 @@ fn malformed_targets_are_rejected_before_effects() {
 fn nested_gosub_overwrites_the_actor_return_continuation() {
     let mut vm = runtime(vec![
         Operation::Gosub { target: 3 },
-        call("OuterReturn", CallKind::Function),
+        call(OUTER_RETURN, CallKind::Function),
         Operation::End { target: 0 },
         Operation::Gosub { target: 6 },
-        call("InnerReturn", CallKind::Function),
+        call(INNER_RETURN, CallKind::Function),
         Operation::Return,
         Operation::Return,
     ]);
@@ -497,8 +511,8 @@ fn nested_gosub_overwrites_the_actor_return_continuation() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("execution budget"));
-    assert!(!host.calls.iter().any(|call| call == "OuterReturn"));
-    assert!(host.calls.iter().all(|call| call == "InnerReturn"));
+    assert!(!host.calls.contains(&OUTER_RETURN));
+    assert!(host.calls.iter().all(|&call| call == INNER_RETURN));
 }
 
 #[test]
@@ -567,7 +581,7 @@ impl Host for Tasks {
         &mut self,
         _: &Target,
         _: CallKind,
-        _: &str,
+        _: Native,
         args: &[Argument],
         invocation: cyrus_script::Invocation,
         _: &mut [i32],
@@ -598,7 +612,7 @@ impl Host for Tasks {
 }
 #[test]
 fn multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots() {
-    let mut task = call("Wait", CallKind::Multitask);
+    let mut task = call(Native::Wait, CallKind::Multitask);
     let Operation::Call { call } = &mut task else {
         unreachable!()
     };
@@ -638,7 +652,7 @@ fn multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots() 
 }
 #[test]
 fn actor_task_capacity_fails_before_a_seventh_effect_and_teardown_cancels_all() {
-    let mut ops = vec![call("Wait", CallKind::Multitask); 7];
+    let mut ops = vec![call(Native::Wait, CallKind::Multitask); 7];
     ops.push(Operation::End { target: 0 });
     let mut vm = runtime(ops);
     let mut host = Tasks::default();
@@ -665,12 +679,12 @@ fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions()
             &mut self,
             _: &Target,
             _: CallKind,
-            function: &str,
+            function: Native,
             _: &[Argument],
             _: cyrus_script::Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<CallResult> {
-            Ok(if function == "ClearTasks" {
+            Ok(if function == CLEAR_TASKS {
                 CallResult::CompleteAfterClearingTasks(0)
             } else {
                 self.next += 1;
@@ -695,9 +709,9 @@ fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions()
         }
     }
     // Tasks started after the clear are not affected: it happens inside the call, not afterwards.
-    let mut ops = vec![call("Wait", CallKind::Multitask); 3];
-    ops.push(call("ClearTasks", CallKind::Function));
-    ops.push(call("Wait", CallKind::Multitask));
+    let mut ops = vec![call(Native::Wait, CallKind::Multitask); 3];
+    ops.push(call(CLEAR_TASKS, CallKind::Function));
+    ops.push(call(Native::Wait, CallKind::Multitask));
     ops.push(Operation::End { target: 0 });
     let mut vm = runtime(ops);
     let mut host = Clearing::default();
@@ -706,7 +720,7 @@ fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions()
     assert_eq!(vm.active_tasks(), 1);
 
     let mut vm = runtime(vec![
-        call("ClearTasks", CallKind::Multitask),
+        call(CLEAR_TASKS, CallKind::Multitask),
         Operation::End { target: 0 },
     ]);
     let error = vm
@@ -762,7 +776,7 @@ fn interrupt_controls_pause_the_shared_main_task_without_polling_it() {
             vec![
                 Operation::TaskPause { label: 2 },
                 Operation::Endint,
-                call("Wait", CallKind::Task),
+                call(Native::Wait, CallKind::Task),
                 assign(Place::Flag { index: 0 }, 7),
                 Operation::End { target: 2 },
             ],
@@ -787,7 +801,7 @@ fn interrupt_controls_pause_the_shared_main_task_without_polling_it() {
 
 #[test]
 fn object_tasks_fail_before_effects_instead_of_using_the_callers_slots() {
-    let Operation::Call { mut call } = call("Wait", CallKind::Task) else {
+    let Operation::Call { mut call } = call(Native::Wait, CallKind::Task) else {
         unreachable!()
     };
     call.target = Object::Player;
@@ -808,7 +822,7 @@ fn object_tasks_fail_before_effects_instead_of_using_the_callers_slots() {
 #[test]
 fn task_elapsed_uses_current_scale_and_wrapping_counters() {
     let mut vm = runtime(vec![
-        call("Observe", CallKind::Multitask),
+        call(OBSERVE, CallKind::Multitask),
         Operation::Yield,
         Operation::End { target: 1 },
     ]);
@@ -848,8 +862,8 @@ fn task_elapsed_uses_current_scale_and_wrapping_counters() {
 #[test]
 fn paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions() {
     let mut vm = runtime(vec![
-        call("Observe", CallKind::Multitask),
-        call("Observe", CallKind::Task),
+        call(OBSERVE, CallKind::Multitask),
+        call(OBSERVE, CallKind::Task),
         Operation::Yield,
         Operation::TaskPause { label: 0 },
         Operation::Yield,
@@ -869,7 +883,7 @@ fn paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions() {
     assert_eq!(host.invocations[3].unpaused_blocking_tasks, 1);
 
     let mut vm = runtime(vec![
-        call("Observe", CallKind::Multitask),
+        call(OBSERVE, CallKind::Multitask),
         Operation::TaskPause { label: 0 },
         Operation::Yield,
         Operation::TaskResume { label: 0 },
@@ -896,7 +910,7 @@ impl Host for ForeignTasks {
         &mut self,
         target: &Target,
         kind: CallKind,
-        function: &str,
+        function: Native,
         arguments: &[Argument],
         invocation: Invocation,
         flags: &mut [i32],
@@ -926,7 +940,7 @@ fn foreign_call() -> Call {
         function_id: 0,
         kind: CallKind::Task,
         target: Object::Player,
-        function: "Observe".into(),
+        function: OBSERVE,
         arguments: vec![
             Value::String { index: 0 },
             Value::Read {
@@ -1121,7 +1135,7 @@ fn ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not() {
         program(
             3,
             vec![
-                call("Wait", CallKind::Task),
+                call(Native::Wait, CallKind::Task),
                 Operation::Increment {
                     destination: Place::Local { index: 0 },
                     delta: 1,
@@ -1138,7 +1152,7 @@ fn ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not() {
     assert_eq!(runtime.program_counter(Thread::Interrupt), Some(1));
     runtime.invoke_entry(&mut host, &mut [], 10).unwrap();
     assert_eq!(runtime.variables(), [0]);
-    assert_eq!(host.calls, ["Wait"]);
+    assert_eq!(host.calls, [Native::Wait]);
     runtime
         .invoke_body(Thread::Interrupt, &mut host, &mut [], 10)
         .unwrap();
@@ -1168,7 +1182,7 @@ fn entry_compares_foreign_task_operands_in_shared_code_identity() {
         )
         .unwrap();
         let mut host = Service::default();
-        let Operation::Call { call } = call("Wait", CallKind::Task) else {
+        let Operation::Call { call } = call(Native::Wait, CallKind::Task) else {
             unreachable!()
         };
         runtime
@@ -1198,7 +1212,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
             1,
             vec![
                 Operation::Yield,
-                call("Wait", CallKind::Task),
+                call(Native::Wait, CallKind::Task),
                 Operation::Yield,
                 Operation::End { target: 1 },
             ],
@@ -1218,7 +1232,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
         function_id: 0,
         kind: CallKind::Function,
         target: Object::Me,
-        function: "Query".into(),
+        function: QUERY,
         arguments: vec![],
     };
     assert_eq!(
@@ -1227,7 +1241,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
             .unwrap(),
         Some(17)
     );
-    assert_eq!(host.calls, ["Wait", "Query"]);
+    assert_eq!(host.calls, [Native::Wait, QUERY]);
     assert_eq!(runtime.active_tasks(), 1);
     assert_eq!(
         [
@@ -1237,7 +1251,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
         before
     );
     let failed = Call {
-        function: "Fail".into(),
+        function: FAIL,
         ..hook
     };
     assert!(
@@ -1250,7 +1264,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
             .invoke_native_hook(&failed, &mut host, &mut [])
             .is_err()
     );
-    assert_eq!(host.calls, ["Wait", "Query", "Fail"]);
+    assert_eq!(host.calls, [Native::Wait, QUERY, FAIL]);
 }
 
 #[test]
@@ -1260,7 +1274,7 @@ fn ordinary_task_bypass_preserves_entry_gate_but_runs_main_with_a_blocking_slot(
             program(
                 3,
                 vec![
-                    call("Wait", CallKind::Task),
+                    call(Native::Wait, CallKind::Task),
                     Operation::Increment {
                         destination: Place::Local { index: 0 },
                         delta: 1,
@@ -1324,7 +1338,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
             &mut self,
             _: &Target,
             _: CallKind,
-            _: &str,
+            _: Native,
             _: &[Argument],
             _: Invocation,
             _: &mut [i32],
@@ -1362,7 +1376,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
             function_id: 0,
             kind: CallKind::Function,
             target: if routed { Object::Player } else { Object::Me },
-            function: "Effect".into(),
+            function: EFFECT,
             arguments: vec![],
         };
         let statement = if routed {
@@ -1407,7 +1421,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         assert!(error.contains("world 17 actor TEST script"), "{error}");
         assert!(error.contains("instruction 0"), "{error}");
         assert!(
-            error.contains("native Effect has no supported numeric result"),
+            error.contains(&format!("native {EFFECT} has no supported numeric result")),
             "{error}"
         );
         assert_eq!(vm.variables(), [0]);
@@ -1415,7 +1429,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         assert_eq!(host.count, 1);
     }
     let mut vm = runtime(vec![
-        call("NoValue", CallKind::Task),
+        call(NO_VALUE, CallKind::Task),
         Operation::End { target: 0 },
     ]);
     let mut host = Service::default();
@@ -1428,7 +1442,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
     assert_eq!(vm.active_tasks(), 0);
 
     let mut vm = runtime(vec![Operation::End { target: 0 }]);
-    let Operation::Call { call } = call("NoValue", CallKind::Function) else {
+    let Operation::Call { call } = call(NO_VALUE, CallKind::Function) else {
         unreachable!()
     };
     assert_eq!(
@@ -1521,7 +1535,7 @@ fn native_command_setup_precedes_operands_and_preserves_call_provenance() {
             &mut self,
             _: &Target,
             _: CallKind,
-            _: &str,
+            _: Native,
             arguments: &[Argument],
             _: Invocation,
             _: &mut [i32],
@@ -1547,7 +1561,7 @@ fn native_command_setup_precedes_operands_and_preserves_call_provenance() {
         function_id: 0,
         target: Object::Me,
         kind: CallKind::Function,
-        function: "Query".into(),
+        function: QUERY,
         arguments: vec![Value::Read {
             place: Place::Property {
                 object: Object::Me,
@@ -1631,7 +1645,7 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
             &mut self,
             _: &Target,
             _: CallKind,
-            _: &str,
+            _: Native,
             _: &[Argument],
             _: Invocation,
             _: &mut [i32],
@@ -1656,7 +1670,7 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
         }
     }
     let mut vm = runtime(vec![
-        call("Wait", CallKind::Multitask),
+        call(Native::Wait, CallKind::Multitask),
         Operation::TaskPause { label: 0 },
         Operation::Yield,
         Operation::TaskResume { label: 0 },
@@ -1706,10 +1720,10 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
 #[test]
 fn a_task_that_completes_on_its_first_invocation_retains_no_slot() {
     for kind in [CallKind::Task, CallKind::Multitask] {
-        let mut vm = runtime(vec![call("Instant", kind), Operation::End { target: 0 }]);
+        let mut vm = runtime(vec![call(INSTANT, kind), Operation::End { target: 0 }]);
         let mut host = Service::default();
         vm.invoke(Thread::Main, &mut host, &mut [], 10).unwrap();
         assert_eq!(vm.active_tasks(), 0);
-        assert_eq!(host.calls, ["Instant"]);
+        assert_eq!(host.calls, [INSTANT]);
     }
 }

@@ -2,7 +2,7 @@
 use super::{GameHost, ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::QuickKeys;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{Attribute, Native};
 
 /// Items the sword key looks for, in order; the third is used without being selected.
 const SWORDS: [u16; 3] = [1, 13, 75];
@@ -48,7 +48,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         self.with_selected_host(inputs, random, sounds, |host| {
             let id = host.registry.id(host.index)?;
-            host.sheath_sword("SheathSword", id)
+            host.sheath_sword(Native::SheathSword, id)
         })
         .map(|_| ())
     }
@@ -109,10 +109,11 @@ impl GameHost<'_, '_, '_, '_> {
             .context("quick keys: inventory host unavailable")?;
         let id = self.registry.id(self.index)?;
         if keys.sword {
-            let (holding, drawing, sheathing) =
-                self.actor_weapon_predicates(self.index, "QuickSword")?;
+            let (holding, drawing, sheathing) = self
+                .weapon_predicates(self.index)
+                .context("quick sword key")?;
             if holding && !drawing && !sheathing {
-                self.sheath_sword("SheathSword", id)?;
+                self.sheath_sword(Native::SheathSword, id)?;
             } else if !drawing && !sheathing {
                 for sword in SWORDS {
                     if hud.item_count(sword)? != 0 {

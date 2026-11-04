@@ -1,8 +1,15 @@
 //! Script cache contracts use authored data and optional read-only installed extraction.
 use cyrus_assets::script::*;
 use cyrus_script::program::*;
-use cyrus_script::{Attribute, Attributes};
+use cyrus_script::{Attribute, Attributes, Native};
 use std::collections::BTreeMap;
+
+// Stand-ins: these cache contracts hold for any native, so the DEF's spare natives serve.
+const QUERY: Native = Native::Spare0Parm1;
+const HOOK: Native = Native::Spare0Parm0;
+const OUTER: Native = Native::Spare1Parm1;
+const INNER: Native = Native::Spare0Parm2;
+const MISSING: Native = Native::Spare1Parm0;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
         version: 30,
@@ -53,7 +60,7 @@ fn cache() -> Scripts {
         shells: Vec::new(),
         definition: Definition {
             functions: vec![Function {
-                name: "NullFunction".into(),
+                name: Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -175,7 +182,7 @@ fn portable_script_records_round_trip_with_the_same_identity() {
 fn installed_indices_are_checked_inside_nested_function_arguments() {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: "Query".into(),
+        name: QUERY,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -183,7 +190,7 @@ fn installed_indices_are_checked_inside_nested_function_arguments() {
         function_id: 1,
         kind: CallKind::Function,
         target: Object::Me,
-        function: "Query".into(),
+        function: QUERY,
         arguments: vec![Value::Read {
             place: Place::Flag { index: 1 },
         }],
@@ -449,7 +456,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 3,
-                function: "Hook".into(),
+                function: HOOK,
                 kind: CallKind::Function,
                 target: Object::Me,
                 arguments: vec![],
@@ -475,13 +482,13 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
                                             function_id: 1,
                                             kind: CallKind::Function,
                                             target: Object::Local { index: 0 },
-                                            function: "Outer".into(),
+                                            function: OUTER,
                                             arguments: vec![Value::Call {
                                                 call: Box::new(Call {
                                                     function_id: 2,
                                                     kind: CallKind::Function,
                                                     target: Object::Camera,
-                                                    function: "Inner".into(),
+                                                    function: INNER,
                                                     arguments: vec![Value::Update {
                                                         place: Place::Flag { index: 0 },
                                                         delta: 1,
@@ -509,17 +516,17 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
         },
     );
     let report = inventory::inspect(&scripts);
-    assert_eq!(report.declared_functions, ["NullFunction"]);
+    assert_eq!(report.declared_functions, [Native::NullFunction]);
     let actor = &report.actors["Unplaced"];
     assert_eq!(actor.placements, 0);
     assert_eq!(actor.instances, 1);
-    assert_eq!(actor.native_hook.as_ref().unwrap().function, "Hook");
+    assert_eq!(actor.native_hook.as_ref().unwrap().function, HOOK);
     assert_eq!(
         actor.calls,
         BTreeMap::from([
-            ("1:Function:Outer".into(), 1),
-            ("2:Function:Inner".into(), 1),
-            ("3:Function:Hook".into(), 1)
+            (format!("1:Function:{OUTER}"), 1),
+            (format!("2:Function:{INNER}"), 1),
+            (format!("3:Function:{HOOK}"), 1)
         ])
     );
     assert_eq!(
@@ -783,7 +790,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
             combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 0,
-                function: "NullFunction".into(),
+                function: Native::NullFunction,
                 kind: CallKind::Function,
                 target: Object::Me,
                 arguments: vec![],
@@ -817,21 +824,21 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
     for hook in [
         Call {
             function_id: 1,
-            function: "Missing".into(),
+            function: MISSING,
             kind: CallKind::Function,
             target: Object::Me,
             arguments: vec![],
         },
         Call {
             function_id: 0,
-            function: "NullFunction".into(),
+            function: Native::NullFunction,
             kind: CallKind::Task,
             target: Object::Me,
             arguments: vec![],
         },
         Call {
             function_id: 0,
-            function: "NullFunction".into(),
+            function: Native::NullFunction,
             kind: CallKind::Function,
             target: Object::Player,
             arguments: vec![],

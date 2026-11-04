@@ -298,6 +298,7 @@ module where it is defined and regenerate.
 
 - `src/animation_group.rs` — Animation group numbers: the index of an actor's animation group.
 - `src/attribute.rs` — Actor attribute slots: the 256 bytes every SOUP actor carries.
+- `src/native.rs` — SOUP native functions: the `[functions]` list of the installed `SOUP386.DEF`.
 - `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
 - `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
 - `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.

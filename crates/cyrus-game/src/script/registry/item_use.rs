@@ -1,7 +1,7 @@
 //! `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 use super::GameHost;
 use anyhow::{Context, Result};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_script::{AnimationGroup, Attribute, Native};
 
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
 const WEAPON_ITEM: u32 = 1;
@@ -54,7 +54,7 @@ impl GameHost<'_, '_, '_, '_> {
             self.index == selected,
             "UseItem: the receiver is not the selected player"
         );
-        let (holding, _, _) = self.actor_weapon_predicates(selected, "IsHoldingWeapon")?;
+        let (holding, _, _) = self.actor_weapon_predicates(selected, Native::IsHoldingWeapon)?;
         let group = player.bound_animation_group().flatten();
         let torch_change = matches!(control.living_state, 0x21 | 0x22)
             || matches!(
@@ -89,7 +89,7 @@ impl GameHost<'_, '_, '_, '_> {
             }
         }
         if used.item_type == TORCH_ITEM {
-            let torch = self.torch_inputs(selected, "UseItem")?;
+            let torch = self.torch_inputs(selected, Native::UseItem)?;
             let ticks = self
                 .inputs
                 .nominal_ticks
@@ -121,7 +121,7 @@ impl GameHost<'_, '_, '_, '_> {
     }
 
     fn douse_torch(&mut self, player: super::ScriptActorId, index: usize) -> Result<()> {
-        let torch = self.torch_inputs(index, "UseItem")?;
+        let torch = self.torch_inputs(index, Native::UseItem)?;
         let ticks = self
             .inputs
             .nominal_ticks

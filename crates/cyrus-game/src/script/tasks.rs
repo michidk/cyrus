@@ -1,5 +1,6 @@
 //! Actor-owned native task tokens share waits and animation requests.
 use anyhow::{Context, Result};
+use cyrus_script::Native;
 use cyrus_script::program::CallKind;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
@@ -334,7 +335,7 @@ impl Speech {
     /// already has); otherwise the label is looked up once and one ordinary record is created for it.
     fn speak(
         &mut self,
-        name: &str,
+        name: Native,
         label: &Argument,
         first: bool,
         speaker: (super::ScriptActorId, &Result<i32, String>),
@@ -716,7 +717,7 @@ impl Task {
                     .dialogue
                     .context("RTX dialogue records unavailable")?;
                 let speaker = (input.speaker, &input.speaker_distance);
-                match speech.speak("RTX", label, first, speaker, input.source, dialogue)? {
+                match speech.speak(Native::Rtx, label, first, speaker, input.source, dialogue)? {
                     Speak::Complete => true,
                     Speak::Wait => false,
                     Speak::Running { .. } => !dialogue.line_active(speech.active_record()),
@@ -727,7 +728,11 @@ impl Task {
                 index,
                 player,
             } => {
-                let name = if *player { "RTXpAnim" } else { "rtxAnim" };
+                let name = if *player {
+                    Native::RTXpAnim
+                } else {
+                    Native::RtxAnim
+                };
                 let [label, first_group, second_group, third_group] = arguments else {
                     anyhow::bail!("{name} requires four arguments");
                 };
@@ -844,7 +849,7 @@ impl Task {
                 counter,
                 pan,
             } => {
-                let name = command.name();
+                let name = command.native();
                 let [x, y, z, duration] = arguments else {
                     anyhow::bail!("{name} requires four arguments");
                 };
@@ -894,7 +899,7 @@ impl Task {
                 }
             }
             Self::ShowLocation { command, counter } => {
-                let name = command.name();
+                let name = command.native();
                 let [x, y, z] = arguments else {
                     anyhow::bail!("{name} requires three arguments");
                 };
@@ -1715,8 +1720,8 @@ impl Task {
                     StrafeAdmission, continues, strafe_admission, strafe_motion,
                 };
                 let name = match strafe {
-                    super::locomotion::Strafe::Left => "MoveLeft",
-                    super::locomotion::Strafe::Right => "MoveRight",
+                    super::locomotion::Strafe::Left => Native::MoveLeft,
+                    super::locomotion::Strafe::Right => Native::MoveRight,
                 };
                 let [duration] = arguments else {
                     anyhow::bail!("{name} requires one argument")
@@ -2425,9 +2430,9 @@ impl Task {
             }
             Self::Animation { group, started } | Self::ControlAnimation { group, started } => {
                 let name = if turning {
-                    "PushControlAnimation"
+                    Native::PushControlAnimation
                 } else {
-                    "PushAnimation"
+                    Native::PushAnimation
                 };
                 let [requested, count] = arguments else {
                     anyhow::bail!("{name} requires two arguments")
@@ -2500,23 +2505,44 @@ pub(super) enum LocomotionOperation {
     Strafe(super::locomotion::Strafe),
 }
 impl LocomotionOperation {
-    pub(super) fn named(name: &str) -> Option<Self> {
-        if name.eq_ignore_ascii_case("MoveBackward") {
+    pub(super) fn named(name: Native) -> Option<Self> {
+        if name == Native::MoveBackward {
             Some(Self::Backward)
-        } else if name.eq_ignore_ascii_case("WalkBackward") {
+        } else if name == Native::WalkBackward {
             Some(Self::WalkBackward)
-        } else if name.eq_ignore_ascii_case("MoveForward") {
+        } else if name == Native::MoveForward {
             Some(Self::Forward)
-        } else if name.eq_ignore_ascii_case("Lunge") {
-            Some(Self::Lunge)
-        } else if name.eq_ignore_ascii_case("WalkForward") {
+        } else if name == Native::WalkForward {
             Some(Self::WalkForward)
-        } else if name.eq_ignore_ascii_case("MoveLeft") {
+        } else if name == Native::MoveLeft {
             Some(Self::Strafe(super::locomotion::Strafe::Left))
-        } else if name.eq_ignore_ascii_case("MoveRight") {
+        } else if name == Native::MoveRight {
             Some(Self::Strafe(super::locomotion::Strafe::Right))
         } else {
             None
+        }
+    }
+
+    /// The native whose handler runs the step; the lunge runs `MoveForward`'s forward step.
+    pub(super) fn native(self) -> Native {
+        match self {
+            Self::Backward => Native::MoveBackward,
+            Self::WalkBackward => Native::WalkBackward,
+            Self::Forward | Self::Lunge => Native::MoveForward,
+            Self::WalkForward => Native::WalkForward,
+            Self::Strafe(super::locomotion::Strafe::Left) => Native::MoveLeft,
+            Self::Strafe(super::locomotion::Strafe::Right) => Native::MoveRight,
+        }
+    }
+
+    fn task(self) -> Task {
+        match self {
+            Self::Backward => Task::Backward,
+            Self::WalkBackward => Task::WalkBackward,
+            Self::Forward => Task::Forward,
+            Self::Lunge => Task::Lunge,
+            Self::WalkForward => Task::WalkForward,
+            Self::Strafe(strafe) => Task::Strafe(strafe),
         }
     }
 }
@@ -2524,13 +2550,13 @@ impl LocomotionOperation {
 #[derive(Clone, Copy)]
 pub(super) enum NativeTaskMode {
     Script(CallKind),
-    SynchronousMovement,
+    SynchronousMovement(LocomotionOperation),
 }
 impl NativeTaskMode {
     pub(super) fn kind(self) -> CallKind {
         match self {
             Self::Script(kind) => kind,
-            Self::SynchronousMovement => CallKind::Task,
+            Self::SynchronousMovement(_) => CallKind::Task,
         }
     }
 }
@@ -2552,7 +2578,7 @@ impl NativeTasks {
     }
     pub(super) fn call(
         &mut self,
-        (function, kind): (&str, CallKind),
+        (function, kind): (Native, CallKind),
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
@@ -2571,21 +2597,18 @@ impl NativeTasks {
 
     pub(super) fn call_synchronous_movement(
         &mut self,
-        function: &str,
+        operation: LocomotionOperation,
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
         services: NativeServices<'_>,
     ) -> Result<Option<CallResult>> {
-        anyhow::ensure!(
-            LocomotionOperation::named(function).is_some()
-                || function.eq_ignore_ascii_case("MoveLeft")
-                || function.eq_ignore_ascii_case("MoveRight"),
-            "synchronous native {function} is not a movement operation"
-        );
         self.invoke(
-            (function, NativeTaskMode::SynchronousMovement),
+            (
+                operation.native(),
+                NativeTaskMode::SynchronousMovement(operation),
+            ),
             arguments,
             invocation,
             animation,
@@ -2596,7 +2619,7 @@ impl NativeTasks {
 
     fn invoke(
         &mut self,
-        (function, mode): (&str, NativeTaskMode),
+        (function, mode): (Native, NativeTaskMode),
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
@@ -2604,49 +2627,49 @@ impl NativeTasks {
         services: NativeServices<'_>,
     ) -> Result<Option<CallResult>> {
         let kind = mode.kind();
-        let mut task = if function.eq_ignore_ascii_case("WaitOnDialog") {
+        let mut task = if let NativeTaskMode::SynchronousMovement(operation) = mode {
+            operation.task()
+        } else if function == Native::WaitOnDialog {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "WaitOnDialog requires task encoding"
             );
             Task::Dialogue
-        } else if function.eq_ignore_ascii_case("menuProc") {
+        } else if function == Native::MenuProc {
             anyhow::ensure!(kind == CallKind::Task, "menuProc requires task encoding");
             Task::Menu
-        } else if function.eq_ignore_ascii_case("RTXp") {
+        } else if function == Native::RTXp {
             anyhow::ensure!(
                 matches!(kind, CallKind::Task | CallKind::Multitask),
                 "RTXp requires task or multitask encoding"
             );
             Task::PlayerDialogue { started: false }
-        } else if function.eq_ignore_ascii_case("SyncWithUser") {
+        } else if function == Native::SyncWithUser {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "SyncWithUser requires task encoding"
             );
             Task::UserSync
-        } else if function.eq_ignore_ascii_case("SyncWithGroup") {
+        } else if function == Native::SyncWithGroup {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "SyncWithGroup requires task encoding"
             );
             Task::GroupSync
-        } else if function.eq_ignore_ascii_case("RTX") {
+        } else if function == Native::Rtx {
             anyhow::ensure!(
                 matches!(kind, CallKind::Task | CallKind::Multitask),
                 "RTX requires task or multitask encoding"
             );
             Task::SpeakerDialogue(Speech::default())
-        } else if function.eq_ignore_ascii_case("rtxAnim")
-            || function.eq_ignore_ascii_case("RTXpAnim")
-        {
+        } else if function == Native::RtxAnim || function == Native::RTXpAnim {
             anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
             Task::SpeakerAnimation {
                 speech: Speech::default(),
                 index: 0,
-                player: function.eq_ignore_ascii_case("RTXpAnim"),
+                player: function == Native::RTXpAnim,
             }
-        } else if function.eq_ignore_ascii_case("AmbientRtx") {
+        } else if function == Native::AmbientRtx {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "AmbientRtx requires multitask encoding"
@@ -2655,16 +2678,16 @@ impl NativeTasks {
                 slot: None,
                 lookup: Lookup::Idle,
             }
-        } else if function.eq_ignore_ascii_case("AmbientSound") {
+        } else if function == Native::AmbientSound {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "AmbientSound requires multitask encoding"
             );
             Task::Ambient { channel: None }
-        } else if function.eq_ignore_ascii_case("showPlayer") {
+        } else if function == Native::ShowPlayer {
             anyhow::ensure!(kind == CallKind::Task, "showPlayer requires task encoding");
             Task::ShowPlayer { counter: 0 }
-        } else if function.eq_ignore_ascii_case("showPlayerPan") {
+        } else if function == Native::ShowPlayerPan {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "showPlayerPan requires task encoding"
@@ -2692,42 +2715,42 @@ impl NativeTasks {
                 command,
                 counter: 0,
             }
-        } else if function.eq_ignore_ascii_case("lookObj") {
+        } else if function == Native::LookObj {
             anyhow::ensure!(kind == CallKind::Task, "lookObj requires task encoding");
             Task::Look {
                 counter: 0,
                 look: None,
             }
-        } else if function.eq_ignore_ascii_case("showObjRot") {
+        } else if function == Native::ShowObjRot {
             anyhow::ensure!(kind == CallKind::Task, "showObjRot requires task encoding");
             Task::ObjectRotation
-        } else if function.eq_ignore_ascii_case("RotateByAxis") {
+        } else if function == Native::RotateByAxis {
             Task::Rotation {
                 target: 0,
                 accumulator: 0,
             }
-        } else if function.eq_ignore_ascii_case("RotateToAxis") {
+        } else if function == Native::RotateToAxis {
             Task::AbsoluteRotation {
                 movement: 0,
                 accumulator: 0,
             }
-        } else if function.eq_ignore_ascii_case("sRotateToAxis") {
+        } else if function == Native::SRotateToAxis {
             Task::ScaledRotation { origin: 0 }
-        } else if function.eq_ignore_ascii_case("sRotateByAxis") {
+        } else if function == Native::SRotateByAxis {
             Task::ScaledRelativeRotation { origin: 0 }
-        } else if function.eq_ignore_ascii_case("PlayerFaceObj") {
+        } else if function == Native::PlayerFaceObj {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "PlayerFaceObj requires task encoding"
             );
             Task::PlayerFace
-        } else if function.eq_ignore_ascii_case("PlayerPickupLineUp") {
+        } else if function == Native::PlayerPickupLineUp {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "PlayerPickupLineUp requires task encoding"
             );
             Task::PickupLineUp { fallback: false }
-        } else if function.eq_ignore_ascii_case("PlayerLineUp") {
+        } else if function == Native::PlayerLineUp {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "PlayerLineUp requires task encoding"
@@ -2738,128 +2761,122 @@ impl NativeTasks {
                 fallback: false,
                 reference: None,
             }
-        } else if function.eq_ignore_ascii_case("BounceObject") {
+        } else if function == Native::BounceObject {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "BounceObject requires task encoding"
             );
             Task::Bounce(super::bounce::BounceState::default())
-        } else if function.eq_ignore_ascii_case("PlayerParallelLineUp") {
+        } else if function == Native::PlayerParallelLineUp {
             anyhow::ensure!(
                 kind == CallKind::Task,
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
-        } else if function.eq_ignore_ascii_case("Move") {
+        } else if function == Native::Move {
             Task::Move
-        } else if function.eq_ignore_ascii_case("Rotate") {
+        } else if function == Native::Rotate {
             Task::Rotate
-        } else if function.eq_ignore_ascii_case("sMoveAlongAxis") {
+        } else if function == Native::SMoveAlongAxis {
             Task::ScaledAxisMovement
-        } else if function.eq_ignore_ascii_case("sMove") {
+        } else if function == Native::SMove {
             Task::ScaledMove
-        } else if function.eq_ignore_ascii_case("sRotate") {
+        } else if function == Native::SRotate {
             Task::ScaledRotate
-        } else if function.eq_ignore_ascii_case("PlayerOffsettask") {
+        } else if function == Native::PlayerOffsettask {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "PlayerOffsettask requires multitask encoding"
             );
             Task::PlayerOffset
-        } else if function.eq_ignore_ascii_case("DragonBreathTask") {
+        } else if function == Native::DragonBreathTask {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "DragonBreathTask requires multitask encoding"
             );
             Task::DragonBreath
-        } else if function.eq_ignore_ascii_case("projectileAI") {
+        } else if function == Native::ProjectileAI {
             Task::Projectile
-        } else if function.eq_ignore_ascii_case("MoveMarker") {
+        } else if function == Native::MoveMarker {
             Task::MoveMarker
-        } else if function.eq_ignore_ascii_case("MoveLocation") {
+        } else if function == Native::MoveLocation {
             Task::MoveLocation
-        } else if function.eq_ignore_ascii_case("MovePosition") {
+        } else if function == Native::MovePosition {
             Task::MovePosition
-        } else if function.eq_ignore_ascii_case("MoveNodeMarker") {
+        } else if function == Native::MoveNodeMarker {
             Task::MoveNodeMarker
-        } else if function.eq_ignore_ascii_case("MoveNodeLocation") {
+        } else if function == Native::MoveNodeLocation {
             Task::MoveNodeLocation
-        } else if function.eq_ignore_ascii_case("MoveNodePosition") {
+        } else if function == Native::MoveNodePosition {
             Task::MoveNodePosition
-        } else if function.eq_ignore_ascii_case("FaceAngle") {
+        } else if function == Native::FaceAngle {
             Task::FaceAngle
-        } else if function.eq_ignore_ascii_case("FacePos") {
+        } else if function == Native::FacePos {
             Task::FacePos
-        } else if function.eq_ignore_ascii_case("FacePlayer") {
+        } else if function == Native::FacePlayer {
             Task::FacePlayer
-        } else if function.eq_ignore_ascii_case("FacePlayerInertia") {
+        } else if function == Native::FacePlayerInertia {
             Task::FacePlayerInertia
-        } else if function.eq_ignore_ascii_case("MoveBackward") {
+        } else if function == Native::MoveBackward {
             Task::Backward
-        } else if function.eq_ignore_ascii_case("WalkBackward") {
+        } else if function == Native::WalkBackward {
             Task::WalkBackward
-        } else if function.eq_ignore_ascii_case("MoveForward") {
+        } else if function == Native::MoveForward {
             Task::Forward
-        } else if function.eq_ignore_ascii_case("Lunge")
-            && matches!(mode, NativeTaskMode::SynchronousMovement)
-        {
-            Task::Lunge
-        } else if function.eq_ignore_ascii_case("WalkForward") {
+        } else if function == Native::WalkForward {
             Task::WalkForward
-        } else if function.eq_ignore_ascii_case("MoveLeft") {
+        } else if function == Native::MoveLeft {
             Task::Strafe(super::locomotion::Strafe::Left)
-        } else if function.eq_ignore_ascii_case("MoveRight") {
+        } else if function == Native::MoveRight {
             Task::Strafe(super::locomotion::Strafe::Right)
-        } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
+        } else if function == Native::MoveObjectAxis {
             Task::ObjectMovement {
                 target: 0,
                 traveled: 0,
             }
-        } else if function.eq_ignore_ascii_case("MoveByAxis") {
+        } else if function == Native::MoveByAxis {
             Task::Movement { target: 0 }
-        } else if function.eq_ignore_ascii_case("sMoveByAxis") {
+        } else if function == Native::SMoveByAxis {
             Task::ScaledMovement { origin: 0 }
-        } else if function.eq_ignore_ascii_case("WanderToLocation") {
+        } else if function == Native::WanderToLocation {
             Task::WanderLocation {
                 started: false,
                 speed: 0,
             }
-        } else if function.eq_ignore_ascii_case("MoveAlongAxis") {
+        } else if function == Native::MoveAlongAxis {
             Task::AxisMovement {
                 target: 0,
                 accumulated: 0,
             }
-        } else if function.eq_ignore_ascii_case("MoveToMarker") {
+        } else if function == Native::MoveToMarker {
             Task::Marker
-        } else if function.eq_ignore_ascii_case("MoveToLocation") {
+        } else if function == Native::MoveToLocation {
             Task::Location
-        } else if function.eq_ignore_ascii_case("Wait") {
+        } else if function == Native::Wait {
             Task::Duration
-        } else if function.eq_ignore_ascii_case("ViewGXA") {
+        } else if function == Native::ViewGXA {
             Task::ViewGxa
-        } else if function.eq_ignore_ascii_case("WaitOnTasks") {
+        } else if function == Native::WaitOnTasks {
             Task::Tasks
-        } else if function.eq_ignore_ascii_case("WaitNonMulti") {
+        } else if function == Native::WaitNonMulti {
             Task::Blocking
-        } else if function.eq_ignore_ascii_case("WaitAnimFrame")
-            || function.eq_ignore_ascii_case("WaitPlayerAnimFrame")
-        {
+        } else if function == Native::WaitAnimFrame || function == Native::WaitPlayerAnimFrame {
             anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
             Task::AnimationFrame {
-                player: function.eq_ignore_ascii_case("WaitPlayerAnimFrame"),
+                player: function == Native::WaitPlayerAnimFrame,
             }
-        } else if function.eq_ignore_ascii_case("PlayAnimation") && kind != CallKind::Function {
+        } else if function == Native::PlayAnimation && kind != CallKind::Function {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "PlayAnimation requires function or installed multitask encoding"
             );
             Task::AnimationRequest
-        } else if function.eq_ignore_ascii_case("PushAnimation") {
+        } else if function == Native::PushAnimation {
             Task::Animation {
                 group: 0,
                 started: false,
             }
-        } else if function.eq_ignore_ascii_case("PushControlAnimation") {
+        } else if function == Native::PushControlAnimation {
             Task::ControlAnimation {
                 group: 0,
                 started: false,
@@ -2877,7 +2894,7 @@ impl NativeTasks {
                     .checked_add(1)
                     .context("native task identity exhausted")?,
             ),
-            NativeTaskMode::SynchronousMovement => None,
+            NativeTaskMode::SynchronousMovement(_) => None,
         };
         let complete = task.complete(arguments, invocation, animation, spatial, services)?;
         if let Some(next) = next {
@@ -2911,10 +2928,13 @@ impl NativeTasks {
     }
     /// Whether `token` is a `PlayerFaceObj` continuation, which needs the selected player's state.
     /// Whether `function` is a lineup native, which needs the selected player's alignment owner.
-    pub(super) fn is_lineup_function(function: &str) -> bool {
-        ["PlayerPickupLineUp", "PlayerParallelLineUp", "PlayerLineUp"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+    pub(super) fn is_lineup_function(function: Native) -> bool {
+        [
+            Native::PlayerPickupLineUp,
+            Native::PlayerParallelLineUp,
+            Native::PlayerLineUp,
+        ]
+        .contains(&function)
     }
 
     /// Whether `token` is a lineup continuation.
@@ -2926,8 +2946,8 @@ impl NativeTasks {
     }
 
     /// Whether `function` is `BounceObject`, which needs the receiver's live state.
-    pub(super) fn is_bounce_function(function: &str) -> bool {
-        function.eq_ignore_ascii_case("BounceObject")
+    pub(super) fn is_bounce_function(function: Native) -> bool {
+        function == Native::BounceObject
     }
 
     /// Whether `token` is a `BounceObject` continuation.
@@ -2936,22 +2956,21 @@ impl NativeTasks {
     }
 
     /// Whether `function` is a facing task, which needs the receiver's facing owner.
-    pub(super) fn is_point_function(function: &str) -> bool {
+    pub(super) fn is_point_function(function: Native) -> bool {
         [
-            "FaceAngle",
-            "FacePos",
-            "PlayerOffsettask",
-            "DragonBreathTask",
-            "projectileAI",
-            "MoveMarker",
-            "MoveLocation",
-            "MovePosition",
-            "MoveNodeMarker",
-            "MoveNodeLocation",
-            "MoveNodePosition",
+            Native::FaceAngle,
+            Native::FacePos,
+            Native::PlayerOffsettask,
+            Native::DragonBreathTask,
+            Native::ProjectileAI,
+            Native::MoveMarker,
+            Native::MoveLocation,
+            Native::MovePosition,
+            Native::MoveNodeMarker,
+            Native::MoveNodeLocation,
+            Native::MoveNodePosition,
         ]
-        .iter()
-        .any(|name| function.eq_ignore_ascii_case(name))
+        .contains(&function)
     }
 
     /// Whether `token` is a facing continuation.
@@ -2994,10 +3013,10 @@ impl NativeTasks {
     }
 
     /// Whether the native named `function` is a camera task that needs the camera session.
-    pub(super) fn camera_function(function: &str) -> bool {
-        function.eq_ignore_ascii_case("showPlayer")
-            || function.eq_ignore_ascii_case("showPlayerPan")
-            || function.eq_ignore_ascii_case("lookObj")
+    pub(super) fn camera_function(function: Native) -> bool {
+        function == Native::ShowPlayer
+            || function == Native::ShowPlayerPan
+            || function == Native::LookObj
             || super::camera::ObjectPanCommand::named(function).is_some()
             || super::camera::LocationCommand::named(function).is_some()
     }
@@ -3060,9 +3079,9 @@ mod frame_wait_tests {
             for player in [false, true] {
                 let mut tasks = NativeTasks::default();
                 let function = if player {
-                    "WaitPlayerAnimFrame"
+                    Native::WaitPlayerAnimFrame
                 } else {
-                    "WaitAnimFrame"
+                    Native::WaitAnimFrame
                 };
                 let inputs = || NativeServices {
                     frame_wait: Some(FrameWaitCall {
@@ -3130,7 +3149,7 @@ mod view_gxa_tests {
         };
         let Some(CallResult::Pending(token)) = tasks
             .call(
-                ("ViewGXA", CallKind::Task),
+                (Native::ViewGXA, CallKind::Task),
                 &args,
                 step(0),
                 &mut None,

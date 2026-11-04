@@ -4,6 +4,7 @@ use crate::script::tasks::{
     FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
 };
+use cyrus_script::Native;
 use cyrus_script::{
     AnimationGroup, Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread,
     program::*,
@@ -29,7 +30,7 @@ impl Host for NativeHost {
         &mut self,
         _: &Target,
         kind: CallKind,
-        function: &str,
+        function: Native,
         arguments: &[Argument],
         invocation: Invocation,
         _: &mut [i32],
@@ -128,7 +129,7 @@ impl Host for NativeHost {
     }
 }
 
-fn code(name: &str, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
+fn code(name: Native, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
     Arc::new(Program {
         version: 4,
         entry: 0,
@@ -142,7 +143,7 @@ fn code(name: &str, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
                     operation: Operation::Call {
                         call: Call {
                             function_id: 0,
-                            function: name.into(),
+                            function: name,
                             kind,
                             target: Object::Me,
                             arguments: arguments
@@ -164,7 +165,7 @@ fn code(name: &str, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
     })
 }
 fn begin(
-    name: &str,
+    name: Native,
     arguments: &[i32],
 ) -> (Runtime, NativeHost, BTreeMap<CodeOrigin, Arc<Program>>) {
     let program = code(name, CallKind::Task, arguments);
@@ -216,7 +217,7 @@ fn resume(
 
 #[test]
 fn wait_resumes_elapsed_without_reissuing_and_allocates_after_rebound_tokens() {
-    let (mut vm, mut host, sources) = begin("Wait", &[4]);
+    let (mut vm, mut host, sources) = begin(Native::Wait, &[4]);
     vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
     let saved = vm.snapshot(&sources).unwrap();
     let (mut restored, mut restored_host) = resume(&saved, host.native.snapshot(), &sources, &host);
@@ -251,13 +252,13 @@ fn wait_resumes_elapsed_without_reissuing_and_allocates_after_rebound_tokens() {
 #[test]
 fn motion_and_rotation_continuations_resume_at_the_same_pose() {
     for (name, args) in [
-        ("MoveByAxis", [0, 2560, 10]),
-        ("MoveObjectAxis", [0, 2560, 10]),
-        ("sMoveByAxis", [0, 2560, 10]),
-        ("RotateByAxis", [1, 80, 10]),
-        ("RotateToAxis", [1, 80, 10]),
-        ("sRotateToAxis", [1, 80, 10]),
-        ("sRotateByAxis", [1, 80, 10]),
+        (Native::MoveByAxis, [0, 2560, 10]),
+        (Native::MoveObjectAxis, [0, 2560, 10]),
+        (Native::SMoveByAxis, [0, 2560, 10]),
+        (Native::RotateByAxis, [1, 80, 10]),
+        (Native::RotateToAxis, [1, 80, 10]),
+        (Native::SRotateToAxis, [1, 80, 10]),
+        (Native::SRotateByAxis, [1, 80, 10]),
     ] {
         let (mut vm, mut host, sources) = begin(name, &args);
         for _ in 0..3 {
@@ -291,7 +292,7 @@ fn motion_and_rotation_continuations_resume_at_the_same_pose() {
 
 #[test]
 fn restored_relative_motion_keeps_its_literal_destination() {
-    let (mut vm, mut host, sources) = begin("MoveByAxis", &[0, 2560, 10]);
+    let (mut vm, mut host, sources) = begin(Native::MoveByAxis, &[0, 2560, 10]);
     for _ in 0..3 {
         vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
     }
@@ -313,7 +314,7 @@ fn restored_relative_motion_keeps_its_literal_destination() {
 
 #[test]
 fn invalid_census_tokens_allocator_and_variant_are_rejected_before_replacement() {
-    let (vm, host, sources) = begin("Wait", &[4]);
+    let (vm, host, sources) = begin(Native::Wait, &[4]);
     let saved = vm.snapshot(&sources).unwrap();
     let value = serde_json::to_value(host.native.snapshot()).unwrap();
     let mut cases = vec![];
@@ -381,7 +382,7 @@ impl Host for DescriptorHost {
         &mut self,
         _: &Target,
         _: CallKind,
-        _: &str,
+        _: Native,
         _: &[Argument],
         _: Invocation,
         _: &mut [i32],
@@ -395,7 +396,7 @@ impl Host for DescriptorHost {
         Ok(())
     }
 }
-fn contract_vm(name: &str, kind: CallKind, args: &[i32]) -> Snapshot {
+fn contract_vm(name: Native, kind: CallKind, args: &[i32]) -> Snapshot {
     let program = code(name, kind, args);
     let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
     let mut vm =
@@ -429,7 +430,7 @@ fn dialogue() -> crate::script::DialogueState {
 #[test]
 fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
     let tokens = BTreeMap::from([(1, 100)]);
-    let ambient = contract_vm("AmbientSound", CallKind::Multitask, &[3, 40, 0]);
+    let ambient = contract_vm(Native::AmbientSound, CallKind::Multitask, &[3, 40, 0]);
     let state = one(Task::Ambient { channel: Some(3) });
     assert!(
         NativeTasks::from_snapshot(
@@ -486,7 +487,7 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
         .is_err()
     );
     // AmbientRtx rebinds its saved clip slot through the same channel map; a missing binding fails.
-    let rtx = contract_vm("AmbientRtx", CallKind::Multitask, &[3, 40, 0]);
+    let rtx = contract_vm(Native::AmbientRtx, CallKind::Multitask, &[3, 40, 0]);
     let saved = one(Task::AmbientRtx {
         slot: Some(3),
         lookup: Lookup::Done,
@@ -511,12 +512,24 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
     );
     let owner = dialogue();
     for (name, args, state) in [
-        ("WaitOnDialog", vec![], Task::Dialogue),
-        ("RTXp", vec![123], Task::PlayerDialogue { started: true }),
-        ("RTXp", vec![123], Task::PlayerDialogue { started: false }),
-        ("RTX", vec![123], Task::SpeakerDialogue(Speech::default())),
+        (Native::WaitOnDialog, vec![], Task::Dialogue),
         (
-            "RTX",
+            Native::RTXp,
+            vec![123],
+            Task::PlayerDialogue { started: true },
+        ),
+        (
+            Native::RTXp,
+            vec![123],
+            Task::PlayerDialogue { started: false },
+        ),
+        (
+            Native::Rtx,
+            vec![123],
+            Task::SpeakerDialogue(Speech::default()),
+        ),
+        (
+            Native::Rtx,
             vec![123],
             Task::SpeakerDialogue(Speech {
                 record: 4,
@@ -640,7 +653,7 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
     assert_eq!(
         tasks
             .call(
-                ("RTX", CallKind::Task),
+                (Native::Rtx, CallKind::Task),
                 &args,
                 invocation(0),
                 &mut None,
@@ -693,7 +706,7 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
     assert_eq!(
         tasks
             .call(
-                ("rtxAnim", CallKind::Task),
+                (Native::RtxAnim, CallKind::Task),
                 &args,
                 invocation(0),
                 &mut input,
@@ -841,7 +854,7 @@ fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
     let mut tasks = NativeTasks::default();
     let result = tasks
         .call(
-            ("RTXpAnim", CallKind::Task),
+            (Native::RTXpAnim, CallKind::Task),
             &args,
             invocation(0),
             // The receiver has no animation of its own; the player's serves.
@@ -981,7 +994,7 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
         Argument::Integer(-7),
         Argument::Integer(0),
     ];
-    let call = ("AmbientRtx", CallKind::Multitask);
+    let call = (Native::AmbientRtx, CallKind::Multitask);
 
     // A pending lookup retries; the started clip is then followed with the task's offset.
     let source = Source {
@@ -1126,7 +1139,7 @@ fn player_face(receiver: [i32; 3], player: PlayerFaceState) -> PlayerFaceOutcome
     let mut outcome = PlayerFaceOutcome::default();
     let result = tasks
         .call(
-            ("PlayerFaceObj", CallKind::Task),
+            (Native::PlayerFaceObj, CallKind::Task),
             &[],
             Invocation {
                 elapsed: Some(0),
@@ -1221,7 +1234,7 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
                 assert_eq!(
                     tasks
                         .call(
-                            ("WanderToLocation", CallKind::Task),
+                            (Native::WanderToLocation, CallKind::Task),
                             &args,
                             invocation,
                             &mut None,
@@ -1438,7 +1451,7 @@ fn move_along_axis_matches_the_original_routine() {
                 assert_eq!(
                     tasks
                         .call(
-                            ("MoveAlongAxis", CallKind::Task),
+                            (Native::MoveAlongAxis, CallKind::Task),
                             &args,
                             invocation,
                             &mut None,
@@ -1529,7 +1542,7 @@ fn control_animation_turns_the_receiver_only_while_its_group_plays() {
                 assert_eq!(
                     tasks
                         .call(
-                            ("PushControlAnimation", CallKind::Task),
+                            (Native::PushControlAnimation, CallKind::Task),
                             &args,
                             invocation,
                             &mut input,
@@ -1603,7 +1616,7 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
         assert_eq!(
             tasks
                 .call(
-                    ("PushAnimation", CallKind::Task),
+                    (Native::PushAnimation, CallKind::Task),
                     &args,
                     invocation,
                     &mut input,
@@ -1631,7 +1644,7 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
     }
     assert_eq!(sounds.len(), 1);
     animation.set_loop_count(1).unwrap();
-    let vm = contract_vm("PushAnimation", CallKind::Task, &[7, 2]);
+    let vm = contract_vm(Native::PushAnimation, CallKind::Task, &[7, 2]);
     let tokens = BTreeMap::from([(1, 100)]);
     assert!(
         NativeTasks::from_snapshot(
@@ -1756,7 +1769,7 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
 
 #[test]
 fn duplicate_tokens_and_paused_vm_slots_are_checked_with_two_native_tasks() {
-    let mut program = (*code("Wait", CallKind::Multitask, &[4])).clone();
+    let mut program = (*code(Native::Wait, CallKind::Multitask, &[4])).clone();
     let call = program.steps[&0].operation.clone();
     program.steps.insert(
         1,
@@ -1829,7 +1842,7 @@ fn duplicate_tokens_and_paused_vm_slots_are_checked_with_two_native_tasks() {
 
 #[test]
 fn same_shape_wrong_native_variant_is_rejected() {
-    let (vm, host, sources) = begin("WaitOnTasks", &[]);
+    let (vm, host, sources) = begin(Native::WaitOnTasks, &[]);
     let snapshot = one(Task::Blocking);
     let error = NativeTasks::from_snapshot(
         snapshot,
@@ -1844,7 +1857,7 @@ fn same_shape_wrong_native_variant_is_rejected() {
 
 #[test]
 fn empty_restore_preserves_allocator_history_and_exhaustion() {
-    let program = code("Wait", CallKind::Task, &[4]);
+    let program = code(Native::Wait, CallKind::Task, &[4]);
     let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
     let vm = Runtime::from_shared(program, CodeOrigin(10), vec![], "empty TEST".into()).unwrap();
     let saved = vm.snapshot(&sources).unwrap();
@@ -1867,7 +1880,7 @@ fn empty_restore_preserves_allocator_history_and_exhaustion() {
         let result = host.call(
             &Target::Me,
             CallKind::Task,
-            "Wait",
+            Native::Wait,
             &[Argument::Integer(4)],
             Invocation {
                 elapsed: Some(0),
@@ -1899,7 +1912,10 @@ fn frame_wait_restore_preserves_variant_and_reevaluates_operands() {
         unsupported: Default::default(),
     };
     let animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE_LEDGE).unwrap();
-    for (name, player) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+    for (name, player) in [
+        (Native::WaitAnimFrame, false),
+        (Native::WaitPlayerAnimFrame, true),
+    ] {
         let (vm, host, sources) = begin(name, &[7, 10]);
         let saved = vm.snapshot(&sources).unwrap();
         let tokens = BTreeMap::from([(1, 100)]);
@@ -2450,7 +2466,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
     let rows = |text: &str| serde_json::from_str::<Vec<Row>>(text).unwrap();
     let cases = [
         (
-            "MoveByAxis",
+            Native::MoveByAxis,
             rows(
                 r#"[
 [0,1024,4,256,[[[1256,2000,3000],[100,300,50],1],[[1512,2000,3000],[100,300,50],1],[[1768,2000,3000],[100,300,50],1],[[2024,2000,3000],[100,300,50],0]]],
@@ -2481,7 +2497,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
             ),
         ),
         (
-            "RotateByAxis",
+            Native::RotateByAxis,
             rows(
                 r#"[
 [0,1024,4,256,[[[1000,2000,3000],[356,300,50],1],[[1000,2000,3000],[612,300,50],1],[[1000,2000,3000],[868,300,50],1],[[1000,2000,3000],[1124,300,50],0]]],
@@ -2512,7 +2528,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
             ),
         ),
         (
-            "RotateToAxis",
+            Native::RotateToAxis,
             rows(
                 r#"[
 [0,0,4,256,[[[1000,2000,3000],[75,300,50],1],[[1000,2000,3000],[50,300,50],1],[[1000,2000,3000],[25,300,50],1],[[1000,2000,3000],[0,300,50],0]]],
@@ -2546,8 +2562,8 @@ fn axis_movement_and_rotation_match_the_original_routines() {
     for (name, rows) in cases {
         for (axis, delta, duration, scale, steps) in rows {
             let mut task = match name {
-                "MoveByAxis" => Task::Movement { target: 0 },
-                "RotateByAxis" => Task::Rotation {
+                Native::MoveByAxis => Task::Movement { target: 0 },
+                Native::RotateByAxis => Task::Rotation {
                     target: 0,
                     accumulator: 0,
                 },
@@ -2881,7 +2897,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
     for (task, name, operands, ticks, rows) in [
         (
             Task::Move,
-            "Move",
+            Native::Move,
             [10, 0, -5],
             3,
             vec![
@@ -2892,7 +2908,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
         ),
         (
             Task::ScaledMove,
-            "sMove",
+            Native::SMove,
             [10, 0, -5],
             3,
             // (10 << 8) / 3 >> 8 is 3 and (-5 << 8) / 3 >> 8 is -2 (truncating division, then
@@ -2905,7 +2921,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
         ),
         (
             Task::ScaledRotate,
-            "sRotate",
+            Native::SRotate,
             [80, 0, -40],
             3,
             vec![
@@ -2916,7 +2932,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
         ),
         (
             Task::Rotate,
-            "Rotate",
+            Native::Rotate,
             [80, 0, -40],
             3,
             vec![
@@ -3113,7 +3129,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
     let rows = |text: &str| serde_json::from_str::<Vec<Row>>(text).unwrap();
     let cases = [
         (
-            "sMoveByAxis",
+            Native::SMoveByAxis,
             rows(
                 r#"[
 [0,1024,4,256,[[[1000,2000,3000],[100,300,50],1],[[1256,2000,3000],[100,300,50],1],[[1512,2000,3000],[100,300,50],1],[[2024,2000,3000],[100,300,50],0]]],
@@ -3144,7 +3160,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
             ),
         ),
         (
-            "sRotateByAxis",
+            Native::SRotateByAxis,
             rows(
                 r#"[
 [0,1024,4,256,[[[1000,2000,3000],[100,300,50],1],[[1000,2000,3000],[356,300,50],1],[[1000,2000,3000],[612,300,50],1],[[1000,2000,3000],[1124,300,50],0]]],
@@ -3175,7 +3191,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
             ),
         ),
         (
-            "sRotateToAxis",
+            Native::SRotateToAxis,
             rows(
                 r#"[
 [0,0,4,256,[[[1000,2000,3000],[100,300,50],1],[[1000,2000,3000],[66,300,50],1],[[1000,2000,3000],[33,300,50],1],[[1000,2000,3000],[0,300,50],0]]],
@@ -3209,8 +3225,8 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
     for (name, rows) in cases {
         for (axis, delta, duration, scale, steps) in rows {
             let mut task = match name {
-                "sMoveByAxis" => Task::ScaledMovement { origin: 0 },
-                "sRotateByAxis" => Task::ScaledRelativeRotation { origin: 0 },
+                Native::SMoveByAxis => Task::ScaledMovement { origin: 0 },
+                Native::SRotateByAxis => Task::ScaledRelativeRotation { origin: 0 },
                 _ => Task::ScaledRotation { origin: 0 },
             };
             let mut position = [1000, 2000, 3000];
@@ -4195,7 +4211,7 @@ fn walk_backward_matches_the_original_routine() {
 
 #[test]
 fn walk_forward_native_snapshot_preserves_variant_and_rebinds_the_task_token() {
-    let vm = contract_vm("WalkForward", CallKind::Task, &[4]);
+    let vm = contract_vm(Native::WalkForward, CallKind::Task, &[4]);
     let restored = NativeTasks::from_snapshot(
         one(Task::WalkForward),
         &vm,
@@ -4211,7 +4227,7 @@ fn walk_forward_native_snapshot_preserves_variant_and_rebinds_the_task_token() {
     assert!(
         NativeTasks::from_snapshot(
             one(Task::WalkForward),
-            &contract_vm("MoveForward", CallKind::Task, &[4]),
+            &contract_vm(Native::MoveForward, CallKind::Task, &[4]),
             &BTreeMap::from([(1, 9)]),
             NativeTaskBindings::default()
         )
@@ -4327,7 +4343,7 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     assert!(matches!(
         tasks
             .call_synchronous_movement(
-                "MoveForward",
+                super::super::LocomotionOperation::Forward,
                 &[Argument::Integer(1)],
                 invocation,
                 &mut None,
@@ -4350,19 +4366,8 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     assert!(tasks.tasks.is_empty());
     assert_eq!(called, 0);
     let error = tasks
-        .call_synchronous_movement(
-            "Wait",
-            &[Argument::Integer(1)],
-            invocation,
-            &mut None,
-            &mut None,
-            NativeServices::default(),
-        )
-        .unwrap_err();
-    assert!(error.to_string().contains("not a movement operation"));
-    let error = tasks
         .call(
-            ("MoveForward", CallKind::Function),
+            (Native::MoveForward, CallKind::Function),
             &[Argument::Integer(1)],
             invocation,
             &mut None,
@@ -4377,7 +4382,7 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     );
     let error = tasks
         .call(
-            ("MoveForward", CallKind::Task),
+            (Native::MoveForward, CallKind::Task),
             &[Argument::Integer(1)],
             invocation,
             &mut None,
@@ -4393,7 +4398,7 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     assert!(matches!(
         tasks
             .call(
-                ("MoveForward", CallKind::Task),
+                (Native::MoveForward, CallKind::Task),
                 &[Argument::Integer(1)],
                 invocation,
                 &mut None,
@@ -4417,7 +4422,7 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     assert!(matches!(
         tasks
             .call_synchronous_movement(
-                "MoveForward",
+                super::super::LocomotionOperation::Forward,
                 &[Argument::Integer(1)],
                 invocation,
                 &mut None,
@@ -4549,7 +4554,7 @@ fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_
     }
     let Some(CallResult::Pending(token)) = tasks
         .call(
-            ("PlayerPickupLineUp", CallKind::Task),
+            (Native::PlayerPickupLineUp, CallKind::Task),
             &args,
             invocation(0),
             &mut None,
@@ -4583,7 +4588,7 @@ fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_
     let mut parallel = NativeTasks::default();
     parallel
         .call(
-            ("PlayerParallelLineUp", CallKind::Task),
+            (Native::PlayerParallelLineUp, CallKind::Task),
             &args,
             invocation(0),
             &mut None,
@@ -4597,7 +4602,7 @@ fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_
     let mut pickup = NativeTasks::default();
     pickup
         .call(
-            ("PlayerPickupLineUp", CallKind::Task),
+            (Native::PlayerPickupLineUp, CallKind::Task),
             &args,
             invocation(0),
             &mut None,
@@ -4619,7 +4624,7 @@ fn speech_and_camera_natives_accept_multitask_encoding() {
         unpaused_blocking_tasks: 0,
     };
     let args = [Argument::Integer(i32::from_le_bytes(*b"TEST"))];
-    let accepted = |function: &str, kind: CallKind| {
+    let accepted = |function: Native, kind: CallKind| {
         let result = NativeTasks::default().call(
             (function, kind),
             &args,
@@ -4632,25 +4637,33 @@ fn speech_and_camera_natives_accept_multitask_encoding() {
             .err()
             .is_some_and(|error| format!("{error:#}").contains("encoding"))
     };
-    for function in ["RTXp", "RTX", "showCyrusPanLoc"] {
+    for function in [Native::RTXp, Native::Rtx, Native::ShowCyrusPanLoc] {
         assert!(accepted(function, CallKind::Task), "{function} task");
         assert!(
             accepted(function, CallKind::Multitask),
             "{function} multitask"
         );
     }
-    assert!(!accepted("RTXp", CallKind::Function));
-    assert!(!accepted("showPlayerPan", CallKind::Multitask));
+    assert!(!accepted(Native::RTXp, CallKind::Function));
+    assert!(!accepted(Native::ShowPlayerPan, CallKind::Multitask));
 }
 
 #[test]
 fn dialogue_and_camera_multitasks_restore_without_changing_saved_continuations() {
     let dialogue = dialogue();
     let cases = [
-        ("RTX", vec![0], Task::SpeakerDialogue(Speech::default())),
-        ("RTXp", vec![0], Task::PlayerDialogue { started: true }),
         (
-            "showObjPan",
+            Native::Rtx,
+            vec![0],
+            Task::SpeakerDialogue(Speech::default()),
+        ),
+        (
+            Native::RTXp,
+            vec![0],
+            Task::PlayerDialogue { started: true },
+        ),
+        (
+            Native::ShowObjPan,
             vec![0, 0, 0, 20],
             Task::ObjectPan {
                 command: crate::script::camera::ObjectPanCommand::Object,
@@ -4659,7 +4672,7 @@ fn dialogue_and_camera_multitasks_restore_without_changing_saved_continuations()
             },
         ),
         (
-            "showObj",
+            Native::ShowObj,
             vec![0, 0, 0],
             Task::ShowLocation {
                 command: crate::script::camera::LocationCommand::Object,
@@ -4703,7 +4716,7 @@ fn installed_play_animation_restores_its_pending_slot_only_with_an_animation_bin
         models: Default::default(),
         unsupported: Default::default(),
     };
-    let program = code("PlayAnimation", CallKind::Multitask, &[10, 0]);
+    let program = code(Native::PlayAnimation, CallKind::Multitask, &[10, 0]);
     let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
     let mut runtime = Runtime::from_shared(program, CodeOrigin(10), vec![], "BAT".into()).unwrap();
     let mut host = NativeHost {

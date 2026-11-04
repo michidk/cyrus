@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use bevy::prelude::Resource;
 use cyrus_assets::hud::HudAsset;
 use cyrus_script::Argument;
+use cyrus_script::Native;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
@@ -551,23 +552,22 @@ impl ScriptHud {
         })
     }
 
-    pub(super) fn handles(function: &str) -> bool {
+    pub(super) fn handles(function: Native) -> bool {
         [
-            "ShowBitmap",
-            "UnShowBitmap",
-            "AddLog",
-            "DropItem",
-            "DropAllItems",
-            "HaveItem",
-            "SelectItem",
+            Native::ShowBitmap,
+            Native::UnShowBitmap,
+            Native::AddLog,
+            Native::DropItem,
+            Native::DropAllItems,
+            Native::HaveItem,
+            Native::SelectItem,
         ]
-        .iter()
-        .any(|name| function.eq_ignore_ascii_case(name))
+        .contains(&function)
     }
 
-    pub(super) fn call(&self, function: &str, arguments: &[Argument]) -> Result<i32> {
+    pub(super) fn call(&self, function: Native, arguments: &[Argument]) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
-        if function.eq_ignore_ascii_case("DropAllItems") {
+        if function == Native::DropAllItems {
             anyhow::ensure!(arguments.is_empty(), "DropAllItems requires no arguments");
             if state.inventory.is_none() && state.inventory_error.is_none() {
                 return Ok(0);
@@ -582,21 +582,13 @@ impl ScriptHud {
                 .drop_all()?;
             return Ok(0);
         }
-        if ["DropItem", "HaveItem", "SelectItem"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
-        {
-            let expected = if function.eq_ignore_ascii_case("DropItem") {
-                2
-            } else {
-                1
-            };
+        if [Native::DropItem, Native::HaveItem, Native::SelectItem].contains(&function) {
+            let expected = if function == Native::DropItem { 2 } else { 1 };
             anyhow::ensure!(
                 arguments.len() == expected,
                 "{function} requires {expected} arguments"
             );
-            if (function.eq_ignore_ascii_case("DropItem")
-                || function.eq_ignore_ascii_case("HaveItem"))
+            if (function == Native::DropItem || function == Native::HaveItem)
                 && state.inventory.is_none()
                 && state.inventory_error.is_none()
             {
@@ -611,11 +603,11 @@ impl ScriptHud {
                 .inventory
                 .as_mut()
                 .context("installed inventory data unavailable")?;
-            if function.eq_ignore_ascii_case("HaveItem") {
+            if function == Native::HaveItem {
                 return i32::try_from(items.count(id)?)
                     .context("item count outside script integer range");
             }
-            if function.eq_ignore_ascii_case("DropItem") {
+            if function == Native::DropItem {
                 items.remove(id, arguments[1].integer()?)?;
             } else {
                 items.select(id)?;
@@ -626,7 +618,7 @@ impl ScriptHud {
             .data
             .as_ref()
             .context("installed script HUD data unavailable")?;
-        if function.eq_ignore_ascii_case("ShowBitmap") {
+        if function == Native::ShowBitmap {
             let [id, frame] = arguments else {
                 anyhow::bail!("ShowBitmap requires two arguments")
             };
@@ -653,7 +645,7 @@ impl ScriptHud {
                 state.powerups[slot] = Some((id, frame));
                 state.next_slot = 1 - slot;
             }
-        } else if function.eq_ignore_ascii_case("UnShowBitmap") {
+        } else if function == Native::UnShowBitmap {
             let [id] = arguments else {
                 anyhow::bail!("UnShowBitmap requires one argument")
             };

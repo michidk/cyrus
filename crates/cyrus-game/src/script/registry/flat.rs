@@ -1,5 +1,6 @@
 //! Retained actor flat records follow the original's per-actor flat sprite controls.
 use anyhow::{Context, Result, bail, ensure};
+use cyrus_script::Native;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -116,19 +117,18 @@ impl FlatState {
 /// Run a flat native on the receiver's record. `FlatOff` leaves an actor without a record alone.
 pub(super) fn call(
     flat: &mut Option<FlatState>,
-    function: &str,
+    function: Native,
     values: &[i32],
     table: &TextureFrames,
 ) -> Result<()> {
-    let name = function.to_ascii_lowercase();
-    let expected = match name.as_str() {
-        "flatoff" | "flatstop" => 0,
-        "flat" | "flatlikestatic" => 1,
-        "flatsettexture" => 2,
+    let expected = match function {
+        Native::FlatOff | Native::FlatStop => 0,
+        Native::Flat | Native::FlatLikeStatic => 1,
+        Native::FlatSetTexture => 2,
         _ => 3,
     };
     ensure!(values.len() == expected, "{function}: wrong argument count");
-    if name == "flatoff" {
+    if function == Native::FlatOff {
         if let Some(flat) = flat {
             flat.enabled = false;
             flat.pending = 0;
@@ -136,21 +136,21 @@ pub(super) fn call(
         return Ok(());
     }
     let flat = flat.get_or_insert_with(FlatState::default);
-    match name.as_str() {
-        "flat" => flat.show(values[0] as u16, 0),
-        "flatlikestatic" => flat.show(values[0] as u16, 0xffff),
-        "flatoffset" => {
+    match function {
+        Native::Flat => flat.show(values[0] as u16, 0),
+        Native::FlatLikeStatic => flat.show(values[0] as u16, 0xffff),
+        Native::FlatOffset => {
             flat.pending = 0;
             flat.offset = [values[0] as u16, values[1] as u16, values[2] as u16];
         }
-        "flatstop" => {
+        Native::FlatStop => {
             flat.last_frame = flat.frame;
             flat.counter = flat.last_frame;
             flat.enabled = true;
             flat.pending = 0;
             flat.animate[1] = 0;
         }
-        "flatanimate" => {
+        Native::FlatAnimate => {
             let id = values[0];
             flat.select(id, ((id >> 7) & 0x1ff) as u16, (id & 0x7f) as u16, table)
                 .with_context(|| format!("{function}: texture {id}"))?;
@@ -162,7 +162,7 @@ pub(super) fn call(
             flat.pending = 0;
             flat.animate = [values[1] as u8, values[2] as u8];
         }
-        "flatsettexture" => {
+        Native::FlatSetTexture => {
             // The original loads image `n & 7` on a cache miss but looks up `n`; which one
             // applies then depends on its global bitmap cache, so wider images stay unsupported.
             ensure!(
@@ -347,7 +347,7 @@ Flat 132=0100000000000000840000000000000000000000;FlatOffset 677,-588,-645=0100a
                     .filter(|value| !value.is_empty())
                     .map(|value| value.parse().unwrap())
                     .collect();
-                call(&mut flat, name, &values, &table).unwrap();
+                call(&mut flat, Native::from_name(name).unwrap(), &values, &table).unwrap();
                 let mut golden: Vec<u8> = if expected == "-" {
                     vec![]
                 } else {
@@ -421,9 +421,15 @@ Flat 132=0100000000000000840000000000000000000000;FlatOffset 677,-588,-645=0100a
     #[test]
     fn missing_banks_and_wide_images_are_contextual_errors() {
         let mut flat = None;
-        let error = call(&mut flat, "FlatAnimate", &[(9 << 7) | 1, 0, 0], &table()).unwrap_err();
+        let error = call(
+            &mut flat,
+            Native::FlatAnimate,
+            &[(9 << 7) | 1, 0, 0],
+            &table(),
+        )
+        .unwrap_err();
         assert!(format!("{error:#}").contains("bank 9 image 1 not installed"));
-        let error = call(&mut flat, "FlatSetTexture", &[1, 8], &table()).unwrap_err();
+        let error = call(&mut flat, Native::FlatSetTexture, &[1, 8], &table()).unwrap_err();
         assert!(format!("{error:#}").contains("image index above seven"));
     }
 }

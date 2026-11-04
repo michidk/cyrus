@@ -1,8 +1,10 @@
 //! Explicit SOUP invocation, continuations and values from preservation's engine contract.
 mod animation_group;
 mod attribute;
+mod native;
 pub use animation_group::AnimationGroup;
 pub use attribute::{Attribute, Attributes};
+pub use native::Native;
 pub mod persistence;
 pub mod program;
 mod routing;
@@ -134,7 +136,7 @@ pub trait Host {
         &mut self,
         target: &Target,
         kind: CallKind,
-        function: &str,
+        function: Native,
         arguments: &[Argument],
         invocation: Invocation,
         flags: &mut [i32],

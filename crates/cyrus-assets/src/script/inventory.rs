@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 #[derive(Default, Debug, Serialize)]
 pub struct Inventory {
     pub world: u32,
-    pub declared_functions: Vec<String>,
+    pub declared_functions: Vec<cyrus_script::Native>,
     pub declared_references: Vec<String>,
     pub actors: BTreeMap<String, ActorInventory>,
     pub unsupported: BTreeMap<String, String>,
@@ -35,7 +35,7 @@ pub fn inspect(scripts: &Scripts) -> Inventory {
             .definition
             .functions
             .iter()
-            .map(|f| f.name.clone())
+            .map(|f| f.name)
             .collect(),
         declared_references: scripts.definition.references.clone(),
         unsupported: scripts.unsupported.clone(),

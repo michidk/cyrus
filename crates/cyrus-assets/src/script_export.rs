@@ -2,7 +2,7 @@
 use crate::script::{Actor, ClockSettings, CombatTaunt, Instance, Scripts, UpdateSettings};
 use anyhow::{Context, Result};
 use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
-use cyrus_script::{Attribute, Attributes};
+use cyrus_script::{Attribute, Attributes, Native};
 use rgpre::import::{
     rgm::{
         self, RgmFile,
@@ -39,9 +39,11 @@ pub fn flat_texture_identities(scripts: &Scripts) -> std::collections::BTreeSet<
                 Some(cyrus_script::program::Value::Integer { value }) => Some(*value),
                 _ => None,
             };
-            let identity = match call.function.to_ascii_lowercase().as_str() {
-                "flat" | "flatlikestatic" | "flatanimate" => literal(0).map(|id| id as u16),
-                "flatsettexture" => literal(0)
+            let identity = match call.function {
+                Native::Flat | Native::FlatLikeStatic | Native::FlatAnimate => {
+                    literal(0).map(|id| id as u16)
+                }
+                Native::FlatSetTexture => literal(0)
                     .zip(literal(1))
                     .map(|(bank, image)| (((bank << 7) & 0xff80) | (image & 7)) as u16),
                 _ => None,
@@ -195,16 +197,23 @@ pub fn prepare_source(
         functions: definition
             .functions
             .into_iter()
-            .map(|function| Function {
-                name: function.name,
-                param_count: function.param_count,
-                kind: match function.kind {
-                    SoupFunctionKind::Task => CallKind::Task,
-                    SoupFunctionKind::Multitask => CallKind::Multitask,
-                    SoupFunctionKind::Function => CallKind::Function,
-                },
+            .map(|function| {
+                Ok(Function {
+                    name: Native::from_name(&function.name).with_context(|| {
+                        format!(
+                            "world {world} SOUP386.DEF: function {} unknown",
+                            function.name
+                        )
+                    })?,
+                    param_count: function.param_count,
+                    kind: match function.kind {
+                        SoupFunctionKind::Task => CallKind::Task,
+                        SoupFunctionKind::Multitask => CallKind::Multitask,
+                        SoupFunctionKind::Function => CallKind::Function,
+                    },
+                })
             })
-            .collect(),
+            .collect::<Result<_>>()?,
         flags: definition
             .flags
             .into_iter()

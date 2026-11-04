@@ -57,7 +57,8 @@ impl ScriptWorld {
                 random: None,
                 inputs,
             };
-            let (_, drawing, sheathing) = host.receiver_weapon_predicates("StartAttack")?;
+            let (_, drawing, sheathing) =
+                host.weapon_predicates(host.index).context("attack start")?;
             if drawing || sheathing {
                 return Ok(false);
             }

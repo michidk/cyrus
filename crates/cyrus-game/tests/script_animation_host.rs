@@ -2,6 +2,7 @@
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
+use cyrus_script::Native;
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Thread};
 use cyrus_script::{Attribute, Attributes};
@@ -12,10 +13,10 @@ use std::collections::BTreeMap;
 fn call(function_id: u16, kind: CallKind, target: Object) -> Operation {
     let (function, arguments) = match function_id {
         1 => (
-            "PushAnimation",
+            Native::PushAnimation,
             vec![Value::Integer { value: 7 }, Value::Integer { value: 1 }],
         ),
-        2 => ("Wait", vec![Value::Integer { value: 2 }]),
+        2 => (Native::Wait, vec![Value::Integer { value: 2 }]),
         _ => unreachable!(),
     };
     let local = target == Object::Me;
@@ -23,7 +24,7 @@ fn call(function_id: u16, kind: CallKind, target: Object) -> Operation {
         function_id,
         kind,
         target,
-        function: function.into(),
+        function,
         arguments,
     };
     if local {
@@ -121,13 +122,13 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         world: 17,
         definition: Definition {
             functions: [
-                ("NullFunction", 0, CallKind::Function),
-                ("PushAnimation", 2, CallKind::Task),
-                ("Wait", 1, CallKind::Task),
+                (Native::NullFunction, 0, CallKind::Function),
+                (Native::PushAnimation, 2, CallKind::Task),
+                (Native::Wait, 1, CallKind::Task),
             ]
             .into_iter()
             .map(|(name, param_count, kind)| Function {
-                name: name.into(),
+                name,
                 param_count,
                 kind,
             })
@@ -693,14 +694,14 @@ fn missing_animation_group_keeps_requesting_fallback_without_completing_task() {
     }
 }
 
-fn axis_task_scripts(function: &str, axis: i32, delta: i32, duration: i32) -> Scripts {
+fn axis_task_scripts(function: Native, axis: i32, delta: i32, duration: i32) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {
             call: Call {
                 function_id: 3,
                 kind: CallKind::Task,
                 target: Object::Me,
-                function: function.into(),
+                function,
                 arguments: [axis, delta, duration]
                     .map(|value| Value::Integer { value })
                     .to_vec(),
@@ -710,7 +711,7 @@ fn axis_task_scripts(function: &str, axis: i32, delta: i32, duration: i32) -> Sc
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: function.into(),
+        name: function,
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -720,21 +721,21 @@ fn axis_task_scripts(function: &str, axis: i32, delta: i32, duration: i32) -> Sc
 
 #[test]
 fn absolute_rotation_matches_original_angle_sequences_and_completion() {
-    let cases: &[(&str, u32, i32, i32, &[u16])] = &[
-        ("RotateToAxis", 0, 512, 4, &[128, 256, 384, 512]),
-        ("RotateToAxis", 0, 1536, 4, &[1920, 1792, 1664, 1536]),
-        ("RotateToAxis", 2040, 8, 4, &[2044, 0, 4, 8]),
-        ("RotateToAxis", 512, 512, 4, &[512]),
-        ("RotateToAxis", 0, 512, 0, &[0]),
-        ("sRotateToAxis", 0, 512, 4, &[0, 170, 341, 512]),
-        ("sRotateToAxis", 0, 1536, 4, &[0, 1877, 1706, 1536]),
-        ("sRotateToAxis", 0, 1500, 4, &[0, 1889, 1730, 1500]),
-        ("sRotateToAxis", 2040, 8, 4, &[2040, 2045, 2, 8]),
-        ("sRotateByAxis", 0, 512, 4, &[0, 128, 256, 512]),
-        ("sRotateByAxis", 0, -512, 4, &[0, 1920, 1792, 1536]),
-        ("sRotateByAxis", 2040, 16, 4, &[2040, 2044, 0, 8]),
-        ("sRotateByAxis", 0, -1, 4, &[0, 0, 0, 2047]),
-        ("sRotateByAxis", 1026, 512, 1, &[1538]),
+    let cases: &[(Native, u32, i32, i32, &[u16])] = &[
+        (Native::RotateToAxis, 0, 512, 4, &[128, 256, 384, 512]),
+        (Native::RotateToAxis, 0, 1536, 4, &[1920, 1792, 1664, 1536]),
+        (Native::RotateToAxis, 2040, 8, 4, &[2044, 0, 4, 8]),
+        (Native::RotateToAxis, 512, 512, 4, &[512]),
+        (Native::RotateToAxis, 0, 512, 0, &[0]),
+        (Native::SRotateToAxis, 0, 512, 4, &[0, 170, 341, 512]),
+        (Native::SRotateToAxis, 0, 1536, 4, &[0, 1877, 1706, 1536]),
+        (Native::SRotateToAxis, 0, 1500, 4, &[0, 1889, 1730, 1500]),
+        (Native::SRotateToAxis, 2040, 8, 4, &[2040, 2045, 2, 8]),
+        (Native::SRotateByAxis, 0, 512, 4, &[0, 128, 256, 512]),
+        (Native::SRotateByAxis, 0, -512, 4, &[0, 1920, 1792, 1536]),
+        (Native::SRotateByAxis, 2040, 16, 4, &[2040, 2044, 0, 8]),
+        (Native::SRotateByAxis, 0, -1, 4, &[0, 0, 0, 2047]),
+        (Native::SRotateByAxis, 1026, 512, 1, &[1538]),
     ];
     for &(function, initial, target, duration, expected) in cases {
         let mut data = axis_task_scripts(function, 1, target, duration);
@@ -769,7 +770,7 @@ fn absolute_rotation_matches_original_angle_sequences_and_completion() {
 fn absolute_rotation_nominal_fallback_preserves_direction_and_scaled_duration_fault_is_contextual()
 {
     use cyrus_game::script::ScriptInputs;
-    let data = axis_task_scripts("RotateToAxis", 1, 1536, 4);
+    let data = axis_task_scripts(Native::RotateToAxis, 1, 1536, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -794,7 +795,7 @@ fn absolute_rotation_nominal_fallback_preserves_direction_and_scaled_duration_fa
         )
         .unwrap();
     assert_eq!(world.spatial(id).unwrap().local.angles, [0, 2047, 0]);
-    for (function, duration) in [("sRotateToAxis", 1), ("sRotateByAxis", 0)] {
+    for (function, duration) in [(Native::SRotateToAxis, 1), (Native::SRotateByAxis, 0)] {
         let data = axis_task_scripts(function, 1, 512, duration);
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
         world.prepare_spatial().unwrap();
@@ -810,7 +811,7 @@ fn absolute_rotation_nominal_fallback_preserves_direction_and_scaled_duration_fa
 
 #[test]
 fn rotation_changes_local_angles_and_completes_before_body_continues() {
-    let data = axis_task_scripts("RotateByAxis", 1, 128, 4);
+    let data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -829,7 +830,7 @@ fn rotation_changes_local_angles_and_completes_before_body_continues() {
 #[test]
 fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
     use cyrus_game::script::ScriptInputs;
-    let data = axis_task_scripts("RotateByAxis", -1, -128, 4);
+    let data = axis_task_scripts(Native::RotateByAxis, -1, -128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -854,7 +855,7 @@ fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
 #[test]
 fn spatial_timing_is_checked_before_script_mutation() {
     use cyrus_game::script::ScriptInputs;
-    let data = axis_task_scripts("RotateByAxis", 0, 128, 4);
+    let data = axis_task_scripts(Native::RotateByAxis, 0, 128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -871,7 +872,7 @@ fn spatial_timing_is_checked_before_script_mutation() {
 
 #[test]
 fn routed_rotation_keeps_receiver_angles_and_task_slots() {
-    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
+    let mut data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     let operation = &mut data
         .actors
         .get_mut("ACTOR")
@@ -904,7 +905,7 @@ fn routed_rotation_keeps_receiver_angles_and_task_slots() {
 fn attached_facing_stays_composed_until_family_refresh() {
     use cyrus_game::script::{PlayerQuery, QueryInputs};
     use cyrus_script::Argument;
-    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
+    let mut data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
     data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
     data.content_id = data.content_identity().unwrap();
@@ -929,7 +930,7 @@ fn attached_facing_stays_composed_until_family_refresh() {
         world
             .spatial(id)
             .unwrap()
-            .query("PlayerFacing", &args, query)
+            .query(Native::PlayerFacing, &args, query)
             .unwrap(),
         Some(1)
     );
@@ -939,7 +940,7 @@ fn attached_facing_stays_composed_until_family_refresh() {
         world
             .spatial(id)
             .unwrap()
-            .query("PlayerFacing", &args, query)
+            .query(Native::PlayerFacing, &args, query)
             .unwrap(),
         Some(0)
     );
@@ -947,7 +948,7 @@ fn attached_facing_stays_composed_until_family_refresh() {
 
 #[test]
 fn cancelling_rotation_retains_last_local_angle() {
-    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
+    let mut data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     let actor = data.actors.get_mut("ACTOR").unwrap();
     let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
         unreachable!()
@@ -967,7 +968,7 @@ fn cancelling_rotation_retains_last_local_angle() {
 
 #[test]
 fn rotation_reevaluates_delta_without_replacing_saved_target() {
-    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
+    let mut data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     data.definition.flags[0].initial_value = 128;
     let actor = data.actors.get_mut("ACTOR").unwrap();
     let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
@@ -998,11 +999,11 @@ fn rotation_reevaluates_delta_without_replacing_saved_target() {
 #[test]
 fn routed_sound_commands_keep_receiver_and_authored_operands() {
     let definitions = [
-        ("FlatSound", vec![12, -4, -10000]),
-        ("EndMySound", vec![12]),
-        ("EndSound", vec![12]),
-        ("EndMySounds", vec![]),
-        ("StopAllSounds", vec![]),
+        (Native::FlatSound, vec![12, -4, -10000]),
+        (Native::EndMySound, vec![12]),
+        (Native::EndSound, vec![12]),
+        (Native::EndMySounds, vec![]),
+        (Native::StopAllSounds, vec![]),
     ];
     let mut data = scripts(vec![Operation::End { target: 0 }]);
     let mut operations = Vec::new();
@@ -1016,7 +1017,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
     for (index, (name, values)) in definitions.iter().enumerate() {
         let function_id = data.definition.functions.len() as u16;
         data.definition.functions.push(Function {
-            name: (*name).into(),
+            name: *name,
             param_count: values.len() as u8,
             kind: CallKind::Function,
         });
@@ -1030,7 +1031,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
                         function_id,
                         kind: CallKind::Function,
                         target: Object::Named { string: 0 },
-                        function: (*name).into(),
+                        function: *name,
                         arguments: values
                             .iter()
                             .map(|value| Value::Integer { value: *value })
@@ -1105,20 +1106,20 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
     );
 }
 
-fn activation_world(function: &str) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
+fn activation_world(function: Native) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
     activation_world_with_attributes(function, Attributes::default(), Attributes::default())
 }
 
 fn activation_world_with_attributes(
-    function: &str,
+    function: Native,
     receiver_attributes: Attributes,
     player_attributes: Attributes,
 ) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
     use cyrus_game::script::{ActivationActor, ActivationInputs};
     let mut data = scripts(vec![Operation::End { target: 0 }]);
-    for (name, count) in [(function, 1), ("Deactivate", 0)] {
+    for (name, count) in [(function, 1), (Native::Deactivate, 0)] {
         data.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count: count,
             kind: CallKind::Function,
         });
@@ -1143,7 +1144,7 @@ fn activation_world_with_attributes(
                             function_id: 3,
                             kind: CallKind::Function,
                             target: Object::Named { string: 0 },
-                            function: function.into(),
+                            function,
                             arguments: vec![Value::Integer {
                                 value: i32::from_le_bytes(*b"#OPN"),
                             }],
@@ -1176,7 +1177,7 @@ fn activation_world_with_attributes(
                         function_id: 4,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: "Deactivate".into(),
+                        function: Native::Deactivate,
                         arguments: vec![],
                     },
                 },
@@ -1237,7 +1238,7 @@ fn activate_world(world: &mut ScriptWorld, inputs: &cyrus_game::script::Activati
 #[test]
 fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
     use cyrus_game::script::ActivationOverlay;
-    let (mut world, inputs) = activation_world("Activate");
+    let (mut world, inputs) = activation_world(Native::Activate);
     activate_world(&mut world, &inputs);
     assert_eq!(world.flags(), [1]);
     assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
@@ -1286,7 +1287,7 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
 #[test]
 fn end_releases_only_its_activation_owner_without_consuming_prompt_or_holdoff() {
     use cyrus_game::script::ActivationOverlay;
-    let (mut world, inputs) = activation_world("Activate");
+    let (mut world, inputs) = activation_world(Native::Activate);
     activate_world(&mut world, &inputs);
     let owner = world.id(1).unwrap();
     assert_eq!(
@@ -1329,10 +1330,10 @@ fn end_releases_only_its_activation_owner_without_consuming_prompt_or_holdoff() 
 #[test]
 fn activation_requires_receiver_eligibility_and_matching_torch_state() {
     for (function, burning, expected) in [
-        ("Activate", 0, 1),
-        ("Activate", 1, 0),
-        ("TorchActivate", 0, 0),
-        ("TorchActivate", 1, 1),
+        (Native::Activate, 0, 1),
+        (Native::Activate, 1, 0),
+        (Native::TorchActivate, 0, 0),
+        (Native::TorchActivate, 1, 1),
     ] {
         let (mut world, mut inputs) = activation_world(function);
         inputs.actors.get_mut(&2).unwrap().torch_burning = burning;
@@ -1340,13 +1341,13 @@ fn activation_requires_receiver_eligibility_and_matching_torch_state() {
         assert_eq!(world.flags(), [expected], "{function} burning={burning}");
     }
     for state in [10, 19] {
-        let (mut world, mut inputs) = activation_world("Activate");
+        let (mut world, mut inputs) = activation_world(Native::Activate);
         inputs.actors.get_mut(&1).unwrap().state = state;
         activate_world(&mut world, &inputs);
         assert_eq!(world.flags(), [0]);
         assert_eq!(world.activation().prompt(), None);
     }
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     inputs.actors.get_mut(&0).unwrap().on_rope = true;
     inputs.actors.get_mut(&2).unwrap().on_rope = true;
     activate_world(&mut world, &inputs);
@@ -1368,13 +1369,13 @@ fn activation_requires_receiver_eligibility_and_matching_torch_state() {
 
 #[test]
 fn missing_activation_labels_do_not_claim_owner_and_stale_inputs_fail_before_execution() {
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     inputs.labels.clear();
     activate_world(&mut world, &inputs);
     assert_eq!(world.flags(), [0]);
     assert_eq!(world.activation().owner(), None);
     assert_eq!(world.activation().prompt(), None);
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     inputs.player.generation += 1;
     assert!(
         world
@@ -1398,7 +1399,7 @@ fn missing_activation_labels_do_not_claim_owner_and_stale_inputs_fail_before_exe
 #[test]
 fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
     for gate in 0..11 {
-        let (mut world, mut inputs) = activation_world("Activate");
+        let (mut world, mut inputs) = activation_world(Native::Activate);
         match gate {
             0 => inputs.lockout = 1,
             1 => inputs.dialogue_open = true,
@@ -1441,7 +1442,7 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
         assert_eq!(world.activation().prompt(), None, "gate {gate}");
     }
     for gate in 0..5 {
-        let (mut world, mut inputs) = activation_world("Activate");
+        let (mut world, mut inputs) = activation_world(Native::Activate);
         inputs.actors.get_mut(&2).unwrap().state = 20;
         match gate {
             0 => inputs.item_system_ready = false,
@@ -1465,7 +1466,7 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
 #[test]
 fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
     use cyrus_game::script::ActivationOverlay;
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     activate_world(&mut world, &inputs);
     inputs.lockout = 1;
     assert_eq!(
@@ -1510,7 +1511,7 @@ fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
         world.activation_overlay(&inputs, 0, false, 24).unwrap(),
         ActivationOverlay::Prompt("Open".into())
     );
-    let (fresh, _) = activation_world("Activate");
+    let (fresh, _) = activation_world(Native::Activate);
     assert_eq!(fresh.activation().owner(), None);
     assert_eq!(fresh.activation().prompt(), None);
 }
@@ -1519,7 +1520,7 @@ fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
 fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
     for (player_type, special, holding, expected) in [(1, 0, 0, 0), (1, 1, 0, 1), (0, 0, 1, 0)] {
         let (mut world, mut inputs) = activation_world_with_attributes(
-            "Activate",
+            Native::Activate,
             Attributes::from([(Attribute::SpecialActivate, special)]),
             Attributes::from([
                 (Attribute::PlayerType, player_type),
@@ -1536,7 +1537,7 @@ fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
 
 #[test]
 fn activation_owner_blocks_a_different_receiver_until_its_end() {
-    let (mut world, inputs) = activation_world("Activate");
+    let (mut world, inputs) = activation_world(Native::Activate);
     activate_world(&mut world, &inputs);
     world.activation_overlay(&inputs, 22, false, 24).unwrap();
     world.activation_overlay(&inputs, 0, false, 24).unwrap();
@@ -1562,7 +1563,7 @@ fn activation_owner_blocks_a_different_receiver_until_its_end() {
 #[test]
 fn activation_item_path_keeps_rendering_and_weapon_cycling_gates_separate() {
     use cyrus_game::script::ActivationOverlay;
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     inputs.render_disabled = true;
     assert_eq!(
         world.activation_overlay(&inputs, 0, false, 24).unwrap(),
@@ -1591,7 +1592,7 @@ fn activation_item_path_keeps_rendering_and_weapon_cycling_gates_separate() {
 
 #[test]
 fn empty_rtx_text_still_activates_an_existing_entry() {
-    let (mut world, mut inputs) = activation_world("Activate");
+    let (mut world, mut inputs) = activation_world(Native::Activate);
     inputs.labels.insert("#opn".into(), String::new());
     activate_world(&mut world, &inputs);
     assert_eq!(world.flags(), [1]);
@@ -1604,7 +1605,7 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
     use cyrus_game::script::{ActivationAnimation, ScriptInputs};
     for (state, armed) in [(20, false), (21, false), (0, true)] {
         for (present, bound) in [(false, false), (true, false), (false, true)] {
-            let (mut world, mut inputs) = activation_world("Activate");
+            let (mut world, mut inputs) = activation_world(Native::Activate);
             let player = inputs.actors.get_mut(&inputs.player.index).unwrap();
             player.state = state;
             player.weapon_assigned = armed;
@@ -1662,9 +1663,9 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
         (1, Attribute::StopYRotate, 1),
         (2, Attribute::StopZRotate, 2),
     ] {
-        let mut data = axis_task_scripts("RotateByAxis", axis, 128, 4);
+        let mut data = axis_task_scripts(Native::RotateByAxis, axis, 128, 4);
         data.definition.functions.push(Function {
-            name: "SetMyAttr".into(),
+            name: Native::SetMyAttr,
             kind: CallKind::Function,
             param_count: 2,
         });
@@ -1685,7 +1686,7 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
                         function_id: 4,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: "SetMyAttr".into(),
+                        function: Native::SetMyAttr,
                         arguments: vec![
                             Value::Integer {
                                 value: attribute.index() as i32,
@@ -1718,12 +1719,12 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
 #[test]
 fn axis_movement_preserves_quantization_and_elapsed_position_contracts() {
     for (function, delta, expected) in [
-        ("MoveByAxis", 2560, [512, 1024, 1536, 2560]),
-        ("MoveByAxis", -2560, [-768, -1536, -2304, -2560]),
-        ("sMoveByAxis", 2560, [0, 640, 1280, 2560]),
-        ("sMoveByAxis", -2560, [0, -640, -1280, -2560]),
-        ("MoveByAxis", 100, [0, 0, 0, 100]),
-        ("MoveByAxis", -100, [-100, -100, -100, -100]),
+        (Native::MoveByAxis, 2560, [512, 1024, 1536, 2560]),
+        (Native::MoveByAxis, -2560, [-768, -1536, -2304, -2560]),
+        (Native::SMoveByAxis, 2560, [0, 640, 1280, 2560]),
+        (Native::SMoveByAxis, -2560, [0, -640, -1280, -2560]),
+        (Native::MoveByAxis, 100, [0, 0, 0, 100]),
+        (Native::MoveByAxis, -100, [-100, -100, -100, -100]),
     ] {
         let data = axis_task_scripts(function, 1, delta, 4);
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
@@ -1745,7 +1746,7 @@ fn axis_movement_preserves_quantization_and_elapsed_position_contracts() {
 
 #[test]
 fn movement_zero_target_is_reinitialized_even_after_initial_completion() {
-    let mut data = axis_task_scripts("MoveByAxis", 0, -256, 1);
+    let mut data = axis_task_scripts(Native::MoveByAxis, 0, -256, 1);
     data.instances[0].map_position[0] = 1;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
@@ -1762,9 +1763,9 @@ fn movement_zero_target_is_reinitialized_even_after_initial_completion() {
 #[test]
 fn axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules() {
     for (function, axis, duration, expected) in [
-        ("MoveByAxis", -1, 4, [0, 0, 512]),
-        ("sMoveByAxis", -1, 4, [0, 0, 0]),
-        ("MoveByAxis", 0, 0, [0, 0, 0]),
+        (Native::MoveByAxis, -1, 4, [0, 0, 512]),
+        (Native::SMoveByAxis, -1, 4, [0, 0, 0]),
+        (Native::MoveByAxis, 0, 0, [0, 0, 0]),
     ] {
         let data = axis_task_scripts(function, axis, 2560, duration);
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
@@ -1773,7 +1774,7 @@ fn axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules() {
         stage(&mut world, id, BODY);
         assert_eq!(world.spatial(id).unwrap().local.position, expected);
     }
-    let data = axis_task_scripts("sMoveByAxis", 0, 2560, 0);
+    let data = axis_task_scripts(Native::SMoveByAxis, 0, 2560, 0);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -1816,7 +1817,7 @@ fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_pla
             function_id: 3,
             kind: CallKind::Multitask,
             target: Object::Me,
-            function: "AmbientSound".into(),
+            function: Native::AmbientSound,
             arguments: vec![
                 Value::Integer { value: effect },
                 Value::Integer { value: -40 },
@@ -1833,7 +1834,7 @@ fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_pla
         Operation::End { target: 5 },
     ]);
     data.definition.functions.push(Function {
-        name: "AmbientSound".into(),
+        name: Native::AmbientSound,
         param_count: 3,
         kind: CallKind::Multitask,
     });
@@ -1900,12 +1901,12 @@ fn lockout_data(value: i32, activate: bool) -> Scripts {
     let mut data = scripts(vec![Operation::End { target: 0 }]);
     data.definition.functions.extend([
         Function {
-            name: "LockoutPlayer".into(),
+            name: Native::LockoutPlayer,
             param_count: 1,
             kind: CallKind::Function,
         },
         Function {
-            name: "Activate".into(),
+            name: Native::Activate,
             param_count: 1,
             kind: CallKind::Function,
         },
@@ -1917,9 +1918,9 @@ fn lockout_data(value: i32, activate: bool) -> Scripts {
     data.actors.insert("CYRUS".into(), player);
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::LockPos] = 8;
     data.actors.get_mut("OTHER").unwrap().attributes[Attribute::LockPos] = 9;
-    let native_call = |function_id, function: &str, value| Call {
+    let native_call = |function_id, function: Native, value| Call {
         function_id,
-        function: function.into(),
+        function,
         kind: CallKind::Function,
         target: Object::Me,
         arguments: vec![Value::Integer { value }],
@@ -1928,14 +1929,14 @@ fn lockout_data(value: i32, activate: bool) -> Scripts {
         destination: Place::Flag { index: 0 },
         formula: Formula {
             first: Value::Call {
-                call: Box::new(native_call(3, "LockoutPlayer", value)),
+                call: Box::new(native_call(3, Native::LockoutPlayer, value)),
             },
             rest: vec![],
         },
     }];
     if activate {
         operations.push(Operation::Call {
-            call: native_call(4, "Activate", i32::from_le_bytes(*b"#OPN")),
+            call: native_call(4, Native::Activate, i32::from_le_bytes(*b"#OPN")),
         });
     }
     operations.push(Operation::End { target: 0 });
@@ -2001,7 +2002,7 @@ fn lockout_call_changes_activation_and_overlay_in_the_same_invocation() {
     use cyrus_game::script::ActivationOverlay;
     for (value, caller_lockout, expected_prompt) in [(1, 0, None), (2, 1, Some("Open"))] {
         let mut world = lockout_world(value, true);
-        let (_, mut inputs) = activation_world("Activate");
+        let (_, mut inputs) = activation_world(Native::Activate);
         inputs.player = world.id(3).unwrap();
         inputs.actors.insert(3, inputs.actors[&2]);
         inputs.lockout = caller_lockout;
@@ -2048,7 +2049,7 @@ fn lockout_clears_prompt_override_only_outside_exact_one() {
                     operation: Operation::Call {
                         call: Call {
                             function_id: 4,
-                            function: "Activate".into(),
+                            function: Native::Activate,
                             kind: CallKind::Function,
                             target: Object::Me,
                             arguments: vec![Value::Integer {
@@ -2082,7 +2083,7 @@ fn lockout_clears_prompt_override_only_outside_exact_one() {
         ]);
         data.content_id = data.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&data, 7).unwrap();
-        let (_, mut inputs) = activation_world("Activate");
+        let (_, mut inputs) = activation_world(Native::Activate);
         inputs.player = world.id(3).unwrap();
         inputs.actors.insert(3, inputs.actors[&2]);
         inputs.use_held = false;
@@ -2169,7 +2170,7 @@ fn location_task_scripts(selector: i32, duration: i32) -> Scripts {
                 function_id: 3,
                 kind: CallKind::Task,
                 target: Object::Me,
-                function: "MoveToLocation".into(),
+                function: Native::MoveToLocation,
                 arguments: [selector, duration]
                     .map(|value| Value::Integer { value })
                     .to_vec(),
@@ -2179,7 +2180,7 @@ fn location_task_scripts(selector: i32, duration: i32) -> Scripts {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "MoveToLocation".into(),
+        name: Native::MoveToLocation,
         param_count: 2,
         kind: CallKind::Task,
     });
@@ -2399,7 +2400,7 @@ impl cyrus_game::preferences::PreferenceStore for LogStore {
 }
 fn hud_call(
     hud: Option<&cyrus_game::script::ScriptHud>,
-    function: &str,
+    function: Native,
     arguments: &[i32],
 ) -> anyhow::Result<i32> {
     let mut data = scripts(vec![
@@ -2411,7 +2412,7 @@ fn hud_call(
                         function_id: 3,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: function.into(),
+                        function,
                         arguments: arguments
                             .iter()
                             .map(|value| Value::Integer { value: *value })
@@ -2427,7 +2428,7 @@ fn hud_call(
     actor.program.variables = vec![0];
     actor.instance_variables = vec![vec![0]];
     data.definition.functions.push(Function {
-        name: function.into(),
+        name: function,
         param_count: arguments.len().try_into().unwrap(),
         kind: CallKind::Function,
     });
@@ -2452,7 +2453,10 @@ fn hud_call(
     Ok(world.actors()[0].runtime().unwrap().variables()[0])
 }
 
-fn hud_calls(hud: &cyrus_game::script::ScriptHud, calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
+fn hud_calls(
+    hud: &cyrus_game::script::ScriptHud,
+    calls: &[(Native, &[i32])],
+) -> anyhow::Result<i32> {
     let mut operations = vec![];
     let mut functions = vec![];
     for (index, (function, arguments)) in calls.iter().enumerate() {
@@ -2464,7 +2468,7 @@ fn hud_calls(hud: &cyrus_game::script::ScriptHud, calls: &[(&str, &[i32])]) -> a
                         function_id: 3 + index as u16,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: (*function).into(),
+                        function: *function,
                         arguments: arguments
                             .iter()
                             .map(|value| Value::Integer { value: *value })
@@ -2475,7 +2479,7 @@ fn hud_calls(hud: &cyrus_game::script::ScriptHud, calls: &[(&str, &[i32])]) -> a
             },
         });
         functions.push(Function {
-            name: (*function).into(),
+            name: *function,
             param_count: arguments.len().try_into().unwrap(),
             kind: CallKind::Function,
         });
@@ -2516,16 +2520,19 @@ fn script_menu_items_take_installed_text_and_report_the_committed_value() {
     let none = i32::from_le_bytes(*b"NONE");
     // Nothing is committed yet, so the first item's value is reported; a label without an
     // installed entry adds nothing.
-    let value = |calls: &[(&str, &[i32])]| hud_calls(&hud, calls).unwrap();
+    let value = |calls: &[(Native, &[i32])]| hud_calls(&hud, calls).unwrap();
     assert_eq!(
-        value(&[("menuAddItem", &[none, 0, 9]), ("menuSelection", &[])]),
+        value(&[
+            (Native::MenuAddItem, &[none, 0, 9]),
+            (Native::MenuSelection, &[])
+        ]),
         0
     );
     assert_eq!(
         value(&[
-            ("menuNew", &[]),
-            ("menuAddItem", &[tag, 0, 7]),
-            ("menuSelection", &[]),
+            (Native::MenuNew, &[]),
+            (Native::MenuAddItem, &[tag, 0, 7]),
+            (Native::MenuSelection, &[]),
         ]),
         7
     );
@@ -2540,12 +2547,12 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
     };
     let hud = ScriptHud::default();
     hud.configure(&hud_asset(), &Preferences::default());
-    let call = |index: u16, name: &str, kind: CallKind, arguments: &[i32]| Operation::Call {
+    let call = |index: u16, name: Native, kind: CallKind, arguments: &[i32]| Operation::Call {
         call: Call {
             function_id: index,
             kind,
             target: Object::Me,
-            function: name.into(),
+            function: name,
             arguments: arguments
                 .iter()
                 .map(|value| Value::Integer { value: *value })
@@ -2555,10 +2562,10 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
     let test = i32::from_le_bytes(*b"TEST");
     let empty = i32::from_le_bytes(*b"EMPT");
     let mut data = scripts(vec![
-        call(3, "menuNew", CallKind::Function, &[]),
-        call(4, "menuAddItem", CallKind::Function, &[test, 0, 7]),
-        call(4, "menuAddItem", CallKind::Function, &[empty, 0, 8]),
-        call(5, "menuProc", CallKind::Task, &[]),
+        call(3, Native::MenuNew, CallKind::Function, &[]),
+        call(4, Native::MenuAddItem, CallKind::Function, &[test, 0, 7]),
+        call(4, Native::MenuAddItem, CallKind::Function, &[empty, 0, 8]),
+        call(5, Native::MenuProc, CallKind::Task, &[]),
         Operation::Assign {
             destination: Place::Local { index: 0 },
             formula: Formula {
@@ -2567,7 +2574,7 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
                         function_id: 6,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: "menuSelection".into(),
+                        function: Native::MenuSelection,
                         arguments: vec![],
                     }),
                 },
@@ -2586,13 +2593,13 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
     data.actors.get_mut("ACTOR").unwrap().program.variables = vec![0];
     data.actors.get_mut("ACTOR").unwrap().instance_variables = vec![vec![0]];
     for (name, param_count, kind) in [
-        ("menuNew", 0, CallKind::Function),
-        ("menuAddItem", 3, CallKind::Function),
-        ("menuProc", 0, CallKind::Task),
-        ("menuSelection", 0, CallKind::Function),
+        (Native::MenuNew, 0, CallKind::Function),
+        (Native::MenuAddItem, 3, CallKind::Function),
+        (Native::MenuProc, 0, CallKind::Task),
+        (Native::MenuSelection, 0, CallKind::Function),
     ] {
         data.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count,
             kind,
         });
@@ -2659,26 +2666,26 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
 fn script_powerup_dispatch_validates_installed_frames_and_retains_slot_order() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let hud = ScriptHud::default();
-    assert!(hud_call(None, "ShowBitmap", &[0, 0]).is_err());
-    assert!(hud_call(Some(&hud), "ShowBitmap", &[0, 0]).is_err());
+    assert!(hud_call(None, Native::ShowBitmap, &[0, 0]).is_err());
+    assert!(hud_call(Some(&hud), Native::ShowBitmap, &[0, 0]).is_err());
     hud.configure(&hud_asset(), &Preferences::default());
-    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 0]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 0]).unwrap();
     assert_eq!(hud.presentation().0, [Some((0, 0)), None]);
-    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 2]).unwrap();
     assert_eq!(hud.presentation().0, [Some((0, 2)), Some((1, 1))]);
-    hud_call(Some(&hud), "UnShowBitmap", &[0]).unwrap();
+    hud_call(Some(&hud), Native::UnShowBitmap, &[0]).unwrap();
     assert_eq!(hud.presentation().0, [None, Some((1, 1))]);
-    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
-    hud_call(Some(&hud), "UnShowBitmap", &[1]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 0]).unwrap();
+    hud_call(Some(&hud), Native::UnShowBitmap, &[1]).unwrap();
     assert_eq!(
         hud.presentation().0,
         [None, Some((1, 1))],
         "clears only the first matching ID"
     );
     for values in [[-1, 0], [2, 0], [0, -1], [0, 3]] {
-        assert!(hud_call(Some(&hud), "ShowBitmap", &values).is_err());
+        assert!(hud_call(Some(&hud), Native::ShowBitmap, &values).is_err());
     }
     assert_eq!(hud.presentation().0, [None, Some((1, 1))]);
 }
@@ -2694,13 +2701,13 @@ fn script_logbook_dispatch_writes_installed_text_before_notifying_and_suppresses
     let hud = ScriptHud::default();
     hud.configure(&hud_asset(), &preferences);
     let tag = i32::from_le_bytes(*b"TEST");
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
     assert_eq!(hud.entries().unwrap(), ["A new journal entry."]);
     assert!(hud.presentation().1);
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
-    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"NONE")]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[i32::from_le_bytes(*b"NONE")]).unwrap();
     assert!(!hud.presentation().1);
-    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"EMPT")]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[i32::from_le_bytes(*b"EMPT")]).unwrap();
     assert!(
         hud.presentation().1,
         "an installed empty entry is still written"
@@ -2735,7 +2742,7 @@ fn failed_logbook_storage_does_not_notify_or_overwrite_and_tag_is_still_suppress
         let hud = ScriptHud::default();
         hud.configure(&hud_asset(), &preferences);
         let tag = i32::from_le_bytes(*b"TEST");
-        assert!(hud_call(Some(&hud), "AddLog", &[tag]).is_err());
+        assert!(hud_call(Some(&hud), Native::AddLog, &[tag]).is_err());
         assert!(!hud.presentation().1);
         assert!(writes.lock().unwrap().is_empty());
         if load.as_deref() == Some("broken") {
@@ -2743,7 +2750,7 @@ fn failed_logbook_storage_does_not_notify_or_overwrite_and_tag_is_still_suppress
         } else {
             assert_eq!(hud.entries().unwrap(), ["Earlier entry."]);
         }
-        hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+        hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
         assert!(!hud.presentation().1);
     }
 }
@@ -2762,11 +2769,11 @@ fn full_logbook_tag_table_does_not_retain_new_tags() {
         }),
     );
     for tag in 1..=400 {
-        hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+        hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
     }
     let tag = i32::from_le_bytes(*b"TEST");
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
     assert_eq!(
         hud.entries().unwrap(),
         ["A new journal entry.", "A new journal entry."]
@@ -2789,8 +2796,8 @@ fn journal_replacement_preserves_text_tags_and_pending_notification_without_io()
     let hud = ScriptHud::default();
     hud.configure(&asset, &preferences);
     let tag = i32::from_le_bytes(*b"TEST");
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
-    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"NONE")]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[i32::from_le_bytes(*b"NONE")]).unwrap();
     let encoded = serde_json::to_string(&hud.snapshot_journal().unwrap()).unwrap();
     assert!(
         hud.presentation().1,
@@ -2847,7 +2854,7 @@ fn journal_replacement_preserves_text_tags_and_pending_notification_without_io()
     assert_eq!(writes.lock().unwrap().as_slice(), before);
     let empty = i32::from_le_bytes(*b"EMPT");
     replacement.add_log(empty).unwrap();
-    hud_call(Some(&hud), "AddLog", &[empty]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[empty]).unwrap();
     assert_eq!(replacement.entries().unwrap(), hud.entries().unwrap());
     assert_eq!(
         serde_json::to_value(replacement.snapshot().unwrap()).unwrap(),
@@ -2871,7 +2878,7 @@ fn journal_replacement_rejects_incompatible_or_invalid_state_without_touching_li
     let hud = ScriptHud::default();
     assert!(hud.snapshot_journal().is_err());
     hud.configure(&asset, &preferences);
-    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"TEST")]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[i32::from_le_bytes(*b"TEST")]).unwrap();
     let saved = serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap();
     let before = writes.lock().unwrap().clone();
     for (field, value) in [
@@ -2935,7 +2942,7 @@ fn journal_replacement_retains_full_tag_table_and_failed_write_suppression() {
     let hud = ScriptHud::default();
     hud.configure(&asset, &preferences);
     let tag = i32::from_le_bytes(*b"TEST");
-    assert!(hud_call(Some(&hud), "AddLog", &[tag]).is_err());
+    assert!(hud_call(Some(&hud), Native::AddLog, &[tag]).is_err());
     let working = Preferences::new(LogStore {
         load: None,
         fail_save: false,
@@ -3015,12 +3022,12 @@ fn inventory_scripts_share_counts_caps_selection_and_requirements() {
     asset.selected = Some(2);
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud_call(Some(&hud), "AddItem", &[0, 9]).unwrap();
-    hud_call(Some(&hud), "AddItem", &[2, 9]).unwrap();
-    hud_call(Some(&hud), "AddItem", &[2, -5]).unwrap();
-    hud_call(Some(&hud), "SelectItem", &[0]).unwrap();
-    assert_eq!(hud_call(Some(&hud), "HaveItem", &[0]).unwrap(), 1);
-    assert_eq!(hud_call(Some(&hud), "HaveItem", &[2]).unwrap(), 6);
+    hud_call(Some(&hud), Native::AddItem, &[0, 9]).unwrap();
+    hud_call(Some(&hud), Native::AddItem, &[2, 9]).unwrap();
+    hud_call(Some(&hud), Native::AddItem, &[2, -5]).unwrap();
+    hud_call(Some(&hud), Native::SelectItem, &[0]).unwrap();
+    assert_eq!(hud_call(Some(&hud), Native::HaveItem, &[0]).unwrap(), 1);
+    assert_eq!(hud_call(Some(&hud), Native::HaveItem, &[2]).unwrap(), 6);
     let view = hud.inventory(None).unwrap();
     assert_eq!(view.selected, Some(0));
     assert_eq!(view.counts, [(0, 1), (2, 6), (3, 1), (4, 0)].into());
@@ -3028,13 +3035,13 @@ fn inventory_scripts_share_counts_caps_selection_and_requirements() {
     assert_eq!(hud.inventory(Some(true)).unwrap().selected, Some(2));
     assert_eq!(hud.inventory(Some(true)).unwrap().selected, Some(0));
     assert_eq!(hud.inventory(Some(false)).unwrap().selected, Some(2));
-    let error = hud_call(Some(&hud), "AddItem", &[4, 1]).unwrap_err();
+    let error = hud_call(Some(&hud), Native::AddItem, &[4, 1]).unwrap_err();
     assert!(format!("{error:#}").contains("required_item_list cycle"));
     assert_eq!(hud.inventory(None).unwrap().counts[&4], 0);
-    hud_call(Some(&hud), "SelectItem", &[4]).unwrap();
+    hud_call(Some(&hud), Native::SelectItem, &[4]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().selected, Some(0));
-    assert!(hud_call(Some(&hud), "AddItem", &[90, 1]).is_err());
-    assert!(hud_call(Some(&hud), "SelectItem", &[-1]).is_err());
+    assert!(hud_call(Some(&hud), Native::AddItem, &[90, 1]).is_err());
+    assert!(hud_call(Some(&hud), Native::SelectItem, &[-1]).is_err());
     // Reconfiguration on a new world cannot restore initial counts or selection.
     hud.configure(&asset, &Preferences::default());
     assert_eq!(hud.inventory(None).unwrap().counts[&0], 1);
@@ -3065,24 +3072,24 @@ fn charge_weapon_swaps_the_weapon_items_and_remove_item_empties_one_count() {
     let asset = inventory_fixture(&[(1, 1), (2, 5), (75, 0)]);
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud_call(Some(&hud), "chargeWeapon", &[1]).unwrap();
+    hud_call(Some(&hud), Native::ChargeWeapon, &[1]).unwrap();
     let view = hud.inventory(None).unwrap();
     assert_eq!(view.counts, [(1, 0), (2, 5), (75, 1)].into());
     assert_eq!(view.selected, Some(75));
     // Any other operand swaps back; only the low sixteen bits are compared with one.
-    hud_call(Some(&hud), "chargeWeapon", &[0]).unwrap();
+    hud_call(Some(&hud), Native::ChargeWeapon, &[0]).unwrap();
     let view = hud.inventory(None).unwrap();
     assert_eq!(view.counts, [(1, 1), (2, 5), (75, 0)].into());
     assert_eq!(view.selected, Some(1));
-    hud_call(Some(&hud), "chargeWeapon", &[0x10001]).unwrap();
+    hud_call(Some(&hud), Native::ChargeWeapon, &[0x10001]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().selected, Some(75));
-    hud_call(Some(&hud), "RemoveItem", &[2]).unwrap();
+    hud_call(Some(&hud), Native::RemoveItem, &[2]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().counts[&2], 0);
-    assert!(hud_call(Some(&hud), "RemoveItem", &[9]).is_err());
-    assert!(hud_call(Some(&hud), "RemoveItem", &[]).is_err());
+    assert!(hud_call(Some(&hud), Native::RemoveItem, &[9]).is_err());
+    assert!(hud_call(Some(&hud), Native::RemoveItem, &[]).is_err());
     // A closed inventory skips the adds and removals, then the selection has nothing to select.
-    assert!(hud_call(Some(&ScriptHud::default()), "chargeWeapon", &[1]).is_err());
-    assert!(hud_call(None, "chargeWeapon", &[1]).is_err());
+    assert!(hud_call(Some(&ScriptHud::default()), Native::ChargeWeapon, &[1]).is_err());
+    assert!(hud_call(None, Native::ChargeWeapon, &[1]).is_err());
 }
 
 #[test]
@@ -3156,12 +3163,12 @@ fn inventory_removal_traverses_only_remaining_owned_sources_and_honors_flags() {
         asset.inventory.get_mut(&2).unwrap().remove_drop_items = vec![3];
         let hud = ScriptHud::default();
         hud.configure(&asset, &Preferences::default());
-        hud_call(Some(&hud), "DropItem", &[1, 0]).unwrap();
+        hud_call(Some(&hud), Native::DropItem, &[1, 0]).unwrap();
         assert_eq!(
-            hud_call(Some(&hud), "HaveItem", &[1]).unwrap(),
+            hud_call(Some(&hud), Native::HaveItem, &[1]).unwrap(),
             source_count as i32
         );
-        hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+        hud_call(Some(&hud), Native::DropItem, &[1, 1]).unwrap();
         let view = hud.inventory(None).unwrap();
         assert_eq!(
             [view.counts[&1], view.counts[&2], view.counts[&3]],
@@ -3174,7 +3181,7 @@ fn inventory_removal_traverses_only_remaining_owned_sources_and_honors_flags() {
     asset.inventory.get_mut(&2).unwrap().remove_drop_items = vec![3];
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::DropItem, &[1, 1]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().counts[&3], 3);
 }
 
@@ -3186,7 +3193,7 @@ fn drop_all_items_removes_every_owned_item_and_clears_the_selection() {
     asset.inventory.get_mut(&1).unwrap().remove_drop_items = vec![0];
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    assert_eq!(hud_call(Some(&hud), "DropAllItems", &[]).unwrap(), 0);
+    assert_eq!(hud_call(Some(&hud), Native::DropAllItems, &[]).unwrap(), 0);
     let view = hud.inventory(None).unwrap();
     assert_eq!(view.counts, [(0, 0), (1, 0), (2, 0)].into());
     assert_eq!(view.selected, None);
@@ -3194,7 +3201,7 @@ fn drop_all_items_removes_every_owned_item_and_clears_the_selection() {
     let gap = inventory_fixture(&[(0, 1), (2, 1)]);
     let hud = ScriptHud::default();
     hud.configure(&gap, &Preferences::default());
-    assert!(hud_call(Some(&hud), "DropAllItems", &[]).is_err());
+    assert!(hud_call(Some(&hud), Native::DropAllItems, &[]).is_err());
 }
 
 #[test]
@@ -3231,7 +3238,7 @@ fn new_game_restores_the_installed_start_inventory() {
     let hud = ScriptHud::default();
     hud.begin_new_game(); // before configuration: nothing to restore
     hud.configure(&asset, &Preferences::default());
-    hud_call(Some(&hud), "AddItem", &[2, 3]).unwrap();
+    hud_call(Some(&hud), Native::AddItem, &[2, 3]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().counts[&2], 3);
     hud.begin_new_game();
     assert_eq!(
@@ -3246,8 +3253,8 @@ fn new_game_empties_the_power_up_slots() {
     let asset = inventory_fixture(&[(0, 1)]);
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 0]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 1]).unwrap();
     assert_eq!(
         hud.inspect()["powerups"],
         serde_json::json!([[0, 0], [1, 1]])
@@ -3256,9 +3263,9 @@ fn new_game_empties_the_power_up_slots() {
     assert_eq!(hud.inspect()["powerups"], serde_json::json!([null, null]));
     // Alternation restarts at slot one: with both slots filled again, the next new frame
     // replaces slot one.
-    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 0]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 2]).unwrap();
     assert_eq!(
         hud.inspect()["powerups"],
         serde_json::json!([[0, 2], [1, 1]])
@@ -3277,7 +3284,7 @@ fn new_game_deletes_the_logbook_text_and_keeps_the_duplicate_tag_history() {
     let hud = ScriptHud::default();
     hud.configure(&hud_asset(), &preferences);
     let tag = i32::from_le_bytes(*b"TEST");
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
     assert_eq!(hud.entries().unwrap().len(), 2);
     hud.begin_new_game();
     assert!(hud.entries().unwrap().is_empty());
@@ -3285,7 +3292,7 @@ fn new_game_deletes_the_logbook_text_and_keeps_the_duplicate_tag_history() {
         writes.lock().unwrap().last().map(String::as_str),
         Some("[]")
     );
-    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[tag]).unwrap();
     assert!(
         hud.entries().unwrap().is_empty(),
         "a tag logged before New Game stays suppressed"
@@ -3303,7 +3310,7 @@ fn inventory_startup_reports_recursive_definition_errors_without_partial_invento
     hud.configure(&asset, &Preferences::default());
     assert!(hud.inventory(None).is_none());
     assert!(!hud.ready());
-    let error = hud_call(Some(&hud), "AddItem", &[1, 1]).unwrap_err();
+    let error = hud_call(Some(&hud), Native::AddItem, &[1, 1]).unwrap_err();
     assert!(format!("{error:#}").contains("add_item_list cycle"));
     assert!(
         hud.inspect()["inventory_error"]
@@ -3343,8 +3350,8 @@ fn inventory_installed_startup_exports_seed_counts_and_acquires_through_shared_o
         .collect();
     assert_eq!(owned, [(1, 1), (2, 53), (4, 6), (18, 1)].into());
     assert_eq!(view.selected, Some(1));
-    hud_call(Some(&hud), "AddItem", &[2, 3]).unwrap();
-    assert_eq!(hud_call(Some(&hud), "HaveItem", &[2]).unwrap(), 56);
+    hud_call(Some(&hud), Native::AddItem, &[2, 3]).unwrap();
+    assert_eq!(hud_call(Some(&hud), Native::HaveItem, &[2]).unwrap(), 56);
     hud.configure(&asset, &Preferences::default());
     assert_eq!(hud.inventory(None).unwrap().counts[&2], 56);
     std::fs::remove_dir_all(output).unwrap();
@@ -3376,18 +3383,18 @@ fn inventory_drop_list_preserves_authored_order_and_zero_admission_skips_effects
 #[test]
 fn active_item_reads_selected_record_without_ownership_filter_and_takes_no_arguments() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
-    assert!(hud_call(None, "ActiveItem", &[]).is_err());
+    assert!(hud_call(None, Native::ActiveItem, &[]).is_err());
     let hud = ScriptHud::default();
-    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 0);
-    assert_eq!(hud_call(Some(&hud), "HaveItem", &[999]).unwrap(), 0);
+    assert_eq!(hud_call(Some(&hud), Native::ActiveItem, &[]).unwrap(), 0);
+    assert_eq!(hud_call(Some(&hud), Native::HaveItem, &[999]).unwrap(), 0);
     let mut asset = inventory_fixture(&[(1, 1), (257, 0)]);
     asset.inventory.get_mut(&257).unwrap().hidden = true;
     asset.selected = Some(257);
     hud.configure(&asset, &Preferences::default());
-    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 257);
-    assert!(hud_call(Some(&hud), "ActiveItem", &[0]).is_err());
+    assert_eq!(hud_call(Some(&hud), Native::ActiveItem, &[]).unwrap(), 257);
+    assert!(hud_call(Some(&hud), Native::ActiveItem, &[0]).is_err());
     hud.select_item(1).unwrap();
-    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 1);
+    assert_eq!(hud_call(Some(&hud), Native::ActiveItem, &[]).unwrap(), 1);
 }
 
 fn hand_item_world(item: i32, holding: u8) -> ScriptWorld {
@@ -3400,7 +3407,7 @@ fn hand_item_world(item: i32, holding: u8) -> ScriptWorld {
                         function_id: 3,
                         kind: CallKind::Function,
                         target: Object::Named { string: 0 },
-                        function: "HandItem".into(),
+                        function: Native::HandItem,
                         arguments: vec![Value::Integer { value: item }],
                     }),
                 },
@@ -3410,7 +3417,7 @@ fn hand_item_world(item: i32, holding: u8) -> ScriptWorld {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "HandItem".into(),
+        name: Native::HandItem,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -3555,7 +3562,7 @@ fn hand_item_distinguishes_closed_unknown_and_invalid_inventory() {
     let mut asset = inventory_fixture(&[(1, 1)]);
     asset.selected = Some(999);
     invalid.configure(&asset, &Preferences::default());
-    assert!(hud_call(Some(&invalid), "ActiveItem", &[]).is_err());
+    assert!(hud_call(Some(&invalid), Native::ActiveItem, &[]).is_err());
     let mut world = hand_item_world(1, 0);
     let error = world
         .advance(
@@ -3646,7 +3653,7 @@ fn acquisition_keeps_existing_selection_and_rejects_unavailable_fallback_owner()
     hud.add_item(1, 1, &mut |_| anyhow::bail!("unexpected assignment"))
         .unwrap();
     assert_eq!(hud.active_item().unwrap(), 9);
-    hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::DropItem, &[1, 1]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().selected, None);
     let error = hud
         .add_item(9, 1, &mut |_| anyhow::bail!("selected player unavailable"))
@@ -3667,14 +3674,14 @@ fn routed_acquisition_fallback_assigns_selected_player_not_receiver() {
                 function_id: 3,
                 kind: CallKind::Function,
                 target: Object::Named { string: 0 },
-                function: "AddItem".into(),
+                function: Native::AddItem,
                 arguments: vec![Value::Integer { value: 9 }, Value::Integer { value: 1 }],
             },
         },
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "AddItem".into(),
+        name: Native::AddItem,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -3994,16 +4001,37 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
         script::{ScriptHud, ScriptInputs},
     };
     for (name, attribute, group, hud_ready, shell, expected) in [
-        ("IsHoldingWeapon", 1, None, false, None, 1),
-        ("IsHoldingWeapon", 0, Some(1), true, Some(false), 0),
-        ("IsDrawingSword", 0, Some(91), true, Some(false), 1),
-        ("IsDrawingSword", 0, Some(91), true, Some(true), 0),
-        ("IsSheathingSword", 0, Some(129), true, Some(false), 1),
-        ("IsSheathingSword", 0, Some(91), true, Some(false), 0),
-        ("IsDrawingSword", 1, None, true, None, 0),
-        ("IsDrawingOrSheathing", 0, Some(91), true, Some(false), 1),
-        ("IsDrawingOrSheathing", 0, Some(129), true, Some(false), 1),
-        ("IsDrawingOrSheathing", 0, Some(1), true, Some(false), 0),
+        (Native::IsHoldingWeapon, 1, None, false, None, 1),
+        (Native::IsHoldingWeapon, 0, Some(1), true, Some(false), 0),
+        (Native::IsDrawingSword, 0, Some(91), true, Some(false), 1),
+        (Native::IsDrawingSword, 0, Some(91), true, Some(true), 0),
+        (Native::IsSheathingSword, 0, Some(129), true, Some(false), 1),
+        (Native::IsSheathingSword, 0, Some(91), true, Some(false), 0),
+        (Native::IsDrawingSword, 1, None, true, None, 0),
+        (
+            Native::IsDrawingOrSheathing,
+            0,
+            Some(91),
+            true,
+            Some(false),
+            1,
+        ),
+        (
+            Native::IsDrawingOrSheathing,
+            0,
+            Some(129),
+            true,
+            Some(false),
+            1,
+        ),
+        (
+            Native::IsDrawingOrSheathing,
+            0,
+            Some(1),
+            true,
+            Some(false),
+            0,
+        ),
     ] {
         let mut data = scripts(vec![
             Operation::Assign {
@@ -4014,7 +4042,7 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
                             function_id: 3,
                             kind: CallKind::Function,
                             target: Object::Named { string: 0 },
-                            function: name.into(),
+                            function: name,
                             arguments: vec![],
                         }),
                     },
@@ -4024,7 +4052,7 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
             Operation::End { target: 0 },
         ]);
         data.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -4088,7 +4116,7 @@ fn fighting_query_rejects_unprepared_ordinary_traversal() {
                         function_id: 3,
                         kind: CallKind::Function,
                         target: Object::Named { string: 0 },
-                        function: "isFighting".into(),
+                        function: Native::IsFighting,
                         arguments: vec![],
                     }),
                 },
@@ -4098,7 +4126,7 @@ fn fighting_query_rejects_unprepared_ordinary_traversal() {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "isFighting".into(),
+        name: Native::IsFighting,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -4172,10 +4200,10 @@ fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
     let hud = ScriptHud::default();
     hud.configure(&asset, &preferences);
     hud.select_item(1).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
-    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
-    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"TEST")]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 0]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[1, 1]).unwrap();
+    hud_call(Some(&hud), Native::ShowBitmap, &[0, 2]).unwrap();
+    hud_call(Some(&hud), Native::AddLog, &[i32::from_le_bytes(*b"TEST")]).unwrap();
     assert!(hud.compass_input(true, CompassUse::Accepted));
     hud.request_health_feedback();
     hud.advance_health_feedback(false, 0, 0, 12);
@@ -4208,7 +4236,7 @@ fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
         ([Some((0, 2)), Some((1, 1))], true)
     );
     assert!(!replacement.presentation().1);
-    hud_call(Some(&replacement), "ShowBitmap", &[1, 0]).unwrap();
+    hud_call(Some(&replacement), Native::ShowBitmap, &[1, 0]).unwrap();
     assert_eq!(replacement.presentation().0, [Some((0, 2)), Some((1, 0))]);
     assert!(
         hud.presentation().1,
@@ -4291,7 +4319,7 @@ fn hud_snapshot_rejects_unconfigured_and_failed_local_state() {
 }
 
 fn ordinary_activation_fixture(
-    function: &str,
+    function: Native,
     initialize: bool,
 ) -> (ScriptWorld, cyrus_game::script::ScriptHud) {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
@@ -4320,7 +4348,7 @@ fn ordinary_activation_fixture(
 #[test]
 fn ordinary_activation_uses_live_player_and_installed_text_without_inspection_inputs() {
     use cyrus_game::script::{ActivationOverlay, ScriptInputs};
-    let (mut world, hud) = ordinary_activation_fixture("Activate", false);
+    let (mut world, hud) = ordinary_activation_fixture(Native::Activate, false);
     let call = |world: &mut ScriptWorld, held| {
         world.advance(
             world.id(0).unwrap(),
@@ -4340,7 +4368,7 @@ fn ordinary_activation_uses_live_player_and_installed_text_without_inspection_in
     let error = call(&mut world, false).unwrap_err();
     assert!(format!("{error:#}").contains("player-lineup result unavailable"));
     assert_eq!(world.activation().owner(), None);
-    let (mut world, _) = ordinary_activation_fixture("Activate", true);
+    let (mut world, _) = ordinary_activation_fixture(Native::Activate, true);
     let player = world.id(2).unwrap();
     call(&mut world, false).unwrap();
     assert_eq!(world.flags(), [0]);
@@ -4389,7 +4417,7 @@ fn ordinary_activation_uses_live_player_and_installed_text_without_inspection_in
 
 #[test]
 fn unsupported_lineup_invalidates_ordinary_activation_admission() {
-    let (mut world, hud) = ordinary_activation_fixture("PlayerLineUp", true);
+    let (mut world, hud) = ordinary_activation_fixture(Native::PlayerLineUp, true);
     assert!(
         world
             .ordinary_activation_overlay(&hud, 0, false, 24)
@@ -4996,7 +5024,7 @@ fn face_player_turns_toward_the_selected_player_over_its_duration() {
                 function_id: 3,
                 kind: CallKind::Task,
                 target: Object::Me,
-                function: "FacePlayer".into(),
+                function: Native::FacePlayer,
                 arguments: vec![Value::Integer { value: 4 }],
             },
         },
@@ -5004,7 +5032,7 @@ fn face_player_turns_toward_the_selected_player_over_its_duration() {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "FacePlayer".into(),
+        name: Native::FacePlayer,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -5049,17 +5077,17 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
     let down: Vec<u16> = (0..62).map(|step| 984 - 16 * step).collect();
     for (function, arguments, start, rate, expected) in [
         // Rate 16 closes the 32 units to 432 in two steps, snapping on the second.
-        ("FaceAngle", vec![432], 400, 16u8, vec![416, 432]),
+        (Native::FaceAngle, vec![432], 400, 16u8, vec![416, 432]),
         // A point far along +Z has bearing zero; the shortest way from 1000 is down.
         (
-            "FacePos",
+            Native::FacePos,
             vec![0, far_ahead],
             1000,
             16,
             down.iter().copied().chain([0]).collect(),
         ),
         // A zero turn rate completes the task, on its next pass like any task, without turning.
-        ("FaceAngle", vec![432], 400, 0, vec![400, 400]),
+        (Native::FaceAngle, vec![432], 400, 0, vec![400, 400]),
     ] {
         let mut data = scripts(vec![
             Operation::Call {
@@ -5067,7 +5095,7 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
                     function_id: 3,
                     kind: CallKind::Task,
                     target: Object::Me,
-                    function: function.into(),
+                    function,
                     arguments: arguments
                         .iter()
                         .map(|&value| Value::Integer { value })
@@ -5078,7 +5106,7 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
             Operation::End { target: 0 },
         ]);
         data.definition.functions.push(Function {
-            name: function.into(),
+            name: function,
             param_count: arguments.len() as u8,
             kind: CallKind::Task,
         });
@@ -5123,7 +5151,7 @@ fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
                 function_id: 3,
                 kind: CallKind::Function,
                 target: Object::Me,
-                function: "PlayAnimation".into(),
+                function: Native::PlayAnimation,
                 arguments: arguments.map(|value| Value::Integer { value }).to_vec(),
             },
         },
@@ -5131,7 +5159,7 @@ fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "PlayAnimation".into(),
+        name: Native::PlayAnimation,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -5274,8 +5302,8 @@ fn play_animation_task_encodings_reject_unrecovered_operands() {
 #[test]
 fn show_item_natives_leave_a_pending_viewer_request() {
     for (name, values, expected) in [
-        ("ShowItem", vec![5, 99, 7, 8], (false, 5, [7, 8])),
-        ("ShowItemNoRtx", vec![6, 1, 2], (true, 6, [1, 2])),
+        (Native::ShowItem, vec![5, 99, 7, 8], (false, 5, [7, 8])),
+        (Native::ShowItemNoRtx, vec![6, 1, 2], (true, 6, [1, 2])),
     ] {
         let mut data = scripts(vec![
             Operation::Call {
@@ -5283,7 +5311,7 @@ fn show_item_natives_leave_a_pending_viewer_request() {
                     function_id: 3,
                     kind: CallKind::Function,
                     target: Object::Me,
-                    function: name.into(),
+                    function: name,
                     arguments: values
                         .iter()
                         .map(|&value| Value::Integer { value })
@@ -5293,7 +5321,7 @@ fn show_item_natives_leave_a_pending_viewer_request() {
             Operation::End { target: 0 },
         ]);
         data.definition.functions.push(Function {
-            name: name.into(),
+            name,
             param_count: values.len() as u8,
             kind: CallKind::Function,
         });
@@ -5321,14 +5349,14 @@ fn print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit()
                 function_id: 3,
                 kind: CallKind::Function,
                 target: Object::Me,
-                function: "PrintSingleParm".into(),
+                function: Native::PrintSingleParm,
                 arguments: vec![Value::Integer { value: -7 }],
             },
         },
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "PrintSingleParm".into(),
+        name: Native::PrintSingleParm,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -5352,7 +5380,7 @@ fn move_backward_scripts(step: u8) -> Scripts {
                 function_id: 3,
                 kind: CallKind::Task,
                 target: Object::Me,
-                function: "MoveBackward".into(),
+                function: Native::MoveBackward,
                 arguments: vec![Value::Integer { value: 4 }],
             },
         },
@@ -5360,7 +5388,7 @@ fn move_backward_scripts(step: u8) -> Scripts {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "MoveBackward".into(),
+        name: Native::MoveBackward,
         param_count: 1,
         kind: CallKind::Task,
     });
@@ -5478,7 +5506,7 @@ fn move_backward_without_the_group_never_moves_and_still_completes() {
     assert_eq!(world.flags(), [9]);
 }
 
-fn strafe_world(name: &str, step: u8) -> (ScriptWorld, ScriptActorId) {
+fn strafe_world(name: Native, step: u8) -> (ScriptWorld, ScriptActorId) {
     let mut data = move_backward_scripts(8);
     for entry in data
         .actors
@@ -5489,16 +5517,16 @@ fn strafe_world(name: &str, step: u8) -> (ScriptWorld, ScriptActorId) {
         .values_mut()
     {
         if let Operation::Call { call } = &mut entry.operation {
-            call.function = name.into();
+            call.function = name;
         }
     }
-    data.definition.functions.last_mut().unwrap().name = name.into();
+    data.definition.functions.last_mut().unwrap().name = name;
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::SideSpeed] = step;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
-    let group = if name == "MoveLeft" { 24 } else { 26 };
+    let group = if name == Native::MoveLeft { 24 } else { 26 };
     world
         .bind_animation(
             id,
@@ -5535,7 +5563,7 @@ fn strafe_stage(
 
 #[test]
 fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
-    for name in ["MoveLeft", "MoveRight"] {
+    for name in [Native::MoveLeft, Native::MoveRight] {
         let (mut world, id) = strafe_world(name, 8);
         let hud = locomotion_hud();
         let error = strafe_stage(&mut world, id, BODY, &hud, None).unwrap_err();
@@ -5545,14 +5573,14 @@ fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            if name == "MoveLeft" { 4 } else { 5 }
+            if name == Native::MoveLeft { 4 } else { 5 }
         );
     }
 }
 
 #[test]
 fn deep_water_strafes_need_the_edge_probe_after_the_lateral_step_check() {
-    for name in ["MoveLeft", "MoveRight"] {
+    for name in [Native::MoveLeft, Native::MoveRight] {
         let (mut world, id) = strafe_world(name, 8);
         world.set_actor_surface(id, 2).unwrap();
         let hud = locomotion_hud();
@@ -5570,7 +5598,7 @@ fn deep_water_strafes_need_the_edge_probe_after_the_lateral_step_check() {
 
 #[test]
 fn a_blocked_lateral_step_completes_without_moving_or_requesting_a_group() {
-    for name in ["MoveLeft", "MoveRight"] {
+    for name in [Native::MoveLeft, Native::MoveRight] {
         let (mut world, id) = strafe_world(name, 8);
         let hud = locomotion_hud();
         let start = world.spatial(id).unwrap().local.position;
@@ -5581,14 +5609,14 @@ fn a_blocked_lateral_step_completes_without_moving_or_requesting_a_group() {
         assert_eq!(world.spatial(id).unwrap().local.position, start, "{name}");
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            if name == "MoveLeft" { 4 } else { 5 }
+            if name == Native::MoveLeft { 4 } else { 5 }
         );
     }
 }
 
 #[test]
 fn ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes() {
-    for name in ["MoveLeft", "MoveRight"] {
+    for name in [Native::MoveLeft, Native::MoveRight] {
         let (mut world, id) = strafe_world(name, 8);
         let hud = locomotion_hud();
         let start = world.spatial(id).unwrap().local.position;
@@ -5614,7 +5642,7 @@ fn ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes() 
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             control.motion_direction,
-            if name == "MoveLeft" { 4 } else { 5 }
+            if name == Native::MoveLeft { 4 } else { 5 }
         );
     }
 }
@@ -5630,10 +5658,10 @@ fn move_forward_world(step: u8) -> (ScriptWorld, ScriptActorId, Scripts) {
         .values_mut()
     {
         if let Operation::Call { call } = &mut step_entry.operation {
-            call.function = "MoveForward".into();
+            call.function = Native::MoveForward;
         }
     }
-    data.definition.functions.last_mut().unwrap().name = "MoveForward".into();
+    data.definition.functions.last_mut().unwrap().name = Native::MoveForward;
     // Collision attribute bits make the step check need an input.
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Collide] = 1;
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::ForwardSpeed] = step;
@@ -5964,10 +5992,10 @@ fn walk_forward_world_with(
     actor.attributes[Attribute::Collide] = collision_attribute;
     for step in actor.program.steps.values_mut() {
         if let Operation::Call { call } = &mut step.operation {
-            call.function = "WalkForward".into();
+            call.function = Native::WalkForward;
         }
     }
-    data.definition.functions.last_mut().unwrap().name = "WalkForward".into();
+    data.definition.functions.last_mut().unwrap().name = Native::WalkForward;
     if bypass {
         actor.attributes[Attribute::ForwardWalk] = 8;
         actor.attributes[Attribute::StepType] = 1;
@@ -5987,14 +6015,14 @@ fn walk_forward_world_with(
                         function_id: 4,
                         kind: CallKind::Function,
                         target: Object::Me,
-                        function: "SetAIType".into(),
+                        function: Native::SetAiType,
                         arguments: vec![Value::Integer { value: 7 }],
                     },
                 },
             },
         );
         data.definition.functions.push(Function {
-            name: "SetAIType".into(),
+            name: Native::SetAiType,
             param_count: 1,
             kind: CallKind::Function,
         });

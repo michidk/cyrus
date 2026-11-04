@@ -1,4 +1,5 @@
 //! Saved VMs resume through public invocations without replaying native effects.
+use cyrus_script::Native;
 use cyrus_script::{persistence::Snapshot, program::*, *};
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
@@ -16,7 +17,7 @@ impl Host for Service {
         &mut self,
         _: &Target,
         _: CallKind,
-        _: &str,
+        _: Native,
         _: &[Argument],
         _: Invocation,
         _: &mut [i32],
@@ -48,7 +49,7 @@ fn call(kind: CallKind) -> Call {
         function_id: 3,
         kind,
         target: Object::Me,
-        function: "Wait".into(),
+        function: Native::Wait,
         arguments: vec![Value::Read {
             place: Place::Local { index: 0 },
         }],
@@ -330,7 +331,7 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
     assert_eq!(descriptors[0].source.origin, CodeOrigin(300));
     assert!(descriptors[0].source.object_call);
     assert_eq!(descriptors[0].call.kind, CallKind::Multitask);
-    assert_eq!(descriptors[0].call.function, "Wait");
+    assert_eq!(descriptors[0].call.function, Native::Wait);
     let mut restored = Runtime::from_snapshot(
         CodeOrigin(100),
         saved.clone(),
@@ -549,7 +550,7 @@ fn saved_task_calls_are_validated_unevaluated_and_keep_the_source_operand() {
     assert_eq!(calls[0].source.origin, CodeOrigin(100));
     assert_eq!(calls[0].source.instruction, 6);
     assert!(!calls[0].source.object_call);
-    assert_eq!(calls[0].call.function, "Wait");
+    assert_eq!(calls[0].call.function, Native::Wait);
     assert_eq!(calls[0].call.kind, CallKind::Task);
     assert_eq!(
         calls[0].call.arguments,

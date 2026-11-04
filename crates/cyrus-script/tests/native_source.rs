@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests {
     use cyrus_script::program::{Call, CallKind, Object, Operation, Program, Step, Value};
-    use cyrus_script::{Argument, CallResult, Host, Invocation, Runtime, Target, Thread};
+    use cyrus_script::{Argument, CallResult, Host, Invocation, Native, Runtime, Target, Thread};
     use std::collections::BTreeMap;
+
+    // A stand-in: the contract holds for any native, so a DEF spare native serves.
+    const RECORD: Native = Native::Spare0Parm3;
 
     #[derive(Default)]
     struct Recorder(Vec<Vec<Argument>>, Option<std::sync::Arc<Program>>);
@@ -29,12 +32,12 @@ mod tests {
             &mut self,
             _: &Target,
             _: CallKind,
-            function: &str,
+            function: Native,
             args: &[Argument],
             _: Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<CallResult> {
-            if function == "wait" {
+            if function == Native::Wait {
                 return Ok(CallResult::Pending(7));
             }
             self.0.push(args.to_vec());
@@ -69,7 +72,7 @@ mod tests {
                             operation: Operation::Call {
                                 call: Call {
                                     function_id: 0,
-                                    function: "record".into(),
+                                    function: RECORD,
                                     kind: CallKind::Function,
                                     target: Object::Me,
                                     arguments: vec![Value::String { index: 0 }],
@@ -121,7 +124,7 @@ mod tests {
                     operation: Operation::Call {
                         call: Call {
                             function_id: 0,
-                            function: "wait".into(),
+                            function: Native::Wait,
                             kind: CallKind::Task,
                             target: Object::Me,
                             arguments: vec![],

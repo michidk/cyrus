@@ -1,6 +1,7 @@
 //! Installed global flag types and native latch operations from preservation's SOUP rules.
 use anyhow::{Context, Result};
 use cyrus_script::Argument;
+use cyrus_script::Native;
 use cyrus_script::program::{Definition, Flag};
 use serde::{Deserialize, Serialize};
 
@@ -117,13 +118,13 @@ impl Flags {
     }
     pub fn call(
         &mut self,
-        name: &str,
+        name: Native,
         arguments: &[Argument],
         values: &mut [i32],
     ) -> Result<Option<i32>> {
-        let set = name.eq_ignore_ascii_case("SetGlobalFlag");
-        let reset = name.eq_ignore_ascii_case("ResetGlobalFlag");
-        let test = name.eq_ignore_ascii_case("TestGlobalFlag");
+        let set = name == Native::SetGlobalFlag;
+        let reset = name == Native::ResetGlobalFlag;
+        let test = name == Native::TestGlobalFlag;
         if !set && !reset && !test {
             return Ok(None);
         }

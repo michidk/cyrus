@@ -8,6 +8,7 @@ use cyrus_game::{
         WorldSnapshotSources, camera::CameraPose,
     },
 };
+use cyrus_script::Native;
 
 fn source(capacity: u32, disabled: bool) -> Effects {
     Effects {
@@ -38,7 +39,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
             }
             let function_id = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
-                name: "SetHealth".into(),
+                name: Native::SetHealth,
                 param_count: 1,
                 kind: CallKind::Function,
             });
@@ -53,7 +54,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 .operation = Operation::ObjectCall {
                 call: Call {
                     function_id,
-                    function: "SetHealth".into(),
+                    function: Native::SetHealth,
                     kind: CallKind::Function,
                     target: Object::Player,
                     arguments: vec![Value::Integer { value: 0 }],
@@ -735,7 +736,7 @@ fn selected_death_animation_events_allocate_before_the_death_controller_effect()
         }
         let function_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
-            name: "SetHealth".into(),
+            name: Native::SetHealth,
             param_count: 1,
             kind: CallKind::Function,
         });
@@ -750,7 +751,7 @@ fn selected_death_animation_events_allocate_before_the_death_controller_effect()
             .operation = Operation::ObjectCall {
             call: Call {
                 function_id,
-                function: "SetHealth".into(),
+                function: Native::SetHealth,
                 kind: CallKind::Function,
                 target: Object::Player,
                 arguments: vec![Value::Integer { value: 0 }],

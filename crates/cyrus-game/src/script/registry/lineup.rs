@@ -7,7 +7,7 @@ use super::{GameHost, ScriptActorId};
 use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{Attribute, Native};
 
 pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -116,7 +116,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             .context("lineup selected-player control unavailable")?;
         let (holding_weapon, _, _) = self
             .host
-            .actor_weapon_predicates(index, "IsHoldingWeapon")?;
+            .actor_weapon_predicates(index, Native::IsHoldingWeapon)?;
         let combat_mode = control
             .combat
             .as_ref()
@@ -184,10 +184,10 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
 
     fn walk(&mut self, step: CloseStep) -> Result<()> {
         let function = match step {
-            CloseStep::Forward => "WalkForward",
-            CloseStep::Right => "MoveRight",
-            CloseStep::Left => "MoveLeft",
-            CloseStep::Backward => "WalkBackward",
+            CloseStep::Forward => Native::WalkForward,
+            CloseStep::Right => Native::MoveRight,
+            CloseStep::Left => Native::MoveLeft,
+            CloseStep::Backward => Native::WalkBackward,
         };
         let source = self.prepare()?;
         let prepared = self.prepared.as_ref().expect("prepared above");
@@ -357,7 +357,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
                 .context("lineup selected-player control unavailable")?;
             let (holding_weapon, _, _) = self
                 .host
-                .actor_weapon_predicates(index, "IsHoldingWeapon")?;
+                .actor_weapon_predicates(index, Native::IsHoldingWeapon)?;
             let combat_mode = control
                 .combat
                 .as_ref()
@@ -566,7 +566,7 @@ impl GameHost<'_, '_, '_, '_> {
     /// call so the player-side helpers can use the world, including the nested player step.
     pub(super) fn lineup_call(
         &mut self,
-        function: &str,
+        function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,

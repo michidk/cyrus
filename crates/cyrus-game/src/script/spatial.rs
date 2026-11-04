@@ -1,6 +1,7 @@
 //! Local and composed actor poses follow preservation's SOUP attachment rules.
 use super::ScriptActor;
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Native;
 use cyrus_script::{Attribute, Attributes};
 use cyrus_world::transform::Matrix;
 use serde::Serialize;
@@ -650,16 +651,16 @@ impl ActorSpatial {
     /// Unsupported query names return None; absent required state is an error.
     pub fn query(
         &self,
-        name: &str,
+        name: Native,
         arguments: &[cyrus_script::Argument],
         inputs: QueryInputs,
     ) -> Result<Option<i32>> {
-        let accurate = name.eq_ignore_ascii_case("AcuratePlayerDistance");
-        let distance = name.eq_ignore_ascii_case("PlayerDistance") || accurate;
-        let facing = name.eq_ignore_ascii_case("PlayerFacing");
-        let looking = name.eq_ignore_ascii_case("PlayerLooking");
-        let arc = name.eq_ignore_ascii_case("PlayerArc");
-        let arctan = name.eq_ignore_ascii_case("PlayerArctan");
+        let accurate = name == Native::AcuratePlayerDistance;
+        let distance = name == Native::PlayerDistance || accurate;
+        let facing = name == Native::PlayerFacing;
+        let looking = name == Native::PlayerLooking;
+        let arc = name == Native::PlayerArc;
+        let arctan = name == Native::PlayerArcTan;
         if !distance && !facing && !looking && !arc && !arctan {
             return Ok(None);
         }

@@ -3,6 +3,7 @@
 use super::{GameHost, ScriptActorId};
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
+use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 
 struct BounceActor<'h, 'a, 's, 'i, 'r> {
@@ -100,7 +101,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     fn holding_weapon(&mut self) -> Result<bool> {
         Ok(self
             .host
-            .actor_weapon_predicates(self.id.index, "IsHoldingWeapon")?
+            .actor_weapon_predicates(self.id.index, Native::IsHoldingWeapon)?
             .0)
     }
     fn combat_mode(&self) -> bool {
@@ -208,7 +209,7 @@ impl GameHost<'_, '_, '_, '_> {
     /// call so the state machine can use the world.
     pub(super) fn bounce_call(
         &mut self,
-        function: &str,
+        function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,

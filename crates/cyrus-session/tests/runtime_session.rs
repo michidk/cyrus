@@ -24,8 +24,8 @@ use cyrus_game::{
         WorldSnapshotSources,
     },
 };
-use cyrus_script::AnimationGroup;
 use cyrus_script::program::*;
+use cyrus_script::{AnimationGroup, Native};
 use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -110,13 +110,13 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         world: 17,
         definition: Definition {
             functions: [
-                ("NullFunction", 0, CallKind::Function),
-                ("PushAnimation", 2, CallKind::Task),
-                ("Wait", 1, CallKind::Task),
+                (Native::NullFunction, 0, CallKind::Function),
+                (Native::PushAnimation, 2, CallKind::Task),
+                (Native::Wait, 1, CallKind::Task),
             ]
             .into_iter()
             .map(|(name, param_count, kind)| Function {
-                name: name.into(),
+                name,
                 param_count,
                 kind,
             })

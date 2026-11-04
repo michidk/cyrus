@@ -4,6 +4,7 @@ use super::{GameHost, ScriptActorId};
 use crate::script::tasks::{FaceTarget, MoveTarget, PointHost, PointWrapper};
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
+use cyrus_script::Native;
 
 impl PointHost for GameHost<'_, '_, '_, '_> {
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
@@ -102,23 +103,23 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
 
 impl GameHost<'_, '_, '_, '_> {
     /// A position from the receiver's location list; an out-of-range selector uses its home.
-    pub(super) fn receiver_location(&self, native: &str, location: i32) -> Result<[i32; 3]> {
+    pub(super) fn receiver_location(&self, context: &str, location: i32) -> Result<[i32; 3]> {
         let locations = &self
             .registry
             .spatial
             .as_ref()
-            .with_context(|| format!("{native} spatial state unavailable"))?
+            .with_context(|| format!("{context} spatial state unavailable"))?
             .actor(self.index)?
             .locations;
         let count = i32::try_from(locations.len())
-            .with_context(|| format!("{native} location count exceeds signed range"))?;
+            .with_context(|| format!("{context} location count exceeds signed range"))?;
         let position = if location < 0 || location > count {
             locations
                 .first()
-                .with_context(|| format!("{native} home unavailable"))?
+                .with_context(|| format!("{context} home unavailable"))?
         } else {
             locations.get(location as usize).with_context(|| {
-                format!("{native} selector equals location count: original out-of-range access unsupported")
+                format!("{context} selector equals location count: original out-of-range access unsupported")
             })?
         };
         Ok(*position)
@@ -128,7 +129,7 @@ impl GameHost<'_, '_, '_, '_> {
     /// so the facing step can use the world.
     pub(super) fn point_call(
         &mut self,
-        function: &str,
+        function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,

@@ -30,6 +30,13 @@ the `SOUP386.DEF` animation-group equates name, aliases included
 `AnimationGroup::from_index` is for numbers that are data: a script argument,
 an installed group record, a control-port request.
 
+`Native` names every SOUP native function after the `SOUP386.DEF` function list,
+in DEF order after the synthetic `NullFunction`, followed by the engine natives
+the DEF does not declare (`showObjWorld`, `showObjWorldPan`, `DialogBegin`,
+`DialogEnd`, `MenuBegin`, `MenuEnd`). Decoded calls and the definition carry
+`Native`, which serializes as its installed spelling, and hosts receive it in
+`Host::call`.
+
 `CallResult::CompleteWithoutValue` lets a host complete an effect when no
 portable numeric result is established. Statements discard that result;
 formulas, conditions and arguments fail contextually when consuming it.

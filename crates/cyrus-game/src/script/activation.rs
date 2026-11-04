@@ -1,6 +1,7 @@
 //! Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 use super::ScriptActorId;
 use anyhow::{Context, Result};
+use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Argument};
 use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
@@ -694,13 +695,13 @@ impl ActivationState {
     pub(super) fn call(
         &mut self,
         receiver: ScriptActorId,
-        name: &str,
+        name: Native,
         arguments: &[Argument],
         inputs: Option<&ActivationInputs>,
         receiver_attributes: &Attributes,
         selected_player: Option<(&super::ScriptActor, u16)>,
     ) -> Result<Option<i32>> {
-        if name.eq_ignore_ascii_case("Deactivate") {
+        if name == Native::Deactivate {
             anyhow::ensure!(arguments.is_empty(), "Deactivate: wrong argument count");
             self.holdoff = 0;
             if self.owner == Some(receiver) {
@@ -708,8 +709,8 @@ impl ActivationState {
             }
             return Ok(Some(0));
         }
-        let torch = name.eq_ignore_ascii_case("TorchActivate");
-        if !torch && !name.eq_ignore_ascii_case("Activate") {
+        let torch = name == Native::TorchActivate;
+        if !torch && name != Native::Activate {
             return Ok(None);
         }
         anyhow::ensure!(arguments.len() == 1, "{name}: wrong argument count");

@@ -1,5 +1,6 @@
 use cyrus_assets::cheats::{self, CheatFile};
 use cyrus_game::cheats::{CheatEffect, CheatStore, Cheats};
+use cyrus_script::Native;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
@@ -568,7 +569,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: "NullFunction".into(),
+                name: Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],

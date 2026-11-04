@@ -1,7 +1,7 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_script::{AnimationGroup, Attribute, Native};
 
 /// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,14 +29,15 @@ pub enum OrdinaryMovement {
     Right,
 }
 impl OrdinaryMovement {
-    fn native_name(self) -> &'static str {
+    fn operation(self) -> super::super::tasks::LocomotionOperation {
+        use super::super::{locomotion::Strafe, tasks::LocomotionOperation};
         match self {
-            Self::Forward => "MoveForward",
-            Self::WalkForward => "WalkForward",
-            Self::Backward => "MoveBackward",
-            Self::WalkBackward => "WalkBackward",
-            Self::Left => "MoveLeft",
-            Self::Right => "MoveRight",
+            Self::Forward => LocomotionOperation::Forward,
+            Self::WalkForward => LocomotionOperation::WalkForward,
+            Self::Backward => LocomotionOperation::Backward,
+            Self::WalkBackward => LocomotionOperation::WalkBackward,
+            Self::Left => LocomotionOperation::Strafe(Strafe::Left),
+            Self::Right => LocomotionOperation::Strafe(Strafe::Right),
         }
     }
 }
@@ -138,7 +139,7 @@ impl ScriptWorld {
         };
         Ok((
             host.selected_player(),
-            host.receiver_weapon_predicates("IsHoldingWeapon")?.0,
+            host.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0,
         ))
     }
 
@@ -530,11 +531,11 @@ impl ScriptWorld {
                 random: None,
                 inputs,
             };
-            let function = movement.native_name();
+            let operation = movement.operation();
             let result = host.native_task_call(
                 (
-                    function,
-                    super::super::tasks::NativeTaskMode::SynchronousMovement,
+                    operation.native(),
+                    super::super::tasks::NativeTaskMode::SynchronousMovement(operation),
                 ),
                 &[cyrus_script::Argument::Integer(duration)],
                 cyrus_script::Invocation {
@@ -546,7 +547,8 @@ impl ScriptWorld {
             match result {
                 Some(cyrus_script::CallResult::Complete(value)) => Ok(value),
                 _ => anyhow::bail!(
-                    "synchronous {function} did not return an immediate movement result"
+                    "synchronous {} did not return an immediate movement result",
+                    operation.native()
                 ),
             }
         })();

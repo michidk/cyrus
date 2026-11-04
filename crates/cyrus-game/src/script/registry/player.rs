@@ -11,7 +11,7 @@ use crate::player::{
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_script::{AnimationGroup, Attribute, Native};
 use cyrus_world::animation::AnimationSound;
 
 #[derive(Clone)]
@@ -265,8 +265,8 @@ impl ScriptWorld {
                 _ if sliding => Ok(()),
                 SheathedAction::Sidestep(strafe) => {
                     let function = match strafe {
-                        super::super::locomotion::Strafe::Left => "MoveLeft",
-                        super::super::locomotion::Strafe::Right => "MoveRight",
+                        super::super::locomotion::Strafe::Left => Native::MoveLeft,
+                        super::super::locomotion::Strafe::Right => Native::MoveRight,
                     };
                     world.step_player(id, function, inputs, sounds)
                 }
@@ -275,18 +275,20 @@ impl ScriptWorld {
                 SheathedAction::WalkForward
                     if walk_forward_is_scripted(armed, world.actor_surface(id)?) =>
                 {
-                    world.step_player(id, "WalkForward", inputs, sounds)
+                    world.step_player(id, Native::WalkForward, inputs, sounds)
                 }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
                     Ok(())
                 }
-                SheathedAction::RunForward => world.step_player(id, "MoveForward", inputs, sounds),
+                SheathedAction::RunForward => {
+                    world.step_player(id, Native::MoveForward, inputs, sounds)
+                }
                 SheathedAction::RunBackward => {
-                    world.step_player(id, "MoveBackward", inputs, sounds)
+                    world.step_player(id, Native::MoveBackward, inputs, sounds)
                 }
                 SheathedAction::WalkBackward => {
-                    world.step_player(id, "WalkBackward", inputs, sounds)
+                    world.step_player(id, Native::WalkBackward, inputs, sounds)
                 }
             };
             moved?;
@@ -437,9 +439,9 @@ impl ScriptWorld {
         }
         if !held.forward && !held.backward {
             let function = if held.left {
-                Some("MoveLeft")
+                Some(Native::MoveLeft)
             } else if held.right {
-                Some("MoveRight")
+                Some(Native::MoveRight)
             } else {
                 None
             };
@@ -543,10 +545,24 @@ impl ScriptWorld {
     pub fn step_player(
         &mut self,
         id: super::ScriptActorId,
-        function: &'static str,
+        function: Native,
         inputs: super::ScriptInputs<'_>,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        let operation = super::super::tasks::LocomotionOperation::named(function)
+            .with_context(|| format!("player step: {function} is not a movement native"))?;
+        self.step_player_operation(id, operation, inputs, sounds)
+    }
+
+    /// [`Self::step_player`] for a movement operation, including the attack lunge.
+    pub(super) fn step_player_operation(
+        &mut self,
+        id: super::ScriptActorId,
+        operation: super::super::tasks::LocomotionOperation,
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let function = operation.native();
         let index = self.resolve(id)?;
         let ordinary_actors = self
             .actor_lists
@@ -570,7 +586,7 @@ impl ScriptWorld {
         host.native_task_call(
             (
                 function,
-                super::super::tasks::NativeTaskMode::SynchronousMovement,
+                super::super::tasks::NativeTaskMode::SynchronousMovement(operation),
             ),
             &[cyrus_script::Argument::Integer(1)],
             cyrus_script::Invocation {
@@ -747,7 +763,7 @@ impl ScriptWorld {
             .clone()
             .context("player native hook absent")?;
         ensure!(
-            call.function.eq_ignore_ascii_case("playermain")
+            call.function == Native::PlayerMain
                 && call.arguments.is_empty()
                 && call.kind == cyrus_script::program::CallKind::Function
                 && call.target == cyrus_script::program::Object::Me,
@@ -1329,7 +1345,7 @@ impl cyrus_script::Host for PlayerHookHost<'_, '_> {
         &mut self,
         target: &cyrus_script::Target,
         kind: cyrus_script::program::CallKind,
-        function: &str,
+        function: Native,
         arguments: &[cyrus_script::Argument],
         _: cyrus_script::Invocation,
         _: &mut [i32],
@@ -1337,7 +1353,7 @@ impl cyrus_script::Host for PlayerHookHost<'_, '_> {
         ensure!(
             target == &cyrus_script::Target::Me
                 && kind == cyrus_script::program::CallKind::Function
-                && function.eq_ignore_ascii_case("playermain")
+                && function == Native::PlayerMain
                 && arguments.is_empty(),
             "player native hook received an unexpected call"
         );

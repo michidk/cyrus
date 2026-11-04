@@ -1,7 +1,7 @@
 //! Native task continuations validate against saved VM calls without execution.
 use super::{NativeTasks, Task};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::{persistence::Snapshot, program::CallKind};
+use cyrus_script::{Native, persistence::Snapshot, program::CallKind};
 use cyrus_world::animation::ActorAnimation;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -123,7 +123,7 @@ impl NativeTasks {
                 let call = calls.get(&saved.token).context("VM task token absent")?;
                 let (name, arguments, required_kind) = saved.state.contract();
                 ensure!(
-                    call.call.function.eq_ignore_ascii_case(name),
+                    call.call.function == name,
                     "variant {name} differs from VM call {}",
                     call.call.function
                 );
@@ -226,77 +226,83 @@ impl NativeTasks {
 }
 
 impl Task {
-    fn contract(self) -> (&'static str, usize, Option<CallKind>) {
+    fn contract(self) -> (Native, usize, Option<CallKind>) {
         match self {
-            Self::AnimationRequest => ("PlayAnimation", 2, Some(CallKind::Multitask)),
-            Self::Dialogue => ("WaitOnDialog", 0, Some(CallKind::Task)),
-            Self::Menu => ("menuProc", 0, Some(CallKind::Task)),
-            Self::AnimationFrame { player: false } => ("WaitAnimFrame", 2, Some(CallKind::Task)),
-            Self::AnimationFrame { player: true } => {
-                ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
+            Self::AnimationRequest => (Native::PlayAnimation, 2, Some(CallKind::Multitask)),
+            Self::Dialogue => (Native::WaitOnDialog, 0, Some(CallKind::Task)),
+            Self::Menu => (Native::MenuProc, 0, Some(CallKind::Task)),
+            Self::AnimationFrame { player: false } => {
+                (Native::WaitAnimFrame, 2, Some(CallKind::Task))
             }
-            Self::PlayerDialogue { .. } => ("RTXp", 1, None),
-            Self::GroupSync => ("SyncWithGroup", 1, Some(CallKind::Task)),
-            Self::UserSync => ("SyncWithUser", 1, Some(CallKind::Task)),
-            Self::SpeakerDialogue(_) => ("RTX", 1, None),
-            Self::SpeakerAnimation { player: false, .. } => ("rtxAnim", 4, Some(CallKind::Task)),
-            Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),
-            Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
-            Self::ShowPlayerPan { .. } => ("showPlayerPan", 1, Some(CallKind::Task)),
-            Self::ObjectPan { command, .. } => (command.name(), 4, None),
-            Self::ShowLocation { command, .. } => (command.name(), 3, None),
-            Self::Look { .. } => ("lookObj", 1, Some(CallKind::Task)),
-            Self::ObjectRotation => ("showObjRot", 4, Some(CallKind::Task)),
-            Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
-            Self::AmbientRtx { .. } => ("AmbientRtx", 3, Some(CallKind::Multitask)),
-            Self::Movement { .. } => ("MoveByAxis", 3, None),
-            Self::ObjectMovement { .. } => ("MoveObjectAxis", 3, None),
-            Self::ScaledMovement { .. } => ("sMoveByAxis", 3, None),
-            Self::Rotation { .. } => ("RotateByAxis", 3, None),
-            Self::AbsoluteRotation { .. } => ("RotateToAxis", 3, None),
-            Self::ScaledRotation { .. } => ("sRotateToAxis", 3, None),
-            Self::ScaledRelativeRotation { .. } => ("sRotateByAxis", 3, None),
-            Self::PlayerFace => ("PlayerFaceObj", 0, Some(CallKind::Task)),
-            Self::PickupLineUp { .. } => ("PlayerPickupLineUp", 3, Some(CallKind::Task)),
-            Self::ParallelLineUp => ("PlayerParallelLineUp", 3, Some(CallKind::Task)),
-            Self::Bounce(_) => ("BounceObject", 3, Some(CallKind::Task)),
-            Self::LineUp { .. } => ("PlayerLineUp", 3, Some(CallKind::Task)),
-            Self::FacePlayer => ("FacePlayer", 1, None),
-            Self::FacePlayerInertia => ("FacePlayerInertia", 1, None),
-            Self::Move => ("Move", 4, None),
-            Self::Rotate => ("Rotate", 4, None),
-            Self::ScaledAxisMovement => ("sMoveAlongAxis", 3, None),
-            Self::ScaledMove => ("sMove", 4, None),
-            Self::ScaledRotate => ("sRotate", 4, None),
-            Self::PlayerOffset => ("PlayerOffsettask", 3, Some(CallKind::Multitask)),
-            Self::DragonBreath => ("DragonBreathTask", 0, Some(CallKind::Multitask)),
-            Self::Projectile => ("projectileAI", 0, None),
-            Self::MoveMarker => ("MoveMarker", 2, None),
-            Self::MoveLocation => ("MoveLocation", 2, None),
-            Self::MovePosition => ("MovePosition", 4, None),
-            Self::MoveNodeMarker => ("MoveNodeMarker", 2, None),
-            Self::MoveNodeLocation => ("MoveNodeLocation", 2, None),
-            Self::MoveNodePosition => ("MoveNodePosition", 4, None),
-            Self::FaceAngle => ("FaceAngle", 1, None),
-            Self::FacePos => ("FacePos", 2, None),
-            Self::Backward => ("MoveBackward", 1, None),
-            Self::WalkBackward => ("WalkBackward", 1, None),
-            Self::Forward => ("MoveForward", 1, None),
-            Self::WalkForward => ("WalkForward", 1, None),
-            // Only created synchronously, never stored.
-            Self::Lunge => ("Lunge", 1, None),
-            Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
-            Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
-            Self::Location => ("MoveToLocation", 2, None),
-            Self::Marker => ("MoveToMarker", 2, None),
-            Self::AxisMovement { .. } => ("MoveAlongAxis", 3, None),
-            Self::WanderLocation { .. } => ("WanderToLocation", 2, None),
-            Self::Duration => ("Wait", 1, None),
-            Self::ViewGxa => ("ViewGXA", 3, None),
-            Self::Tasks => ("WaitOnTasks", 0, None),
-            Self::Blocking => ("WaitNonMulti", 0, None),
-            Self::Animation { .. } => ("PushAnimation", 2, None),
-            Self::ControlAnimation { .. } => ("PushControlAnimation", 2, None),
+            Self::AnimationFrame { player: true } => {
+                (Native::WaitPlayerAnimFrame, 2, Some(CallKind::Task))
+            }
+            Self::PlayerDialogue { .. } => (Native::RTXp, 1, None),
+            Self::GroupSync => (Native::SyncWithGroup, 1, Some(CallKind::Task)),
+            Self::UserSync => (Native::SyncWithUser, 1, Some(CallKind::Task)),
+            Self::SpeakerDialogue(_) => (Native::Rtx, 1, None),
+            Self::SpeakerAnimation { player: false, .. } => {
+                (Native::RtxAnim, 4, Some(CallKind::Task))
+            }
+            Self::SpeakerAnimation { player: true, .. } => {
+                (Native::RTXpAnim, 4, Some(CallKind::Task))
+            }
+            Self::ShowPlayer { .. } => (Native::ShowPlayer, 0, Some(CallKind::Task)),
+            Self::ShowPlayerPan { .. } => (Native::ShowPlayerPan, 1, Some(CallKind::Task)),
+            Self::ObjectPan { command, .. } => (command.native(), 4, None),
+            Self::ShowLocation { command, .. } => (command.native(), 3, None),
+            Self::Look { .. } => (Native::LookObj, 1, Some(CallKind::Task)),
+            Self::ObjectRotation => (Native::ShowObjRot, 4, Some(CallKind::Task)),
+            Self::Ambient { .. } => (Native::AmbientSound, 3, Some(CallKind::Multitask)),
+            Self::AmbientRtx { .. } => (Native::AmbientRtx, 3, Some(CallKind::Multitask)),
+            Self::Movement { .. } => (Native::MoveByAxis, 3, None),
+            Self::ObjectMovement { .. } => (Native::MoveObjectAxis, 3, None),
+            Self::ScaledMovement { .. } => (Native::SMoveByAxis, 3, None),
+            Self::Rotation { .. } => (Native::RotateByAxis, 3, None),
+            Self::AbsoluteRotation { .. } => (Native::RotateToAxis, 3, None),
+            Self::ScaledRotation { .. } => (Native::SRotateToAxis, 3, None),
+            Self::ScaledRelativeRotation { .. } => (Native::SRotateByAxis, 3, None),
+            Self::PlayerFace => (Native::PlayerFaceObj, 0, Some(CallKind::Task)),
+            Self::PickupLineUp { .. } => (Native::PlayerPickupLineUp, 3, Some(CallKind::Task)),
+            Self::ParallelLineUp => (Native::PlayerParallelLineUp, 3, Some(CallKind::Task)),
+            Self::Bounce(_) => (Native::BounceObject, 3, Some(CallKind::Task)),
+            Self::LineUp { .. } => (Native::PlayerLineUp, 3, Some(CallKind::Task)),
+            Self::FacePlayer => (Native::FacePlayer, 1, None),
+            Self::FacePlayerInertia => (Native::FacePlayerInertia, 1, None),
+            Self::Move => (Native::Move, 4, None),
+            Self::Rotate => (Native::Rotate, 4, None),
+            Self::ScaledAxisMovement => (Native::SMoveAlongAxis, 3, None),
+            Self::ScaledMove => (Native::SMove, 4, None),
+            Self::ScaledRotate => (Native::SRotate, 4, None),
+            Self::PlayerOffset => (Native::PlayerOffsettask, 3, Some(CallKind::Multitask)),
+            Self::DragonBreath => (Native::DragonBreathTask, 0, Some(CallKind::Multitask)),
+            Self::Projectile => (Native::ProjectileAI, 0, None),
+            Self::MoveMarker => (Native::MoveMarker, 2, None),
+            Self::MoveLocation => (Native::MoveLocation, 2, None),
+            Self::MovePosition => (Native::MovePosition, 4, None),
+            Self::MoveNodeMarker => (Native::MoveNodeMarker, 2, None),
+            Self::MoveNodeLocation => (Native::MoveNodeLocation, 2, None),
+            Self::MoveNodePosition => (Native::MoveNodePosition, 4, None),
+            Self::FaceAngle => (Native::FaceAngle, 1, None),
+            Self::FacePos => (Native::FacePos, 2, None),
+            Self::Backward => (Native::MoveBackward, 1, None),
+            Self::WalkBackward => (Native::WalkBackward, 1, None),
+            Self::Forward => (Native::MoveForward, 1, None),
+            Self::WalkForward => (Native::WalkForward, 1, None),
+            // Only created synchronously, never stored; it runs `MoveForward`'s step.
+            Self::Lunge => (Native::MoveForward, 1, None),
+            Self::Strafe(super::super::locomotion::Strafe::Left) => (Native::MoveLeft, 1, None),
+            Self::Strafe(super::super::locomotion::Strafe::Right) => (Native::MoveRight, 1, None),
+            Self::Location => (Native::MoveToLocation, 2, None),
+            Self::Marker => (Native::MoveToMarker, 2, None),
+            Self::AxisMovement { .. } => (Native::MoveAlongAxis, 3, None),
+            Self::WanderLocation { .. } => (Native::WanderToLocation, 2, None),
+            Self::Duration => (Native::Wait, 1, None),
+            Self::ViewGxa => (Native::ViewGXA, 3, None),
+            Self::Tasks => (Native::WaitOnTasks, 0, None),
+            Self::Blocking => (Native::WaitNonMulti, 0, None),
+            Self::Animation { .. } => (Native::PushAnimation, 2, None),
+            Self::ControlAnimation { .. } => (Native::PushControlAnimation, 2, None),
         }
     }
 }
