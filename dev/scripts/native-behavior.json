@@ -4835,10 +4835,11 @@
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
+        "https://github.com/michidk/redguard-preservation/blob/a001e5a/docs/engine/SOUP.md"
       ],
-      "limits": "Verified by source inspection: reads current attribute29, guards retained channel membership and clears posted state without changing membership/released value. Public test covers no-argument success and argument rejection, not a populated channel reset. GroupSync helper test exercises reset and subsequent group-cycle release below named dispatch; it does not cover the user reset or current-channel guard. Unknown: populated public reset, changed-channel refusal and matched original/native/browser reset sequences. General synchronized-walking acceptance does not complete these named reset calls. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified independent installed function0/exact binding/full86-byte native and127-byte member lookup. 5568 original CPU cases/11 effective byte controls passed; originals restored/final corpus rerun. No service stubs/external IO. Receiver control byte29 read precedes enable check; valid enabled/current-channel lookup clears first matching member posted byte only, including duplicate identities. Both actors/control records, all256 channel heads, finite0..3-node lists and enable word checked; six saved registers/stack/canary and branch-dependent incidental EAX checked without defining a success result. All256 channels in a bounded matrix, selected enable words/posted bytes/receiver identities/topologies/patterns; not full joint domain. Existing public arity fixture/helper source previously inspected, no Rust rerun. Unknown malformed receiver/control/member pointers, cycles/concurrency/lifecycle, populated named public reset/changed-channel production acceptance and natural original/native/browser reset sequences. Production partial retained; original instruction evidence does not establish production behavior.",
+      "reviewed_revision": "83c898debc28433b171867f9b851d2fbdd9731f6"
     },
     {
       "native": "ResetUserSync",
