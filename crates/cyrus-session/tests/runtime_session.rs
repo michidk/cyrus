@@ -37,7 +37,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         namespace: Some(name.into()),
         instance_variables: vec![vec![]],
         location_offsets: vec![],
-        attributes: BTreeMap::new(),
+        attributes: Default::default(),
         combat_taunts: vec![],
         native_hook: None,
         program: Program {
@@ -61,7 +61,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 29,
+        version: 30,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],

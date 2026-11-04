@@ -1,6 +1,7 @@
 //! Combat coordination shares attacker eligibility, close counters and addressed class queues.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// The original branch remains selected for the pass even when coordination changes its state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,7 +62,7 @@ impl ScriptWorld {
         self.process_hit_response_core(id, message.sender, inputs, random, sounds)
     }
 
-    /// Consume a direct-damage message and respond: positional attribute-86 effect at volume
+    /// Consume a direct-damage message and respond: positional `attr_hit_sound` effect at volume
     /// zero with a drawn pitch offset, receiver taunt category two, the direct-damage response,
     /// then the coordinator tail without a death query: a nonselected receiver in coordination
     /// state zero sends `0xd003` to the first waiting coordinator, or takes coordination one when
@@ -78,7 +79,7 @@ impl ScriptWorld {
             .context("peeked direct-damage message disappeared before consume")?;
         let random = random.context("direct-damage response random stream unavailable")?;
         let index = self.resolve(id)?;
-        let effect = i32::from(self.actors[index].attributes[86]);
+        let effect = i32::from(self.actors[index].attributes[Attribute::HitSound]);
         let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
         sounds(
             id,

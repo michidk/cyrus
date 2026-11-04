@@ -17,6 +17,7 @@ use cyrus_game::{
     },
     script::{ActivationInputs, ActivationOverlay, ScriptActors},
 };
+use cyrus_script::Attribute;
 pub use persistence::HudPresentationSnapshot;
 use serde::{Deserialize, Serialize};
 
@@ -112,7 +113,7 @@ impl HudPreferences {
 /// no gameplay system writing them yet; they keep the defaults of a fresh session.
 #[derive(Resource, Serialize, Deserialize, Clone, Debug)]
 pub struct HudState {
-    /// Player health, 0..=100, from logical player attribute 3 when available.
+    /// Player health, 0..=100, from logical player `attr_health` when available.
     /// Use [`HudState::set_health`].
     pub health: u8,
     /// Candle visibility mode; F8 cycles 0 → 1 → 2 → 0.
@@ -123,7 +124,7 @@ pub struct HudState {
     pub lockout: u16,
     /// Selected player weapon state, projected from the logical actor when known.
     pub sword_drawn: bool,
-    /// Logical selected-player attribute 105 when actor state is available.
+    /// Logical selected-player `attr_player_type` when actor state is available.
     pub player_type: u8,
     /// Placed player's heading in 2048-unit turns and the loaded WORLD.INI world ID, for the compass.
     pub heading: u16,
@@ -1092,11 +1093,13 @@ fn update(
             .and_then(|world| world.actors().get(id.index))
     {
         let attributes = player.attributes();
-        state.player_type = attributes[105];
+        state.player_type = attributes[Attribute::PlayerType];
         let displayed = world
             .as_ref()
             .and_then(|world| world.globals().selected_health())
-            .map_or(attributes[3], |health| health.displayed() as u8);
+            .map_or(attributes[Attribute::Health], |health| {
+                health.displayed() as u8
+            });
         state.set_health(displayed, &script_hud);
         state.set_sword_drawn(
             player
@@ -1111,7 +1114,7 @@ fn update(
             .get(inputs.player.index)
             .is_some_and(|player| inputs.compass_eligible(player).unwrap_or(false)),
         (Some(world), None, Some((id, actor))) => actor.compass_eligible(
-            world.actors()[id.index].attributes()[110],
+            world.actors()[id.index].attributes()[Attribute::HoldingWeapon],
             script_hud.ready(),
             false,
         ),
@@ -1160,11 +1163,13 @@ fn update(
             {
                 Ok(overlay) => {
                     let attributes = world.actors()[inputs.player.index].attributes();
-                    state.player_type = attributes[105];
+                    state.player_type = attributes[Attribute::PlayerType];
                     let displayed = world
                         .globals()
                         .selected_health()
-                        .map_or(attributes[3], |health| health.displayed() as u8);
+                        .map_or(attributes[Attribute::Health], |health| {
+                            health.displayed() as u8
+                        });
                     state.set_health(displayed, &script_hud);
                     overlay
                 }
@@ -1635,7 +1640,7 @@ mod tests {
             namespace: Some("CYRUS".into()),
             instance_variables: vec![vec![]],
             location_offsets: vec![],
-            attributes: BTreeMap::new(),
+            attributes: Default::default(),
             combat_taunts: vec![],
             native_hook: None,
             program: Program {
@@ -1682,7 +1687,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 29,
+            version: 30,
             weapons: Default::default(),
             camera: Default::default(),
             combat_attacks: vec![],

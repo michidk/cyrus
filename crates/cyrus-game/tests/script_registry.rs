@@ -3,6 +3,7 @@ use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Argument, CallResult, Host, Target, Thread};
+use cyrus_script::{Attribute, Attributes};
 use std::collections::BTreeMap;
 
 struct NoServices;
@@ -74,7 +75,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 29,
+        version: 30,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -144,7 +145,7 @@ fn cache() -> Scripts {
                 instance_variables: vec![vec![4], vec![9]],
                 location_offsets: vec![],
                 program,
-                attributes: BTreeMap::new(),
+                attributes: Default::default(),
                 combat_taunts: vec![],
                 native_hook: None,
             },
@@ -786,9 +787,8 @@ fn researched_attribute_query_reads_unsigned_bytes_and_checks_bounds() {
         param_count: 1,
         kind: CallKind::Function,
     });
-    scripts.definition.attributes = vec!["first".into()];
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
-    actor.attributes.insert("first".into(), 255);
+    actor.attributes[Attribute::Active] = 255;
     actor.program.steps.get_mut(&0).unwrap().operation = Operation::Assign {
         destination: Place::Local { index: 0 },
         formula: Formula {
@@ -1658,13 +1658,8 @@ fn offset_world(caller: Vec<Operation>, slave: bool) -> ScriptWorld {
     // A quarter turn of the owner makes the stored offset differ from the world delta.
     scripts.instances[1].angles[1] = 512;
     if slave {
-        for (actor, attribute) in [("LOGIC", "attr_26"), ("RECEIVER", "attr_25")] {
-            scripts
-                .actors
-                .get_mut(actor)
-                .unwrap()
-                .attributes
-                .insert(attribute.into(), 1);
+        for (actor, attribute) in [("LOGIC", Attribute::Slave), ("RECEIVER", Attribute::Master)] {
+            scripts.actors.get_mut(actor).unwrap().attributes[attribute] = 1;
         }
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -1862,20 +1857,9 @@ fn named_functions_resolve_namespace_and_receiver_arguments_case_insensitively()
         param_count: 1,
         kind: CallKind::Function,
     });
-    scripts.definition.attributes = (0..10).map(|index| format!("attribute_{index}")).collect();
     scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "ReCeIvEr".into();
-    scripts
-        .actors
-        .get_mut("RECEIVER")
-        .unwrap()
-        .attributes
-        .insert("attribute_9".into(), 255);
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attribute_4".into(), 11);
+    scripts.actors.get_mut("RECEIVER").unwrap().attributes[Attribute::BackwardSpeed] = 255;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Armor] = 11;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let caller = world.id(0).unwrap();
@@ -2250,8 +2234,8 @@ fn attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes() {
     expected[6] = 255;
     expected[115] = 35;
     expected[119] = 254;
-    assert_eq!(world.actors()[0].attributes(), &expected);
-    assert_eq!(world.actors()[1].attributes(), &[0; 256]);
+    assert_eq!(world.actors()[0].attributes().bytes(), &expected);
+    assert_eq!(world.actors()[1].attributes().bytes(), &[0; 256]);
 }
 #[test]
 fn set_my_attribute_ignores_out_of_range_indices_without_mutation() {
@@ -2271,7 +2255,7 @@ fn set_my_attribute_ignores_out_of_range_indices_without_mutation() {
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
-        assert_eq!(world.actors()[0].attributes(), &[0; 256]);
+        assert_eq!(world.actors()[0].attributes().bytes(), &[0; 256]);
     }
 }
 #[test]
@@ -2300,9 +2284,12 @@ fn routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.step(world.id(1).unwrap(), Thread::Main, 20).unwrap();
-    assert_eq!(world.actors()[0].attributes()[1], 4);
-    assert_eq!(world.actors()[0].attributes()[119], 4);
-    assert_eq!(world.actors()[1].attributes(), &[0; 256]);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 4);
+    assert_eq!(
+        world.actors()[0].attributes()[Attribute::ReservedCollide],
+        4
+    );
+    assert_eq!(world.actors()[1].attributes().bytes(), &[0; 256]);
     assert_eq!(world.actors()[1].runtime().unwrap().variables(), [4]);
 }
 #[test]
@@ -2327,7 +2314,7 @@ fn unsupported_attribute_access_fails_before_mutation_and_remains_sticky() {
             error.contains("world 7") && error.contains("instruction 0"),
             "{error}"
         );
-        assert_eq!(world.actors()[0].attributes(), &[0; 256]);
+        assert_eq!(world.actors()[0].attributes().bytes(), &[0; 256]);
         assert_eq!(world.flags(), [12]);
         assert_eq!(
             world.step(actor, Thread::Main, 20).unwrap_err().to_string(),
@@ -2353,7 +2340,8 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
         let mut actor = template.clone();
         actor.instances = 1;
         actor.instance_variables.truncate(1);
-        actor.attributes = BTreeMap::from([("attr_25".into(), master), ("attr_26".into(), parent)]);
+        actor.attributes =
+            Attributes::from([(Attribute::Master, master), (Attribute::Slave, parent)]);
         scripts.actors.insert(name.into(), actor);
         scripts.instances.push(Instance {
             object_id: index as u32,
@@ -2486,11 +2474,7 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
 fn ambiguous_attachment_preparation_does_not_install_partial_state() {
     let mut data = cache();
     data.instances[1].active = 1;
-    data.actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_25".into(), 1);
+    data.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Master] = 1;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     let error = world.prepare_spatial().unwrap_err();
@@ -2579,7 +2563,7 @@ fn ordered_world() -> ScriptWorld {
         let mut actor = role.clone();
         actor.namespace = Some(name.to_ascii_lowercase());
         if name == "BORDER" {
-            actor.attributes.insert("attr_113".into(), 1);
+            actor.attributes[Attribute::ShortMapping] = 1;
         }
         data.actors.insert(name.into(), actor);
     }
@@ -2620,7 +2604,7 @@ fn ordinary_border_selection_changes_only_when_the_view_starting_cell_changes() 
             .any(|id| id.index == 5)
     );
     world.step(world.id(5).unwrap(), Thread::Main, 20).unwrap();
-    assert_eq!(world.actors()[5].attributes()[113], 0);
+    assert_eq!(world.actors()[5].attributes()[Attribute::ShortMapping], 0);
     assert!(
         !world
             .ordinary_actors([5119, 4608])
@@ -2675,12 +2659,8 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
                 Operation::End { target: 0 },
             ]);
             scripts.instances[0].object_type = 1;
-            scripts
-                .actors
-                .get_mut("LOGIC")
-                .unwrap()
-                .attributes
-                .insert("attr_14".into(), combat_attribute);
+            scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] =
+                combat_attribute;
             scripts.content_id = scripts.content_identity().unwrap();
             let data = Animations {
                 version: 2,
@@ -2715,14 +2695,14 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
                 )
                 .unwrap();
             let actor = &world.actors()[0];
-            assert_eq!(actor.attributes()[44], 254);
+            assert_eq!(actor.attributes()[Attribute::PanicGroup], 254);
             assert_eq!(actor.runtime().unwrap().variables(), [254]);
             assert_eq!(
                 actor.control_state().unwrap().combat_death_default,
                 if combat_attribute == 0 { None } else { Some(0) }
             );
             assert_eq!(world.animation_frame(id).unwrap(), Some(10));
-            assert_eq!(world.actors()[1].attributes()[44], 0);
+            assert_eq!(world.actors()[1].attributes()[Attribute::PanicGroup], 0);
         }
     }
 }
@@ -2746,9 +2726,9 @@ fn standalone_default_writes_use_initialized_player_control() {
             .find(|actor| actor.name() == "CYRUS")
             .unwrap();
         assert_eq!(player.control_state().unwrap().living_state, 0);
-        assert_eq!(player.attributes()[44], 7);
+        assert_eq!(player.attributes()[Attribute::PanicGroup], 7);
         let (_, state) = world.player_activation_state().unwrap();
-        assert!(state.compass_eligible(player.attributes()[110], true, false));
+        assert!(state.compass_eligible(player.attributes()[Attribute::HoldingWeapon], true, false));
     }
 }
 
@@ -2808,7 +2788,7 @@ fn map_default_selection_observes_script_writes_and_updates_the_shared_frame() {
         .select_map_animation_default(id, false, 1, &mut |_, _| Ok(()))
         .unwrap();
     assert_eq!(world.animation_frame(id).unwrap(), Some(80));
-    assert_eq!(world.actors()[0].attributes()[44], 6);
+    assert_eq!(world.actors()[0].attributes()[Attribute::PanicGroup], 6);
     assert_eq!(
         world.actors()[0]
             .control_state()
@@ -2850,12 +2830,12 @@ fn spatial_axis_locks_restore_independent_saved_axes_and_leave_the_matrix_unchan
     world.prepare_spatial().unwrap();
     let template = world.spatial(world.id(0).unwrap()).unwrap();
     for (attribute, position, angles) in [
-        (40, [100, 500, 600], [400, 500, 600]),
-        (41, [400, 200, 600], [400, 500, 600]),
-        (42, [400, 500, 300], [400, 500, 600]),
-        (38, [400, 500, 600], [100, 500, 600]),
-        (37, [400, 500, 600], [400, 200, 600]),
-        (39, [400, 500, 600], [400, 500, 300]),
+        (Attribute::StopXMove, [100, 500, 600], [400, 500, 600]),
+        (Attribute::StopYMove, [400, 200, 600], [400, 500, 600]),
+        (Attribute::StopZMove, [400, 500, 300], [400, 500, 600]),
+        (Attribute::StopXRotate, [400, 500, 600], [100, 500, 600]),
+        (Attribute::StopYRotate, [400, 500, 600], [400, 200, 600]),
+        (Attribute::StopZRotate, [400, 500, 600], [400, 500, 300]),
     ] {
         for slave in [0, 1] {
             let mut pose = template.clone();
@@ -2865,9 +2845,9 @@ fn spatial_axis_locks_restore_independent_saved_axes_and_leave_the_matrix_unchan
             pose.local.position = [400, 500, 600];
             pose.local.angles = [400, 500, 600];
             let matrix = pose.local.matrix;
-            let mut attributes = [0; 256];
+            let mut attributes = Attributes::default();
             attributes[attribute] = 255;
-            attributes[26] = slave;
+            attributes[Attribute::Slave] = slave;
             pose.restore_axis_locks(&attributes).unwrap();
             assert_eq!(
                 pose.local.position,
@@ -2884,8 +2864,6 @@ fn spatial_axis_locks_restore_independent_saved_axes_and_leave_the_matrix_unchan
             assert_eq!(pose.local.matrix, matrix);
         }
     }
-    let mut pose = template.clone();
-    assert!(pose.restore_axis_locks(&[0; 255]).is_err());
 }
 
 #[test]
@@ -2917,8 +2895,8 @@ fn native_hook_updates_only_its_receiver_without_advancing_the_script() {
             0,
         )
         .unwrap();
-    assert_eq!(world.actors()[0].attributes()[6], 19);
-    assert_eq!(world.actors()[1].attributes()[6], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 19);
+    assert_eq!(world.actors()[1].attributes()[Attribute::Weight], 0);
     assert_eq!(
         world.actors()[0]
             .runtime()
@@ -3072,7 +3050,7 @@ fn ordinary_hook_observes_unpaused_multitasks_and_installed_task_switch() {
                 .advance(id, ScriptStage::OrdinaryHook, inputs, None, None, 20)
                 .unwrap();
             assert_eq!(
-                world.actors()[0].attributes()[6],
+                world.actors()[0].attributes()[Attribute::Weight],
                 if !task_system || paused { 19 } else { 0 }
             );
             assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
@@ -3347,8 +3325,8 @@ fn routed_node_marker_query_reads_the_receivers_local_attached_position() {
     ]);
     let mut child = actor.clone();
     child.namespace = Some("child".into());
-    child.attributes.insert("attr_26".into(), 1);
-    actor.attributes.insert("attr_25".into(), 1);
+    child.attributes[Attribute::Slave] = 1;
+    actor.attributes[Attribute::Master] = 1;
     scripts.actors.insert("CHILD".into(), child);
     scripts.instances[0].map_position = [100, 0, 0];
     scripts.instances[1].map_position = [103, 4, 0];
@@ -4039,7 +4017,7 @@ fn empty_map_wander_consumes_original_draws_and_restores_excess_displacement() {
             .unwrap();
         assert_eq!(world.flags(), [movement]);
         assert_eq!(random.state(), state, "radius {radius}");
-        assert_eq!(world.actors()[0].attributes()[94], 1);
+        assert_eq!(world.actors()[0].attributes()[Attribute::NodeInUse], 1);
         assert_eq!(
             world.spatial(id).unwrap().local.position,
             if restore {
@@ -4113,7 +4091,7 @@ fn wander_with_maps_picks_the_nearest_node_as_its_destination_and_ends_on_arriva
                 20,
             )
             .unwrap();
-        assert_eq!(world.actors()[0].attributes()[94], 1);
+        assert_eq!(world.actors()[0].attributes()[Attribute::NodeInUse], 1);
         assert_eq!(random.state(), 2524885223, "the empty-map draw sequence");
         let navigation = world.actors()[0].control_state().unwrap().navigation;
         // The actor stands on the node, so a found destination is reached and cleared at once.
@@ -4434,8 +4412,8 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         role.code_origin = origin;
         role.instances = 1;
         role.instance_variables.truncate(1);
-        role.attributes.insert("attr_14".into(), 1);
-        role.attributes.insert("attr_23".into(), 1);
+        role.attributes[Attribute::Combat] = 1;
+        role.attributes[Attribute::Weapon] = 1;
         scripts.actors.insert(name.into(), role);
     }
     scripts.weapons.insert(
@@ -6192,7 +6170,7 @@ fn pvo_secondary_ids_use_load_time_z_x_order_and_preserve_cell_chains() {
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.instances = 4;
     actor.instance_variables = vec![vec![4]; 4];
-    actor.attributes.insert("attr_122".into(), 1);
+    actor.attributes[Attribute::NonMoving] = 1;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
     let indices = |world: &ScriptWorld| {
@@ -6219,7 +6197,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
     let mut support = scripts.actors["LOGIC"].clone();
     support.instances = 1;
     support.instance_variables = vec![vec![4]];
-    support.attributes.insert("attr_122".into(), 1);
+    support.attributes[Attribute::NonMoving] = 1;
     scripts.actors.insert("SUPPORT".into(), support);
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.instances = 1;
@@ -6608,12 +6586,7 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
 #[test]
 fn model_positioning_allows_known_dry_surfaces_with_collision_enabled() {
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 4);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 4;
     let (mut world, data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     for surface in [0, 6, 7, 8, 9, 10] {
@@ -6998,13 +6971,7 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     for (available, terrain) in [(true, false), (true, true), (false, false)] {
         let mut scripts = cache();
-        scripts.definition.attributes = vec!["attr_0".into(), "attr_1".into()];
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_1".into(), 1);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
         for placement in &mut scripts.instances {
             placement.active = 1;
         }
@@ -7067,11 +7034,10 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     for shell in [true, false] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
         scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
-            ("attr_1".into(), 1),
-            ("attr_14".into(), 1),
-            ("attr_119".into(), 7),
+            (Attribute::Collide, 1),
+            (Attribute::Combat, 1),
+            (Attribute::ReservedCollide, 7),
         ]);
         for placement in &mut scripts.instances {
             placement.active = 1;
@@ -7112,7 +7078,7 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
                 "{:?}",
                 world.actors()[0].failure()
             );
-            assert_eq!(world.actors()[0].attributes()[1], 1);
+            assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 1);
             assert_eq!(
                 world
                     .consume_combat_message(receiver)
@@ -7123,7 +7089,7 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
             );
         } else {
             assert_eq!(
-                world.actors()[0].attributes()[1],
+                world.actors()[0].attributes()[Attribute::Collide],
                 7,
                 "{:?}",
                 world.actors()[0].failure()
@@ -7811,26 +7777,26 @@ fn overlap_response_fixture_with(
     weight: u8,
     other_weight: u8,
     offset: i32,
-    attr_1: u8,
+    collide: u8,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
-    overlap_response_fixture_state(weight, other_weight, offset, attr_1, 0)
+    overlap_response_fixture_state(weight, other_weight, offset, collide, 0)
 }
 
 fn overlap_response_fixture_state(
     weight: u8,
     other_weight: u8,
     offset: i32,
-    attr_1: u8,
+    collide: u8,
     living_state: u8,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
-    overlap_response_fixture_tweaked(weight, other_weight, offset, attr_1, living_state, |_| {})
+    overlap_response_fixture_tweaked(weight, other_weight, offset, collide, living_state, |_| {})
 }
 
 fn overlap_response_fixture_tweaked(
     weight: u8,
     other_weight: u8,
     offset: i32,
-    attr_1: u8,
+    collide: u8,
     living_state: u8,
     tweak: impl FnOnce(&mut Scripts),
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
@@ -7838,7 +7804,7 @@ fn overlap_response_fixture_tweaked(
         weight,
         other_weight,
         offset,
-        attr_1,
+        collide,
         living_state,
         tweak,
         &[],
@@ -7849,13 +7815,12 @@ fn overlap_response_fixture_edited(
     weight: u8,
     other_weight: u8,
     offset: i32,
-    attr_1: u8,
+    collide: u8,
     living_state: u8,
     tweak: impl FnOnce(&mut Scripts),
     control_edits: &[(&str, serde_json::Value)],
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
-    scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.push(Function {
         name: "MoveByAxis".into(),
         param_count: 3,
@@ -7864,8 +7829,8 @@ fn overlap_response_fixture_edited(
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.instances = 1;
     actor.instance_variables = vec![vec![4]];
-    actor.attributes.insert("attr_6".into(), weight);
-    actor.attributes.insert("attr_1".into(), attr_1);
+    actor.attributes[Attribute::Weight] = weight;
+    actor.attributes[Attribute::Collide] = collide;
     actor.program.steps = BTreeMap::from([
         (
             0,
@@ -7895,7 +7860,7 @@ fn overlap_response_fixture_edited(
     ]);
     let mut other = actor.clone();
     other.instance_variables = vec![vec![9]];
-    other.attributes.insert("attr_6".into(), other_weight);
+    other.attributes[Attribute::Weight] = other_weight;
     scripts.actors.insert("OTHER".into(), other);
     scripts.instances[1].actor = "OTHER".into();
     for placement in &mut scripts.instances {
@@ -8264,13 +8229,7 @@ fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unavailable_later_shape
     use cyrus_collision::actor_models::ActorModelCollision;
     use cyrus_game::script::OrdinaryOverlapPass as Pass;
     let mut scripts = cache();
-    scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_6".into(), 128);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Weight] = 128;
     let mut later = scripts.actors["LOGIC"].clone();
     later.instances = 1;
     later.instance_variables = vec![vec![4]];
@@ -8372,17 +8331,11 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     use cyrus_collision::actor_models::ActorModelCollision;
     use cyrus_game::script::OrdinaryOverlapPass as Pass;
     let mut scripts = cache();
-    scripts.definition.attributes = (0..99).map(|index| format!("attr_{index}")).collect();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_6".into(), 128);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Weight] = 128;
     let mut other = scripts.actors["LOGIC"].clone();
     other.instances = 1;
     other.instance_variables = vec![vec![4]];
-    other.attributes.insert("attr_98".into(), 140);
+    other.attributes[Attribute::BouncePower] = 140;
     scripts.actors.insert("BOUNCY".into(), other);
     scripts.instances[1].actor = "BOUNCY".into();
     scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
@@ -9162,18 +9115,8 @@ fn ordinary_ground_prevalidation_queries_retained_support_and_restores_local_mot
         ScriptStage,
     };
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 2);
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_32".into(), 1);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 2;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 1;
     let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [10, 20, 30]);
     let id = world.id(0).unwrap();
     let other = world.id(1).unwrap();
@@ -9428,12 +9371,7 @@ fn ordinary_vertical_motion_retains_byte_timer_signed_limit_and_q8_origin() {
 fn ordinary_vertical_writers_commit_logical_y_without_moving_model_record() {
     use cyrus_game::script::OrdinaryVerticalInputs;
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_32".into(), 32);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     let (mut world, data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     world.refresh_model_presentations(&data, &[id]).unwrap();
@@ -9677,12 +9615,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     for instance in &mut scripts.instances {
         instance.object_type = 1;
     }
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_32".into(), 32);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     scripts.content_id = scripts.content_identity().unwrap();
     let data = Animations {
         version: 2,
@@ -9882,12 +9815,7 @@ fn ordinary_falling_caller_obeys_the_live_animation_vertical_marker() {
             suppressed,
             true,
             |scripts| {
-                scripts
-                    .actors
-                    .get_mut("LOGIC")
-                    .unwrap()
-                    .attributes
-                    .insert("attr_32".into(), 32);
+                scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
             },
             |saved| {
                 saved["actors"][0]["control"]["falling_state"] = 1.into();
@@ -9937,8 +9865,8 @@ fn ordinary_falling_reads_the_replacement_groups_vertical_marker() {
             true,
             |scripts| {
                 let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-                attributes.insert("attr_32".into(), 32);
-                attributes.insert("attr_44".into(), 0);
+                attributes[Attribute::JumpHeight] = 32;
+                attributes[Attribute::PanicGroup] = 0;
             },
             |saved| {
                 saved["actors"][0]["control"]["falling_state"] = 1.into();
@@ -10028,12 +9956,7 @@ fn ordinary_falling_reads_the_replacement_groups_vertical_marker() {
 fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion() {
     use cyrus_game::script::ObstacleEnvironment;
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_32".into(), 32);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     let (mut world, data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     let y = world.spatial(id).unwrap().local.position[1];
@@ -10121,18 +10044,8 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     for instance in &mut scripts.instances {
         instance.object_type = 1;
     }
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_32".into(), 32);
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_3".into(), 100);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Health] = 100;
     scripts.content_id = scripts.content_identity().unwrap();
     let data = Animations {
         version: 2,
@@ -10208,7 +10121,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .change_ordinary_health(id, -10, &data, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
-    assert_eq!(world.actors()[id.index].attributes()[3], 90);
+    assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 90);
     world.set_actor_surface(id, 0).unwrap();
     let decision = world
         .resolve_ordinary_landing_damage(
@@ -10228,7 +10141,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
         decision,
         cyrus_game::script::OrdinaryLandingDecision::Hurt { health_change: -10 }
     );
-    assert_eq!(world.actors()[id.index].attributes()[3], 80);
+    assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 80);
     assert_eq!(
         world.actors()[id.index]
             .control_state()
@@ -10252,7 +10165,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .change_ordinary_health(id, -256, &data, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
-    assert_eq!(world.actors()[id.index].attributes()[3], 0);
+    assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 0);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.death_selector, 8);
     assert_eq!(control.death_response, 0);
@@ -10529,12 +10442,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
     use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
     use cyrus_world::sound::AnimationSoundState;
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_6".into(), 7);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Weight] = 7;
     let (mut world, mut data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     let other = world.id(1).unwrap();
@@ -10625,7 +10533,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
     );
     assert_eq!(world.spatial(id).unwrap().local.position, before);
     assert_eq!(world.animation_frame(id).unwrap(), Some(10));
-    assert_eq!(world.actors()[0].attributes()[6], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 0);
     assert_eq!(
         world.actors()[0].control_state().unwrap().movement_flags,
         48
@@ -11041,7 +10949,6 @@ fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
 fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_refreshes() {
     use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.push(Function {
         name: "MoveByAxis".into(),
         param_count: 3,
@@ -11061,10 +10968,10 @@ fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_r
         let mut actor = template.clone();
         actor.instances = 1;
         actor.instance_variables.truncate(1);
-        actor.attributes = BTreeMap::from([
-            ("attr_24".into(), support),
-            ("attr_25".into(), master),
-            ("attr_26".into(), slave),
+        actor.attributes = Attributes::from([
+            (Attribute::PlayerAlign, support),
+            (Attribute::Master, master),
+            (Attribute::Slave, slave),
         ]);
         if name == "ROOT" {
             actor.program.steps = BTreeMap::from([
@@ -11161,7 +11068,6 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
     use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
     for enabled in [false, true] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..25).map(|index| format!("attr_{index}")).collect();
         for (name, kind) in [
             ("MoveByAxis", CallKind::Multitask),
             ("RotateByAxis", CallKind::Multitask),
@@ -11173,9 +11079,9 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
             });
         }
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
-        actor.attributes.insert("attr_24".into(), u8::from(enabled));
+        actor.attributes[Attribute::PlayerAlign] = u8::from(enabled);
         // Body contacts enabled make the selected rider need its destination admission.
-        actor.attributes.insert("attr_1".into(), 1);
+        actor.attributes[Attribute::Collide] = 1;
         actor.program.steps = BTreeMap::from([
             (
                 0,
@@ -11301,11 +11207,10 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
 fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updates() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
-    actor.attributes.insert("attr_1".into(), 4);
-    actor.attributes.insert("attr_6".into(), 128);
-    actor.attributes.insert("attr_115".into(), 64);
+    actor.attributes[Attribute::Collide] = 4;
+    actor.attributes[Attribute::Weight] = 128;
+    actor.attributes[Attribute::ReservedWeight] = 64;
     for placement in &mut scripts.instances {
         placement.active = 1;
     }
@@ -11363,7 +11268,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
         let control = world.actors()[0].control_state().unwrap();
         assert!(control.stable_position_valid);
         assert_eq!(control.stable_local_position, [2560, 4608, 7680]);
-        assert_eq!(world.actors()[0].attributes()[6], 64);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 64);
     }
 }
 
@@ -11436,8 +11341,8 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
     use cyrus_world::sound::AnimationSoundState;
     let mut scripts = cache();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-    attributes.insert("attr_15".into(), 12);
-    attributes.insert("attr_6".into(), 64);
+    attributes[Attribute::TurnSpeed] = 12;
+    attributes[Attribute::Weight] = 64;
     let (mut world, mut data, models) =
         static_model_fixture_at(scripts, Some(20.0), [600, 20, 600]);
     let id = world.id(0).unwrap();
@@ -11526,7 +11431,7 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 2030);
     assert_eq!(random.state(), 1103527590);
     assert_eq!(world.animation_frame(id).unwrap(), Some(10));
-    assert_eq!(world.actors()[0].attributes()[6], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 0);
     let state = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (
@@ -11604,19 +11509,18 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             }))
             .unwrap(),
         ];
-        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
         actor.attributes.extend([
-            ("attr_1".into(), 1),
-            ("attr_14".into(), capable),
-            ("attr_119".into(), 7),
-            ("attr_70".into(), 54),
-            ("attr_72".into(), 56),
-            ("attr_78".into(), 64),
-            ("attr_79".into(), defenses[0]),
-            ("attr_80".into(), defenses[1]),
-            ("attr_81".into(), defenses[2]),
-            ("attr_82".into(), defenses[3]),
+            (Attribute::Collide, 1),
+            (Attribute::Combat, capable),
+            (Attribute::ReservedCollide, 7),
+            (Attribute::AttackSingle, 54),
+            (Attribute::AttackTriple, 56),
+            (Attribute::AttackDisarm, 64),
+            (Attribute::DefendLow, defenses[0]),
+            (Attribute::DefendRight, defenses[1]),
+            (Attribute::DefendLeft, defenses[2]),
+            (Attribute::DefendHigh, defenses[3]),
         ]);
         for instance in &mut scripts.instances {
             instance.object_type = 1;
@@ -11716,7 +11620,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 &mut |_, _| Ok(()),
             )
             .unwrap();
-        assert_eq!(world.actors()[0].attributes()[1], 1);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 1);
         world
             .maintain_map_combat(
                 first,
@@ -11727,7 +11631,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 &mut |_, _| Ok(()),
             )
             .unwrap();
-        assert_eq!(world.actors()[0].attributes()[1], 7);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 7);
         world.send_combat_message(second, first, 0xd001).unwrap();
         let error = world
             .maintain_map_combat(
@@ -11824,7 +11728,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
         assert_eq!(world.actors()[1].runtime().unwrap().variables(), [second]);
         for actor in world.actors() {
             assert!(actor.control_state().is_none());
-            assert!(actor.attributes().iter().all(|value| *value == 0));
+            assert!(actor.attributes().bytes().iter().all(|value| *value == 0));
             assert!(actor.failure().is_none());
         }
     }
@@ -11973,7 +11877,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
         },
     ]);
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
-    actor.attributes.insert("attr_0".into(), 99);
+    actor.attributes[Attribute::Active] = 99;
     let get = attribute_call(1, "GetAttribute", 0, None);
     actor.program.steps = BTreeMap::from([
         (
@@ -12040,7 +11944,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
             )
             .unwrap();
         assert_eq!(world.flags()[0], 0);
-        assert_eq!(world.actors()[0].attributes()[0], 0);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Active], 0);
         assert!(
             world.actors()[0].failure().is_none(),
             "{:?}",
@@ -12377,12 +12281,12 @@ fn dialogue_record_updates_preserve_order_and_speech_specific_completion() {
         .dialogue_mut()
         .unwrap()
         .begin_line(speaker, "speaker".into(), None, 100);
-    assert_eq!(world.actors()[0].attributes()[117], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::LockPos], 0);
     world
         .advance_dialogue(1, true, false, &mut effects)
         .unwrap();
-    assert_eq!(world.actors()[0].attributes()[117], 1);
-    assert_eq!(world.actors()[1].attributes()[117], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::LockPos], 1);
+    assert_eq!(world.actors()[1].attributes()[Attribute::LockPos], 0);
     world
         .globals_mut()
         .dialogue_mut()
@@ -12405,7 +12309,7 @@ fn dialogue_record_updates_preserve_order_and_speech_specific_completion() {
         .advance_dialogue(1, true, false, &mut effects)
         .unwrap();
     assert!(!effects.events.iter().any(|event| event == "volume 5"));
-    assert_eq!(world.actors()[1].attributes()[117], 0);
+    assert_eq!(world.actors()[1].attributes()[Attribute::LockPos], 0);
     assert!(world.dialogue_speaker_positions().unwrap().is_empty());
     world
         .globals_mut()
@@ -12632,7 +12536,7 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
         animation: 0,
     })
     .collect();
-    actor.attributes.insert("attr_num_taunts".into(), 6);
+    actor.attributes[Attribute::NumTaunts] = 6;
     scripts.content_id = scripts.content_identity().unwrap();
     let world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
@@ -12733,13 +12637,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
         let mut scripts = cache();
         scripts.dialogue.print_text = print_text;
         scripts.dialogue.use_speech = use_speech;
-        scripts.definition.attributes = (0..128).map(|index| format!("attr_{index}")).collect();
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_14".into(), 1);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] = 1;
         scripts
             .actors
             .get_mut("LOGIC")
@@ -12750,12 +12648,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
                 label: *b"TEST",
                 animation: 159,
             });
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_num_taunts".into(), 1);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::NumTaunts] = 1;
         for instance in &mut scripts.instances {
             instance.object_type = 1;
         }
@@ -13087,10 +12980,9 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
         for authored_weapon in [0, 1] {
             for selected in [false, true] {
                 let mut scripts = cache();
-                scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
                 let actor = scripts.actors.get_mut("LOGIC").unwrap();
-                actor.attributes.insert("attr_14".into(), 1);
-                actor.attributes.insert("attr_23".into(), authored_weapon);
+                actor.attributes[Attribute::Combat] = 1;
+                actor.attributes[Attribute::Weapon] = authored_weapon;
                 for instance in &mut scripts.instances {
                     instance.object_type = 1;
                 }
@@ -13317,13 +13209,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             param_count: 0,
             kind: CallKind::Function,
         });
-        scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_14".into(), 1);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] = 1;
         for instance in &mut scripts.instances {
             instance.object_type = 1;
         }
@@ -13458,10 +13344,16 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
             param_count: 0,
             kind: CallKind::Function,
         });
-        scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
-        for (index, value) in [(1, 4), (6, 64), (14, 1), (23, 7), (115, 64), (119, 4)] {
-            actor.attributes.insert(format!("attr_{index}"), value);
+        for (index, value) in [
+            (Attribute::Collide, 4),
+            (Attribute::Weight, 64),
+            (Attribute::Combat, 1),
+            (Attribute::Weapon, 7),
+            (Attribute::ReservedWeight, 64),
+            (Attribute::ReservedCollide, 4),
+        ] {
+            actor.attributes[index] = value;
         }
         add_standalone_receivers(&mut scripts);
         for instance in &mut scripts.instances {
@@ -13574,7 +13466,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
                 [2560, 5120, 7680]
             );
             assert_eq!(world.actor_surface(world.id(index).unwrap()).unwrap(), 0);
-            assert_eq!(actor.attributes()[6], 64);
+            assert_eq!(actor.attributes()[Attribute::Weight], 64);
         }
         assert_eq!(world.flags(), [42]);
     }
@@ -13885,32 +13777,17 @@ fn player_walking_fixture_with(
     for placement in &mut scripts.instances {
         placement.active = 1;
     }
-    scripts
-        .actors
-        .get_mut("CYRUS")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 15);
-    scripts.definition.attributes.resize(203, String::new());
-    for (index, name, value) in [
-        (8, "attr_run_step", 8),
-        (9, "attr_back_step", 8),
-        (10, "attr_lateral_step", 8),
-        (13, "attr_walk_back_step", 8),
-        (14, "attr_combat", 1),
-        (119, "attr_normal_collision", 15),
-        (200, "attr_forward_walk", 1),
-        (201, "attr_forward_speed", 24),
-        (202, "attr_step_type", 1),
-    ] {
-        scripts.definition.attributes[index] = name.into();
-        scripts
-            .actors
-            .get_mut("CYRUS")
-            .unwrap()
-            .attributes
-            .insert(name.into(), value);
-    }
+    scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::Collide] = 15;
+    scripts.actors.get_mut("CYRUS").unwrap().attributes.extend([
+        (Attribute::ForwardSpeed, 24),
+        (Attribute::BackwardSpeed, 8),
+        (Attribute::SideSpeed, 8),
+        (Attribute::BackwardWalk, 8),
+        (Attribute::Combat, 1),
+        (Attribute::ReservedCollide, 15),
+        (Attribute::ForwardWalk, 1),
+        (Attribute::StepType, 1),
+    ]);
     let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
     scripts.definition.functions.push(Function {
         name: "SetMyAttr".into(),
@@ -13931,7 +13808,12 @@ fn player_walking_fixture_with(
             function: "SetMyAttr".into(),
             target: Object::Me,
             kind: CallKind::Function,
-            arguments: vec![Value::Integer { value: 200 }, Value::Integer { value: 2 }],
+            arguments: vec![
+                Value::Integer {
+                    value: Attribute::ForwardWalk.index() as i32,
+                },
+                Value::Integer { value: 2 },
+            ],
         },
     };
     let hook_id = u16::try_from(scripts.definition.functions.len()).unwrap();
@@ -14372,13 +14254,15 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         )
         .unwrap();
     let after = world.spatial(player).unwrap().local;
-    // Inferred: the initialized quarter-turn residual lowers stored Z by one Q8 unit.
-    // The sidestep preserves the heading.
-    assert_ne!(
-        after.position[0], before.position[0],
+    // Verified (preservation animation.md step ramp): with `attr_step_type` 1 the first sidestep
+    // moves a quarter of `attr_side_speed`. Inferred: at that length the initialized quarter-turn
+    // residual rounds away, so stored Z is unchanged. The sidestep preserves the heading.
+    assert_eq!(
+        (after.position[0] - before.position[0]).abs(),
+        512,
         "{before:?} -> {after:?}"
     );
-    assert_eq!(after.position[2], before.position[2] - 1);
+    assert_eq!(after.position[2], before.position[2]);
     assert_eq!(after.angles, before.angles);
     assert_eq!(
         world.actors()[index]
@@ -15432,7 +15316,10 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
             20,
         )
         .unwrap();
-    assert_eq!(world.actors()[index].attributes()[200], 2);
+    assert_eq!(
+        world.actors()[index].attributes()[Attribute::ForwardWalk],
+        2
+    );
     assert!(
         world
             .advance_player_walking(player, query(), timing, true, &mut |_, _| {
@@ -16696,13 +16583,8 @@ fn position_property_access_keeps_attached_effective_pose_until_family_refresh()
     scripts.definition.references[294] = "pos.vx".into();
     let mut child = scripts.actors["LOGIC"].clone();
     child.namespace = Some("child".into());
-    child.attributes.insert("attr_26".into(), 1);
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_25".into(), 1);
+    child.attributes[Attribute::Slave] = 1;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Master] = 1;
     scripts.actors.insert("CHILD".into(), child);
     scripts.instances[0].map_position = [100, 0, 0];
     scripts.instances[1].map_position = [103, 4, 0];
@@ -16779,14 +16661,9 @@ fn family_model_fixture(collision: u8) -> (ScriptWorld, cyrus_assets::animation:
     let mut scripts = heading_property_scripts(294, Object::Me);
     scripts.definition.references[294] = "pos.vx".into();
     let mut child = scripts.actors["LOGIC"].clone();
-    child.attributes.insert("attr_26".into(), 1);
-    child.attributes.insert("attr_1".into(), collision);
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_25".into(), 1);
+    child.attributes[Attribute::Slave] = 1;
+    child.attributes[Attribute::Collide] = collision;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Master] = 1;
     scripts.actors.insert("CHILD".into(), child);
     scripts.instances[1].actor = "CHILD".into();
     scripts.instances[0].angles = [0; 3];
@@ -17054,12 +16931,7 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
         param_count: 1,
         kind: CallKind::Task,
     });
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_29".into(), 5);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Group] = 5;
     for placement in &mut scripts.instances {
         placement.active = 1;
     }
@@ -17986,13 +17858,13 @@ fn step_hazard_is_a_steep_destination_surface_unless_both_points_are_floors() {
             ],
         ),
     };
-    for (surface, attr_1, expected) in [
+    for (surface, collide, expected) in [
         (Some("slope"), 10, true),
         (Some("floor"), 10, false),
         (Some("slope"), 8, false),
         (None, 10, false),
     ] {
-        let (mut world, data) = overlap_response_fixture_with(128, 0, 1024, attr_1);
+        let (mut world, data) = overlap_response_fixture_with(128, 0, 1024, collide);
         let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
         world.snapshot_spatial(ids[0]).unwrap();
         let (_, _, models) = static_model_fixture(cache());
@@ -18044,7 +17916,7 @@ fn step_hazard_is_a_steep_destination_surface_unless_both_points_are_floors() {
         assert_eq!(
             world.step_hazard(ids[0], None, destination, query).unwrap(),
             expected,
-            "surface {} attr_1 {attr_1}",
+            "surface {} collide {collide}",
             surface.is_some()
         );
     }
@@ -18111,12 +17983,9 @@ fn selected_replenish_health_uses_shared_feedback_without_additive_health_servic
         let mut scripts = random_scripts("ReplenishHealth", vec![], Object::Player);
         scripts.definition.functions[1].param_count = 0;
         add_standalone_receivers(&mut scripts);
-        scripts.definition.attributes.resize(121, String::new());
-        scripts.definition.attributes[3] = "attr_health".into();
-        scripts.definition.attributes[120] = "attr_immune".into();
         let player = scripts.actors.get_mut("CYRUS").unwrap();
-        player.attributes.insert("attr_health".into(), health);
-        player.attributes.insert("attr_immune".into(), 1);
+        player.attributes[Attribute::Health] = health;
+        player.attributes[Attribute::Invulnerable] = 1;
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let player_index = world
@@ -18149,7 +18018,10 @@ fn selected_replenish_health_uses_shared_feedback_without_additive_health_servic
                 i32::from(health < 100)
             );
         }
-        assert_eq!(world.actors()[player_index].attributes()[3], expected);
+        assert_eq!(
+            world.actors()[player_index].attributes()[Attribute::Health],
+            expected
+        );
         assert_eq!(hud.health_feedback_ticks(), feedback);
         // This command bypasses additive-health initialization and inhibition.
         assert!(world.globals().selected_health().is_none());
@@ -18216,44 +18088,20 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
         ("SetHealth", 60, 13, true, 60, None),
     ] {
         let (mut scripts, _, mut data, scene) = player_walking_fixture();
-        for (index, name, value) in [
-            (3, "health", 40),
-            (97, "health_gate", if mode >= 12 { 0 } else { 1 }),
-            (120, "health_ignore", if mode >= 12 { 0 } else { 1 }),
+        for (attribute, value) in [
+            (Attribute::Health, 40),
+            (Attribute::Npc, if mode >= 12 { 0 } else { 1 }),
+            (Attribute::Invulnerable, if mode >= 12 { 0 } else { 1 }),
         ] {
-            scripts.definition.attributes[index] = name.into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert(name.into(), value);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[attribute] = value;
         }
-        scripts.definition.attributes[109] = "source_death".into();
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("source_death".into(), 77);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::ZapAnim] = 77;
         if matches!(mode, 5 | 6 | 12) {
-            scripts.definition.attributes[105] = "skip_death_animation".into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("skip_death_animation".into(), 1);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::PlayerType] = 1;
         }
         if mode >= 9 || mode == 6 {
             if mode >= 10 {
-                scripts.definition.attributes[110] = "held_weapon".into();
-                scripts
-                    .actors
-                    .get_mut("CYRUS")
-                    .unwrap()
-                    .attributes
-                    .insert("held_weapon".into(), 1);
+                scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
             }
             let groups = data.metadata["actors"]
                 .as_array_mut()
@@ -18378,7 +18226,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             None => result.unwrap(),
         }
         assert_eq!(
-            world.actors()[index].attributes()[3],
+            world.actors()[index].attributes()[Attribute::Health],
             expected,
             "{function} mode {mode}"
         );
@@ -19208,8 +19056,8 @@ fn group_and_user_channels_allow_end_and_group_tasks_wait_for_release() {
             kind: CallKind::Task,
         });
         let logic = scripts.actors.get_mut("LOGIC").unwrap();
-        logic.attributes.insert("attr_29".into(), channel);
-        logic.attributes.insert("attr_30".into(), user);
+        logic.attributes[Attribute::Group] = channel;
+        logic.attributes[Attribute::User] = user;
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let id = world.id(0).unwrap();
@@ -19287,17 +19135,12 @@ fn group_sync_completes_when_attribute_writes_select_an_unregistered_channel() {
                 kind: CallKind::Task,
             },
         ]);
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_29".into(), initial_channel);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Group] = initial_channel;
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let id = world.id(0).unwrap();
         world.step(id, Thread::Main, 20).unwrap();
-        assert_eq!(world.actors()[0].attributes()[29], 6);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Group], 6);
         world.step_tasks(id, Some(256)).unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
         world.step(id, Thread::Main, 20).unwrap();
@@ -19323,12 +19166,7 @@ fn live_world_entry_and_reload_register_group_members_before_task_polling() {
         param_count: 1,
         kind: CallKind::Task,
     });
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_29".into(), 5);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Group] = 5;
     scripts.content_id = scripts.content_identity().unwrap();
     let (mut app, prepared, _) = revisit_test_app(&scripts);
     for _ in 0..2 {
@@ -19373,8 +19211,8 @@ fn user_sync_checks_channel_members_and_the_full_operand_before_continuation() {
             kind: CallKind::Task,
         });
         let logic = scripts.actors.get_mut("LOGIC").unwrap();
-        logic.attributes.insert("attr_30".into(), channel);
-        logic.attributes.insert("attr_43".into(), ignored);
+        logic.attributes[Attribute::User] = channel;
+        logic.attributes[Attribute::AlwaysSync] = ignored;
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let id = world.id(0).unwrap();
@@ -19444,7 +19282,7 @@ fn live_paced_pick_uses_receiver_geometry_and_branch_specific_damage() {
         pacing_sum: 129,
         facing_alike: true,
         target_in_combat_stance: true,
-        attribute_58: 29,
+        aggression: 29,
     };
     for (damages, expected, pacing) in [
         ([Some(i32::MAX), Some(1)], Some(i32::MIN), 129),
@@ -19453,11 +19291,10 @@ fn live_paced_pick_uses_receiver_geometry_and_branch_specific_damage() {
         ([Some(4), Some(5)], Some(9), 0),
     ] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
         scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
-            ("attr_14".into(), 1),
-            ("attr_62".into(), 129 - pacing),
-            ("attr_71".into(), 1),
+            (Attribute::Combat, 1),
+            (Attribute::AttackSkill, 129 - pacing),
+            (Attribute::AttackDouble, 1),
         ]);
         for instance in &mut scripts.instances {
             instance.object_type = 1;
@@ -19633,12 +19470,11 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
     }
     for fail in [false, true] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
         actor.attributes.extend([
-            ("attr_14".into(), 1),
-            ("attr_87".into(), 124),
-            ("attr_num_taunts".into(), 1),
+            (Attribute::Combat, 1),
+            (Attribute::Chatty, 124),
+            (Attribute::NumTaunts, 1),
         ]);
         actor.combat_taunts = vec![CombatTaunt {
             trigger: 9,
@@ -19805,7 +19641,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         )
         .unwrap();
         let id = world.id(0).unwrap();
-        assert_eq!(world.actors()[0].attributes()[87], 129);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Chatty], 129);
         assert_eq!(
             world.actors()[0]
                 .control_state()
@@ -19905,13 +19741,12 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         }
     }
     let mut scripts = cache();
-    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
     scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
-        ("attr_14".into(), 1),
-        ("attr_16".into(), 17),
-        ("attr_70".into(), 1),
-        ("attr_87".into(), 127),
-        ("attr_num_taunts".into(), 1),
+        (Attribute::Combat, 1),
+        (Attribute::FightLungeSpeed, 17),
+        (Attribute::AttackSingle, 1),
+        (Attribute::Chatty, 127),
+        (Attribute::NumTaunts, 1),
     ]);
     scripts.actors.get_mut("LOGIC").unwrap().combat_taunts = vec![CombatTaunt {
         trigger: 1,
@@ -20266,7 +20101,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
                 own_window_far: 0,
                 facing_alike: false,
                 target_in_combat_stance: false,
-                attribute_58: 0,
+                aggression: 0,
                 pacing_sum: 0,
                 defence_pacing: 0,
                 target_selected: -1,
@@ -20339,7 +20174,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
                 own_window_far: 100,
                 facing_alike: false,
                 target_in_combat_stance: true,
-                attribute_58: 29,
+                aggression: 29,
                 pacing_sum: 100,
                 defence_pacing: 3,
                 target_selected: -1,
@@ -20413,7 +20248,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
                 own_window_far: 100,
                 facing_alike: false,
                 target_in_combat_stance: true,
-                attribute_58: 29,
+                aggression: 29,
                 pacing_sum: 100,
                 defence_pacing: 1,
                 target_selected: 0,
@@ -20461,11 +20296,10 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
 fn current_combat_counter_query_uses_retained_slot_motion_and_idle_gate() {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
     scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
-        ("attr_14".into(), 1),
-        ("attr_73".into(), 1),
-        ("attr_75".into(), 2),
+        (Attribute::Combat, 1),
+        (Attribute::AttackThrust, 1),
+        (Attribute::AttackLow, 2),
     ]);
     scripts.instances[0].object_type = 1;
     scripts.combat_attacks = [
@@ -20611,12 +20445,7 @@ fn ground_prevalidation_retains_shared_results_after_destination_and_receiver_ch
         for placement in &mut scripts.instances {
             placement.active = 1;
         }
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_1".into(), 2);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 2;
         let (mut world, data, models) =
             static_model_fixture_at(scripts, Some(20.0), [600, 2400, 600]);
         let id = world.id(0).unwrap();
@@ -20718,12 +20547,7 @@ fn ground_prevalidation_retains_shared_results_after_destination_and_receiver_ch
 fn ground_prevalidation_does_not_turn_an_unsupported_first_query_into_success() {
     use cyrus_game::script::OrdinaryGroundQuery;
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 2);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 2;
     let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [10, 20, 30]);
     let id = world.id(0).unwrap();
     world.refresh_model_presentations(&data, &[id]).unwrap();
@@ -20801,12 +20625,7 @@ fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
     use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
     for outcome in ["support", "miss", "error"] {
         let mut scripts = cache();
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_1".into(), 4);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 4;
         let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [10, 20, 30]);
         let id = world.id(0).unwrap();
         let other = world.id(1).unwrap();
@@ -20869,12 +20688,7 @@ fn destination_support_rejects_steep_ground_after_prevalidation_bypass() {
     use cyrus_collision::ground::{SelectedSupport, TerrainGround};
     use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 2);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 2;
     let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [600, 2400, 600]);
     let id = world.id(0).unwrap();
     world.refresh_model_presentations(&data, &[id]).unwrap();
@@ -21302,22 +21116,17 @@ fn facing_world(
     scripts.instances[0].angles[1] = heading;
     scripts.instances[1].map_position = destination;
     for (attribute, value) in [
-        (8, 4),
-        (9, 5),
-        (10, 6),
-        (12, 2),
-        (13, 3),
-        (15, 16),
-        (17, 8),
-        (19, 7),
-        (21, 32),
+        (Attribute::ForwardSpeed, 4),
+        (Attribute::BackwardSpeed, 5),
+        (Attribute::SideSpeed, 6),
+        (Attribute::ForwardWalk, 2),
+        (Attribute::BackwardWalk, 3),
+        (Attribute::TurnSpeed, 16),
+        (Attribute::FightForwardSpeed, 8),
+        (Attribute::FightForwardWalk, 7),
+        (Attribute::FightTurnSpeed, 32),
     ] {
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert(format!("attr_{attribute}"), value);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[attribute] = value;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -21587,22 +21396,17 @@ fn movement_fixture(
     let mut scripts = cache();
     scripts.updates.animation_system = animation_system;
     for (attribute, value) in [
-        (8, 8),
-        (9, 12),
-        (11, 1),
-        (12, 4),
-        (16, 6),
-        (17, 10),
-        (18, 6),
-        (19, 3),
-        (83, 4),
+        (Attribute::ForwardSpeed, 8),
+        (Attribute::BackwardSpeed, 12),
+        (Attribute::StepType, 1),
+        (Attribute::ForwardWalk, 4),
+        (Attribute::FightLungeSpeed, 6),
+        (Attribute::FightForwardSpeed, 10),
+        (Attribute::FightBackwardSpeed, 6),
+        (Attribute::FightForwardWalk, 3),
+        (Attribute::FightCircleSpeed, 4),
     ] {
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert(format!("attr_{attribute}"), value);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[attribute] = value;
     }
     edit_scripts(&mut scripts);
     scripts.content_id = scripts.content_identity().unwrap();
@@ -23035,13 +22839,12 @@ fn combat_decision_prefix_rebinds_target_and_continues_counter_with_live_sight()
 fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_writes() {
     use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
     scripts
         .actors
         .get_mut("LOGIC")
         .unwrap()
         .attributes
-        .extend([("attr_14".into(), 1), ("attr_79".into(), 1)]);
+        .extend([(Attribute::Combat, 1), (Attribute::DefendLow, 1)]);
     for instance in &mut scripts.instances {
         instance.object_type = 1;
     }
@@ -23526,7 +23329,7 @@ fn coordination_keeps_queued_message_and_prior_state_when_taunt_service_fails() 
             let actor = scripts.actors.get_mut("LOGIC").unwrap();
             actor.instances = 3;
             actor.instance_variables = vec![vec![4]; 3];
-            actor.attributes.insert("attr_num_taunts".into(), 1);
+            actor.attributes[Attribute::NumTaunts] = 1;
             actor.combat_taunts = vec![CombatTaunt {
                 trigger: 9,
                 label: *b"TEST",
@@ -24536,13 +24339,16 @@ fn retained_point_fixture(
             for instance in &mut scripts.instances {
                 instance.object_type = 1;
             }
-            for attribute in [8, 9, 10, 12, 13, 17, 19] {
-                scripts
-                    .actors
-                    .get_mut("LOGIC")
-                    .unwrap()
-                    .attributes
-                    .insert(format!("attr_{attribute}"), speed);
+            for attribute in [
+                Attribute::ForwardSpeed,
+                Attribute::BackwardSpeed,
+                Attribute::SideSpeed,
+                Attribute::ForwardWalk,
+                Attribute::BackwardWalk,
+                Attribute::FightForwardSpeed,
+                Attribute::FightForwardWalk,
+            ] {
+                scripts.actors.get_mut("LOGIC").unwrap().attributes[attribute] = speed;
             }
         },
         |saved| {
@@ -26394,12 +26200,7 @@ fn point_node_fixture(speed: u8) -> (ScriptWorld, Scripts, cyrus_assets::animati
         false,
         |scripts| {
             scripts.actor_pool_capacity = 253;
-            scripts
-                .actors
-                .get_mut("LOGIC")
-                .unwrap()
-                .attributes
-                .insert("attr_8".into(), speed);
+            scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::ForwardSpeed] = speed;
         },
         |_| {},
     );
@@ -27429,12 +27230,7 @@ fn coordinate_walking_restores_only_overshoot_owned_state_at_inclusive_boundarie
             false,
             false,
             |scripts| {
-                scripts
-                    .actors
-                    .get_mut("LOGIC")
-                    .unwrap()
-                    .attributes
-                    .insert("attr_93".into(), 1);
+                scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::NodeRun] = 1;
             },
             |saved| {
                 saved["actors"][0]["control"]["movement_flags"] = 0x85.into();
@@ -27555,12 +27351,7 @@ fn coordinate_walking_reports_live_walk_admission_instead_of_using_run() {
         false,
         true,
         |scripts| {
-            scripts
-                .actors
-                .get_mut("LOGIC")
-                .unwrap()
-                .attributes
-                .insert("attr_1".into(), 1);
+            scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
         },
         |_| {},
     );
@@ -27737,12 +27528,7 @@ fn coordinate_walking_reads_local_bearing_after_movement() {
         false,
         false,
         |scripts| {
-            scripts
-                .actors
-                .get_mut("LOGIC")
-                .unwrap()
-                .attributes
-                .insert("attr_93".into(), 1);
+            scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::NodeRun] = 1;
         },
         |saved| {
             saved["spatial"]["actors"][0]["local"]["angles"][1] = 255.into();
@@ -28977,7 +28763,8 @@ fn range_contact_uses_first_motion_strict_ranges_and_candidate_radius() {
 }
 
 #[test]
-fn range_contact_with_attribute_126_tests_the_retained_weapon_tip_against_the_shifted_sphere() {
+fn range_contact_with_combat_radius_vhit_tests_the_retained_weapon_tip_against_the_shifted_sphere()
+{
     let build = || {
         movement_fixture(
             18,
@@ -29426,13 +29213,12 @@ fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
     use cyrus_assets::animation::AnimationModel;
     use cyrus_game::script::{WeaponInputs, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
     scripts
         .actors
         .get_mut("LOGIC")
         .unwrap()
         .attributes
-        .extend([("attr_14".into(), 1), ("attr_23".into(), 1)]);
+        .extend([(Attribute::Combat, 1), (Attribute::Weapon, 1)]);
     scripts.weapons.insert(
         1,
         weapon::Weapon {
@@ -29746,7 +29532,7 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
                 },
             )
             .unwrap();
-        assert_eq!(world.actors()[0].attributes()[3], expected);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Health], expected);
         assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 0);
         // No death groups exist in this fixture. Dispatch must still mark death,
         // without querying timing or calling animation sounds.
@@ -29782,7 +29568,7 @@ fn player_health_fixture_with(
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
     let id = world.id(index).unwrap();
-    assert_eq!(world.actors()[index].attributes()[3], 0);
+    assert_eq!(world.actors()[index].attributes()[Attribute::Health], 0);
     world
         .apply_selected_contact_health(
             id,
@@ -29810,7 +29596,7 @@ fn selected_health_publishes_clamped_healing_without_random_or_death() {
             .position(|actor| matches!(actor.source, ScriptActorSource::Player))
             .unwrap();
         let id = world.id(index).unwrap();
-        assert_eq!(world.actors()[index].attributes()[3], 50);
+        assert_eq!(world.actors()[index].attributes()[Attribute::Health], 50);
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(42);
         world
@@ -29825,7 +29611,10 @@ fn selected_health_publishes_clamped_healing_without_random_or_death() {
                 &mut |_, _| panic!("healing must not dispatch sound"),
             )
             .unwrap();
-        assert_eq!(world.actors()[index].attributes()[3], expected as u8);
+        assert_eq!(
+            world.actors()[index].attributes()[Attribute::Health],
+            expected as u8
+        );
         let state = world.globals().selected_health().unwrap();
         assert_eq!(state.maximum(), 100);
         assert_eq!(state.displayed(), expected);
@@ -29845,7 +29634,7 @@ fn selected_health_rejects_missing_hud_before_actor_write() {
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
     let id = world.id(index).unwrap();
-    let initial = world.actors()[index].attributes()[3];
+    let initial = world.actors()[index].attributes()[Attribute::Health];
     let mut random = cyrus_game::random::EngineRandom::from_state(42);
     let error = world
         .apply_selected_contact_health(id, 7, ScriptInputs::default(), &mut random, &mut |_, _| {
@@ -29853,7 +29642,10 @@ fn selected_health_rejects_missing_hud_before_actor_write() {
         })
         .unwrap_err();
     assert!(format!("{error:#}").contains("HUD owner unavailable"));
-    assert_eq!(world.actors()[index].attributes()[3], initial);
+    assert_eq!(
+        world.actors()[index].attributes()[Attribute::Health],
+        initial
+    );
     assert_eq!(
         world.globals().selected_health().unwrap().displayed(),
         i32::from(initial)
@@ -29871,7 +29663,7 @@ fn selected_health_retains_damage_before_feedback_failure_without_publication() 
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
     let id = world.id(index).unwrap();
-    let initial = world.actors()[index].attributes()[3];
+    let initial = world.actors()[index].attributes()[Attribute::Health];
     let hud = ScriptHud::default();
     let mut random = cyrus_game::random::EngineRandom::from_state(42);
     let error = world
@@ -29888,7 +29680,7 @@ fn selected_health_retains_damage_before_feedback_failure_without_publication() 
         .unwrap_err();
     assert!(format!("{error:#}").contains("selected reaction nominal ticks unavailable"));
     assert_eq!(
-        world.actors()[index].attributes()[3],
+        world.actors()[index].attributes()[Attribute::Health],
         initial.saturating_sub(7)
     );
     assert_eq!(
@@ -29973,7 +29765,7 @@ fn selected_health_reaction_suppression_preserves_random_and_publishes_damage() 
                 20,
             )
             .unwrap();
-        let initial = world.actors()[index].attributes()[3];
+        let initial = world.actors()[index].attributes()[Attribute::Health];
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(42);
         world
@@ -29989,7 +29781,7 @@ fn selected_health_reaction_suppression_preserves_random_and_publishes_damage() 
             )
             .unwrap();
         assert_eq!(
-            world.actors()[index].attributes()[3],
+            world.actors()[index].attributes()[Attribute::Health],
             initial.saturating_sub(7)
         );
         assert_eq!(
@@ -30025,7 +29817,7 @@ fn selected_health_publishes_damage_after_parity_reaction_and_sound() {
         }
         let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
         let id = world.id(index).unwrap();
-        assert_eq!(world.actors()[index].attributes()[3], 50);
+        assert_eq!(world.actors()[index].attributes()[Attribute::Health], 50);
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(seed);
         let mut expected = cyrus_game::random::EngineRandom::from_state(seed);
@@ -30116,7 +29908,7 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
         );
         assert_eq!(calls, 2);
         assert_eq!(result.is_err(), fail_reset_sound);
-        assert_eq!(world.actors()[index].attributes()[3], 43);
+        assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
         assert_eq!(
             world.globals().selected_health().unwrap().displayed(),
             if fail_reset_sound { 50 } else { 43 }
@@ -30301,7 +30093,7 @@ fn selected_health_damage_lets_an_attached_player_go_of_its_rope() {
     assert!(!control.rope_attached);
     assert_eq!(control.jump_selector, 24);
     assert!(world.ropes()[0].attachments.is_empty());
-    assert_eq!(world.actors()[index].attributes()[3], 43);
+    assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
 }
 
 #[test]
@@ -30338,7 +30130,7 @@ fn selected_health_refuses_an_attached_rope_without_rope_state() {
         )
         .unwrap_err();
     assert!(format!("{error:#}").contains(boundary), "{error:#}");
-    assert_eq!(world.actors()[index].attributes()[3], 43);
+    assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 50);
     assert_eq!(hud.health_feedback_ticks(), 25);
 }
@@ -30352,7 +30144,7 @@ fn hurt_taunt_uses_ordered_selection_without_clock_or_target_distance() {
         true,
         |scripts| {
             let actor = scripts.actors.get_mut("LOGIC").unwrap();
-            actor.attributes.insert("attr_num_taunts".into(), 1);
+            actor.attributes[Attribute::NumTaunts] = 1;
             actor.combat_taunts = vec![CombatTaunt {
                 trigger: 2,
                 label: *b"HURT",
@@ -30452,12 +30244,7 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
                     instance.object_type = 1;
                 }
                 scripts.combat_clank_effects = [Some(31), None];
-                scripts
-                    .actors
-                    .get_mut("LOGIC")
-                    .unwrap()
-                    .attributes
-                    .insert("attr_86".into(), 31);
+                scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::HitSound] = 31;
                 scripts.combat_attacks =
                     vec![combat::Attack {
                         is_combo: false,
@@ -30556,7 +30343,10 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
             },
         );
         assert_eq!(result.is_err(), fail_sound);
-        assert_eq!(world.actors()[1].attributes()[3], expected_health);
+        assert_eq!(
+            world.actors()[1].attributes()[Attribute::Health],
+            expected_health
+        );
         assert_eq!(
             world.actors()[1].control_state().unwrap().death_selector,
             if expected_health == 0 { 8 } else { 0 }
@@ -31451,13 +31241,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                 param_count: 3,
                 kind: CallKind::Task,
             });
-            scripts.definition.attributes[12] = "attr_walk_speed".into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("attr_walk_speed".into(), 3);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
             let kill_id = u16::try_from(scripts.definition.functions.len()).unwrap();
             scripts.definition.functions.push(Function {
                 name: "KillMe".into(),
@@ -31753,9 +31537,12 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     collision: &collision,
                 };
                 let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+                // One full forward step: with the `attr_step_type` 1 ramp, a smaller move would leave
+                // the player between the arrival and movement thresholds, where alignment neither
+                // snaps nor steps.
                 let receiver = world.spatial(map).unwrap().local.position;
                 saved["spatial"]["actors"][0]["local"]["position"] =
-                    serde_json::json!([receiver[0], receiver[1], receiver[2] + 256]);
+                    serde_json::json!([receiver[0], receiver[1], receiver[2] + 768]);
                 let generation = world.generation() + 1;
                 let globals = std::mem::take(world.globals_mut());
                 world = ScriptWorld::from_snapshot(
@@ -31791,7 +31578,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
         let end = world.spatial(player).unwrap().local.position;
         if matches!(continuation, MoveReference) {
-            assert_eq!([end[0], end[2]], [2560, 9984]);
+            assert_eq!([end[0], end[2]], [2560, 10496]);
             assert_eq!(
                 world.actors()[map.index].runtime().unwrap().active_tasks(),
                 0
@@ -31836,13 +31623,7 @@ fn initialized_lineup_references_are_validated_before_session_replacement() {
             param_count: 3,
             kind: CallKind::Task,
         });
-        scripts.definition.attributes[12] = "attr_walk_speed".into();
-        scripts
-            .actors
-            .get_mut("CYRUS")
-            .unwrap()
-            .attributes
-            .insert("attr_walk_speed".into(), 3);
+        scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
         scripts
             .actors
             .get_mut("LOGIC")
@@ -32127,13 +31908,7 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
         (11, 0, [128, 128]),
     ] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
-            scripts.definition.attributes[105] = "skip_death_animation".into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("skip_death_animation".into(), 1);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::PlayerType] = 1;
         });
         let index = world
             .actors()
@@ -32229,7 +32004,7 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
         );
         let guarded = queued != 0 || directions.iter().any(|value| value & 3 != 0);
         assert_eq!(
-            world.actors()[index].attributes()[3],
+            world.actors()[index].attributes()[Attribute::Health],
             if guarded { 50 } else { 0 }
         );
         let health = world.globals().selected_health().unwrap();
@@ -32960,7 +32735,11 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
         assert_eq!(control.living_state, 20, "item use: {item_use}");
         assert_eq!(control.combat.as_ref().unwrap().flags & 4, 4);
         if item_use {
-            assert_eq!(actor.attributes()[23], 1, "the item becomes the weapon");
+            assert_eq!(
+                actor.attributes()[Attribute::Weapon],
+                1,
+                "the item becomes the weapon"
+            );
         }
     }
 }
@@ -33136,7 +32915,7 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         &inventory_asset(&[(4, 1)]),
         &cyrus_game::preferences::Preferences::default(),
     );
-    world.set_attribute_for_test(player, 3, 40);
+    world.set_attribute_for_test(player, Attribute::Health, 40);
     world.globals_mut().initialize_selected_health_for_test(40);
     let inputs = || ScriptInputs {
         hud: Some(&hud),
@@ -33155,7 +32934,7 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         .run_quick_keys(inputs(), &mut random, &mut |_, _| Ok(()))
         .unwrap();
     assert_eq!(
-        world.actors()[player.index].attributes()[3],
+        world.actors()[player.index].attributes()[Attribute::Health],
         55,
         "heals fifteen"
     );
@@ -33168,7 +32947,7 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         .run_quick_keys(inputs(), &mut random, &mut |_, _| Ok(()))
         .unwrap();
     assert_eq!(
-        world.actors()[player.index].attributes()[3],
+        world.actors()[player.index].attributes()[Attribute::Health],
         55,
         "nothing left to drink"
     );
@@ -33466,7 +33245,7 @@ fn the_action_key_does_not_use_the_selected_item_on_a_rope() {
         asset.inventory.get_mut(&4).unwrap().flags = 4;
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         hud.select_item(4).unwrap();
-        world.set_attribute_for_test(player, 3, 60);
+        world.set_attribute_for_test(player, Attribute::Health, 60);
         world.globals_mut().initialize_selected_health_for_test(60);
         world.set_rope_attached_for_test(player, rope);
         let inputs = ScriptInputs {
@@ -33792,7 +33571,7 @@ fn a_dead_dragon_swaps_the_taken_item_for_the_given_one_and_returns_zero() {
         .iter()
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
-    assert_eq!(world.actors()[player].attributes()[23], 1);
+    assert_eq!(world.actors()[player].attributes()[Attribute::Weapon], 1);
 }
 
 #[test]
@@ -33859,9 +33638,7 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
     let mut projectile = scripts.actors["LOGIC"].clone();
     projectile.code_origin += 1000;
     projectile.header_index += 100;
-    projectile
-        .attributes
-        .insert("attr_forward_speed".into(), 50);
+    projectile.attributes[Attribute::ForwardSpeed] = 50;
     scripts.actors.insert("BALL".into(), projectile);
     for placement in &mut scripts.instances {
         placement.object_type = 1;
@@ -33879,7 +33656,10 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
         &world.actors()[created.index].source,
         ScriptActorSource::Created(name) if name == "BALL"
     ));
-    assert_eq!(world.actors()[created.index].attributes()[0], 0);
+    assert_eq!(
+        world.actors()[created.index].attributes()[Attribute::Active],
+        0
+    );
     assert!(
         world
             .create_object(creator, "absent", [0; 3], [0; 3])
@@ -33936,13 +33716,7 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
     for restore_before_cleanup in [false, true] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             scripts.lineup_distance = Some(i32::MAX);
-            scripts.definition.attributes[12] = "attr_walk_speed".into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("attr_walk_speed".into(), 3);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
             let lineup_id = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
                 name: "PlayerLineUp".into(),
@@ -34448,7 +34222,7 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
         })
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
-    world.set_attribute_for_test(sender, 96, 12);
+    world.set_attribute_for_test(sender, Attribute::Damage, 12);
     let before = world.spatial(receiver).unwrap().local.position;
     world.send_combat_message(sender, receiver, 0xd005).unwrap();
     let hud = ScriptHud::default();
@@ -34496,7 +34270,7 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
         })
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
-    world.set_attribute_for_test(sender, 96, 255);
+    world.set_attribute_for_test(sender, Attribute::Damage, 255);
     world.send_combat_message(sender, receiver, 0xd005).unwrap();
     let hud = ScriptHud::default();
     world
@@ -34570,7 +34344,7 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
         "displaced"
     );
     assert_eq!(
-        world.actors()[receiver.index].attributes()[3],
+        world.actors()[receiver.index].attributes()[Attribute::Health],
         28,
         "40 - attribute 96"
     );
@@ -34619,7 +34393,10 @@ fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer()
         .unwrap();
     let control = world.actors()[receiver.index].control_state().unwrap();
     let combat = control.combat.as_ref().unwrap();
-    assert_eq!(world.actors()[receiver.index].attributes()[3], 0);
+    assert_eq!(
+        world.actors()[receiver.index].attributes()[Attribute::Health],
+        0
+    );
     assert_eq!(control.death_selector, 8);
     assert_eq!(combat.action, -1);
     assert_eq!(combat.flags & 4, 0, "combat flag 0x04 cleared");
@@ -34662,7 +34439,7 @@ fn direct_damage_uses_generic_nonplayer_health_admission_gates() {
             )
             .unwrap();
         assert_eq!(
-            world.actors()[receiver.index].attributes()[3],
+            world.actors()[receiver.index].attributes()[Attribute::Health],
             40,
             "attr-{gate} gate"
         );
@@ -34718,9 +34495,12 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
     );
     let receiver = world.id(1).unwrap();
     let sender = world.id(2).unwrap();
-    let selected_weapon_before = world
-        .selected_player()
-        .map(|selected| (selected, world.actors()[selected.index].attributes()[23]));
+    let selected_weapon_before = world.selected_player().map(|selected| {
+        (
+            selected,
+            world.actors()[selected.index].attributes()[Attribute::Weapon],
+        )
+    });
     let hud = ScriptHud::default();
     hud.configure(
         &inventory_asset(&[(1, 0), (75, 1)]),
@@ -34741,10 +34521,13 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
             &mut |_, _| Ok(()),
         )
         .unwrap();
-    assert_eq!(world.actors()[sender.index].attributes()[23], 1);
+    assert_eq!(
+        world.actors()[sender.index].attributes()[Attribute::Weapon],
+        1
+    );
     if let Some((selected_player, selected_weapon_before)) = selected_weapon_before {
         assert_eq!(
-            world.actors()[selected_player.index].attributes()[23],
+            world.actors()[selected_player.index].attributes()[Attribute::Weapon],
             selected_weapon_before,
             "restoring a nonselected sender must not rewrite the selected actor's weapon"
         );
@@ -34752,7 +34535,10 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
     let inventory = hud.inventory(None).unwrap();
     assert_eq!((inventory.counts[&1], inventory.counts[&75]), (1, 0));
     assert_eq!(inventory.selected, Some(1));
-    assert_eq!(world.actors()[receiver.index].attributes()[3], 39);
+    assert_eq!(
+        world.actors()[receiver.index].attributes()[Attribute::Health],
+        39
+    );
 }
 
 #[test]
@@ -34823,7 +34609,10 @@ fn combat_hit_from_a_sender_without_an_attack_slot_deals_no_damage() {
             &mut |_, _| Ok(()),
         )
         .unwrap();
-    assert_eq!(world.actors()[receiver.index].attributes()[3], 40);
+    assert_eq!(
+        world.actors()[receiver.index].attributes()[Attribute::Health],
+        40
+    );
 }
 
 #[test]
@@ -34876,9 +34665,12 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
     );
     let receiver = world.id(1).unwrap();
     let sender = world.id(2).unwrap();
-    let selected_weapon_before = world
-        .selected_player()
-        .map(|selected| (selected, world.actors()[selected.index].attributes()[23]));
+    let selected_weapon_before = world.selected_player().map(|selected| {
+        (
+            selected,
+            world.actors()[selected.index].attributes()[Attribute::Weapon],
+        )
+    });
     let hud = ScriptHud::default();
     hud.configure(
         &inventory_asset(&[(1, 0), (75, 1)]),
@@ -34899,10 +34691,13 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
             &mut |_, _| Ok(()),
         )
         .unwrap();
-    assert_eq!(world.actors()[sender.index].attributes()[23], 1);
+    assert_eq!(
+        world.actors()[sender.index].attributes()[Attribute::Weapon],
+        1
+    );
     if let Some((selected_player, selected_weapon_before)) = selected_weapon_before {
         assert_eq!(
-            world.actors()[selected_player.index].attributes()[23],
+            world.actors()[selected_player.index].attributes()[Attribute::Weapon],
             selected_weapon_before,
             "restoring a nonselected sender must not rewrite the selected actor's weapon"
         );
@@ -34910,7 +34705,10 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
     let inventory = hud.inventory(None).unwrap();
     assert_eq!((inventory.counts[&1], inventory.counts[&75]), (1, 0));
     assert_eq!(inventory.selected, Some(1));
-    assert_eq!(world.actors()[receiver.index].attributes()[3], 39);
+    assert_eq!(
+        world.actors()[receiver.index].attributes()[Attribute::Health],
+        39
+    );
 }
 
 #[test]
@@ -34938,11 +34736,10 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
         hurt_zap: 10,
         bounce_height: None,
     });
-    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-    attributes.insert("attr_3".into(), 100);
-    attributes.insert("attr_1".into(), 4);
-    attributes.insert("attr_32".into(), 32);
+    attributes[Attribute::Health] = 100;
+    attributes[Attribute::Collide] = 4;
+    attributes[Attribute::JumpHeight] = 32;
     for placement in &mut scripts.instances {
         placement.active = 1;
     }
@@ -35055,7 +34852,7 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
     assert_eq!(control.falling_state, 0);
     assert_eq!(world.actor_surface(id).unwrap(), if water { 4 } else { 0 });
     assert_eq!(
-        world.actors()[id.index].attributes()[3],
+        world.actors()[id.index].attributes()[Attribute::Health],
         if water || !fatal_distance { 100 } else { 0 }
     );
 }
@@ -35064,13 +34861,12 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
 fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-    attributes.insert("attr_1".into(), 4);
-    attributes.insert("attr_31".into(), 8);
-    attributes.insert("attr_32".into(), 32);
+    attributes[Attribute::Collide] = 4;
+    attributes[Attribute::JumpTime] = 8;
+    attributes[Attribute::JumpHeight] = 32;
     // The default group is the run jump group, which keeps the pending jump bits alive.
-    attributes.insert("attr_44".into(), 18);
+    attributes[Attribute::PanicGroup] = 18;
     for placement in &mut scripts.instances {
         placement.active = 1;
         placement.object_type = 1;
@@ -35178,10 +34974,15 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
     ] {
         for (initial_timer, first_timer, second_ticks) in [(35, 36, 1), (255, 0, 37)] {
             let mut scripts = cache();
-            scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
             let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-            for (index, value) in [(1, 4), (31, 8), (32, 32), (44, group), (107, 1)] {
-                attributes.insert(format!("attr_{index}"), value);
+            for (index, value) in [
+                (Attribute::Collide, 4),
+                (Attribute::JumpTime, 8),
+                (Attribute::JumpHeight, 32),
+                (Attribute::PanicGroup, group),
+                (Attribute::FallHold, 1),
+            ] {
+                attributes[index] = value;
             }
             for placement in &mut scripts.instances {
                 placement.active = 1;
@@ -35271,10 +35072,15 @@ fn ordinary_update_consumes_both_authored_jump_masks_before_the_fallback() {
         (30, 2, 9, 37),
     ] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
         let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-        for (index, value) in [(1, 4), (31, 8), (32, 32), (44, group), (107, 1)] {
-            attributes.insert(format!("attr_{index}"), value);
+        for (index, value) in [
+            (Attribute::Collide, 4),
+            (Attribute::JumpTime, 8),
+            (Attribute::JumpHeight, 32),
+            (Attribute::PanicGroup, group),
+            (Attribute::FallHold, 1),
+        ] {
+            attributes[index] = value;
         }
         for placement in &mut scripts.instances {
             placement.active = 1;
@@ -35342,13 +35148,12 @@ fn ordinary_update_consumes_both_authored_jump_masks_before_the_fallback() {
 fn a_support_miss_in_a_jump_group_carries_the_last_displacement_into_the_fall() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
-    attributes.insert("attr_1".into(), 4);
-    attributes.insert("attr_31".into(), 8);
-    attributes.insert("attr_32".into(), 32);
+    attributes[Attribute::Collide] = 4;
+    attributes[Attribute::JumpTime] = 8;
+    attributes[Attribute::JumpHeight] = 32;
     // The default group is the run jump group, which keeps the pending jump bits alive.
-    attributes.insert("attr_44".into(), 41);
+    attributes[Attribute::PanicGroup] = 41;
     for placement in &mut scripts.instances {
         placement.active = 1;
         placement.object_type = 1;
@@ -35437,18 +35242,12 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
         });
         ops.push(Operation::End { target: 0 });
         let mut scripts = attribute_cache(ops);
-        scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
         scripts.definition.functions.push(Function {
             name: "KillMe".into(),
             param_count: 0,
             kind: CallKind::Function,
         });
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_14".into(), 1);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] = 1;
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let id = world.id(0).unwrap();
@@ -35474,7 +35273,7 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
                 actor.failure()
             );
         } else {
-            assert_eq!(actor.attributes()[44], 0x23);
+            assert_eq!(actor.attributes()[Attribute::PanicGroup], 0x23);
             assert_eq!(actor.control_state().unwrap().combat_death_default, None);
         }
     }
@@ -35484,7 +35283,6 @@ fn set_attribute_forty_four_is_refused_for_a_dead_actor_without_a_combat_record(
 fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_the_script() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
-    scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.extend([
         Function {
             name: "projectileAI".into(),
@@ -35504,7 +35302,7 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
     projectile.namespace = None;
     projectile.instance_variables = vec![vec![]];
     projectile.program.variables = vec![];
-    projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+    projectile.attributes = Attributes::from([(Attribute::ForwardSpeed, 200)]);
     projectile.program.steps = BTreeMap::from([
         (
             0,
@@ -35602,7 +35400,6 @@ fn projectile_ai_stops_at_a_wall_contact() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     for yaw in [512u16, 1536] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..116).map(|index| format!("attr_{index}")).collect();
         scripts.definition.functions.extend([
             Function {
                 name: "projectileAI".into(),
@@ -35622,7 +35419,7 @@ fn projectile_ai_stops_at_a_wall_contact() {
         projectile.namespace = None;
         projectile.instance_variables = vec![vec![]];
         projectile.program.variables = vec![];
-        projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+        projectile.attributes = Attributes::from([(Attribute::ForwardSpeed, 200)]);
         projectile.program.steps = BTreeMap::from([
             (
                 0,
@@ -35798,12 +35595,7 @@ fn surface_transition(
 ) -> (Option<u64>, Vec<cyrus_game::script::ScriptSound>) {
     use cyrus_game::random::EngineRandom;
     let mut scripts = cache();
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .attributes
-        .insert("attr_6".into(), 7);
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Weight] = 7;
     let (mut world, mut data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     let definition = data.metadata["actors"]
@@ -36677,9 +36469,9 @@ fn set_selected_torch_writes_the_burning_counter_of_the_selected_player() {
 fn set_actor_attribute_writes_one_attribute_byte_and_rejects_bad_targets() {
     let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
     world.set_actor_attribute(0, 3, 0).unwrap();
-    assert_eq!(world.actors()[0].attributes()[3], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Health], 0);
     world.set_actor_attribute(0, 3, 77).unwrap();
-    assert_eq!(world.actors()[0].attributes()[3], 77);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Health], 77);
     assert!(world.set_actor_attribute(usize::MAX, 3, 1).is_err());
     assert!(world.set_actor_attribute(0, 256, 1).is_err());
 }
@@ -36688,7 +36480,7 @@ fn set_actor_attribute_writes_one_attribute_byte_and_rejects_bad_targets() {
 fn mark_actor_dead_sets_the_state_is_dead_reads() {
     let (_, mut world, _, _) = player_walking_fixture_with(|_| {});
     world.mark_actor_dead(0).unwrap();
-    assert_eq!(world.actors()[0].attributes()[3], 0);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Health], 0);
     assert!(world.mark_actor_dead(usize::MAX).is_err());
 }
 
@@ -37412,7 +37204,6 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         (true, 620, 121, true, true, false),
     ] {
         let mut scripts = cache();
-        scripts.definition.attributes = (0..116).map(|i| format!("attr_{i}")).collect();
         scripts.definition.functions.extend([
             Function {
                 name: "projectileAI".into(),
@@ -37432,7 +37223,7 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         projectile.namespace = None;
         projectile.instance_variables = vec![vec![]];
         projectile.program.variables = vec![];
-        projectile.attributes = BTreeMap::from([("attr_8".into(), 200)]);
+        projectile.attributes = Attributes::from([(Attribute::ForwardSpeed, 200)]);
         projectile.program.steps = BTreeMap::from([
             (
                 0,
@@ -37496,12 +37287,7 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
             ),
         ]);
         scripts.instances[1].map_position[0] = target_x;
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .insert("attr_14".into(), u8::from(combat));
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] = u8::from(combat);
         scripts.content_id = scripts.content_identity().unwrap();
         let data = Animations {
             version: 2,
@@ -38012,11 +37798,10 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         param_count: 0,
         kind: CallKind::Function,
     });
-    scripts.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor
         .attributes
-        .extend([("attr_14".into(), 1), ("attr_23".into(), 1)]);
+        .extend([(Attribute::Combat, 1), (Attribute::Weapon, 1)]);
     actor.program.steps = BTreeMap::from([
         (0, assign_call(1, 1, "KillMe", &[])),
         (
@@ -38284,8 +38069,11 @@ fn selected_overlap_mobility_protects_both_pair_roles_without_changing_weights()
                 assert!(actor > 0 && other > 0);
                 assert_ne!(world.spatial(player).unwrap().local.position, before);
             }
-            assert_eq!(world.actors()[player.index].attributes()[6], 128);
-            assert_eq!(world.actors()[0].attributes()[6], 128);
+            assert_eq!(
+                world.actors()[player.index].attributes()[Attribute::Weight],
+                128
+            );
+            assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 128);
         }
     }
 }
@@ -38324,7 +38112,10 @@ fn selected_overlap_lineup_preserves_position_but_lockout_alone_rolls_back() {
                 world.spatial(player).unwrap().local.position,
                 if lineup != 0 { current } else { previous }
             );
-            assert_eq!(world.actors()[player.index].attributes()[6], 128);
+            assert_eq!(
+                world.actors()[player.index].attributes()[Attribute::Weight],
+                128
+            );
         }
     }
 }
@@ -38570,12 +38361,7 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
                     instance.active = 1;
                 }
                 // Ground/collision stages are deliberately separate from this displacement contract.
-                scripts
-                    .actors
-                    .get_mut("LOGIC")
-                    .unwrap()
-                    .attributes
-                    .insert("attr_1".into(), 4);
+                scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 4;
                 scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
                     death_height: 568,
                     hurt_height: 300,
@@ -38903,9 +38689,9 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
     };
     let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
         let actor = scripts.actors.get_mut("CYRUS").unwrap();
-        actor.attributes.insert("attr_31".into(), 8);
-        actor.attributes.insert("attr_32".into(), 32);
-        actor.attributes.insert("attr_44".into(), 18);
+        actor.attributes[Attribute::JumpTime] = 8;
+        actor.attributes[Attribute::JumpHeight] = 32;
+        actor.attributes[Attribute::PanicGroup] = 18;
     });
     let index = world
         .actors()

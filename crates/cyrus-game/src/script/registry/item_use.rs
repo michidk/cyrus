@@ -1,6 +1,7 @@
 //! `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 use super::GameHost;
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
 const WEAPON_ITEM: u32 = 1;
@@ -73,7 +74,7 @@ impl GameHost<'_, '_, '_, '_> {
             return Ok(());
         }
         if used.item_type == WEAPON_ITEM {
-            self.registry.actors[selected].attributes[23] = item as u8;
+            self.registry.actors[selected].attributes[Attribute::Weapon] = item as u8;
             self.draw_sword(player_id)?;
             // Only a draw that began is consumed.
             let control = self.registry.actors[selected]

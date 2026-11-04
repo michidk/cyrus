@@ -856,13 +856,13 @@ mod tests {
         let mut app = app();
         let dialogue = json!({"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"});
         let mut script_json = json!({
-            "version":29,"dialogue":dialogue,"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":30,"dialogue":dialogue,"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
             ],"flags":[],"references":[],"attributes":[]},
             "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
-                "namespace":"ACTOR","instance_variables":[[]],"location_offsets":[],"attributes":{},"native_hook":null,
+                "namespace":"ACTOR","instance_variables":[[]],"location_offsets":[],"attributes":vec![0u8; 256],"native_hook":null,
                 "program":{"version":4,"entry":0,"steps":{
                     "0":{"next":1,"operation":{"type":"call","call":{
                         "function_id":1,"kind":"task","target":{"type":"me"},
@@ -971,7 +971,7 @@ mod tests {
         let mut app = app();
         let dialogue = json!({"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"});
         let mut script_json = json!({
-            "version":29,"dialogue":dialogue,"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
+            "version":30,"dialogue":dialogue,"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
             "actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
@@ -979,7 +979,7 @@ mod tests {
                 {"name":"PlayerDistance","param_count":0,"kind":"function"}
             ],"flags":[],"references":[],"attributes":[]},
             "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
-                "namespace":"ACTOR","instance_variables":[[0]],"location_offsets":[],"attributes":{},"native_hook":null,
+                "namespace":"ACTOR","instance_variables":[[0]],"location_offsets":[],"attributes":vec![0u8; 256],"native_hook":null,
                 "program":{"version":4,"entry":0,"variables":[0],"steps":{
                     "0":{"next":1,"operation":{"type":"assign","destination":{"type":"local","index":0},
                         "formula":{"first":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":"PlayerDistance","arguments":[]}},"rest":[]}}},

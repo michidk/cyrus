@@ -50,7 +50,7 @@ pub trait BouncePort {
     /// The combat record's stance bit (`0x04`), which a drawn weapon raises.
     fn combat_mode(&self) -> bool;
     fn torch_burning(&self) -> bool;
-    fn attribute_32(&self) -> u8;
+    fn jump_height(&self) -> u8;
     /// Clear the falling, queued and sliding bytes and the first two motion-vector words.
     fn clear_motion(&mut self);
     fn falling_state(&self) -> u8;
@@ -115,8 +115,8 @@ pub fn step<P: BouncePort + ?Sized>(
             return Ok(false);
         }
         port.set_living_state(RISING);
-        // Attribute 32 is the jump height in map units.
-        port.set_lift(i32::from(port.attribute_32()) * 256);
+        // `attr_jump_height` is the jump height in map units.
+        port.set_lift(i32::from(port.jump_height()) * 256);
     }
     if port.is_selected_player() && arguments.steer != 0 {
         let heading = i64::from(port.heading()) - port.turn_delta(scale);
@@ -221,7 +221,7 @@ mod tests {
         fn torch_burning(&self) -> bool {
             self.torch
         }
-        fn attribute_32(&self) -> u8 {
+        fn jump_height(&self) -> u8 {
             self.jump_height
         }
         fn clear_motion(&mut self) {

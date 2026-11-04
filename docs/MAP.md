@@ -159,7 +159,7 @@ module where it is defined and regenerate.
 - `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
-- `src/script/group_sync.rs` — Group synchronization channels: a rendezvous between actors that share an attribute-29 channel.
+- `src/script/group_sync.rs` — Group synchronization channels: a rendezvous between actors that share an `attr_group` channel.
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
@@ -296,6 +296,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
+- `src/attribute.rs` — Actor attribute slots: the 256 bytes every SOUP actor carries.
 - `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
 - `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
 - `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.

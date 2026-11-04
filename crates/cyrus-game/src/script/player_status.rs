@@ -1,5 +1,6 @@
 //! `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 //! current animation group and movement this update.
+use cyrus_script::Attribute;
 
 /// The selected player's state as `PlayerStatus` reads it.
 #[derive(Clone, Copy, Debug, Default)]
@@ -78,15 +79,15 @@ pub fn player_turned_direction(heading: u16, history: u16) -> i32 {
     }
 }
 
-/// Attribute index `PlayerMovementSpeed` returns for the player's current animation group, or
+/// Attribute `PlayerMovementSpeed` returns for the player's current animation group, or
 /// `None` for groups without one (the native then returns zero).
-pub fn movement_speed_attribute(group: u16) -> Option<usize> {
+pub fn movement_speed_attribute(group: u16) -> Option<Attribute> {
     match group {
-        18 | 30 => Some(8),
-        19 => Some(9),
-        20 | 21 => Some(12),
-        22 | 23 => Some(13),
-        24..=27 => Some(10),
+        18 | 30 => Some(Attribute::ForwardSpeed),
+        19 => Some(Attribute::BackwardSpeed),
+        20 | 21 => Some(Attribute::ForwardWalk),
+        22 | 23 => Some(Attribute::BackwardWalk),
+        24..=27 => Some(Attribute::SideSpeed),
         _ => None,
     }
 }
@@ -385,7 +386,7 @@ mod tests {
                 "heading {heading} history {history}"
             );
         }
-        // Attributes 8, 9, 10, 12 and 13 hold 0x11, 0x22, 0x33, 0x44 and 0x55 in the emulation.
+        // `attr_forward_speed`, `attr_backward_speed`, `attr_side_speed`, `attr_forward_walk` and `attr_backward_walk` hold 0x11, 0x22, 0x33, 0x44 and 0x55 in the emulation.
         let speed: Vec<(u16, i32)> = serde_json::from_str(
             r#"[
 [0,0],
@@ -437,10 +438,10 @@ mod tests {
         .unwrap();
         for (group, expected) in speed {
             let value = movement_speed_attribute(group).map_or(0, |index| match index {
-                8 => 0x11,
-                9 => 0x22,
-                10 => 0x33,
-                12 => 0x44,
+                Attribute::ForwardSpeed => 0x11,
+                Attribute::BackwardSpeed => 0x22,
+                Attribute::SideSpeed => 0x33,
+                Attribute::ForwardWalk => 0x44,
                 _ => 0x55,
             });
             assert_eq!(value, expected, "group {group}");

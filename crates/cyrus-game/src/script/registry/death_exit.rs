@@ -1,6 +1,7 @@
 //! End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 use super::ScriptWorld;
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 use serde::Serialize;
 
 /// Result of preservation's world-loop exit arbitration. Dispatch is host-owned.
@@ -119,7 +120,7 @@ impl ScriptWorld {
                 }
                 if health.hit_inhibited() {
                     let death = health.death().context("selected death state unavailable")?;
-                    if actor.attributes[105] == 1 && death.mode() == 2 {
+                    if actor.attributes[Attribute::PlayerType] == 1 && death.mode() == 2 {
                         if (death.progress() as i32) > 12 {
                             return Ok(WorldLoopOutcome::Death);
                         }

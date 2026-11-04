@@ -2,6 +2,7 @@
 use crate::script::{Actor, ClockSettings, CombatTaunt, Instance, Scripts, UpdateSettings};
 use anyhow::{Context, Result};
 use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
+use cyrus_script::{Attribute, Attributes};
 use rgpre::import::{
     rgm::{
         self, RgmFile,
@@ -93,29 +94,24 @@ pub fn prepare_source(
                     .find(|actor| actor["script_name"].as_str() == Some(&name))
             })
             .with_context(|| format!("{context}: actor metadata absent"))?;
-        let mut attributes: BTreeMap<String, u8> = record
+        // rgpre exports sparse attributes keyed by the installed SOUP386.DEF names.
+        let authored: BTreeMap<String, u8> = record
             .get("attributes")
             .map(|data| serde_json::from_value(data.clone()))
             .transpose()?
             .unwrap_or_default();
-        let attribute_keys: Vec<_> = (0..256)
-            .map(|index| {
-                definition
-                    .attributes
-                    .get(index)
-                    .filter(|name| !name.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| format!("attr_{index}"))
-            })
-            .collect();
         let mut initialized = std::array::from_fn(|index| {
-            attributes.get(&attribute_keys[index]).copied().unwrap_or(0)
+            let key = definition
+                .attributes
+                .get(index)
+                .filter(|name| !name.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("attr_{index}"));
+            authored.get(&key).copied().unwrap_or(0)
         });
         config.initialize_attributes(&mut initialized);
-        for (key, value) in attribute_keys.into_iter().zip(initialized) {
-            attributes.insert(key, value);
-        }
-        if (initialized[14] != 0 || attributes.get("attr_num_taunts").copied().unwrap_or(0) != 0)
+        let attributes = Attributes::from(initialized);
+        if (attributes[Attribute::Combat] != 0 || attributes[Attribute::NumTaunts] != 0)
             && combat.is_none()
         {
             combat = Some(
@@ -223,7 +219,7 @@ pub fn prepare_source(
     };
     let shells = world_shells(source, &system, world, &actors)?;
     let mut scripts = Scripts {
-        version: 29,
+        version: 30,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
@@ -353,12 +349,12 @@ fn player_distance_override(source: &dyn crate::source::ReadAssets) -> Result<bo
 
 fn prepare_combat_taunts(
     record: &serde_json::Value,
-    attributes: &BTreeMap<String, u8>,
+    attributes: &Attributes,
     combat: &rgpre::import::combat_ini::CombatIni,
     context: &str,
 ) -> Result<Vec<CombatTaunt>> {
     use rgpre::import::combat_ini::TauntTrigger;
-    let count = attributes.get("attr_num_taunts").copied().unwrap_or(0);
+    let count = attributes[Attribute::NumTaunts];
     if count == 0 {
         return Ok(vec![]);
     }
@@ -469,7 +465,8 @@ mod combat_tests {
     #[test]
     fn actor_taunts_use_consecutive_authored_records_and_keep_reference_spelling() {
         let ini = rgpre::import::combat_ini::CombatIni::parse("[misc]\nmax_taunts=8\n[taunt3]\ntype=2\nrtx_label=Nope\nanimation=0\n[taunt4]\ntype=0\nrtx_label=AbCd\nanimation=7\n[taunt5]\ntype=6\nrtx_label=&123\nanimation=0\n").unwrap();
-        let mut attributes = BTreeMap::from([("attr_num_taunts".into(), 2)]);
+        let mut attributes = Attributes::default();
+        attributes[Attribute::NumTaunts] = 2;
         let record = serde_json::json!({"raex":{"taunt_id":4}});
         let taunts =
             prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST").unwrap();
@@ -488,7 +485,7 @@ mod combat_tests {
                 }
             ]
         );
-        attributes.insert("attr_num_taunts".into(), 3);
+        attributes[Attribute::NumTaunts] = 3;
         let sparse =
             prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST").unwrap();
         assert_eq!(
@@ -499,14 +496,14 @@ mod combat_tests {
                 animation: 0
             }
         );
-        attributes.insert("attr_num_taunts".into(), 6);
+        attributes[Attribute::NumTaunts] = 6;
         assert!(
             prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST")
                 .unwrap_err()
                 .to_string()
                 .contains("combat taunt index 9 exceeds max_taunts 8")
         );
-        attributes.insert("attr_num_taunts".into(), 0);
+        attributes[Attribute::NumTaunts] = 0;
         assert!(
             prepare_combat_taunts(&serde_json::Value::Null, &attributes, &ini, "TEST")
                 .unwrap()
@@ -519,7 +516,8 @@ mod combat_tests {
             "[misc]\nmax_taunts=8\n[taunt8]\ntype=0\nrtx_label=Test\nanimation=1\n",
         )
         .unwrap();
-        let attributes = BTreeMap::from([("attr_num_taunts".into(), 1)]);
+        let mut attributes = Attributes::default();
+        attributes[Attribute::NumTaunts] = 1;
         let empty = CombatTaunt {
             trigger: 0,
             label: [0; 4],

@@ -4,6 +4,7 @@ use super::GameHost;
 use anyhow::{Context, Result};
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
+use cyrus_script::Attribute;
 
 /// Distance from the parent, in Q8, at which the flight ends.
 const MAXIMUM_RANGE: i32 = 0xbb800;
@@ -26,7 +27,7 @@ impl GameHost<'_, '_, '_, '_> {
             .inputs
             .frame_scale
             .context("projectileAI frame scale unavailable")?;
-        let speed_attribute = self.registry.actors[self.index].attributes[8];
+        let speed_attribute = self.registry.actors[self.index].attributes[Attribute::ForwardSpeed];
         let speed = (i32::from(speed_attribute) << 8).wrapping_mul(scale as i32) >> 8;
         let local = self.registry.spatial(id)?.local;
         let previous = local.position;
@@ -164,7 +165,7 @@ impl GameHost<'_, '_, '_, '_> {
         post_collide_height: u32,
     ) -> Result<Vec<([i32; 3], i32)>> {
         let actor = &self.registry.actors[target.index];
-        if actor.attributes[56] != 0 {
+        if actor.attributes[Attribute::NoSphereObject] != 0 {
             return Ok(Vec::new());
         }
         let pose = self.registry.spatial(target)?.query_pose()?;

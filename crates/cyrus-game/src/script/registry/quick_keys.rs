@@ -2,6 +2,7 @@
 use super::{GameHost, ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::QuickKeys;
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Items the sword key looks for, in order; the third is used without being selected.
 const SWORDS: [u16; 3] = [1, 13, 75];
@@ -99,7 +100,7 @@ impl GameHost<'_, '_, '_, '_> {
             .globals
             .lockout()
             .context("quick keys: player lockout state unavailable")?;
-        if lockout == 1 || self.registry.actors[self.index].attributes[105] == 1 {
+        if lockout == 1 || self.registry.actors[self.index].attributes[Attribute::PlayerType] == 1 {
             return Ok(());
         }
         let hud = self
@@ -150,7 +151,7 @@ impl GameHost<'_, '_, '_, '_> {
             .inputs
             .hud
             .context("quick keys: inventory host unavailable")?;
-        let health = i32::from(self.registry.actors[self.index].attributes[3]);
+        let health = i32::from(self.registry.actors[self.index].attributes[Attribute::Health]);
         if health >= MAXIMUM_HEALTH {
             return Ok(());
         }

@@ -9,6 +9,7 @@ use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
+use cyrus_script::Attribute;
 
 /// Group requests the rope controls make.
 const GROUP_IDLE: u16 = 6;
@@ -205,7 +206,7 @@ impl ScriptWorld {
 
     fn holding_weapon(&self, index: usize) -> bool {
         let actor = &self.actors[index];
-        actor.attributes[110] != 0
+        actor.attributes[Attribute::HoldingWeapon] != 0
             || actor
                 .control
                 .as_ref()

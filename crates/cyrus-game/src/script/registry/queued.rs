@@ -1,4 +1,5 @@
 //! Queued motion admission precedes its request and vertical writer.
+use cyrus_script::Attribute;
 
 /// Current receiver state and established edge-service outcome.
 #[derive(Clone, Copy, Debug)]
@@ -177,7 +178,7 @@ impl super::ScriptWorld {
             || control.falling_state != 0
             || control.sliding_state != 0
             || !matches!(control.living_state, 0 | 15)
-            || (actor.attributes[105] == 1 && (1..=4).contains(&surface))
+            || (actor.attributes[Attribute::PlayerType] == 1 && (1..=4).contains(&surface))
         {
             return Ok(false);
         }
@@ -218,7 +219,9 @@ impl super::ScriptWorld {
             || control.sliding_state != 0
             || !matches!(control.living_state, 0 | 15)
             || matches!(group, 114 | 116 | 130 | 131)
-            || (selected && actor.attributes[105] == 1 && (1..=4).contains(&surface))
+            || (selected
+                && actor.attributes[Attribute::PlayerType] == 1
+                && (1..=4).contains(&surface))
         {
             return Ok(false);
         }
@@ -275,7 +278,7 @@ impl super::ScriptWorld {
 
     /// The stage between the ordinary animation and script stages: queued (else falling) motion 8
     /// or 9 carries a jump forward, and motion 2 a forward-steered jump, at a rate set by
-    /// attribute 31 and the frame scale until the accumulated distance reaches its cap; deep water changes neither. Motion 3 uses the
+    /// `attr_jump_time` and the frame scale until the accumulated distance reaches its cap; deep water changes neither. Motion 3 uses the
     /// ordinary backward step and retained jump heading. It reads no actor kind.
     pub(super) fn run_pre_script_displacement(
         &mut self,
@@ -311,10 +314,10 @@ impl super::ScriptWorld {
         if control.rope_attached {
             return Ok(());
         }
-        let divisor = i32::from(actor.attributes[31]);
+        let divisor = i32::from(actor.attributes[Attribute::JumpTime]);
         anyhow::ensure!(
             divisor != 0,
-            "world {} instance {index}: jump displacement needs attribute 31",
+            "world {} instance {index}: jump displacement needs attr_jump_time",
             self.world
         );
         let suppressed = actor
@@ -416,17 +419,17 @@ impl super::ScriptWorld {
         let group = animation.playback.current_group();
         let suppressed = animation.playback.translation_suppressed();
         let length = if stance {
-            i32::from(actor.attributes[18]) << 8
+            i32::from(actor.attributes[Attribute::FightBackwardSpeed]) << 8
         } else if matches!(group, Some(76 | 78)) {
-            i32::from(actor.attributes[8]) << 7
+            i32::from(actor.attributes[Attribute::ForwardSpeed]) << 7
         } else {
-            i32::from(actor.attributes[9]) << 8
+            i32::from(actor.attributes[Attribute::BackwardSpeed]) << 8
         };
         let control = actor.control.as_mut().expect("validated control");
         let distance = super::super::locomotion::initial_step_distance(
             &mut control.movement_flags,
             6,
-            actor.attributes[11],
+            actor.attributes[Attribute::StepType],
             length,
         );
         let retained = (control.queued_motion == 3).then_some(control.motion_vector[1]);
@@ -599,7 +602,7 @@ impl super::ScriptWorld {
                         Some(super::super::ActivationAnimation { group: Some(group) }),
                         control.combat_death_default.is_some(),
                         control.weapon_drawn,
-                        actor.attributes[110],
+                        actor.attributes[Attribute::HoldingWeapon],
                         environment.item_system_ready,
                         environment.shell_execution,
                     )
@@ -736,7 +739,7 @@ impl super::ScriptWorld {
             }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );

@@ -1,9 +1,10 @@
 //! Obstacle motion transitions follow preservation's ordinary forward wrapper.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 
 /// Current motion bytes and weapon predicate for a single original transition.
-/// Logical Y is Q8; attribute 32 is its unsigned installed map-unit offset.
+/// Logical Y is Q8; `attr_jump_height` is its unsigned installed map-unit offset.
 #[derive(Clone, Copy, Debug)]
 pub struct ObstacleTransitionInput {
     pub living_state: u8,
@@ -136,7 +137,7 @@ impl ScriptWorld {
                 .map(|_| super::super::ActivationAnimation { group }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );
@@ -145,7 +146,7 @@ impl ScriptWorld {
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
             logical_y: self.spatial(id)?.local.position[1],
-            fall_attribute: actor.attributes[32],
+            fall_attribute: actor.attributes[Attribute::JumpHeight],
             holding_weapon: holding,
             current_group: group,
         }) else {
@@ -291,7 +292,7 @@ impl ScriptWorld {
                 .map(|_| super::super::ActivationAnimation { group }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );

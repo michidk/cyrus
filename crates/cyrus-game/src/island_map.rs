@@ -26,7 +26,7 @@ pub struct IslandMapWorld {
     /// The selected player's local Q8 position, absent without a selected player.
     pub player: Option<[i32; 3]>,
     pub lockout: Option<u16>,
-    /// Attribute 105 of the selected player.
+    /// `attr_player_type` of the selected player.
     pub player_type: Option<u8>,
 }
 
@@ -66,7 +66,7 @@ pub fn cross_position(world: u32, marker: [i32; 2], width: u16) -> [i32; 2] {
 }
 
 /// Whether an open request is admitted: item 83 owned, the player lockout other than 1 and the
-/// player's attribute 105 other than 1.
+/// player's `attr_player_type` other than 1.
 pub fn admitted(owns_map: bool, world: &IslandMapWorld) -> bool {
     owns_map && world.lockout != Some(1) && world.player_type != Some(1)
 }

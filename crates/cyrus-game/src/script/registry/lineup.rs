@@ -7,6 +7,7 @@ use super::{GameHost, ScriptActorId};
 use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -66,7 +67,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
                 .animation
                 .as_ref()
                 .and_then(|animation| animation.playback.current_group()),
-            Some(&actor.attributes[..]),
+            Some(&actor.attributes),
         )
     }
 
@@ -121,9 +122,9 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             .as_ref()
             .is_some_and(|combat| combat.flags & 4 != 0);
         let rate = actor.attributes[if holding_weapon || combat_mode {
-            21
+            Attribute::FightTurnSpeed
         } else {
-            15
+            Attribute::TurnSpeed
         }];
         let torch = control.torch_burning != 0;
         let scale = self
@@ -368,9 +369,9 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
                 speed: self.speed(),
                 frame_scale: self.frame_scale()? as u32,
                 rate_attribute: actor.attributes[if holding_weapon || combat_mode {
-                    21
+                    Attribute::FightTurnSpeed
                 } else {
-                    15
+                    Attribute::TurnSpeed
                 }],
                 holding_weapon,
                 torch: control.torch_burning != 0,

@@ -2,6 +2,7 @@
 use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
 use cyrus_assets::animation::Animations;
+use cyrus_script::Attribute;
 use cyrus_script::program::{CallKind, Program};
 use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
@@ -20,11 +21,12 @@ impl AnimationScript {
             let attributes = attributes
                 .as_object()
                 .with_context(|| format!("{context}: invalid attributes"))?;
-            for attribute in [29, 30] {
-                if let Some(value) = attributes.get(&format!("attr_{attribute}")) {
+            // Animation metadata is exported without SOUP386.DEF, so rgpre keys it by slot.
+            for attribute in [Attribute::Group, Attribute::User] {
+                if let Some(value) = attributes.get(&format!("attr_{}", attribute.index())) {
                     let value = value
                         .as_u64()
-                        .with_context(|| format!("{context}: invalid attribute {attribute}"))?;
+                        .with_context(|| format!("{context}: invalid {attribute:?} attribute"))?;
                     anyhow::ensure!(
                         value == 0,
                         "{context}: synchronization channels unsupported"

@@ -1,6 +1,7 @@
 //! Local and composed actor poses follow preservation's SOUP attachment rules.
 use super::ScriptActor;
 use anyhow::{Context, Result, ensure};
+use cyrus_script::{Attribute, Attributes};
 use cyrus_world::transform::Matrix;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -105,8 +106,8 @@ impl SpatialWorld {
                 };
                 Ok(Pose { position, angles, matrix: Matrix::orientation(angles) })
             }).transpose()?;
-            if pose.is_some() && actor.attributes()[25] != 0 {
-                if let Some(&previous) = masters.get(&actor.attributes()[25]) {
+            if pose.is_some() && actor.attributes()[Attribute::Master] != 0 {
+                if let Some(&previous) = masters.get(&actor.attributes()[Attribute::Master]) {
                     let previous_actor: &ScriptActor = &actors[previous];
                     let same_list = match (previous_actor.placement(), actor.placement()) {
                         (Some(a), Some(b)) => {
@@ -120,15 +121,15 @@ impl SpatialWorld {
                     };
                     ensure!(
                         same_list
-                            && previous_actor.attributes()[26] == 0
-                            && actor.attributes()[26] == 0,
+                            && previous_actor.attributes()[Attribute::Slave] == 0
+                            && actor.attributes()[Attribute::Slave] == 0,
                         "attachment group {}: duplicate masters across source lists or child families require original traversal ordering",
-                        actor.attributes()[25]
+                        actor.attributes()[Attribute::Master]
                     );
                 }
                 // Fresh actors prepend to their source list. The later allocation
                 // is its first matching root; an unselected duplicate stays unattached.
-                masters.insert(actor.attributes()[25], index);
+                masters.insert(actor.attributes()[Attribute::Master], index);
             }
             poses.push(pose);
         }
@@ -138,16 +139,16 @@ impl SpatialWorld {
                 states.push(None);
                 continue;
             };
-            let parent = (actor.attributes()[26] != 0)
+            let parent = (actor.attributes()[Attribute::Slave] != 0)
                 .then(|| {
                     masters
-                        .get(&actor.attributes()[26])
+                        .get(&actor.attributes()[Attribute::Slave])
                         .copied()
                         .with_context(|| {
                             format!(
                                 "actor {index} {}: attachment group {} has no master",
                                 actor.name(),
-                                actor.attributes()[26]
+                                actor.attributes()[Attribute::Slave]
                             )
                         })
                 })
@@ -161,7 +162,7 @@ impl SpatialWorld {
                         .inverse_transform(std::array::from_fn(|axis| {
                             original.position[axis].wrapping_sub(parent_pose.position[axis])
                         }))?;
-                if actors[parent].attributes()[33] == 0 {
+                if actors[parent].attributes()[Attribute::NoSlaveRot] == 0 {
                     local.angles = std::array::from_fn(|axis| {
                         original.angles[axis].wrapping_sub(parent_pose.angles[axis]) & 2047
                     });
@@ -188,8 +189,8 @@ impl SpatialWorld {
                 link: None,
                 link_cache: [0; 3],
                 link_previous: [0; 3],
-                no_slave_rotation: actor.attributes()[33] != 0,
-                rotation_mode: actor.attributes()[28],
+                no_slave_rotation: actor.attributes()[Attribute::NoSlaveRot] != 0,
+                rotation_mode: actor.attributes()[Attribute::Rotation],
             }));
         }
         let mut order = Vec::new();
@@ -274,8 +275,8 @@ impl SpatialWorld {
             link: None,
             link_cache: [0; 3],
             link_previous: [0; 3],
-            no_slave_rotation: actor.attributes()[33] != 0,
-            rotation_mode: actor.attributes()[28],
+            no_slave_rotation: actor.attributes()[Attribute::NoSlaveRot] != 0,
+            rotation_mode: actor.attributes()[Attribute::Rotation],
         }));
         self.order.push(index);
         Ok(())
@@ -312,7 +313,7 @@ impl SpatialWorld {
             "actor {index}: player angles outside wrapped range"
         );
         ensure!(
-            actor.attributes()[25] == 0 && actor.attributes()[26] == 0,
+            actor.attributes()[Attribute::Master] == 0 && actor.attributes()[Attribute::Slave] == 0,
             "actor {index}: attached player initialization unsupported"
         );
         let pose = Pose {
@@ -340,8 +341,8 @@ impl SpatialWorld {
             link: None,
             link_cache: [0; 3],
             link_previous: [0; 3],
-            no_slave_rotation: actor.attributes()[33] != 0,
-            rotation_mode: actor.attributes()[28],
+            no_slave_rotation: actor.attributes()[Attribute::NoSlaveRot] != 0,
+            rotation_mode: actor.attributes()[Attribute::Rotation],
         });
         if !initialized {
             self.order.push(index);
@@ -537,18 +538,28 @@ impl ActorSpatial {
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
     /// Uses current attribute bytes and the pre-update snapshot; slaves bypass restoration.
     /// The matrix is unchanged, following preservation's SOUP ordinary axis-lock rules.
-    pub fn restore_axis_locks(&mut self, attributes: &[u8]) -> Result<()> {
-        ensure!(
-            attributes.len() == 256,
-            "axis locks require 256 actor attribute bytes"
-        );
-        if attributes[26] == 0 {
-            for (axis, attribute) in [40, 41, 42].into_iter().enumerate() {
+    pub fn restore_axis_locks(&mut self, attributes: &Attributes) -> Result<()> {
+        if attributes[Attribute::Slave] == 0 {
+            for (axis, attribute) in [
+                Attribute::StopXMove,
+                Attribute::StopYMove,
+                Attribute::StopZMove,
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 if attributes[attribute] != 0 {
                     self.local.position[axis] = self.previous_local_position[axis];
                 }
             }
-            for (axis, attribute) in [38, 37, 39].into_iter().enumerate() {
+            for (axis, attribute) in [
+                Attribute::StopXRotate,
+                Attribute::StopYRotate,
+                Attribute::StopZRotate,
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 if attributes[attribute] != 0 {
                     self.local.angles[axis] = self.angle_history[axis];
                 }
@@ -1151,8 +1162,8 @@ mod tests {
                 .unwrap(),
             [0, 0, -256]
         );
-        let mut attributes = [0; 256];
-        attributes[37] = 1;
+        let mut attributes = Attributes::default();
+        attributes[Attribute::StopYRotate] = 1;
         actor.restore_axis_locks(&attributes).unwrap();
         actor.refresh_transform().unwrap();
         assert_eq!(actor.local.angles, [0; 3]);

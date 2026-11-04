@@ -4,6 +4,7 @@ use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
 use cyrus_script::program::*;
+use cyrus_script::{Attribute, Attributes};
 use cyrus_world::animation::AnimationSound;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -48,7 +49,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         namespace: Some(name.into()),
         instance_variables: vec![vec![]],
         location_offsets: vec![],
-        attributes: BTreeMap::new(),
+        attributes: Default::default(),
         combat_taunts: vec![],
         native_hook: None,
         program: Program {
@@ -72,7 +73,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 29,
+        version: 30,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -902,16 +903,8 @@ fn attached_facing_stays_composed_until_family_refresh() {
     use cyrus_game::script::{PlayerQuery, QueryInputs};
     use cyrus_script::Argument;
     let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_26".into(), 1);
-    data.actors
-        .get_mut("OTHER")
-        .unwrap()
-        .attributes
-        .insert("attr_25".into(), 1);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
@@ -1111,13 +1104,13 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
 }
 
 fn activation_world(function: &str) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
-    activation_world_with_attributes(function, BTreeMap::new(), BTreeMap::new())
+    activation_world_with_attributes(function, Attributes::default(), Attributes::default())
 }
 
 fn activation_world_with_attributes(
     function: &str,
-    receiver_attributes: BTreeMap<String, u8>,
-    player_attributes: BTreeMap<String, u8>,
+    receiver_attributes: Attributes,
+    player_attributes: Attributes,
 ) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
     use cyrus_game::script::{ActivationActor, ActivationInputs};
     let mut data = scripts(vec![Operation::End { target: 0 }]);
@@ -1523,10 +1516,10 @@ fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
     for (player_type, special, holding, expected) in [(1, 0, 0, 0), (1, 1, 0, 1), (0, 0, 1, 0)] {
         let (mut world, mut inputs) = activation_world_with_attributes(
             "Activate",
-            BTreeMap::from([("attr_106".into(), special)]),
-            BTreeMap::from([
-                ("attr_105".into(), player_type),
-                ("attr_110".into(), holding),
+            Attributes::from([(Attribute::SpecialActivate, special)]),
+            Attributes::from([
+                (Attribute::PlayerType, player_type),
+                (Attribute::HoldingWeapon, holding),
             ]),
         );
         inputs.item_system_ready = false;
@@ -1658,7 +1651,11 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
 
 #[test]
 fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it() {
-    for (axis, attribute, component) in [(0, 38, 0), (1, 37, 1), (2, 39, 2)] {
+    for (axis, attribute, component) in [
+        (0, Attribute::StopXRotate, 0),
+        (1, Attribute::StopYRotate, 1),
+        (2, Attribute::StopZRotate, 2),
+    ] {
         let mut data = axis_task_scripts("RotateByAxis", axis, 128, 4);
         data.definition.functions.push(Function {
             name: "SetMyAttr".into(),
@@ -1684,7 +1681,9 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
                         target: Object::Me,
                         function: "SetMyAttr".into(),
                         arguments: vec![
-                            Value::Integer { value: attribute },
+                            Value::Integer {
+                                value: attribute.index() as i32,
+                            },
                             Value::Integer { value: 1 },
                         ],
                     },
@@ -1697,7 +1696,7 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
         let id = world.id(0).unwrap();
         world.snapshot_spatial(id).unwrap();
         stage(&mut world, id, BODY);
-        assert_eq!(world.actors()[0].attributes()[attribute as usize], 1);
+        assert_eq!(world.actors()[0].attributes()[attribute], 1);
         assert_eq!(world.spatial(id).unwrap().local.angles[component], 32);
         world.restore_axis_locks(id).unwrap();
         assert_eq!(world.spatial(id).unwrap().local.angles[component], 0);
@@ -1908,18 +1907,10 @@ fn lockout_data(value: i32, activate: bool) -> Scripts {
     let mut player = data.actors["OTHER"].clone();
     player.namespace = Some("CYRUS".into());
     player.code_origin = 200;
-    player.attributes.insert("attr_117".into(), 7);
+    player.attributes[Attribute::LockPos] = 7;
     data.actors.insert("CYRUS".into(), player);
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_117".into(), 8);
-    data.actors
-        .get_mut("OTHER")
-        .unwrap()
-        .attributes
-        .insert("attr_117".into(), 9);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::LockPos] = 8;
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::LockPos] = 9;
     let native_call = |function_id, function: &str, value| Call {
         function_id,
         function: function.into(),
@@ -2286,17 +2277,8 @@ fn location_count_boundary_reports_original_out_of_range_access() {
 #[test]
 fn attached_location_motion_reads_effective_pose_but_updates_local_coordinates() {
     let mut data = location_task_scripts(1, 2);
-    data.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_26".into(), 1);
-    data.actors
-        .get_mut("OTHER")
-        .unwrap()
-        .attributes
-        .insert("attr_25".into(), 1);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
     data.instances[0].map_position = [110, 0, 0];
     data.instances[1].map_position = [100, 0, 0];
     data.content_id = data.content_identity().unwrap();
@@ -3426,11 +3408,7 @@ fn hand_item_world(item: i32, holding: u8) -> ScriptWorld {
         param_count: 1,
         kind: CallKind::Function,
     });
-    data.actors
-        .get_mut("OTHER")
-        .unwrap()
-        .attributes
-        .insert("attr_110".into(), holding);
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::HoldingWeapon] = holding;
     data.content_id = data.content_identity().unwrap();
     ScriptWorld::prepare(&data, 7).unwrap()
 }
@@ -3444,7 +3422,7 @@ fn hand_item_routes_to_receiver_and_preserves_inventory_and_attributes() {
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
     let mut world = hand_item_world(257, 0);
-    let attributes = world.actors()[1].attributes().to_vec();
+    let attributes = world.actors()[1].attributes().clone();
     world
         .advance(
             world.id(0).unwrap(),
@@ -3465,7 +3443,7 @@ fn hand_item_routes_to_receiver_and_preserves_inventory_and_attributes() {
         Some(1)
     );
     assert_eq!(world.actors()[0].control_state().unwrap().held_item, None);
-    assert_eq!(world.actors()[1].attributes(), attributes);
+    assert_eq!(world.actors()[1].attributes(), &attributes);
     assert_eq!(hud.active_item().unwrap(), 1);
     assert_eq!(hud.inventory(None).unwrap().counts[&257], 0);
     assert_eq!(world.flags(), [0]);
@@ -3697,7 +3675,7 @@ fn routed_acquisition_fallback_assigns_selected_player_not_receiver() {
     let mut player = data.actors["OTHER"].clone();
     player.namespace = Some("CYRUS".into());
     player.code_origin = 200;
-    player.attributes.insert("attr_23".into(), 7);
+    player.attributes[Attribute::Weapon] = 7;
     data.actors.insert("CYRUS".into(), player);
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 7).unwrap();
@@ -3720,9 +3698,9 @@ fn routed_acquisition_fallback_assigns_selected_player_not_receiver() {
             30,
         )
         .unwrap();
-    assert_eq!(world.actors()[0].attributes()[23], 0);
-    assert_eq!(world.actors()[1].attributes()[23], 0);
-    assert_eq!(world.actors()[2].attributes()[23], 1);
+    assert_eq!(world.actors()[0].attributes()[Attribute::Weapon], 0);
+    assert_eq!(world.actors()[1].attributes()[Attribute::Weapon], 0);
+    assert_eq!(world.actors()[2].attributes()[Attribute::Weapon], 1);
     assert_eq!(hud.active_item().unwrap(), 1);
     assert_eq!(hud.inspect()["inventory"]["counts"]["9"], 1);
 }
@@ -3743,13 +3721,9 @@ fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
         let mut player = data.actors["OTHER"].clone();
         player.namespace = Some("CYRUS".into());
         player.code_origin = 200;
-        player.attributes.insert("attr_23".into(), assigned);
+        player.attributes[Attribute::Weapon] = assigned;
         data.actors.insert("CYRUS".into(), player);
-        data.actors
-            .get_mut("ACTOR")
-            .unwrap()
-            .attributes
-            .insert("attr_23".into(), 7);
+        data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Weapon] = 7;
         data.content_id = data.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&data, 7).unwrap();
         let selected = world.id(2).unwrap();
@@ -3774,8 +3748,11 @@ fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
                 Ok(())
             })
             .unwrap();
-        assert_eq!(world.actors()[selected.index].attributes()[23], expected);
-        assert_eq!(world.actors()[0].attributes()[23], 7);
+        assert_eq!(
+            world.actors()[selected.index].attributes()[Attribute::Weapon],
+            expected
+        );
+        assert_eq!(world.actors()[0].attributes()[Attribute::Weapon], 7);
         assert!(cues.is_empty());
     }
 }
@@ -3788,7 +3765,7 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
             let mut role = data.actors["OTHER"].clone();
             role.namespace = Some(name.into());
             role.code_origin = origin;
-            role.attributes.insert("attr_14".into(), u8::from(combat));
+            role.attributes[Attribute::Combat] = u8::from(combat);
             data.actors.insert(name.into(), role);
         }
         data.content_id = data.content_identity().unwrap();
@@ -3873,7 +3850,7 @@ fn ordinary_weapon_default_uses_shared_inventory_readiness() {
             placement.active = 1;
         }
         for actor in source.actors.values_mut() {
-            actor.attributes.insert("attr_44".into(), 1);
+            actor.attributes[Attribute::PanicGroup] = 1;
         }
         source.content_id = source.content_identity().unwrap();
         let mut data = animations(&source, false);
@@ -4041,11 +4018,7 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
             param_count: 0,
             kind: CallKind::Function,
         });
-        data.actors
-            .get_mut("OTHER")
-            .unwrap()
-            .attributes
-            .insert("attr_110".into(), attribute);
+        data.actors.get_mut("OTHER").unwrap().attributes[Attribute::HoldingWeapon] = attribute;
         data.content_id = data.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&data, 7).unwrap();
         if let Some(group) = group {
@@ -4060,7 +4033,7 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
         }
         let hud = ScriptHud::default();
         hud.configure(&inventory_fixture(&[(1, 1)]), &Preferences::default());
-        let before = world.actors()[1].attributes().to_vec();
+        let before = world.actors()[1].attributes().clone();
         world
             .advance(
                 world.id(0).unwrap(),
@@ -4087,7 +4060,7 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
             [expected],
             "{name}, group {group:?}, shell {shell:?}"
         );
-        assert_eq!(world.actors()[1].attributes(), before);
+        assert_eq!(world.actors()[1].attributes(), &before);
     }
 }
 
@@ -5096,11 +5069,7 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
             param_count: arguments.len() as u8,
             kind: CallKind::Task,
         });
-        data.actors
-            .get_mut("ACTOR")
-            .unwrap()
-            .attributes
-            .insert("attr_15".into(), rate);
+        data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::TurnSpeed] = rate;
         data.instances[0].angles[1] = start;
         data.content_id = data.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
@@ -5380,12 +5349,7 @@ fn move_backward_scripts(step: u8) -> Scripts {
         param_count: 1,
         kind: CallKind::Task,
     });
-    data.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_9".into(), step);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::BackwardSpeed] = step;
     data.content_id = data.content_identity().unwrap();
     data
 }
@@ -5506,11 +5470,7 @@ fn strafe_world(name: &str, step: u8) -> (ScriptWorld, ScriptActorId) {
         }
     }
     data.definition.functions.last_mut().unwrap().name = name.into();
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_10".into(), step);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::SideSpeed] = step;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
@@ -5648,16 +5608,8 @@ fn move_forward_world(step: u8) -> (ScriptWorld, ScriptActorId, Scripts) {
     }
     data.definition.functions.last_mut().unwrap().name = "MoveForward".into();
     // Collision attribute bits make the step check need an input.
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_1".into(), 1);
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_8".into(), step);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Collide] = 1;
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::ForwardSpeed] = step;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
@@ -5780,11 +5732,7 @@ fn backward_attribute_ramp_survives_task_passes_and_world_restoration() {
     use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
     let mut data = move_backward_scripts(8);
     data.updates.animation_system = false;
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_11".into(), 1);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::StepType] = 1;
     data.content_id = data.content_identity().unwrap();
     let animation = counter_animations(&data);
     let collision = cyrus_assets::collision::CollisionScene::default();
@@ -5846,8 +5794,8 @@ fn routed_backward_task_advances_only_the_receivers_counter() {
     call.target = Object::Named { string: 0 };
     step.operation = Operation::ObjectCall { call };
     let receiver = data.actors.get_mut("OTHER").unwrap();
-    receiver.attributes.insert("attr_9".into(), 8);
-    receiver.attributes.insert("attr_11".into(), 3);
+    receiver.attributes[Attribute::BackwardSpeed] = 8;
+    receiver.attributes[Attribute::StepType] = 3;
     data.content_id = data.content_identity().unwrap();
     let animation = counter_animations(&data);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
@@ -5976,9 +5924,7 @@ fn walk_forward_world_with(
 ) -> (ScriptWorld, ScriptActorId) {
     let mut data = move_backward_scripts(0);
     let actor = data.actors.get_mut("ACTOR").unwrap();
-    actor
-        .attributes
-        .insert("attr_1".into(), collision_attribute);
+    actor.attributes[Attribute::Collide] = collision_attribute;
     for step in actor.program.steps.values_mut() {
         if let Operation::Call { call } = &mut step.operation {
             call.function = "WalkForward".into();
@@ -5986,8 +5932,8 @@ fn walk_forward_world_with(
     }
     data.definition.functions.last_mut().unwrap().name = "WalkForward".into();
     if bypass {
-        actor.attributes.insert("attr_12".into(), 8);
-        actor.attributes.insert("attr_11".into(), 1);
+        actor.attributes[Attribute::ForwardWalk] = 8;
+        actor.attributes[Attribute::StepType] = 1;
         actor.program.steps = std::mem::take(&mut actor.program.steps)
             .into_iter()
             .map(|(index, mut step)| {

@@ -4,6 +4,7 @@ use super::GameHost;
 use crate::script::spatial::query_bearing;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::distance::rounded_distance;
+use cyrus_script::Attribute;
 
 /// Death selector that marks a killed receiver.
 const KILLED_SELECTOR: u8 = 8;
@@ -158,7 +159,7 @@ impl GameHost<'_, '_, '_, '_> {
             .selected_player_index()
             .context("DragonBreath: selected player unavailable")?;
         self.add_session_item(DEATH_ITEM_GIVEN, 1)?;
-        self.registry.actors[player].attributes[23] = DEATH_ITEM_GIVEN as u8;
+        self.registry.actors[player].attributes[Attribute::Weapon] = DEATH_ITEM_GIVEN as u8;
         hud.remove_item(DEATH_ITEM_TAKEN)?;
         hud.select_item(DEATH_ITEM_GIVEN)
     }

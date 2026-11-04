@@ -1,6 +1,7 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Shared engine gates for a caller-admitted weapon operation.
 /// Selected identity is validated against the current logical generation.
@@ -41,7 +42,7 @@ impl super::ScriptActor {
             || control.falling_state != 0
             || control.sliding_state != 0
             || control.queued_motion != 0
-            || self.attributes[110] != 0
+            || self.attributes[Attribute::HoldingWeapon] != 0
         {
             return Ok(());
         }
@@ -56,7 +57,7 @@ impl super::ScriptActor {
                     }),
                 control.combat_death_default.is_some(),
                 control.weapon_drawn,
-                self.attributes[110],
+                self.attributes[Attribute::HoldingWeapon],
                 true,
                 shell,
             )
@@ -104,16 +105,16 @@ impl<'a> CombatReceiver<'a> {
         self.events = Some(events);
         self
     }
-    /// An actor that always holds its weapon (attribute 110) keeps it drawn while attribute 23
+    /// An actor that always holds its weapon (`attr_holding_weapon`) keeps it drawn while `attr_weapon`
     /// names a weapon item, and drawing or sheathing never runs; without such an item the
     /// holding attributes are cleared. Without combat state the weapon is not drawn.
     fn hold_intrinsic_weapon(&mut self, hud: &crate::script::ScriptHud) {
         let actor = &mut *self.actor;
-        let weapon = actor.attributes[23];
+        let weapon = actor.attributes[Attribute::Weapon];
         let valid = weapon != 0 && hud.validate_weapon(weapon).is_ok();
         if !valid {
-            actor.attributes[110] = 0;
-            actor.attributes[23] = 0;
+            actor.attributes[Attribute::HoldingWeapon] = 0;
+            actor.attributes[Attribute::Weapon] = 0;
         }
         let control = actor
             .control
@@ -140,15 +141,15 @@ impl<'a> CombatReceiver<'a> {
             .control
             .as_ref()
             .context("weapon transition control unavailable")?;
-        if control.combat.is_none() && actor.attributes[110] == 0 {
+        if control.combat.is_none() && actor.attributes[Attribute::HoldingWeapon] == 0 {
             return Ok(());
         }
-        if actor.attributes[110] != 0 {
+        if actor.attributes[Attribute::HoldingWeapon] != 0 {
             self.hold_intrinsic_weapon(hud);
         }
         let actor = &*self.actor;
         let control = actor.control.as_ref().expect("validated weapon control");
-        let weapon = actor.attributes[23];
+        let weapon = actor.attributes[Attribute::Weapon];
         hud.validate_weapon(weapon)?;
         let state = control.living_state;
         let requested = match state {
@@ -194,10 +195,13 @@ impl<'a> CombatReceiver<'a> {
         }
         let (group, pending, progress) = animation.playback.frame_wait_state()?;
         let control = actor.control.as_mut().expect("validated weapon control");
-        if state == 20 && group == 91 && progress >= actor.attributes[35] {
+        if state == 20 && group == 91 && progress >= actor.attributes[Attribute::DrawFrame] {
             control.weapon_drawn = true;
             control.living_state = 0;
-        } else if state == 21 && group == 129 && progress >= actor.attributes[34] {
+        } else if state == 21
+            && group == 129
+            && progress >= actor.attributes[Attribute::SheathFrame]
+        {
             control.weapon_drawn = false;
             control.living_state = 0;
             if pending == 129 {
@@ -305,11 +309,11 @@ impl<'a> CombatReceiver<'a> {
             }),
             control.combat.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             inputs.item_system_ready,
             inputs.shell_execution,
         );
-        if (self.id == inputs.selected_player && actor.attributes[105] == 1)
+        if (self.id == inputs.selected_player && actor.attributes[Attribute::PlayerType] == 1)
             || !inputs.item_system_ready
             || animation.is_none()
             || inputs.shell_execution
@@ -369,7 +373,7 @@ impl<'a> CombatReceiver<'a> {
             return Ok(());
         }
         control.death_selector = 6;
-        if self.actor.attributes[23] != 0 {
+        if self.actor.attributes[Attribute::Weapon] != 0 {
             if self
                 .actor
                 .animation
@@ -524,13 +528,13 @@ impl ScriptWorld {
         }
         let index = self.resolve(selected_player)?;
         let actor = &self.actors[index];
-        let weapon = actor.attributes[23];
+        let weapon = actor.attributes[Attribute::Weapon];
         if actor.animation.is_none()
             || shell_execution
             || weapon == 0
             || !hud.owned_weapon(weapon)?
         {
-            self.actors[index].attributes[23] = 0;
+            self.actors[index].attributes[Attribute::Weapon] = 0;
             self.actors[index].model.weapon = None;
             self.cleanup_actor_weapon(selected_player, selected_player, nominal_ticks, sounds)?;
         }
@@ -538,7 +542,7 @@ impl ScriptWorld {
     }
 
     /// Settle draw/sheath state in the admitted pre-traversal model pass.
-    /// Thresholds are installed attributes 35/34 and compare the wrapping animation
+    /// Thresholds are installed `attr_draw_frame`/`attr_sheath_frame` and compare the wrapping animation
     /// progress byte, independently of model frames and command cursors. This logical
     /// stage does not provide weapon attachment geometry or hit positions.
     /// Follows preservation's [equipped-weapon transition](https://github.com/michidk/redguard-preservation/commit/4221864).
@@ -667,7 +671,7 @@ mod tests {
             runtime: None,
             created_retired: false,
             unavailable: None,
-            attributes: vec![0; 256],
+            attributes: cyrus_script::Attributes::default(),
             surface: Some(0),
             control: Some(ActorControlState {
                 combat: Some(Default::default()),
@@ -746,9 +750,9 @@ mod tests {
         for state in [20, 21] {
             for threshold in [0, 1, 2, 255] {
                 let mut actor = actor();
-                actor.attributes[23] = 1;
-                actor.attributes[34] = threshold;
-                actor.attributes[35] = threshold;
+                actor.attributes[Attribute::Weapon] = 1;
+                actor.attributes[Attribute::SheathFrame] = threshold;
+                actor.attributes[Attribute::DrawFrame] = threshold;
                 let group = if state == 20 { 91 } else { 129 };
                 let animation = actor.animation.as_mut().unwrap();
                 animation.playback.force_request(group, 0, 0).unwrap();
@@ -812,8 +816,8 @@ mod tests {
             index: 0,
         };
         let mut actor = actor();
-        actor.attributes[23] = 1;
-        actor.attributes[34] = 0;
+        actor.attributes[Attribute::Weapon] = 1;
+        actor.attributes[Attribute::SheathFrame] = 0;
         let control = actor.control.as_mut().unwrap();
         control.living_state = 21;
         control.weapon_drawn = true;
@@ -873,7 +877,7 @@ mod tests {
             item_system_ready: true,
             shell_execution: false,
         };
-        // (attribute 23, combat state, living state) -> (drawn, living state, attribute 110, attribute 23)
+        // (`attr_weapon`, combat state, living state) -> (drawn, living state, `attr_holding_weapon`, `attr_weapon`)
         for (weapon, combat, living, expected) in [
             (1, true, 0, (true, 0, 1, 1)),
             (1, true, 20, (true, 0, 1, 1)),
@@ -881,8 +885,8 @@ mod tests {
             (1, false, 0, (false, 0, 1, 1)),
         ] {
             let mut actor = actor();
-            actor.attributes[110] = 1;
-            actor.attributes[23] = weapon;
+            actor.attributes[Attribute::HoldingWeapon] = 1;
+            actor.attributes[Attribute::Weapon] = weapon;
             let control = actor.control.as_mut().unwrap();
             control.living_state = living;
             if !combat {
@@ -899,16 +903,16 @@ mod tests {
                 (
                     control.weapon_drawn,
                     control.living_state,
-                    actor.attributes[110],
-                    actor.attributes[23]
+                    actor.attributes[Attribute::HoldingWeapon],
+                    actor.attributes[Attribute::Weapon]
                 ),
                 expected
             );
         }
         // A missing weapon item clears the holding attributes and the transition then fails.
         let mut actor = actor();
-        actor.attributes[110] = 1;
-        actor.attributes[23] = 0;
+        actor.attributes[Attribute::HoldingWeapon] = 1;
+        actor.attributes[Attribute::Weapon] = 0;
         let mut globals = Default::default();
         let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
         assert!(
@@ -918,8 +922,8 @@ mod tests {
         );
         assert_eq!(
             (
-                receiver.actor.attributes[110],
-                receiver.actor.attributes[23]
+                receiver.actor.attributes[Attribute::HoldingWeapon],
+                receiver.actor.attributes[Attribute::Weapon]
             ),
             (0, 0)
         );
@@ -933,7 +937,7 @@ mod tests {
         };
         for held_item in [None, Some(0), Some(7)] {
             let mut actor = actor();
-            actor.attributes[23] = 1;
+            actor.attributes[Attribute::Weapon] = 1;
             actor.control.as_mut().unwrap().held_item = held_item;
             let mut globals = Default::default();
             CombatReceiver::new(&mut actor, &mut globals, 7, id, None)

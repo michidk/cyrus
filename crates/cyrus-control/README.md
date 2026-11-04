@@ -45,7 +45,7 @@ use `offset`):
   presentation. A script that re-places the player each loop (a teleporter pad's `MovePlayerAboveMe`) can
   undo it.
 - `set_attribute {index,attribute,value}` writes one attribute byte of the actor at `index`; health is
-  attribute 3. `mark_dead {index}` sets health zero and lifecycle selector eight, which is what `IsDead`
+  attribute 3 (`attr_health`). `mark_dead {index}` sets health zero and lifecycle selector eight, which is what `IsDead`
   reads, without the death animation.
 - `cheat {name,value}` and `console {line}` run the installed cheats and console commands, for example
   `item add,79`; `drevil` keeps the player alive at zero health. `neversaydie` makes `PlayerDistance` return

@@ -1,6 +1,7 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 
 /// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -600,9 +601,9 @@ impl ScriptWorld {
             let (group, attribute) =
                 if inputs.holding_weapon || combat.is_some_and(|combat| combat.flags & 4 != 0) {
                     if combat.is_some_and(|combat| combat.action == 4) {
-                        (106, 16)
+                        (106, Attribute::FightLungeSpeed)
                     } else {
-                        (92, 17)
+                        (92, Attribute::FightForwardSpeed)
                     }
                 } else {
                     (
@@ -613,11 +614,11 @@ impl ScriptWorld {
                         } else {
                             18
                         },
-                        8,
+                        Attribute::ForwardSpeed,
                     )
                 };
             let step = actor.attributes[attribute];
-            let adjustment = actor.attributes[11];
+            let adjustment = actor.attributes[Attribute::StepType];
             ensure!(
                 actor
                     .animation
@@ -777,7 +778,7 @@ impl ScriptWorld {
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.flags & 4 != 0);
-            let adjustment = actor.attributes[11];
+            let adjustment = actor.attributes[Attribute::StepType];
             let counters = control.movement_flags;
             let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
             let stance = holding_weapon || combat_stance;
@@ -846,27 +847,32 @@ impl ScriptWorld {
             // A zero walk step length falls back to half of the plain step byte, unshifted.
             let half = |plain: u8| i32::from(plain) >> 1;
             let (step_length, shift) = match step {
-                Continuation::Forward if stance => (i32::from(attributes[17]) << 8, 4),
+                Continuation::Forward if stance => {
+                    (i32::from(attributes[Attribute::FightForwardSpeed]) << 8, 4)
+                }
                 Continuation::Forward if matches!(group, Some(75 | 77)) => {
-                    (i32::from(attributes[8]) << 7, 4)
+                    (i32::from(attributes[Attribute::ForwardSpeed]) << 7, 4)
                 }
-                Continuation::Forward => (i32::from(attributes[8]) << 8, 4),
-                Continuation::Backward if stance => (i32::from(attributes[18]) << 8, 6),
+                Continuation::Forward => (i32::from(attributes[Attribute::ForwardSpeed]) << 8, 4),
+                Continuation::Backward if stance => {
+                    (i32::from(attributes[Attribute::FightBackwardSpeed]) << 8, 6)
+                }
                 Continuation::Backward if matches!(group, Some(76 | 78)) => {
-                    (i32::from(attributes[8]) << 7, 6)
+                    (i32::from(attributes[Attribute::ForwardSpeed]) << 7, 6)
                 }
-                Continuation::Backward => (i32::from(attributes[9]) << 8, 6),
-                Continuation::Circle(strafe) => {
-                    (i32::from(attributes[83]) << 8, strafe.counter_shift())
-                }
+                Continuation::Backward => (i32::from(attributes[Attribute::BackwardSpeed]) << 8, 6),
+                Continuation::Circle(strafe) => (
+                    i32::from(attributes[Attribute::FightCircleSpeed]) << 8,
+                    strafe.counter_shift(),
+                ),
                 Continuation::Walk => {
                     let walk = if stance {
-                        attributes[19]
+                        attributes[Attribute::FightForwardWalk]
                     } else {
-                        attributes[12]
+                        attributes[Attribute::ForwardWalk]
                     };
                     let length = if walk == 0 {
-                        half(attributes[8])
+                        half(attributes[Attribute::ForwardSpeed])
                     } else {
                         i32::from(walk) << 8
                     };
@@ -874,22 +880,23 @@ impl ScriptWorld {
                 }
                 Continuation::WalkBackward => {
                     let walk = if stance {
-                        attributes[20]
+                        attributes[Attribute::FightBackwardWalk]
                     } else {
-                        attributes[13]
+                        attributes[Attribute::BackwardWalk]
                     };
                     let length = if walk == 0 {
-                        half(attributes[9])
+                        half(attributes[Attribute::BackwardSpeed])
                     } else {
                         i32::from(walk) << 8
                     };
                     (length, 6)
                 }
-                Continuation::Sidestep(strafe) => {
-                    (i32::from(attributes[10]) << 8, strafe.counter_shift())
-                }
+                Continuation::Sidestep(strafe) => (
+                    i32::from(attributes[Attribute::SideSpeed]) << 8,
+                    strafe.counter_shift(),
+                ),
             };
-            let turn = attributes[84];
+            let turn = attributes[Attribute::FightCircleDeltaAngle];
             let control = self.actors[index]
                 .control
                 .as_mut()

@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::collision_mesh::BodyProbe;
+use cyrus_script::Attribute;
 use cyrus_world::transform::Matrix;
 
 /// Inputs of the selected player's destination admission: the world's collision scene and the
@@ -46,10 +47,13 @@ impl ScriptWorld {
             return Ok(false);
         };
         let owner_index = self.resolve(owner)?;
-        if self.actors[owner_index].attributes[24] == 0 {
+        if self.actors[owner_index].attributes[Attribute::PlayerAlign] == 0 {
             return Ok(false);
         }
-        let admitted = if !special && selected_player == Some(id) && actor.attributes[1] & 1 != 0 {
+        let admitted = if !special
+            && selected_player == Some(id)
+            && actor.attributes[Attribute::Collide] & 1 != 0
+        {
             Some(admission.with_context(|| {
                 format!(
                     "world {} instance {index}: selected-player support-follow collision admission unavailable",

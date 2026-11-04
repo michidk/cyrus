@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Query two logical actors' current selected overlap shapes. Self never
@@ -230,7 +231,7 @@ impl ScriptWorld {
                 return Ok(0);
             }
         }
-        Ok(self.actors[id.index].attributes[6])
+        Ok(self.actors[id.index].attributes[Attribute::Weight])
     }
 
     fn preserve_overlap_position(&self, id: ScriptActorId) -> bool {
@@ -255,8 +256,8 @@ impl ScriptWorld {
         self.resolve(other)?;
         self.require_model_identity(data)?;
         if id == other
-            || self.actors[id.index].attributes[26] != 0
-            || self.actors[other.index].attributes[26] != 0
+            || self.actors[id.index].attributes[Attribute::Slave] != 0
+            || self.actors[other.index].attributes[Attribute::Slave] != 0
         {
             return Ok(OrdinaryOverlapMotion::NoContact);
         }
@@ -272,7 +273,7 @@ impl ScriptWorld {
             && (27..=32).contains(&control.living_state)
             && self.actors[id.index].model.support.actor == Some(other);
         let separation = self.query_ordinary_actor_overlap(id, other, data)?;
-        if separation > 0 && self.actors[other.index].attributes[1] & 8 != 0 {
+        if separation > 0 && self.actors[other.index].attributes[Attribute::Collide] & 8 != 0 {
             self.actors[other.index]
                 .control
                 .as_mut()
@@ -371,7 +372,7 @@ impl ScriptWorld {
 
 impl ScriptWorld {
     /// Whether the airborne landing branch of the actor-pair response is taken, per preservation
-    /// player.md: the actor falls, the other actor has bounce power (attribute 98), the fall from
+    /// player.md: the actor falls, the other actor has bounce power (`attr_bounce_power`), the fall from
     /// its retained origin is at least `[game] fall_bounce_height` map units, and its positive Y
     /// extent is positive. A missing installed height is an explicit error, not a default.
     fn landing_branch_applies(&self, id: ScriptActorId, other: ScriptActorId) -> Result<bool> {
@@ -379,7 +380,9 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary overlap control unavailable")?;
-        if control.falling_state == 0 || self.actors[other.index].attributes[98] == 0 {
+        if control.falling_state == 0
+            || self.actors[other.index].attributes[Attribute::BouncePower] == 0
+        {
             return Ok(false);
         }
         let bounce = self
@@ -474,7 +477,7 @@ impl ScriptWorld {
             self.world,
             id.index
         );
-        if self.actors[id.index].attributes[26] != 0 {
+        if self.actors[id.index].attributes[Attribute::Slave] != 0 {
             return Ok(OrdinaryOverlapMotion::NoContact);
         }
         self.actors[id.index]
@@ -545,7 +548,7 @@ impl ScriptWorld {
     ) -> Result<OrdinaryOverlapPass> {
         use cyrus_collision::candidates::{CandidateOwner, ModelInstance};
         self.require_collision_query(id, prepared, scene, data)?;
-        if self.actors[id.index].attributes[26] != 0 {
+        if self.actors[id.index].attributes[Attribute::Slave] != 0 {
             return Ok(OrdinaryOverlapPass::Complete {
                 needs_polygon_repair: false,
             });

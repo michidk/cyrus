@@ -410,7 +410,7 @@ fn runtime_candidates_share_static_order_and_keep_live_model_identity_separate()
         }),
         ordinary_excluded: false,
         animation_excluded: false,
-        attribute_55: 0,
+        no_collide: 0,
         static_model_path: true,
         collision_flags: 4,
     };

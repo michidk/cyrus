@@ -11,6 +11,7 @@ use crate::player::{
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
+use cyrus_script::Attribute;
 use cyrus_world::animation::AnimationSound;
 
 #[derive(Clone)]
@@ -104,7 +105,7 @@ impl ScriptWorld {
             let idle = world.globals.prepare_player_idle(
                 control.rope_attached,
                 group,
-                actor.attributes[6],
+                actor.attributes[Attribute::Weight],
                 random,
             )?;
             if let Some(group) = idle {
@@ -192,7 +193,7 @@ impl ScriptWorld {
                     Some(super::super::ActivationAnimation { group }),
                     control.combat_death_default.is_some(),
                     control.weapon_drawn,
-                    actor.attributes[110],
+                    actor.attributes[Attribute::HoldingWeapon],
                     inputs
                         .hud
                         .map(|hud| hud.inventory_ready())
@@ -208,7 +209,7 @@ impl ScriptWorld {
                     .as_ref()
                     .is_some_and(|combat| combat.flags & 4 != 0);
             ensure!(
-                world.actors[id.index].attributes[110] == 0,
+                world.actors[id.index].attributes[Attribute::HoldingWeapon] == 0,
                 "player controller swimmer actor unsupported"
             );
             let action = select_sheathed_action(
@@ -356,7 +357,7 @@ impl ScriptWorld {
             animation.playback.current_group(),
             animation.playback.exit_reached(),
         );
-        let attribute_11 = actor.attributes[11];
+        let step_type = actor.attributes[Attribute::StepType];
         let control = actor
             .control
             .as_mut()
@@ -374,7 +375,7 @@ impl ScriptWorld {
                 .for_each(|byte| *byte &= !3);
             return Ok(());
         }
-        let step_hold = attribute_11 == 0 || (control.movement_flags >> 4) & 3 == 3;
+        let step_hold = step_type == 0 || (control.movement_flags >> 4) & 3 == 3;
         if step_hold && matches!(group, Some(18 | 30)) && !exit_reached {
             control.directional_state[0] |= 3;
             control.jump_window = 0;
@@ -599,7 +600,7 @@ impl ScriptWorld {
                 .map(|_| super::super::ActivationAnimation { group }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             inputs
                 .hud
                 .map(|hud| hud.inventory_ready())
@@ -779,15 +780,7 @@ impl ScriptWorld {
         );
         self.spatial(id)
             .context("player movement update requires logical entry pose")?;
-        let step_index = self
-            .attribute_names
-            .iter()
-            .position(|name| name.eq_ignore_ascii_case("attr_step_type"))
-            .context("player movement: installed attr_step_type absent")?;
-        let step_type = *self.actors[index]
-            .attributes
-            .get(step_index)
-            .context("player movement: attr_step_type outside actor record")?;
+        let step_type = self.actors[index].attributes[Attribute::StepType];
         let startup =
             WalkingStartup::new(step_type).context("player movement: unsupported step type")?;
         let movement = self.actors[index]
@@ -824,8 +817,8 @@ impl ScriptWorld {
         Ok(())
     }
     /// The selected player's scripted step check: the support query at the position one step
-    /// ahead (`WalkForward`: attribute 12 plus the front body extent), behind (`WalkBackward`:
-    /// attribute 13 plus the rear extent) or to the side (`MoveLeft`/`MoveRight`: attribute 10
+    /// ahead (`WalkForward`: `attr_forward_walk` plus the front body extent), behind (`WalkBackward`:
+    /// `attr_backward_walk` plus the rear extent) or to the side (`MoveLeft`/`MoveRight`: `attr_side_speed`
     /// plus the lateral body extent), without moving the player. The admission is the forward
     /// walking admission applied to that probe, which is inferred.
     pub fn player_step_clear(
@@ -838,10 +831,10 @@ impl ScriptWorld {
         let index = self.resolve(id)?;
         let shape = self.ordinary_collision_shape(id)?;
         let (attribute, extent, offset_axis, reverse) = match direction {
-            Forward => (12, shape.positive_extent[2], 2, false),
-            Backward => (13, shape.negative_extent[2], 2, true),
-            Left => (10, shape.negative_extent[0], 0, true),
-            Right => (10, shape.positive_extent[0], 0, false),
+            Forward => (Attribute::ForwardWalk, shape.positive_extent[2], 2, false),
+            Backward => (Attribute::BackwardWalk, shape.negative_extent[2], 2, true),
+            Left => (Attribute::SideSpeed, shape.negative_extent[0], 0, true),
+            Right => (Attribute::SideSpeed, shape.positive_extent[0], 0, false),
         };
         let step = i32::from(self.actors[index].attributes[attribute])
             .wrapping_add(extent)
@@ -908,7 +901,7 @@ impl ScriptWorld {
                 && control.directional_state.iter().all(|flags| flags & 3 == 0),
             "player forward query: ordinary grounded state required"
         );
-        let collision = actor.attributes[1];
+        let collision = actor.attributes[Attribute::Collide];
         let spatial = self.spatial(id)?;
         ensure!(
             spatial.parent.is_none(),
@@ -1039,25 +1032,10 @@ impl ScriptWorld {
             .as_ref()
             .context("walking definition unavailable")?
             .clone();
-        let attribute = |name: &str| -> Result<u8> {
-            let index = self
-                .attribute_names
-                .iter()
-                .position(|installed| installed.eq_ignore_ascii_case(name))
-                .with_context(|| {
-                    format!("walking attribute {name}: installed SOUP definition absent")
-                })?;
-            self.actors[id.index]
-                .attributes
-                .get(index)
-                .copied()
-                .with_context(|| {
-                    format!("walking attribute {name}: index {index} outside actor record")
-                })
-        };
-        definition.forward_walk = attribute("attr_forward_walk")?;
-        definition.forward_speed = attribute("attr_forward_speed")?;
-        definition.step_type = attribute("attr_step_type")?;
+        let attributes = &self.actors[id.index].attributes;
+        definition.forward_walk = attributes[Attribute::ForwardWalk];
+        definition.forward_speed = attributes[Attribute::ForwardSpeed];
+        definition.step_type = attributes[Attribute::StepType];
         ensure!(
             definition.step_type == 1,
             "walking live step type unsupported"

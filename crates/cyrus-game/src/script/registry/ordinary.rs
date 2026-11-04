@@ -4,6 +4,7 @@ use crate::clock::{ClockStep, SimulationClock, bios_tick};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
+use cyrus_script::Attribute;
 use cyrus_world::{animation::AnimationRequest, sound::SoundCue};
 
 /// Current presentation view in original Q8 coordinates, tied to its world asset.
@@ -230,8 +231,8 @@ impl ScriptWorld {
             if control.killed {
                 continue;
             }
-            if actor.attributes[26] != 0
-                && if actor.attributes[25] == 0 {
+            if actor.attributes[Attribute::Slave] != 0
+                && if actor.attributes[Attribute::Master] == 0 {
                     self.updates.disable_slaves
                 } else {
                     self.updates.disable_master_slaves
@@ -349,7 +350,7 @@ impl ScriptWorld {
                     .expect("admitted ordinary control");
                 anyhow::ensure!(
                     (control.queued_motion == 0 && control.falling_state == 0)
-                        || self.actors[id.index].attributes[1] & 4 != 0
+                        || self.actors[id.index].attributes[Attribute::Collide] & 4 != 0
                         // The selected-player edge service runs while falling and
                         // deliberately hands the actor back to the controller.
                         || (selected_player && control.falling_state != 0),
@@ -359,7 +360,7 @@ impl ScriptWorld {
                 // ordinary script stages, but has no movement or collision query
                 // this update. Require scene data whenever collision work is
                 // actually admitted (all nonplayers and controller-driven input).
-                let collision = if self.actors[id.index].attributes[1] != 0
+                let collision = if self.actors[id.index].attributes[Attribute::Collide] != 0
                     && (!selected_player || inputs.player_controller.is_some())
                     && !on_rope
                 {
@@ -433,7 +434,10 @@ impl ScriptWorld {
                     let settings = &query.scene.settings;
                     let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
                         let attributes = &self.actors[id.index].attributes;
-                        (u32::from(attributes[22]), u32::from(attributes[21]))
+                        (
+                            u32::from(attributes[Attribute::FightTurnAccel]),
+                            u32::from(attributes[Attribute::FightTurnSpeed]),
+                        )
                     } else {
                         (settings.turn_speed, settings.turn_max_speed)
                     };
@@ -522,7 +526,7 @@ impl ScriptWorld {
                                         }),
                                         control.combat_death_default.is_some(),
                                         control.weapon_drawn,
-                                        actor.attributes[110],
+                                        actor.attributes[Attribute::HoldingWeapon],
                                         true,
                                         shell,
                                     );
@@ -565,7 +569,7 @@ impl ScriptWorld {
                     });
                     self.continue_ordinary_motion(id, inputs, query, sounds)?;
                 }
-                if self.actors[id.index].attributes[1] != 0 && !on_rope {
+                if self.actors[id.index].attributes[Attribute::Collide] != 0 && !on_rope {
                     let scene = anyhow::Context::context(
                         scene,
                         "ordinary late collision scene unavailable",

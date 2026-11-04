@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
+use cyrus_script::Attribute;
 
 /// A class-two slide decision in Q8 distance and 1/2048-turn headings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -221,9 +222,9 @@ impl ScriptWorld {
             origin.angles[1],
             desired,
             actor.attributes[if inputs.holding_weapon || inputs.combat_active {
-                21
+                Attribute::FightTurnSpeed
             } else {
-                15
+                Attribute::TurnSpeed
             }],
             inputs.frame_scale,
             inputs.holding_weapon,
@@ -293,13 +294,13 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
         let attribute = match group {
-            Some(18 | 30 | 142) => 8,
-            Some(19 | 143) => 9,
-            Some(20 | 21) => 12,
-            Some(22 | 23) => 13,
-            Some(24..=27) => 10,
-            Some(31) => 19,
-            Some(92 | 93) => 17,
+            Some(18 | 30 | 142) => Attribute::ForwardSpeed,
+            Some(19 | 143) => Attribute::BackwardSpeed,
+            Some(20 | 21) => Attribute::ForwardWalk,
+            Some(22 | 23) => Attribute::BackwardWalk,
+            Some(24..=27) => Attribute::SideSpeed,
+            Some(31) => Attribute::FightForwardWalk,
+            Some(92 | 93) => Attribute::FightForwardSpeed,
             _ => return 0,
         };
         actor.attributes[attribute]

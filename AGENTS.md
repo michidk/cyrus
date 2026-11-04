@@ -205,6 +205,13 @@ untracked working memory. Each crate has a `README.md` with its commands.
 - Document public APIs with their invariants, units, and provenance where
   applicable. Use explicit names that make the code readable without tracing
   unrelated modules.
+- Use the real names of engine fields, never bare indices or placeholder
+  names such as `attr_31`. Actor attributes go through the typed
+  `cyrus_script::Attribute`, named after the installed `SOUP386.DEF`. Translate
+  installed names or indices to typed values once, where the data enters cyrus,
+  and keep code, tests, comments and errors typed and named after that. Raw
+  indices remain only where the index itself is data, such as a script's
+  `GetAttribute` argument or the control port's `set_attribute`.
 - Delete dead and commented-out code. Give each TODO an owner or an issue.
   Keep rustfmt and clippy green; explain every lint allowance.
 - Test contracts through public interfaces. Tests requiring an unavailable

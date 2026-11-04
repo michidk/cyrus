@@ -33,14 +33,8 @@ fn source(capacity: u32, disabled: bool) -> Effects {
 fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
     for (capacity, disabled) in [(2, false), (1, false), (0, false), (2, true)] {
         let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
-            for (index, name, value) in [(3, "health", 40), (105, "skip_death", 1)] {
-                scripts.definition.attributes[index] = name.into();
-                scripts
-                    .actors
-                    .get_mut("CYRUS")
-                    .unwrap()
-                    .attributes
-                    .insert(name.into(), value);
+            for (attribute, value) in [(Attribute::Health, 40), (Attribute::PlayerType, 1)] {
+                scripts.actors.get_mut("CYRUS").unwrap().attributes[attribute] = value;
             }
             let function_id = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
@@ -736,14 +730,8 @@ fn automatic_model_phase_keeps_initialization_events_when_later_admission_fails(
 #[test]
 fn selected_death_animation_events_allocate_before_the_death_controller_effect() {
     let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
-        for (index, name, value) in [(3, "health", 40), (105, "skip_death", 1)] {
-            scripts.definition.attributes[index] = name.into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert(name.into(), value);
+        for (attribute, value) in [(Attribute::Health, 40), (Attribute::PlayerType, 1)] {
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[attribute] = value;
         }
         let function_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {

@@ -12,10 +12,11 @@
 //! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Walk toward a local Q8 horizontal destination with a Q8 arrival tolerance.
-    /// Preservation's coordinate-walking rule selects WalkForward at attribute 93
+    /// Preservation's coordinate-walking rule selects WalkForward at `attr_node_run`
     /// zero and MoveForward otherwise. An overshoot restores playback, displayed
     /// frame, packed movement counters and local position before snapping X/Z.
     /// Movement direction, collision responses and sound effects remain owned by
@@ -30,7 +31,7 @@ impl ScriptWorld {
     ) -> Result<i32> {
         let result = (|| -> Result<i32> {
             let index = self.resolve(id)?;
-            let reads_query_position = self.actors[index].attributes[26] != 0
+            let reads_query_position = self.actors[index].attributes[Attribute::Slave] != 0
                 || self.spatial(id)?.linked_position.is_some();
             let position = self.spatial(id)?.local.position;
             let movement_flags = self.actors[index]
@@ -45,7 +46,7 @@ impl ScriptWorld {
                     .context("coordinate walking animation unavailable")?;
                 let checkpoint = animation.playback.checkpoint()?;
                 let frame = animation.frame;
-                let movement = if self.actors[index].attributes[93] == 0 {
+                let movement = if self.actors[index].attributes[Attribute::NodeRun] == 0 {
                     super::spacing::OrdinaryMovement::WalkForward
                 } else {
                     super::spacing::OrdinaryMovement::Forward
@@ -109,7 +110,7 @@ impl ScriptWorld {
     /// Map validation precedes shared pause consumption. A consumed pause returns one
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
     /// actor owners. Phases one and 27 support held-node arrival and facing,
-    /// including attribute-90 delay admission. Phase nine retains countdown and idle
+    /// including `attr_node_idle` delay admission. Phase nine retains countdown and idle
     /// requests on the session random stream. Phase two walks and claims held nodes;
     /// phase eight selects routes and phases 11/21/22 continue direct walking.
     /// Initialization, jump routes and hit reactions remain unavailable. Requests require
@@ -216,7 +217,7 @@ impl ScriptWorld {
     ) -> Result<i32> {
         let index = self.resolve(id)?;
         self.validate_walk_navigation(id)?;
-        self.actors[index].attributes[94] = 1;
+        self.actors[index].attributes[Attribute::NodeInUse] = 1;
         fn control(world: &mut ScriptWorld, index: usize) -> &mut super::ActorControlState {
             world.actors[index]
                 .control
@@ -372,7 +373,7 @@ impl ScriptWorld {
         if control.falling_state != 0 || control.queued_motion != 0 || ledge_direction {
             shared.point_phase = u8::from(control.navigation.next != -1);
             let actor = &mut self.actors[index];
-            actor.attributes[1] = 13;
+            actor.attributes[Attribute::Collide] = 13;
             actor
                 .control
                 .as_mut()
@@ -403,7 +404,7 @@ impl ScriptWorld {
         if control.death_selector == 7 {
             control.death_selector = 0;
         }
-        actor.attributes[1] = 13;
+        actor.attributes[Attribute::Collide] = 13;
         Ok(0)
     }
 
@@ -425,12 +426,20 @@ impl ScriptWorld {
         let speed = if speed != 0 {
             speed
         } else {
-            [8, 19, 17, 12, 9, 13, 10]
-                .into_iter()
-                .map(|attribute| self.actors[index].attributes[attribute])
-                .filter(|&value| value != 0)
-                .min()
-                .unwrap_or(8)
+            [
+                Attribute::ForwardSpeed,
+                Attribute::FightForwardWalk,
+                Attribute::FightForwardSpeed,
+                Attribute::ForwardWalk,
+                Attribute::BackwardSpeed,
+                Attribute::BackwardWalk,
+                Attribute::SideSpeed,
+            ]
+            .into_iter()
+            .map(|attribute| self.actors[index].attributes[attribute])
+            .filter(|&value| value != 0)
+            .min()
+            .unwrap_or(8)
         };
         let scale = inputs
             .frame_scale
@@ -573,7 +582,7 @@ impl ScriptWorld {
             navigation.map.is_some() || self.globals.native_command.point_phase == 0,
             "ordinary combat routed point navigation unsupported: map selection"
         );
-        actor.attributes[1] = 12;
+        actor.attributes[Attribute::Collide] = 12;
         let transition = control.collision_transition_flags & 1 != 0;
         let (age, stable) = (
             control.collision_response_age,
@@ -621,7 +630,7 @@ impl ScriptWorld {
             // The back-off after a blocked route: one step backward, then wait for the default
             // animation group.
             self.release_held_walk_nodes(id)?;
-            let movement = if self.actors[index].attributes[93] == 0 {
+            let movement = if self.actors[index].attributes[Attribute::NodeRun] == 0 {
                 super::spacing::OrdinaryMovement::WalkBackward
             } else {
                 super::spacing::OrdinaryMovement::Backward
@@ -750,7 +759,7 @@ impl ScriptWorld {
                     )?;
                     if facing == 0 {
                         self.globals.native_command.point_phase = 2;
-                        let delay = self.actors[index].attributes[90];
+                        let delay = self.actors[index].attributes[Attribute::NodeIdle];
                         if delay != 0 {
                             let random = random
                                 .context("point facing requires shared engine random stream")?;
@@ -804,7 +813,7 @@ impl ScriptWorld {
         if control.death_selector == 7 {
             control.death_selector = 0;
         }
-        actor.attributes[1] = 13;
+        actor.attributes[Attribute::Collide] = 13;
         Ok(0)
     }
 
@@ -857,7 +866,7 @@ impl ScriptWorld {
         let destination = destination as i32;
         if destination == navigation.current {
             self.release_held_walk_nodes(id)?;
-            if self.actors[id.index].attributes[95] != 0 {
+            if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
                 self.globals.native_command.point_phase = 21;
             } else if self.point_visibility(id, point, inputs)? {
                 self.globals.native_command.point_phase = 22;
@@ -896,7 +905,7 @@ impl ScriptWorld {
             return self.complete_point(id, 0).map(Some);
         }
         self.release_held_walk_nodes(id)?;
-        if self.actors[id.index].attributes[95] != 0 {
+        if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
             self.globals.native_command.point_phase = 21;
             return Ok(None);
         }
@@ -917,7 +926,7 @@ impl ScriptWorld {
             self.globals.native_command.point_phase = 0;
             return Ok(None);
         }
-        self.actors[id.index].attributes[1] = 13;
+        self.actors[id.index].attributes[Attribute::Collide] = 13;
         if self.actors[id.index]
             .control
             .as_ref()

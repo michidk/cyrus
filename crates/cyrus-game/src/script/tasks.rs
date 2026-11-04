@@ -269,7 +269,7 @@ pub(super) struct FrameWaitCall {
     pub player: Result<Option<(i32, i32, u8)>, String>,
 }
 
-/// The session's group channels and the receiver's channel (attribute 29) for `SyncWithGroup`.
+/// The session's group channels and the receiver's channel (`attr_group`) for `SyncWithGroup`.
 pub(super) struct GroupSyncCall<'a> {
     pub state: &'a mut super::GroupSync,
     pub actor_index: usize,
@@ -572,7 +572,7 @@ enum Task {
     Strafe(super::locomotion::Strafe),
     Forward,
     WalkForward,
-    /// The selected player's attack lunge: `MoveForward`'s step with attribute 16 and no group request.
+    /// The selected player's attack lunge: `MoveForward`'s step with `attr_fight_lunge_speed` and no group request.
     Lunge,
     Location,
     Duration,
@@ -1532,7 +1532,7 @@ impl Task {
                         return Ok(!continues(duration, elapsed));
                     }
                     *motion.called |= 8;
-                    // WalkBackward with a zero step length instead moves half of attribute 9, unscaled.
+                    // WalkBackward with a zero step length instead moves half of `attr_backward_speed`, unscaled.
                     let step_distance = if walking && step == 0 {
                         i32::from(state.step_attribute >> 1)
                     } else {

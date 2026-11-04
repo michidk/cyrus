@@ -1,6 +1,7 @@
 //! Falling continuation requests precede the shared vertical writer.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// What the selected player's landing needs beyond the nonplayer response: the health services
 /// publish through the HUD and draw random numbers, and a steep support changes the fatal path.
@@ -130,8 +131,8 @@ pub fn ordinary_fall_entry(
 
 /// Original bookkeeping for a support-miss entry, after its separate admission.
 /// Local Y and the returned origin use Q8; the attribute is in map units.
-pub fn ordinary_fall_origin(local_y: i32, attribute_32: u8) -> (i32, u8) {
-    (local_y.wrapping_add(i32::from(attribute_32) * 256), 30)
+pub fn ordinary_fall_origin(local_y: i32, jump_height: u8) -> (i32, u8) {
+    (local_y.wrapping_add(i32::from(jump_height) * 256), 30)
 }
 
 /// Nonplayer health uses a wrapping signed addition followed by byte clamping.
@@ -163,7 +164,7 @@ impl ScriptWorld {
 
     /// Apply the nonplayer health service, including death dispatch.
     /// An armed receiver dies through the contact death dispatch. The selected player forwards to its own death-owning
-    /// health with no source. Combat mode bit two must be supplied when attribute 97 requires
+    /// health with no source. Combat mode bit two must be supplied when `attr_npc` requires
     /// that predicate.
     pub fn change_ordinary_health(
         &mut self,
@@ -200,7 +201,7 @@ impl ScriptWorld {
         self.require_model_identity(data)?;
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
-        if actor.attributes[120] != 0 {
+        if actor.attributes[Attribute::Invulnerable] != 0 {
             return Ok(false);
         }
         let control = actor
@@ -219,11 +220,11 @@ impl ScriptWorld {
                 .map(|_| super::super::ActivationAnimation { group }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );
-        if actor.attributes[97] != 0
+        if actor.attributes[Attribute::Npc] != 0
             && !holding
             && !combat_mode_bit_two.context("ordinary health combat mode predicate unavailable")?
         {
@@ -234,14 +235,14 @@ impl ScriptWorld {
             self.apply_selected_death_health(id, change, None, inputs, Some(random), sounds)?;
             return Ok(true);
         }
-        let health = ordinary_health_value(actor.attributes[3], change);
+        let health = ordinary_health_value(actor.attributes[Attribute::Health], change);
         let death_group =
             if control.falling_state != 0 || matches!(group, Some(114 | 116 | 130 | 131)) {
                 74
             } else {
                 134
             };
-        self.actors[index].attributes[3] = health;
+        self.actors[index].attributes[Attribute::Health] = health;
         if health == 0 && holding {
             // An armed receiver dies through the contact death dispatch with selector zero.
             if self.updates.animation_system {
@@ -479,7 +480,7 @@ impl ScriptWorld {
             }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );
@@ -640,7 +641,7 @@ impl ScriptWorld {
             Some(super::super::ActivationAnimation { group: Some(group) }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );
@@ -667,8 +668,10 @@ impl ScriptWorld {
                 Some(force_group)
             }
             OrdinaryFallEntry::Start { force_group } => {
-                let (origin, timer) =
-                    ordinary_fall_origin(self.spatial(id)?.local.position[1], actor.attributes[32]);
+                let (origin, timer) = ordinary_fall_origin(
+                    self.spatial(id)?.local.position[1],
+                    actor.attributes[Attribute::JumpHeight],
+                );
                 let control = self.actors[index]
                     .control
                     .as_mut()
@@ -761,12 +764,14 @@ impl ScriptWorld {
             self.world
         );
         anyhow::ensure!(
-            actor.attributes[107] == 0,
+            actor.attributes[Attribute::FallHold] == 0,
             "world {} instance {index}: fall-disabled attribute excludes entry",
             self.world
         );
-        let (origin, timer) =
-            ordinary_fall_origin(self.spatial(id)?.local.position[1], actor.attributes[32]);
+        let (origin, timer) = ordinary_fall_origin(
+            self.spatial(id)?.local.position[1],
+            actor.attributes[Attribute::JumpHeight],
+        );
         let control = self.actors[index]
             .control
             .as_mut()
@@ -824,7 +829,7 @@ impl ScriptWorld {
                 }),
                 control.combat_death_default.is_some(),
                 control.weapon_drawn,
-                actor.attributes[110],
+                actor.attributes[Attribute::HoldingWeapon],
                 environment.item_system_ready,
                 environment.shell_execution,
             );

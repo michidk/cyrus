@@ -8,6 +8,7 @@ use cyrus_collision::{
     candidates::CollisionCandidates, collision_mesh::BodyProbe, collision_world::ResidualBodyQuery,
     ground::SupportSource,
 };
+use cyrus_script::Attribute;
 
 /// Forward offsets of the scan's two passes, in local Q8.
 const LEDGE_SCAN_PASSES: [i32; 2] = [0, 6144];
@@ -40,7 +41,7 @@ impl ScriptWorld {
             .as_ref()
             .context("edge service control unavailable")?;
         if environment.selected_player != Some(id)
-            || actor.attributes[105] == 1
+            || actor.attributes[Attribute::PlayerType] == 1
             || control.torch_burning != 0
             || self.ledge_blocked(index, environment)
         {
@@ -97,7 +98,7 @@ impl ScriptWorld {
             .as_ref()
             .context("edge entry control unavailable")?;
         if environment.selected_player != Some(id)
-            || actor.attributes[105] == 1
+            || actor.attributes[Attribute::PlayerType] == 1
             || control.torch_burning != 0
             || self.ledge_blocked(index, environment)
         {
@@ -156,7 +157,7 @@ impl ScriptWorld {
     ) -> Result<bool> {
         let index = self.resolve(id)?;
         let shape = self.ordinary_collision_shape(id)?;
-        let reach = i32::from(self.actors[index].attributes[10]);
+        let reach = i32::from(self.actors[index].attributes[Attribute::SideSpeed]);
         let width = if right {
             shape.positive_extent[0].wrapping_add(reach)
         } else {
@@ -232,7 +233,7 @@ impl ScriptWorld {
             }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         );
@@ -257,7 +258,7 @@ impl ScriptWorld {
         let airborne = control.falling_state != 0 || control.queued_motion != 0;
         // The wrapping step product uses the first vertical factor.
         let step = (post.wrapping_mul(512).wrapping_sub(256)).min(
-            i32::from(actor.attributes[32])
+            i32::from(actor.attributes[Attribute::JumpHeight])
                 .wrapping_mul(super::vertical::ordinary_vertical_factor(0)?)
                 .wrapping_mul(i32::try_from(fine_ticks)?.wrapping_add(2)),
         );

@@ -3,6 +3,7 @@
 use super::{GameHost, ScriptActorId};
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 struct BounceActor<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -111,8 +112,8 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     fn torch_burning(&self) -> bool {
         self.control().torch_burning != 0
     }
-    fn attribute_32(&self) -> u8 {
-        self.host.registry.actors[self.id.index].attributes[32]
+    fn jump_height(&self) -> u8 {
+        self.host.registry.actors[self.id.index].attributes[Attribute::JumpHeight]
     }
     fn clear_motion(&mut self) {
         let control = self.control_mut();
@@ -128,7 +129,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     }
     fn begin_fall(&mut self) {
         let (position, _) = self.pose();
-        let attribute = self.attribute_32();
+        let attribute = self.jump_height();
         let (origin, timer) = super::falling::ordinary_fall_origin(position[1], attribute);
         let control = self.control_mut();
         control.fall_origin_y = origin;

@@ -1,5 +1,6 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
+use cyrus_script::Attribute;
 
 #[test]
 fn installed_island_flags_advance_through_ordinary_updates() {
@@ -380,7 +381,7 @@ fn installed_catacomb_duplicate_roots_select_first_source_list_match() {
     );
     let mut slaves = 0;
     for (index, actor) in world.actors().iter().enumerate() {
-        if actor.attributes()[26] == 3 {
+        if actor.attributes()[Attribute::Slave] == 3 {
             assert_eq!(
                 world.spatial(world.id(index).unwrap()).unwrap().parent,
                 Some(selected)
@@ -908,7 +909,7 @@ fn installed_viledog_wander_hook_consumes_random_without_walk_maps() {
         )
         .unwrap();
     assert_eq!(random.state(), 2524885223);
-    assert_eq!(world.actors()[index].attributes()[94], 1);
+    assert_eq!(world.actors()[index].attributes()[Attribute::NodeInUse], 1);
     assert_eq!(world.spatial(id).unwrap().local.position, before);
     assert!(world.actors()[index].failure().is_none());
 }
@@ -1138,7 +1139,7 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
     world.prepare_spatial().unwrap();
     let mut names = Vec::new();
     for index in 0..world.actors().len() {
-        if world.actors()[index].attributes()[14] == 0 {
+        if world.actors()[index].attributes()[Attribute::Combat] == 0 {
             continue;
         }
         let id = world.id(index).unwrap();

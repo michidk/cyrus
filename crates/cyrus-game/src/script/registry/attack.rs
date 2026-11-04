@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::attack_step_with_animation;
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Apply the d001 response after message intent clears. The order follows the
@@ -24,12 +25,13 @@ impl ScriptWorld {
         let selected = selected_player == Some(receiver);
 
         if !selected {
-            let required = self.actors[receiver_index].attributes[102];
-            if required != 0 && required != self.actors[sender_index].attributes[23] {
+            let required = self.actors[receiver_index].attributes[Attribute::VWeapon];
+            if required != 0 && required != self.actors[sender_index].attributes[Attribute::Weapon]
+            {
                 return Ok(());
             }
         }
-        if self.actors[receiver_index].attributes[97] != 0 {
+        if self.actors[receiver_index].attributes[Attribute::Npc] != 0 {
             let holding = self.spacing_weapon(receiver, inputs)?.1;
             let stance = self.actors[receiver_index]
                 .control
@@ -53,7 +55,7 @@ impl ScriptWorld {
             .actor_mut(receiver_index)?
             .local
             .position = moved;
-        let effect = i32::from(self.actors[receiver_index].attributes[86]);
+        let effect = i32::from(self.actors[receiver_index].attributes[Attribute::HitSound]);
         let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
         sounds(
             receiver,
@@ -157,9 +159,9 @@ impl ScriptWorld {
                 .action = -1;
         }
 
-        let damage_admitted = self.actors[receiver_index].attributes[102] == 0
-            || self.actors[sender_index].attributes[23]
-                == self.actors[receiver_index].attributes[102];
+        let damage_admitted = self.actors[receiver_index].attributes[Attribute::VWeapon] == 0
+            || self.actors[sender_index].attributes[Attribute::Weapon]
+                == self.actors[receiver_index].attributes[Attribute::VWeapon];
         if !damage_admitted {
             return Ok(());
         }
@@ -205,7 +207,7 @@ impl ScriptWorld {
             };
             self.apply_nonplayer_contact_health(receiver, change, environment)?;
         }
-        if self.actors[receiver_index].attributes[3] < 1 {
+        if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
             self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
             self.request_timed_combat_taunt(sender, 7, 0, inputs, random, sounds)?;
             let motion_kind = self.current_combat_motion(sender)?.kind;
@@ -220,7 +222,7 @@ impl ScriptWorld {
         // The original restores a charged (item 75) sender through the ordinary
         // chargeWeapon(0) swap after the damage response. Keep this after health
         // and death dispatch so a failed earlier service retains its writes.
-        if self.actors[sender_index].attributes[23] == 75 {
+        if self.actors[sender_index].attributes[Attribute::Weapon] == 75 {
             self.restore_charged_sender_weapon(sender, inputs)?;
         }
         let combat = self.actors[receiver_index]
@@ -263,10 +265,10 @@ impl ScriptWorld {
             // restoration service belongs to the hit sender, so that repair must
             // update the sender's weapon attribute even when the sender is not the
             // selected player owning the HUD view.
-            actors[sender_index].attributes[23] = weapon;
+            actors[sender_index].attributes[Attribute::Weapon] = weapon;
             Ok(())
         })?;
-        actors[sender_index].attributes[23] = 1;
+        actors[sender_index].attributes[Attribute::Weapon] = 1;
         hud.remove_item(75)?;
         hud.select_item(1)
     }
@@ -275,7 +277,7 @@ impl ScriptWorld {
     /// set. A nonplayer starts hit-reaction group 117; the selected player starts 117 or 118 by
     /// world-loop parity while holding a weapon or in combat stance (the drawn-weapon bit of its
     /// combat record), else 132 or 133. The selected player's health response is skipped while the
-    /// damage-suppression cheat is on. Otherwise the sender's attribute 96 is subtracted from the
+    /// damage-suppression cheat is on. Otherwise the sender's `attr_damage` is subtracted from the
     /// receiver's health (the selected player through its shared additive health), and below one
     /// a nonplayer requests taunt category six and either identity runs contact death with
     /// selector zero.
@@ -349,7 +351,7 @@ impl ScriptWorld {
         {
             return Ok(());
         }
-        let damage = i32::from(self.actors[sender_index].attributes[96]);
+        let damage = i32::from(self.actors[sender_index].attributes[Attribute::Damage]);
         if selected {
             self.apply_selected_additive_health(
                 receiver,
@@ -375,7 +377,7 @@ impl ScriptWorld {
             };
             self.apply_nonplayer_contact_health(receiver, damage.wrapping_neg(), environment)?;
         }
-        if self.actors[receiver_index].attributes[3] < 1 {
+        if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
             if !selected {
                 self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
             }
@@ -384,7 +386,7 @@ impl ScriptWorld {
         // Direct damage uses the same post-response charged-weapon restoration
         // as the scaled hit path. Keep it after health and death dispatch so
         // earlier service failures retain their writes.
-        if self.actors[sender_index].attributes[23] == 75 {
+        if self.actors[sender_index].attributes[Attribute::Weapon] == 75 {
             self.restore_charged_sender_weapon(sender, inputs)?;
         }
         Ok(())
@@ -644,7 +646,7 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Attribute 97 confines an attacker's impact response to holding a weapon or combat flag four.
+    /// `attr_npc` confines an attacker's impact response to holding a weapon or combat flag four.
     fn contact_impact_gated(
         &self,
         id: ScriptActorId,
@@ -665,12 +667,12 @@ impl ScriptWorld {
                 }),
             control.combat.is_some(),
             control.weapon_drawn,
-            attacker.attributes[110],
+            attacker.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         )
         .0;
-        Ok(attacker.attributes[97] != 0
+        Ok(attacker.attributes[Attribute::Npc] != 0
             && !holding
             && control
                 .combat
@@ -688,7 +690,7 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let effect = i32::from(self.actors[id.index].attributes[86]);
+        let effect = i32::from(self.actors[id.index].attributes[Attribute::HitSound]);
         let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
         sounds(
             id,
@@ -700,7 +702,7 @@ impl ScriptWorld {
                 start_index: None,
             },
         )?;
-        if self.actors[defender.index].attributes[3] == 0 {
+        if self.actors[defender.index].attributes[Attribute::Health] == 0 {
             return Ok(());
         }
         let damage = if self.actors[id.index]
@@ -726,7 +728,7 @@ impl ScriptWorld {
         } else {
             self.apply_nonplayer_contact_health(defender, damage.wrapping_neg(), environment)?;
         }
-        if self.actors[defender.index].attributes[3] == 0 {
+        if self.actors[defender.index].attributes[Attribute::Health] == 0 {
             self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
         }
         Ok(())
@@ -742,7 +744,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
-        if actor.attributes[120] != 0 {
+        if actor.attributes[Attribute::Invulnerable] != 0 {
             return Ok(());
         }
         let control = actor
@@ -759,12 +761,12 @@ impl ScriptWorld {
                 }),
             control.combat.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready,
             environment.shell_execution,
         )
         .0;
-        if actor.attributes[97] != 0
+        if actor.attributes[Attribute::Npc] != 0
             && !holding
             && control
                 .combat
@@ -777,8 +779,8 @@ impl ScriptWorld {
             environment.selected_player != Some(id),
             "selected contact health unavailable"
         );
-        self.actors[index].attributes[3] =
-            super::falling::ordinary_health_value(actor.attributes[3], change);
+        self.actors[index].attributes[Attribute::Health] =
+            super::falling::ordinary_health_value(actor.attributes[Attribute::Health], change);
         Ok(())
     }
 
@@ -865,7 +867,7 @@ impl ScriptWorld {
     /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
     /// response); the weapon-contact caller uses [`Self::dispatch_contact_death`] instead.
     /// Selector zero prefers group 122 when present, otherwise group 121; the selected player
-    /// does not consult its weapon (unarmed idle deaths end in either group). With attribute 69
+    /// does not consult its weapon (unarmed idle deaths end in either group). With `attr_death_type`
     /// clear, the selected player stores the group as the death override when none is set (its
     /// death controller starts the animation); a nonplayer force-starts it, stores death default
     /// 124/123 (releasing its walk nodes), sends `0xd002` to the first coordinator sharing its
@@ -899,7 +901,7 @@ impl ScriptWorld {
                 return Ok(());
             }
         }
-        if self.actors[index].attributes[69] == 0 {
+        if self.actors[index].attributes[Attribute::DeathType] == 0 {
             let animation = self.actors[index].animation.as_ref();
             let group = if selector == 0 && animation.is_some_and(|a| a.playback.has_group(122)) {
                 122

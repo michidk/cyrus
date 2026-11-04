@@ -9,6 +9,7 @@ use crate::script::camera::{
 };
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
+use cyrus_script::Attribute;
 
 /// Switch for the camera driver.
 #[derive(Resource, Debug, Default, Clone, Copy)]
@@ -118,7 +119,7 @@ impl ScriptWorld {
             .as_ref()
             .context("camera glide: selected player control unavailable")?;
         Ok(GlidePlayer {
-            holding_weapon: actor.attributes[110] != 0 || control.weapon_drawn,
+            holding_weapon: actor.attributes[Attribute::HoldingWeapon] != 0 || control.weapon_drawn,
             rope_attached: control.rope_attached,
         })
     }

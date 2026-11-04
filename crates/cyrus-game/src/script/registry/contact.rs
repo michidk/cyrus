@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::{actor_models::ActorModelCollision, distance::rounded_distance};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Dispatch the current motion's contact query without changing combat state.
@@ -179,7 +180,7 @@ impl ScriptWorld {
     /// checks current-motion orientation, first-motion three-dimensional range,
     /// then shared elevation. A nonzero candidate radius resolves its model point
     /// before orientation and uses horizontal distance with strict range/radius
-    /// boundaries. A nonzero attribute 126 instead tests the receiver's retained weapon tip
+    /// boundaries. A nonzero `attr_combat_radius_vhit` instead tests the receiver's retained weapon tip
     /// against the candidate's shifted model point and radius.
     pub fn combat_range_contact(
         &self,
@@ -202,11 +203,7 @@ impl ScriptWorld {
                 self.actor_model_point(candidate, data, statics, i32::from(profile.vertex))?
             };
             if profile.radius != 0
-                && *self.actors[candidate_index]
-                    .attributes
-                    .get(126)
-                    .context("candidate attribute 126 unavailable")?
-                    != 0
+                && self.actors[candidate_index].attributes[Attribute::CombatRadiusVhit] != 0
             {
                 // The sphere/segment query with both segment ends at the receiver's retained
                 // combat point: the point and radius shift right eight bits.

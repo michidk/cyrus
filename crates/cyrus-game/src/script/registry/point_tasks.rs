@@ -3,10 +3,7 @@
 use super::{GameHost, ScriptActorId};
 use crate::script::tasks::{FaceTarget, MoveTarget, PointHost, PointWrapper};
 use anyhow::{Context, Result};
-
-/// Attribute that gates every facing task: a receiver whose turn rate is zero cannot turn and
-/// completes at once.
-const TURN_RATE_ATTRIBUTE: usize = 15;
+use cyrus_script::Attribute;
 
 impl PointHost for GameHost<'_, '_, '_, '_> {
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
@@ -80,7 +77,8 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
-        if self.registry.actors[self.index].attributes[TURN_RATE_ATTRIBUTE] == 0 {
+        if self.registry.actors[self.index].attributes[Attribute::TurnSpeed] == 0 {
+            // A receiver that cannot turn completes every facing task at once.
             return Ok(0);
         }
         let inputs = self.registry.point_facing_inputs(id, self.inputs)?;

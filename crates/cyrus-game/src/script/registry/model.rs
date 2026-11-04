@@ -14,6 +14,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::actor_models::ActorModelCollision;
+use cyrus_script::Attribute;
 
 /// Selected geometry and its stored transform, independent of later logical movement.
 /// The captured source pose has eight fractional bits. Stored model position and
@@ -364,7 +365,7 @@ impl ScriptWorld {
             {
                 continue;
             }
-            if !selected.is_empty() && actor.attributes()[122] != 0 {
+            if !selected.is_empty() && actor.attributes()[Attribute::NonMoving] != 0 {
                 continue;
             }
             let allowed = self.animation_support_admitted(id, &selected)?;
@@ -386,7 +387,7 @@ impl ScriptWorld {
                     return Ok(());
                 }
                 let actor = &self.actors[id.index];
-                if actor.attributes[23] == 0
+                if actor.attributes[Attribute::Weapon] == 0
                     || actor
                         .model
                         .current
@@ -398,7 +399,7 @@ impl ScriptWorld {
                 let selected_player = self
                     .selected_player_index()
                     .context("weapon model selected player unavailable")?;
-                if id.index == selected_player && actor.attributes[105] == 1 {
+                if id.index == selected_player && actor.attributes[Attribute::PlayerType] == 1 {
                     return Ok(());
                 }
                 let hud = inputs.hud.context("weapon model inventory unavailable")?;
@@ -451,7 +452,7 @@ impl ScriptWorld {
                 .any(|&value| usize::from(value) == placement));
         }
         if let Some(actor) = support.actor
-            && self.actors[self.resolve(actor)?].attributes()[122] != 0
+            && self.actors[self.resolve(actor)?].attributes()[Attribute::NonMoving] != 0
         {
             return Ok(selected.iter().any(|&value| {
                 usize::from(value)
@@ -513,7 +514,7 @@ impl ScriptWorld {
                 })
                 .transpose()?
                 .flatten();
-            let position = (actor.attributes()[122] != 0)
+            let position = (actor.attributes()[Attribute::NonMoving] != 0)
                 .then(|| {
                     self.spatial(self.id(index)?)
                         .map(|spatial| spatial.local.position.map(|v| (v >> 8) as f32))
@@ -679,7 +680,7 @@ impl ScriptWorld {
                 static_radius.filter(|_| publish_geometry)
             };
             let actor = &self.actors[index];
-            let family_position = actor.attributes()[26] != 0;
+            let family_position = actor.attributes()[Attribute::Slave] != 0;
             if family_position {
                 ensure!(
                     self.spatial(id)?.parent.is_some() && self.spatial(id)?.effective.is_some(),
@@ -693,13 +694,15 @@ impl ScriptWorld {
             } else {
                 self.linked_model_position(index)?
             };
-            let water_surface =
-                if family_position || linked_position.is_some() || actor.attributes()[1] & 4 == 0 {
-                    None
-                } else {
-                    let surface = actor.surface.context("model surface unavailable")?;
-                    matches!(surface, 1..=5 | 11).then_some(surface)
-                };
+            let water_surface = if family_position
+                || linked_position.is_some()
+                || actor.attributes()[Attribute::Collide] & 4 == 0
+            {
+                None
+            } else {
+                let surface = actor.surface.context("model surface unavailable")?;
+                matches!(surface, 1..=5 | 11).then_some(surface)
+            };
             if water_surface.is_some() {
                 ensure!(
                     inputs.is_some(),
@@ -707,7 +710,7 @@ impl ScriptWorld {
                     self.world
                 );
                 ensure!(
-                    actor.attributes()[26] == 0
+                    actor.attributes()[Attribute::Slave] == 0
                         && self.spatial(id)?.parent.is_none()
                         && self.spatial(id)?.linked_position.is_none(),
                     "world {} instance {index}: attached water model position unavailable",
@@ -716,7 +719,7 @@ impl ScriptWorld {
             }
             let selected = self.selected_player_index() == Some(index);
             if selected
-                && self.actors[index].attributes()[105] == 1
+                && self.actors[index].attributes()[Attribute::PlayerType] == 1
                 && let Some(1..=4) = water_surface
             {
                 self.actors[index]
@@ -1123,10 +1126,10 @@ impl ScriptWorld {
         if control.killed {
             return Ok(());
         }
-        if control.combat.is_none() && actor.attributes[110] == 0 {
+        if control.combat.is_none() && actor.attributes[Attribute::HoldingWeapon] == 0 {
             return Ok(());
         }
-        let item = u16::from(actor.attributes[23]);
+        let item = u16::from(actor.attributes[Attribute::Weapon]);
         let definition = self
             .weapons
             .get(&item)
@@ -1191,7 +1194,7 @@ impl ScriptWorld {
 
     /// Contacts of the placed actors' static models with the startup settling probe at a Q8
     /// position, in actor order. A candidate has a prepared model of its own, is visible and not
-    /// excluded from updates, and has attribute 55 clear; its pose is the initial placement.
+    /// excluded from updates, and has `attr_no_collide` clear; its pose is the initial placement.
     pub fn startup_actor_contacts(
         &self,
         scene: &crate::player::data::PlayerScene,
@@ -1217,7 +1220,7 @@ impl ScriptWorld {
             if actor.placement().is_none()
                 || control.hidden
                 || control.object_update_excluded
-                || actor.attributes[55] != 0
+                || actor.attributes[Attribute::NoCollide] != 0
                 || !actor.model.prepared
                 || actor.model.static_radius.is_none()
                 || !models.has_model(index)
@@ -1311,7 +1314,7 @@ impl ScriptWorld {
                 // Player-role exclusion was applied before reading the current model.
                 ordinary_excluded: false,
                 animation_excluded: control.hidden,
-                attribute_55: actor.attributes()[55],
+                no_collide: actor.attributes()[Attribute::NoCollide],
                 static_model_path: actor.model.static_radius.is_some(),
                 collision_flags: flags,
             });

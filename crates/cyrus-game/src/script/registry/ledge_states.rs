@@ -5,6 +5,7 @@
 //! selected jump entry.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
 /// of the scan and the frame scale that sets the turn rate of a ledge turn.
@@ -49,7 +50,7 @@ impl ScriptWorld {
             .as_ref()
             .context("ledge transition control unavailable")?;
         if environment.selected_player != Some(id)
-            || actor.attributes[105] == 1
+            || actor.attributes[Attribute::PlayerType] == 1
             || !(10..=19).contains(&control.living_state)
         {
             return Ok(0);
@@ -157,7 +158,7 @@ impl ScriptWorld {
     ) -> Result<u8> {
         let index = self.resolve(id)?;
         if environment.selected_player != Some(id)
-            || self.actors[index].attributes[105] == 1
+            || self.actors[index].attributes[Attribute::PlayerType] == 1
             || self.living(index) != 15
         {
             return Ok(0);

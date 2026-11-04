@@ -9,6 +9,7 @@
 //! position in the model stage.
 use super::ScriptWorld;
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// The owner-relative position of `index`: the owner's effective position and the offset
@@ -39,7 +40,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let (id, owner_id) = (self.id(index)?, self.id(owner)?);
         ensure!(
-            self.actors[index].attributes[26] == 0,
+            self.actors[index].attributes[Attribute::Slave] == 0,
             "Offset: an attached actor cannot be offset"
         );
         if let Some(link) = self.spatial(id)?.link {

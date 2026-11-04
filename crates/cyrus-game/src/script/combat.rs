@@ -1,9 +1,29 @@
 //! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
 use anyhow::{Context, Result};
+use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
 
 const QUEUE_CAPACITY: usize = 8;
+/// Authored attack move slots, in selection order.
+const ATTACK_SLOTS: [Attribute; 9] = [
+    Attribute::AttackSingle,
+    Attribute::AttackDouble,
+    Attribute::AttackTriple,
+    Attribute::AttackThrust,
+    Attribute::AttackLunge,
+    Attribute::AttackLow,
+    Attribute::AttackJumpUp,
+    Attribute::AttackJumpForward,
+    Attribute::AttackDisarm,
+];
+/// Authored defense move slots, in selection order.
+const DEFENSE_SLOTS: [Attribute; 4] = [
+    Attribute::DefendLow,
+    Attribute::DefendRight,
+    Attribute::DefendLeft,
+    Attribute::DefendHigh,
+];
 
 /// Retained values of the nonplayer decision stage, set by combat construction (see preservation's
 /// engine/SOUP.md "Combat maintenance") and changed by the stage and its attack and defence helpers.
@@ -15,8 +35,8 @@ pub struct CombatDecision {
     pub move_selector: i32,
     /// Aggression budget: starts at 50, refilled by the stage and spent by each attack.
     pub aggression: i32,
-    /// Pacing divisors: 129 minus attributes 63 (attack) and 62 (defence); the defence counter
-    /// starts at 129 minus attribute 58.
+    /// Pacing divisors: 129 minus `attr_defense_skill` (attack) and `attr_attack_skill` (defence); the defence counter
+    /// starts at 129 minus `attr_aggression`.
     pub attack_pacing: i32,
     pub defence_pacing: i32,
     pub defence_counter: i32,
@@ -36,12 +56,12 @@ impl Default for CombatDecision {
 }
 
 impl CombatDecision {
-    /// Combat construction: the pacing values are 129 minus actor attributes 63, 62 and 58.
-    pub(crate) fn from_attributes(attributes: &[u8]) -> Self {
+    /// Combat construction: the pacing values are 129 minus `attr_defense_skill`, `attr_attack_skill` and `attr_aggression`.
+    pub(crate) fn from_attributes(attributes: &Attributes) -> Self {
         Self {
-            attack_pacing: 129 - i32::from(attributes[63]),
-            defence_pacing: 129 - i32::from(attributes[62]),
-            defence_counter: 129 - i32::from(attributes[58]),
+            attack_pacing: 129 - i32::from(attributes[Attribute::DefenseSkill]),
+            defence_pacing: 129 - i32::from(attributes[Attribute::AttackSkill]),
+            defence_counter: 129 - i32::from(attributes[Attribute::Aggression]),
             ..Self::default()
         }
     }
@@ -78,11 +98,11 @@ pub struct CombatControlState {
     pub taunt_cache: Option<usize>,
     pub taunt_dialogue: Option<usize>,
     pub taunt_active: i32,
-    /// Signed constructor-owned timed-taunt divisor: 129 minus attribute 87.
+    /// Signed constructor-owned timed-taunt divisor: 129 minus `attr_chatty`.
     pub taunt_period: i32,
     /// Constructor near, far and averaged-midpoint ranges in runtime position units.
     pub spacing_ranges: [i32; 3],
-    /// Signed spacing divisor: 129 minus attribute 88.
+    /// Signed spacing divisor: 129 minus `attr_twitch`.
     pub spacing_period: i32,
     /// Script-assigned strength and armor values (`setStrength`, `setArmor`).
     pub strength: i32,
@@ -123,13 +143,13 @@ impl Default for CombatControlState {
 impl CombatControlState {
     /// Allocate only for a new combat record; reinitialization retains its index.
     pub(crate) fn initialize(
-        attributes: &[u8],
+        attributes: &Attributes,
         previous: Option<&Self>,
         next_index: &mut i32,
         attacks: &[cyrus_assets::script::combat::Attack],
         contact_profile: cyrus_assets::animation::CombatContactProfile,
     ) -> Result<Option<Self>> {
-        if attributes[14] == 0 {
+        if attributes[Attribute::Combat] == 0 {
             return Ok(None);
         }
         let mut record = Self::from_attributes(attributes);
@@ -191,13 +211,17 @@ impl CombatControlState {
     }
 
     /// Bind authored slots following preservation's COMBAT.INI actor move selection.
-    pub(crate) fn from_attributes(attributes: &[u8]) -> Self {
+    pub(crate) fn from_attributes(attributes: &Attributes) -> Self {
         let attack_indices = std::array::from_fn(|slot| {
-            let index = attributes[70 + slot];
+            let index = attributes[ATTACK_SLOTS[slot]];
             (index != 0).then_some(index)
         });
         let mut defense_indices = [None; 4];
-        for (slot, &index) in attributes[79..83].iter().enumerate() {
+        for (slot, index) in DEFENSE_SLOTS
+            .map(|attribute| attributes[attribute])
+            .into_iter()
+            .enumerate()
+        {
             if index == 0 {
                 break;
             }
@@ -206,11 +230,11 @@ impl CombatControlState {
         Self {
             attack_indices,
             defense_indices,
-            // The constructor copies attributes 2 and 4 into the strength and armor values.
-            strength: i32::from(attributes[2]),
-            armor: i32::from(attributes[4]),
-            taunt_period: 129 - i32::from(attributes[87]),
-            spacing_period: 129 - i32::from(attributes[88]),
+            // The constructor copies `attr_strength` and `attr_armor` into the strength and armor values.
+            strength: i32::from(attributes[Attribute::Strength]),
+            armor: i32::from(attributes[Attribute::Armor]),
+            taunt_period: 129 - i32::from(attributes[Attribute::Chatty]),
+            spacing_period: 129 - i32::from(attributes[Attribute::Twitch]),
             decision: CombatDecision::from_attributes(attributes),
             ..Self::default()
         }
@@ -560,11 +584,11 @@ pub(super) enum Engagement {
     InSightWithin(i32),
 }
 
-/// Attribute 121 (`attr_combat_ignore_in_sight`) and 123 (`attr_combat_long_sight`).
-pub(super) fn engagement(attributes: &[u8]) -> Engagement {
-    if attributes[121] != 0 {
+/// `attr_combat_ignore_in_sight` and `attr_combat_long_sight`.
+pub(super) fn engagement(attributes: &Attributes) -> Engagement {
+    if attributes[Attribute::CombatIgnoreInSight] != 0 {
         Engagement::Always
-    } else if attributes[123] != 0 {
+    } else if attributes[Attribute::CombatLongSight] != 0 {
         Engagement::InSightWithin(0x80000)
     } else {
         Engagement::InSightWithin(0x40000)
@@ -702,11 +726,11 @@ mod decision_tests {
 
     #[test]
     fn engagement_follows_the_ignore_and_long_sight_attributes() {
-        let mut attributes = vec![0u8; 256];
+        let mut attributes = Attributes::default();
         assert_eq!(engagement(&attributes), Engagement::InSightWithin(0x40000));
-        attributes[123] = 1;
+        attributes[Attribute::CombatLongSight] = 1;
         assert_eq!(engagement(&attributes), Engagement::InSightWithin(0x80000));
-        attributes[121] = 1;
+        attributes[Attribute::CombatIgnoreInSight] = 1;
         assert_eq!(engagement(&attributes), Engagement::Always);
     }
 }
@@ -717,7 +741,7 @@ mod constructor_tests {
 
     #[test]
     fn reinitialization_retains_allocation_but_resets_executor_state() {
-        let mut attributes = [0; 256];
+        let mut attributes = Attributes::default();
         let mut next = 7;
         assert!(
             CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
@@ -725,7 +749,7 @@ mod constructor_tests {
                 .is_none()
         );
         assert_eq!(next, 7);
-        attributes[14] = 1;
+        attributes[Attribute::Combat] = 1;
         let mut record =
             CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
                 .unwrap()
@@ -737,8 +761,8 @@ mod constructor_tests {
         record.lost_sight_ticks = -123;
         record.lost_sight_routing = 1;
         record.retained_target_position = [1, 2, 3];
-        attributes[87] = 124;
-        attributes[88] = 126;
+        attributes[Attribute::Chatty] = 124;
+        attributes[Attribute::Twitch] = 126;
         let record = CombatControlState::initialize(
             &attributes,
             Some(&record),
@@ -810,9 +834,9 @@ mod constructor_tests {
             ),
         ];
         for &(slots, expected) in cases {
-            let mut attributes = [0; 256];
-            attributes[14] = 1;
-            attributes[88] = 127;
+            let mut attributes = Attributes::default();
+            attributes[Attribute::Combat] = 1;
+            attributes[Attribute::Twitch] = 127;
             let mut attacks = vec![Attack {
                 is_combo: false,
                 motions: vec![],
@@ -820,7 +844,7 @@ mod constructor_tests {
                 max_range: 0,
             }];
             for (slot, &[kind, min_range, max_range, motion_max]) in slots.iter().enumerate() {
-                attributes[70 + slot] = attacks.len() as u8;
+                attributes[ATTACK_SLOTS[slot]] = attacks.len() as u8;
                 let motion: Motion = serde_json::from_value(serde_json::json!({
                     "section":1,"kind":kind,"animation_group":0,
                     "min_range":0,"max_range":motion_max,
@@ -848,9 +872,9 @@ mod constructor_tests {
             assert_eq!(record.spacing_period, 2);
             assert_eq!(next, 1);
         }
-        let mut attributes = [0; 256];
-        attributes[14] = 1;
-        attributes[70] = 9;
+        let mut attributes = Attributes::default();
+        attributes[Attribute::Combat] = 1;
+        attributes[Attribute::AttackSingle] = 9;
         let mut next = 5;
         let error =
             CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
@@ -885,17 +909,17 @@ mod constructor_tests {
 
     #[test]
     fn construction_copies_attributes_two_and_four_into_strength_and_armor() {
-        let mut attributes = vec![0u8; 256];
-        attributes[2] = 7;
-        attributes[4] = 9;
+        let mut attributes = Attributes::default();
+        attributes[Attribute::Strength] = 7;
+        attributes[Attribute::Armor] = 9;
         let combat = CombatControlState::from_attributes(&attributes);
         assert_eq!((combat.strength, combat.armor), (7, 9));
-        let blank = CombatControlState::from_attributes(&[0u8; 256]);
+        let blank = CombatControlState::from_attributes(&Attributes::default());
         assert_eq!((blank.strength, blank.armor), (0, 0));
-        // The decision values: aggression 50, pacing divisors 129 minus attributes 63, 62 and 58.
-        attributes[63] = 9;
-        attributes[62] = 29;
-        attributes[58] = 100;
+        // The decision values: aggression 50, pacing divisors 129 minus `attr_defense_skill`, `attr_attack_skill` and `attr_aggression`.
+        attributes[Attribute::DefenseSkill] = 9;
+        attributes[Attribute::AttackSkill] = 29;
+        attributes[Attribute::Aggression] = 100;
         let decision = CombatControlState::from_attributes(&attributes).decision;
         assert_eq!(
             (

@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
+use cyrus_script::Attribute;
 
 /// Prevalidation, selected support and the surface updater's (previous, returned) surfaces when it ran.
 type PointSupport = (
@@ -193,7 +194,7 @@ impl ScriptWorld {
         // An allocator-zeroed actor has surface zero before its first update.
         let previous = self.actors[id.index].surface.unwrap_or(0);
         let support = self.query_ordinary_ground(id, query)?;
-        let updated = if self.actors[id.index].attributes[1] & 4 != 0 {
+        let updated = if self.actors[id.index].attributes[Attribute::Collide] & 4 != 0 {
             let selected = environment.selected_player == Some(id);
             let returned =
                 self.assign_ordinary_support_surface(id, query.scene, support.as_ref(), selected)?;
@@ -245,7 +246,7 @@ impl ScriptWorld {
         let Some(support) = support else {
             return Ok(false);
         };
-        if self.actors[index].attributes[1] & 2 != 0
+        if self.actors[index].attributes[Attribute::Collide] & 2 != 0
             && matches!(support, SelectedSupport::Primary { support, .. } if support.classification() == 2)
         {
             return Ok(false);
@@ -297,7 +298,7 @@ impl ScriptWorld {
                     }),
                     control.combat_death_default.is_some(),
                     control.weapon_drawn,
-                    actor.attributes[110],
+                    actor.attributes[Attribute::HoldingWeapon],
                     input.item_system_ready,
                     input.shell_execution,
                 );
@@ -578,7 +579,7 @@ impl ScriptWorld {
             }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             environment.item_system_ready || weapon.is_some_and(|input| input.item_system_ready),
             environment.shell_execution,
         );
@@ -766,7 +767,7 @@ impl ScriptWorld {
                             .then_some((script, &mut *random));
                         self.end_ordinary_slide(id, query, environment, selected, sounds)?;
                     }
-                } else if self.actors[id.index].attributes[107] != 0 {
+                } else if self.actors[id.index].attributes[Attribute::FallHold] != 0 {
                     self.actors[id.index]
                         .control
                         .as_mut()
@@ -826,7 +827,7 @@ impl ScriptWorld {
             vertical_offset: 0,
             respond: true,
         };
-        let mask = self.actors[id.index].attributes[1];
+        let mask = self.actors[id.index].attributes[Attribute::Collide];
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -925,13 +926,15 @@ impl ScriptWorld {
                 .expect("admitted body control");
             control.sliding_state = 0;
         }
-        self.actors[id.index].attributes[6] = self.actors[id.index].attributes[115];
+        self.actors[id.index].attributes[Attribute::Weight] =
+            self.actors[id.index].attributes[Attribute::ReservedWeight];
         let control = self.actors[id.index]
             .control
             .as_ref()
             .expect("admitted recovery control");
         let moving = control.falling_state != 0 || control.sliding_state != 0;
-        let recover = if self.actors[id.index].attributes[89] != 0 && moving {
+        let recover = if self.actors[id.index].attributes[Attribute::StickToSurface] != 0 && moving
+        {
             true
         } else if rollback.landing_recovery {
             moving

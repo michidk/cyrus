@@ -1,5 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::program::{Call, CallKind, Operation};
+use cyrus_script::{Attribute, Attributes};
 mod activation;
 mod attack;
 mod attack_input;
@@ -390,7 +391,7 @@ pub struct ScriptActor {
     /// Created-record cleanup completed; runtime may also be absent during an active call.
     created_retired: bool,
     unavailable: Option<String>,
-    attributes: Vec<u8>,
+    attributes: Attributes,
     control: Option<ActorControlState>,
     surface: Option<u8>,
     model: model::ModelState,
@@ -415,8 +416,8 @@ struct ShellTemplate {
     native_hook: Option<Call>,
     combat_taunts: Vec<CombatTaunt>,
     location_offsets: Vec<[i32; 3]>,
-    /// Installed attribute defaults by index, as an ordinary actor of this script starts with.
-    attributes: Vec<u8>,
+    /// Installed attribute defaults, as an ordinary actor of this script starts with.
+    attributes: Attributes,
 }
 
 impl ScriptActor {
@@ -461,7 +462,7 @@ impl ScriptActor {
             runtime,
             created_retired: false,
             unavailable,
-            attributes: vec![0; 256],
+            attributes: Attributes::default(),
             control: None,
             surface: None,
             model: Default::default(),
@@ -514,7 +515,7 @@ impl ScriptActor {
         self.runtime.as_ref()
     }
     /// Prepared attribute bytes, including immediate script writes and backup copies.
-    pub fn attributes(&self) -> &[u8] {
+    pub fn attributes(&self) -> &Attributes {
         &self.attributes
     }
     /// Retained ordinary-map/player allocation state; separate records have no persistent control.
@@ -582,7 +583,6 @@ pub struct ScriptWorld {
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
     node_timer: Option<i32>,
-    attribute_names: Vec<String>,
     reference_names: Vec<String>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
@@ -646,7 +646,7 @@ impl ScriptWorld {
     /// entity, controller and camera to this actor rather than to a fixed role.
     /// Test hook: write one attribute byte of a logical actor.
     #[doc(hidden)]
-    pub fn set_attribute_for_test(&mut self, id: ScriptActorId, attribute: usize, value: u8) {
+    pub fn set_attribute_for_test(&mut self, id: ScriptActorId, attribute: Attribute, value: u8) {
         self.actors[id.index].attributes[attribute] = value;
     }
 
@@ -690,7 +690,7 @@ impl ScriptWorld {
             .context("item add: no selected player")?;
         let actors = &mut self.actors;
         hud.add_item(item, 1, &mut |weapon| {
-            actors[player.index].attributes[23] = weapon;
+            actors[player.index].attributes[Attribute::Weapon] = weapon;
             Ok(())
         })
     }
@@ -795,7 +795,7 @@ impl ScriptWorld {
         self.resolve(sender)?;
         let index = self.resolve(receiver)?;
         self.globals.combat_messages.send(
-            self.actors[index].attributes[125],
+            self.actors[index].attributes[Attribute::MessGroup],
             super::CombatMessage {
                 sender,
                 receiver: Some(receiver),
@@ -812,9 +812,11 @@ impl ScriptWorld {
     ) -> Result<Option<super::CombatMessage>> {
         let index = self.resolve(actor)?;
         let receiver = &self.actors[index];
-        self.globals
-            .combat_messages
-            .peek(receiver.attributes[125], actor, receiver.message_read)
+        self.globals.combat_messages.peek(
+            receiver.attributes[Attribute::MessGroup],
+            actor,
+            receiver.message_read,
+        )
     }
 
     /// Consume one addressed message using the actor's retained class cursor.
@@ -826,7 +828,7 @@ impl ScriptWorld {
         let index = self.resolve(actor)?;
         let receiver = &mut self.actors[index];
         self.globals.combat_messages.consume(
-            receiver.attributes[125],
+            receiver.attributes[Attribute::MessGroup],
             actor,
             &mut receiver.message_read,
         )
@@ -880,7 +882,7 @@ impl ScriptWorld {
             return Ok(());
         }
         if !selected
-            && actor.attributes[116] == 0
+            && actor.attributes[Attribute::NoNodeCombat] == 0
             && control
                 .combat
                 .as_ref()
@@ -898,7 +900,8 @@ impl ScriptWorld {
                 sounds,
             )?;
         }
-        self.actors[index].attributes[1] = self.actors[index].attributes[119];
+        self.actors[index].attributes[Attribute::Collide] =
+            self.actors[index].attributes[Attribute::ReservedCollide];
         let selected_player = self.selected_player_index().map(|index| ScriptActorId {
             generation: self.generation,
             index,
@@ -1031,18 +1034,7 @@ impl ScriptWorld {
                         native_hook: actor.native_hook.clone(),
                         combat_taunts: actor.combat_taunts.clone(),
                         location_offsets: actor.location_offsets.clone(),
-                        attributes: (0..256)
-                            .map(|index| {
-                                let key = scripts
-                                    .definition
-                                    .attributes
-                                    .get(index)
-                                    .filter(|name| !name.is_empty())
-                                    .cloned()
-                                    .unwrap_or_else(|| format!("attr_{index}"));
-                                actor.attributes.get(&key).copied().unwrap_or(0)
-                            })
-                            .collect(),
+                        attributes: actor.attributes.clone(),
                     },
                 ))
             })
@@ -1140,24 +1132,11 @@ impl ScriptWorld {
                 player_movement: None,
                 animation_failure: None,
                 update_failure: None,
-                attributes: (0..256)
-                    .map(|index| {
-                        (!separate)
-                            .then_some(metadata)
-                            .flatten()
-                            .and_then(|actor| {
-                                let key = scripts
-                                    .definition
-                                    .attributes
-                                    .get(index)
-                                    .filter(|name| !name.is_empty())
-                                    .cloned()
-                                    .unwrap_or_else(|| format!("attr_{index}"));
-                                actor.attributes.get(&key).copied()
-                            })
-                            .unwrap_or(0)
-                    })
-                    .collect(),
+                attributes: (!separate)
+                    .then_some(metadata)
+                    .flatten()
+                    .map(|actor| actor.attributes.clone())
+                    .unwrap_or_default(),
             }
         };
         let mut counter = scripts.actor_pool_capacity.wrapping_add(3);
@@ -1226,7 +1205,7 @@ impl ScriptWorld {
                     &scripts.camera,
                     player,
                     camera,
-                    actors[player.index].attributes[105],
+                    actors[player.index].attributes[Attribute::PlayerType],
                 )
                 .with_context(|| format!("world {} camera initialization", scripts.world))
             })
@@ -1259,7 +1238,6 @@ impl ScriptWorld {
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
             node_timer: scripts.node_timer,
-            attribute_names: scripts.definition.attributes.clone(),
             reference_names: scripts.definition.references.clone(),
             names,
             actor_lists: None,
@@ -1798,7 +1776,7 @@ impl ScriptWorld {
     /// Normal fresh-world update-list membership, before runtime actor exclusions.
     /// View coordinates use integer map units. Cell and persistent lists retain
     /// reverse creation order; the 18-cell window omits its corners and excludes
-    /// attribute-113 actors on its outer border. The selection is retained until
+    /// `attr_short_mapping` actors on its outer border. The selection is retained until
     /// the starting cell changes, following preservation's `engine/animation.md`.
     /// Dynamic allocation, removal and cell migration require separate lifecycle support.
     pub fn ordinary_actors(&mut self, view: [i32; 2]) -> Result<&[ScriptActorId]> {
@@ -1856,7 +1834,7 @@ impl ScriptWorld {
     fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
         let index = self.resolve(id)?;
         let actor = self.spatial(id)?;
-        if self.actors[index].attributes[26] != 0 {
+        if self.actors[index].attributes[Attribute::Slave] != 0 {
             Ok(actor
                 .effective
                 .context("query attached position unavailable")?
@@ -1942,6 +1920,7 @@ impl ScriptWorld {
             .with_context(|| format!("set attribute: no actor {index}"))?;
         *actor
             .attributes
+            .bytes_mut()
             .get_mut(attribute)
             .with_context(|| format!("set attribute: no attribute {attribute}"))? = value;
         Ok(())
@@ -1955,7 +1934,7 @@ impl ScriptWorld {
             .actors
             .get_mut(index)
             .with_context(|| format!("mark dead: no actor {index}"))?;
-        actor.attributes[3] = 0;
+        actor.attributes[Attribute::Health] = 0;
         actor
             .control
             .as_mut()
@@ -1974,7 +1953,7 @@ impl ScriptWorld {
                 .and_then(|id| self.spatial(id).ok())
                 .map(|spatial| spatial.local.position),
             lockout: self.globals.lockout(),
-            player_type: player.map(|index| self.actors[index].attributes[105]),
+            player_type: player.map(|index| self.actors[index].attributes[Attribute::PlayerType]),
         }
     }
 
@@ -2136,7 +2115,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
         let position = animation_sound_position(self.spatial.as_ref(), index);
-        let contact_profile = if self.actors[index].attributes[14] != 0 {
+        let contact_profile = if self.actors[index].attributes[Attribute::Combat] != 0 {
             data.combat_contact_profile(self.actors[index].name())?
         } else {
             Default::default()
@@ -2182,7 +2161,7 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .expect("type-one map actor has allocation state")
-                    .combat_death_default = (actor.attributes[14] != 0).then_some(0);
+                    .combat_death_default = (actor.attributes[Attribute::Combat] != 0).then_some(0);
                 let control = actor.control.as_mut().expect("allocated map control");
                 control.combat = super::CombatControlState::initialize(
                     &actor.attributes,
@@ -2273,18 +2252,18 @@ impl ScriptWorld {
                 }),
                 control.combat_death_default.is_some(),
                 control.weapon_drawn,
-                actor.attributes[110],
+                actor.attributes[Attribute::HoldingWeapon],
                 item_system_ready,
                 false,
             );
             if sheathing {
-                u16::from(actor.attributes[44])
+                u16::from(actor.attributes[Attribute::PanicGroup])
             } else if drawing || holding {
                 8
             } else if control.torch_burning != 0 {
                 5
             } else {
-                u16::from(actor.attributes[44])
+                u16::from(actor.attributes[Attribute::PanicGroup])
             }
         };
         let position = animation_sound_position(self.spatial.as_ref(), index);
@@ -2356,7 +2335,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
-        let contact_profile = if self.actors[index].attributes[14] != 0 {
+        let contact_profile = if self.actors[index].attributes[Attribute::Combat] != 0 {
             data.combat_contact_profile(self.actors[index].name())?
         } else {
             Default::default()
@@ -2385,11 +2364,12 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|health| health.death())
                 .and_then(|death| death.local_position());
-            let mut health = super::SelectedHealthState::initialized(actor.attributes[3]);
+            let mut health =
+                super::SelectedHealthState::initialized(actor.attributes[Attribute::Health]);
             health.retain_death_position(captured);
             self.globals.selected_health = Some(health);
         }
-        control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
+        control.combat_death_default = (actor.attributes[Attribute::Combat] != 0).then_some(0);
         control.combat = super::CombatControlState::initialize(
             &actor.attributes,
             control.combat.as_ref(),
@@ -2737,7 +2717,7 @@ impl ScriptWorld {
                 next.reload_player_defaults(
                     &self.camera_settings,
                     selected_id,
-                    self.actors[selected].attributes[105],
+                    self.actors[selected].attributes[Attribute::PlayerType],
                 )?;
                 Ok::<_, anyhow::Error>(next)
             })
@@ -2868,7 +2848,7 @@ impl ScriptWorld {
                     "id": ScriptActorId { generation: self.generation, index },
                     "name": actor.name(),
                     "object_id": actor.placement().map(|placement| placement.object_id),
-                    "health": actor.attributes[3],
+                    "health": actor.attributes[Attribute::Health],
                     "position": position,
                 })
             }).collect::<Vec<_>>()
@@ -2968,7 +2948,7 @@ pub struct ScriptActors {
     /// Global SOUP flags survive ordinary world replacement. New Game clears this snapshot
     /// before releasing the prior world, matching the session initializer's fresh definitions.
     retained_flags: Option<super::GlobalFlagsSnapshot>,
-    /// The selected player's health (attribute 3) when the last world was released. The original
+    /// The selected player's health (`attr_health`) when the last world was released. The original
     /// retains it outside the world, copies it into both player records at world entry and resets
     /// it to 100 at New Game (preservation engine/menu.md).
     retained_health: Option<u8>,
@@ -3011,14 +2991,14 @@ fn apply_player_lockout(
     lockout: u16,
 ) {
     if let Some(player) = player {
-        actors[player].attributes[117] = u8::from(lockout == 1);
+        actors[player].attributes[Attribute::LockPos] = u8::from(lockout == 1);
     }
     if lockout != 1 {
         for actor in actors
             .iter_mut()
             .filter(|actor| actor.runtime_identifier.is_some())
         {
-            actor.attributes[117] = 0;
+            actor.attributes[Attribute::LockPos] = 0;
         }
         activation.clear_prompt_override();
     }
@@ -3095,7 +3075,7 @@ impl ScriptActors {
                 // SetAttribute(3) from a script persists here but not there. Upgrade with evidence.
                 self.retained_health = world
                     .selected_player_index()
-                    .map(|player| world.actors[player].attributes[3]);
+                    .map(|player| world.actors[player].attributes[Attribute::Health]);
                 // An unfinished revisit must not overwrite its retained actor state.
                 self.visited.entry(world.world).or_insert(world);
             }
@@ -3198,7 +3178,7 @@ pub(super) fn prepare(
                     ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
                 )
             }) {
-                actor.attributes[3] = health;
+                actor.attributes[Attribute::Health] = health;
             }
         }
         world.prepare_markers(animation_data)?;
@@ -3378,8 +3358,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
-        let user_channel =
-            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_channel = self.registry.actors[self.index].attributes[Attribute::User];
         let user_has_active = self
             .registry
             .globals
@@ -3433,7 +3412,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     markers: self.registry.markers.as_ref(),
                     effective_position: spatial.effective.map(|pose| pose.position),
                     player_position,
-                    slave: actor.attributes[26] != 0,
+                    slave: actor.attributes[Attribute::Slave] != 0,
                     actor_index: self.index,
                     map_updates: &mut self.registry.map_updates,
                     position: &mut spatial.local.position,
@@ -3462,7 +3441,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             group_sync: Some(super::tasks::GroupSyncCall {
                 state: &mut self.registry.globals.group_sync,
                 actor_index: self.index,
-                channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                channel: actor.attributes[Attribute::Group],
                 user_channel,
                 user_has_active,
             }),
@@ -3691,11 +3670,6 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let id = actor.ok_or("camera target actor unavailable")?;
         let index = self.registry.resolve(id).map_err(describe)?;
         let attributes = &self.registry.actors[index].attributes;
-        if attributes.len() < 0x35 {
-            return Err(format!(
-                "camera target actor {index}: attribute block too short"
-            ));
-        }
         let pose = self.registry.camera_binding_pose(index).map_err(describe);
         let selected_bound_position = (|| {
             let camera = self
@@ -3718,9 +3692,17 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         };
         Ok(super::tasks::CameraTarget {
             actor: id,
-            camera_move: attributes[0x2d],
-            pan_type: attributes[0x2e],
-            offsets: std::array::from_fn(|byte| attributes[0x2f + byte]),
+            camera_move: attributes[Attribute::CameraMove],
+            pan_type: attributes[Attribute::CameraPanType],
+            offsets: [
+                Attribute::CameraTargetOffsetX,
+                Attribute::CameraTargetOffsetY,
+                Attribute::CameraTargetOffsetZ,
+                Attribute::CameraOffsetX,
+                Attribute::CameraOffsetY,
+                Attribute::CameraOffsetZ,
+            ]
+            .map(|attribute| attributes[attribute]),
             pose,
             selected_bound_position,
             holding_weapon,
@@ -3778,12 +3760,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             angles: pose.angles,
             speed: super::alignment::speed(
                 animation.playback.current_group(),
-                Some(&actor.attributes[..]),
+                Some(&actor.attributes),
             ),
             rate_attribute: actor.attributes[if holding_weapon || combat_mode {
-                21
+                Attribute::FightTurnSpeed
             } else {
-                15
+                Attribute::TurnSpeed
             }],
             holding_weapon,
             torch: control.torch_burning != 0,
@@ -3920,25 +3902,25 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .is_some_and(|combat| combat.flags & 4 != 0),
             surface: actor.surface.unwrap_or(0),
             torch_burning: control.torch_burning != 0,
-            step_adjustment: actor.attributes[11],
-            step_attribute: actor.attributes[9],
-            combat_step_attribute: actor.attributes[18],
-            strafe_step_attribute: actor.attributes[83],
-            strafe_turn_attribute: actor.attributes[84],
-            lateral_step_attribute: actor.attributes[10],
-            forward_step_attribute: actor.attributes[8],
-            forward_combat_step_attribute: actor.attributes[17],
-            lunge_step_attribute: actor.attributes[16],
-            walk_step_attribute: actor.attributes[12],
-            walk_combat_step_attribute: actor.attributes[19],
-            walk_backward_step_attribute: actor.attributes[13],
-            walk_backward_combat_step_attribute: actor.attributes[20],
+            step_adjustment: actor.attributes[Attribute::StepType],
+            step_attribute: actor.attributes[Attribute::BackwardSpeed],
+            combat_step_attribute: actor.attributes[Attribute::FightBackwardSpeed],
+            strafe_step_attribute: actor.attributes[Attribute::FightCircleSpeed],
+            strafe_turn_attribute: actor.attributes[Attribute::FightCircleDeltaAngle],
+            lateral_step_attribute: actor.attributes[Attribute::SideSpeed],
+            forward_step_attribute: actor.attributes[Attribute::ForwardSpeed],
+            forward_combat_step_attribute: actor.attributes[Attribute::FightForwardSpeed],
+            lunge_step_attribute: actor.attributes[Attribute::FightLungeSpeed],
+            walk_step_attribute: actor.attributes[Attribute::ForwardWalk],
+            walk_combat_step_attribute: actor.attributes[Attribute::FightForwardWalk],
+            walk_backward_step_attribute: actor.attributes[Attribute::BackwardWalk],
+            walk_backward_combat_step_attribute: actor.attributes[Attribute::FightBackwardWalk],
             move_selected: control
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.action != -1),
             selected_player_mode_one: self.registry.selected_player_index() == Some(self.index)
-                && actor.attributes[105] == 1,
+                && actor.attributes[Attribute::PlayerType] == 1,
         })
     }
 
@@ -3994,7 +3976,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .control
                 .as_ref()
                 .is_some_and(|control| control.death_selector == 7)
-                && actor.attributes[1] & 1 == 0
+                && actor.attributes[Attribute::Collide] & 1 == 0
             {
                 admission.forward_step_clear = Some(true);
                 return Ok(admission);
@@ -4005,7 +3987,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let routed_query;
         let geometry = if let Some(geometry) = self.inputs.locomotion_geometry {
             geometry
-        } else if self.registry.actors[self.index].attributes[1] != 0
+        } else if self.registry.actors[self.index].attributes[Attribute::Collide] != 0
             && self.registry.actors[self.index].ordinary_collision_role()
             && let Some(source) = self.inputs.player_collision
         {
@@ -4050,7 +4032,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     | LocomotionOperation::Lunge
             ) && admission.forward_admitted == Some(true)
                 && admission.forward_step_clear.is_none()
-                && self.registry.actors[self.index].attributes[1] == 0
+                && self.registry.actors[self.index].attributes[Attribute::Collide] == 0
             {
                 admission.forward_step_clear = Some(true);
             }
@@ -4239,7 +4221,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 player.generation == generation && player.index < actors.len(),
                 "AddItem fallback selected player identity is stale"
             );
-            actors[player.index].attributes[23] = weapon;
+            actors[player.index].attributes[Attribute::Weapon] = weapon;
             Ok(())
         })
     }
@@ -4429,7 +4411,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     /// **Inferred** clear and set respectively; cyrus has no transition state yet.
     fn combat_capable(&self, index: usize, armed: bool) -> Result<bool> {
         let actor = &self.registry.actors[index];
-        if actor.attributes[110] != 0 {
+        if actor.attributes[Attribute::HoldingWeapon] != 0 {
             return Ok(true);
         }
         let (Some(control), Some(animation)) = (actor.control.as_ref(), actor.animation.as_ref())
@@ -4453,7 +4435,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn actor_weapon_predicates(&self, index: usize, function: &str) -> Result<(bool, bool, bool)> {
         let actor = &self.registry.actors[index];
-        if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
+        if function.eq_ignore_ascii_case("IsHoldingWeapon")
+            && actor.attributes[Attribute::HoldingWeapon] != 0
+        {
             return Ok((true, false, false));
         }
         let ready = self
@@ -4482,7 +4466,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 }),
             control.combat.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             ready,
             shell,
         ))
@@ -4875,8 +4859,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .iter_mut()
                         .for_each(|word| *word &= !3);
                 } else {
-                    let step_hold =
-                        actor.attributes[11] == 0 || (control.movement_flags >> 4) & 3 == 3;
+                    let step_hold = actor.attributes[Attribute::StepType] == 0
+                        || (control.movement_flags >> 4) & 3 == 3;
                     if step_hold && matches!(group, 18 | 30) && !animation.playback.exit_reached() {
                         control.directional_state[0] |= 3;
                         control.jump_window = 0;
@@ -5132,8 +5116,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("ResetUserSync") {
             anyhow::ensure!(arguments.is_empty(), "ResetUserSync requires no arguments");
-            let channel = self.registry.actors[self.index].attributes
-                [super::group_sync::USER_CHANNEL_ATTRIBUTE];
+            let channel = self.registry.actors[self.index].attributes[Attribute::User];
             self.registry
                 .globals
                 .group_sync
@@ -5146,7 +5129,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             // released byte; the next world-loop update observes this member as unposted.
             self.registry.globals.group_sync.reset_current(
                 self.index,
-                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                self.registry.actors[self.index].attributes[Attribute::Group],
             );
             return Ok(CallResult::Complete(0));
         }
@@ -5457,7 +5440,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 (1, 75)
             };
             self.add_session_item(take, 1)?;
-            self.registry.actors[self.index].attributes[23] = take as u8;
+            self.registry.actors[self.index].attributes[Attribute::Weapon] = take as u8;
             let hud = self
                 .inputs
                 .hud
@@ -5894,10 +5877,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             let attributes = &mut self.registry.actors[self.index].attributes;
             // Generic admission follows the native selected-player feedback update.
-            if attributes[120] != 0 {
+            if attributes[Attribute::Invulnerable] != 0 {
                 return Ok(CallResult::Complete(0));
             }
-            if attributes[97] != 0
+            if attributes[Attribute::Npc] != 0
                 && !self.receiver_weapon_predicates("IsHoldingWeapon")?.0
                 && self.registry.actors[self.index]
                     .control
@@ -5909,9 +5892,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             if selected {
                 let id = self.registry.id(self.index)?;
-                let change = arguments[0]
-                    .integer()?
-                    .wrapping_sub(i32::from(self.registry.actors[self.index].attributes[3]));
+                let change = arguments[0].integer()?.wrapping_sub(i32::from(
+                    self.registry.actors[self.index].attributes[Attribute::Health],
+                ));
                 let sounds = &mut self.sounds;
                 self.registry.apply_selected_death_health(
                     id,
@@ -5932,17 +5915,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let attributes = &mut self.registry.actors[self.index].attributes;
             let value = arguments[0].integer()?;
             let delta = if set {
-                value.wrapping_sub(i32::from(attributes[3]))
+                value.wrapping_sub(i32::from(attributes[Attribute::Health]))
             } else {
                 value
             };
-            let health = i32::from(attributes[3]).wrapping_add(delta);
+            let health = i32::from(attributes[Attribute::Health]).wrapping_add(delta);
             let damage = set || arguments[1].integer()? == 1;
             anyhow::ensure!(
                 health > 0 || !damage,
                 "{function}: death sequence unavailable"
             );
-            attributes[3] = health.clamp(0, 255) as u8;
+            attributes[Attribute::Health] = health.clamp(0, 255) as u8;
             return Ok(CallResult::Complete(0));
         }
         // PlayerMoved compares the selected player's position with its snapshot taken at the
@@ -6201,13 +6184,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        // IsMaster and IsSlave test attributes 25 and 26; TrueFunction ignores both arguments.
+        // IsMaster and IsSlave test attr_master and attr_slave; TrueFunction ignores both arguments.
         if function.eq_ignore_ascii_case("IsMaster") || function.eq_ignore_ascii_case("IsSlave") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let attribute = if function.eq_ignore_ascii_case("IsMaster") {
-                25
+                Attribute::Master
             } else {
-                26
+                Attribute::Slave
             };
             return Ok(CallResult::Complete(i32::from(
                 self.registry.actors[self.index].attributes[attribute] != 0,
@@ -6234,7 +6217,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        // `attr_health` is attribute 3; Strength and Armor read the combat record.
+        // `attr_health` is `attr_health`; Strength and Armor read the combat record.
         if [
             "Health",
             "PlayerHealth",
@@ -6259,9 +6242,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .is_some_and(|player| player.index == index);
             let actor = &mut self.registry.actors[index];
             let value = match lower.as_str() {
-                "health" | "playerhealth" => i32::from(actor.attributes[3]),
+                "health" | "playerhealth" => i32::from(actor.attributes[Attribute::Health]),
                 "replenishhealth" => {
-                    if actor.attributes[3] >= 100 {
+                    if actor.attributes[Attribute::Health] >= 100 {
                         0
                     } else {
                         if selected {
@@ -6270,7 +6253,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                                 .context("ReplenishHealth selected-player HUD owner unavailable")?
                                 .request_replenish_health_feedback();
                         }
-                        actor.attributes[3] = 100;
+                        actor.attributes[Attribute::Health] = 100;
                         1
                     }
                 }
@@ -6653,7 +6636,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("Wander shared engine random stream unavailable")?;
             let result =
                 super::navigation::wander_without_maps(home, radius, frame_scale, spatial, random)?;
-            self.registry.actors[self.index].attributes[94] = 1;
+            self.registry.actors[self.index].attributes[Attribute::NodeInUse] = 1;
             return Ok(CallResult::Complete(result));
         }
         if function.eq_ignore_ascii_case("AtNodeMarker") {
@@ -6773,7 +6756,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
                 .is_some_and(|combat| combat.decision.attack_state == 1);
-            if !holding || actor.attributes[105] == 1 || !swinging {
+            if !holding || actor.attributes[Attribute::PlayerType] == 1 || !swinging {
                 return Ok(CallResult::Complete(0));
             }
             let tip = actor
@@ -6962,7 +6945,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .control
                     .as_mut()
                     .and_then(|control| control.combat_death_default.as_mut())
-                    .context("SetAttribute 44: dead actor without a combat record unsupported")?;
+                    .context("SetAttribute attr_panic_group: dead actor without a combat record unsupported")?;
                 *default = value.integer()?;
             }
         }
@@ -7088,8 +7071,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 _ => anyhow::bail!("selected player animation sound handler absent"),
             }
         };
-        let user_channel =
-            self.registry.actors[self.index].attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE];
+        let user_channel = self.registry.actors[self.index].attributes[Attribute::User];
         let user_has_active = self
             .registry
             .globals
@@ -7143,7 +7125,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     markers: self.registry.markers.as_ref(),
                     effective_position: spatial.effective.map(|pose| pose.position),
                     player_position,
-                    slave: actor.attributes[26] != 0,
+                    slave: actor.attributes[Attribute::Slave] != 0,
                     actor_index: self.index,
                     map_updates: &mut self.registry.map_updates,
                     position: &mut spatial.local.position,
@@ -7178,7 +7160,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 group_sync: Some(super::tasks::GroupSyncCall {
                     state: &mut self.registry.globals.group_sync,
                     actor_index: self.index,
-                    channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                    channel: actor.attributes[Attribute::Group],
                     user_channel,
                     user_has_active,
                 }),
@@ -7278,15 +7260,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
             index: self.index,
         });
         let attributes = &self.registry.actors[self.index].attributes;
-        self.registry.globals.group_sync.reset_user(
-            self.index,
-            attributes[super::group_sync::USER_CHANNEL_ATTRIBUTE],
-        );
+        self.registry
+            .globals
+            .group_sync
+            .reset_user(self.index, attributes[Attribute::User]);
         // End clears the actor's pending group synchronization state.
-        if attributes[super::group_sync::CHANNEL_ATTRIBUTE] != 0 {
+        if attributes[Attribute::Group] != 0 {
             self.registry.globals.group_sync.reset_current(
                 self.index,
-                self.registry.actors[self.index].attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                self.registry.actors[self.index].attributes[Attribute::Group],
             );
         }
         Ok(())
@@ -7372,7 +7354,7 @@ mod fighting_tests {
                 runtime: None,
                 created_retired: false,
                 unavailable: None,
-                attributes: vec![0; 256],
+                attributes: Attributes::default(),
                 control: Some(ActorControlState {
                     combat: (index != 0).then_some(super::super::CombatControlState {
                         target: Some(receiver),
@@ -7446,7 +7428,6 @@ mod fighting_tests {
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],
             node_timer: None,
-            attribute_names: Vec::new(),
             reference_names: definition.references,
             names: BTreeMap::new(),
             actor_lists: None,
@@ -7528,7 +7509,7 @@ mod selector_tests {
             runtime: None,
             created_retired: false,
             unavailable: None,
-            attributes: vec![0; 256],
+            attributes: Attributes::default(),
             control: Some(ActorControlState::default()),
             surface: Some(0),
             model: Default::default(),

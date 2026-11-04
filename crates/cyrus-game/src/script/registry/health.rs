@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 use serde::{Deserialize, Serialize};
 
 /// Session health initialized separately from controller/combat inhibition.
@@ -173,7 +174,7 @@ impl ScriptWorld {
             .expect("validated control")
             .living_state = 17;
         self.actors[index].model.ledge_support = None;
-        if self.actors[index].attributes[105] != 1 {
+        if self.actors[index].attributes[Attribute::PlayerType] != 1 {
             self.globals.selected_ledge_result = Some(0);
             let torch_burning = self.actors[index]
                 .control
@@ -300,10 +301,10 @@ impl ScriptWorld {
                 .hud
                 .context("selected health HUD owner unavailable")?
                 .request_health_feedback();
-            let health = i32::from(self.actors[index].attributes[3])
+            let health = i32::from(self.actors[index].attributes[Attribute::Health])
                 .wrapping_add(change)
                 .clamp(0, maximum);
-            self.actors[index].attributes[3] = health as u8;
+            self.actors[index].attributes[Attribute::Health] = health as u8;
             if change < 0 {
                 let random = random.context("selected health random stream unavailable")?;
                 self.request_hurt_combat_taunt(id, inputs, random, sounds)?;
@@ -699,7 +700,7 @@ impl ScriptWorld {
                 .hud
                 .context("selected death health HUD owner unavailable")?
                 .request_health_feedback();
-            let health = i32::from(self.actors[index].attributes[3])
+            let health = i32::from(self.actors[index].attributes[Attribute::Health])
                 .wrapping_add(change)
                 .clamp(0, maximum);
             if change < 0 {
@@ -713,7 +714,7 @@ impl ScriptWorld {
                     self.detach_selected_from_rope(id, inputs)?;
                 }
             }
-            self.actors[index].attributes[3] = health as u8;
+            self.actors[index].attributes[Attribute::Health] = health as u8;
             self.globals
                 .selected_health
                 .as_mut()
@@ -782,7 +783,7 @@ impl ScriptWorld {
                 };
                 if let Some(source) = source.filter(|source| *source != id) {
                     let source_index = self.resolve(source)?;
-                    let group = self.actors[source_index].attributes[109];
+                    let group = self.actors[source_index].attributes[Attribute::ZapAnim];
                     if group != 0 {
                         self.globals
                             .set_player_death_override_group(i32::from(group))?;
@@ -804,7 +805,7 @@ impl ScriptWorld {
                         .expect("validated death")
                         .mode = 2;
                 }
-                if self.actors[index].attributes[105] == 1 {
+                if self.actors[index].attributes[Attribute::PlayerType] == 1 {
                     return Ok(());
                 }
                 let actor = &self.actors[index];

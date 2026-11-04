@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Read the current motion's zero-based counter-attack reference.
@@ -161,7 +162,7 @@ impl ScriptWorld {
                 own_window_far: 0,
                 facing_alike: false,
                 target_in_combat_stance: false,
-                attribute_58: 0,
+                aggression: 0,
                 pacing_sum: sample.tick_counter.wrapping_add(combat.allocation_index),
                 defence_pacing: combat.decision.defence_pacing,
                 target_selected: -1,
@@ -199,7 +200,7 @@ impl ScriptWorld {
                             .is_some_and(|combat| combat.flags & 4 != 0);
                     }
                     if selection.target_in_combat_stance {
-                        selection.attribute_58 = self.actors[index].attributes[58];
+                        selection.aggression = self.actors[index].attributes[Attribute::Aggression];
                     }
                 }
                 self.actors[index]
@@ -214,7 +215,7 @@ impl ScriptWorld {
                     if selection.facing_alike || !selection.target_in_combat_stance {
                         1
                     } else {
-                        129 - i32::from(selection.attribute_58)
+                        129 - i32::from(selection.aggression)
                     };
                 if selection
                     .pacing_sum
@@ -390,7 +391,7 @@ impl ScriptWorld {
                     }),
                 true,
                 control.weapon_drawn,
-                actor.attributes[110],
+                actor.attributes[Attribute::HoldingWeapon],
                 weapon.item_system_ready,
                 weapon.shell_execution,
             );
@@ -400,7 +401,7 @@ impl ScriptWorld {
                 cooldown: combat.cooldown,
                 drawing,
                 sheathing,
-                attribute_16: actor.attributes[16],
+                fight_lunge_speed: actor.attributes[Attribute::FightLungeSpeed],
             };
             let mut action = combat.action;
             let mut selector = combat.retained_action_indices[1];
@@ -784,7 +785,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
                 pacing_sum: self.selection.pacing_sum,
                 facing_alike: self.selection.facing_alike,
                 target_in_combat_stance: self.selection.target_in_combat_stance,
-                attribute_58: self.selection.attribute_58,
+                aggression: self.selection.aggression,
             },
         );
         *decision = self.read().0;

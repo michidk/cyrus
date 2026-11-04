@@ -1,6 +1,7 @@
 //! Immutable world-entry actor lighting inputs, captured before ordinary updates.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 use std::collections::BTreeMap;
 
 /// A static actor's prepared instance at the prelight checkpoint. Float bits
@@ -54,7 +55,7 @@ impl ScriptWorld {
     pub(super) fn actor_prelighting_inputs(&self) -> Result<BTreeMap<usize, ActorPrelight>> {
         let mut result = BTreeMap::new();
         for (index, actor) in self.actors.iter().enumerate() {
-            if actor.attributes()[122] == 0
+            if actor.attributes()[Attribute::NonMoving] == 0
                 || actor
                     .placement()
                     .is_none_or(|placement| placement.object_type != 1)

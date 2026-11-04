@@ -21,12 +21,12 @@ pub struct BackwardState {
     /// Attribute bytes 83 and 84 give a combat-stance strafe's step length and turn rate.
     pub strafe_step_attribute: u8,
     pub strafe_turn_attribute: u8,
-    /// Attribute byte 10 gives an ordinary (outside combat stance) strafe's step length.
+    /// `attr_side_speed` gives an ordinary (outside combat stance) strafe's step length.
     pub lateral_step_attribute: u8,
     /// Attribute bytes 8 (ordinary) and 17 (combat stance) give `MoveForward`'s step length.
     pub forward_step_attribute: u8,
     pub forward_combat_step_attribute: u8,
-    /// Attribute byte 16 gives the selected player's lunge step length.
+    /// `attr_fight_lunge_speed` gives the selected player's lunge step length.
     pub lunge_step_attribute: u8,
     /// Attribute bytes 12 and 19 give WalkForward ordinary and combat step lengths.
     pub walk_step_attribute: u8,
@@ -36,9 +36,9 @@ pub struct BackwardState {
     pub walk_backward_combat_step_attribute: u8,
     /// A combat move is already selected (the action selector is not -1).
     pub move_selected: bool,
-    /// Selected-player mode byte (attribute 105) blocks WalkBackward while set.
+    /// Selected-player mode byte (`attr_player_type`) blocks WalkBackward while set.
     pub selected_player_mode_one: bool,
-    /// Attribute 11 selects the initial distance ramp, independently of animation suppression.
+    /// `attr_step_type` selects the initial distance ramp, independently of animation suppression.
     pub step_adjustment: u8,
 }
 
@@ -172,14 +172,14 @@ pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
     /// Hanging at an edge (lifecycle byte 15): after the ledge scan finds a record one step to the
-    /// side, request `group` (28 left, 29 right) and move along the ledge by the attribute byte 10
+    /// side, request `group` (28 left, 29 right) and move along the ledge by the `attr_side_speed`
     /// step.
     Ledge { group: u16 },
     /// Outside combat stance in deep water: after the lateral step check and the edge probe pass,
-    /// request `group` (143) and move by the attribute byte 10 step.
+    /// request `group` (143) and move by the `attr_side_speed` step.
     DeepWater { group: u16 },
     /// Outside combat stance, on dry ground: after the lateral step check passes, request `group`
-    /// and move by the attribute byte 10 step.
+    /// and move by the `attr_side_speed` step.
     OutsideCombat { group: u16 },
     /// Combat stance: request `group`, turn by `turn` and move by `step` whole units.
     Combat { group: u16, step: u8, turn: u8 },
@@ -640,7 +640,7 @@ mod tests {
     }
 
     /// Rows run through the original step-ramp routine over synthetic actors (research oracle, not
-    /// installed data): `(attribute 11, counter, distance, result)`.
+    /// installed data): `(`attr_step_type`, counter, distance, result)`.
     #[test]
     fn the_step_ramp_matches_the_original_routine() {
         let rows: &[(u8, u8, i32, i32)] = &[
@@ -807,7 +807,7 @@ mod tests {
 
     /// Rows run through the original `MoveForward`, `MoveBackward`, `MoveLeft` and `MoveRight`
     /// routines (duration 1) over synthetic actors with the published rotation table (research
-    /// oracle): `(stepper, heading, step attribute, attribute 11, counter, scale, dx, dz,
+    /// oracle): `(stepper, heading, step attribute, `attr_step_type`, counter, scale, dx, dz,
     /// packed counter after)`. Steppers are 0 forward, 1 backward, 2 left, 3 right.
     #[test]
     fn the_steppers_match_the_original_routines() {

@@ -5,6 +5,7 @@ use crate::script::camera::{
     GlidePlayer,
 };
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 fn wrapped_angles(angles: [i32; 3]) -> Result<[u16; 3]> {
     anyhow::ensure!(
@@ -26,7 +27,7 @@ impl ScriptWorld {
             .as_ref()
             .context("camera spatial state not prepared")?
             .actor(index)?;
-        let pose = if self.actors[index].attributes[26] != 0 {
+        let pose = if self.actors[index].attributes[Attribute::Slave] != 0 {
             spatial
                 .effective
                 .context("attached actor's pose requires an explicit family refresh")?
@@ -87,7 +88,7 @@ impl ScriptWorld {
             }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             inputs
                 .hud
                 .map(|hud| hud.inventory_ready())
@@ -151,7 +152,7 @@ impl ScriptWorld {
         state.reload_player_defaults(
             &self.camera_settings,
             self.id(player)?,
-            self.actors[player].attributes[105],
+            self.actors[player].attributes[Attribute::PlayerType],
         )?;
         state.scripted_active = 0;
         state.scripted_nesting = 0;

@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
+use cyrus_script::Attribute;
 
 /// Shared results retained until the first ground prevalidation of the next wrapper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -19,7 +20,7 @@ pub fn ordinary_ground_prevalidation(
     current: Option<GroundSupport>,
     previous: Option<GroundSupport>,
     displacement: [i32; 3],
-    attribute_89: u8,
+    stick_to_surface: u8,
     default_motion_animation: bool,
 ) -> Result<OrdinaryGroundPrevalidation> {
     let Some(current) = current else {
@@ -41,7 +42,7 @@ pub fn ordinary_ground_prevalidation(
     let normal = heading(i64::from(current.normal[0]), i64::from(current.normal[2]));
     let difference = normal.wrapping_sub(1024).wrapping_sub(movement) & 2047;
     let rollback =
-        !(512..=1535).contains(&difference) || attribute_89 != 0 || default_motion_animation;
+        !(512..=1535).contains(&difference) || stick_to_surface != 0 || default_motion_animation;
     Ok(OrdinaryGroundPrevalidation {
         rollback,
         sliding: !rollback,
@@ -81,7 +82,7 @@ impl ScriptWorld {
     ) -> Result<OrdinaryGroundPrevalidation> {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let actor = &self.actors[id.index];
-        if actor.attributes[1] & 2 == 0 || alternate_selected_player {
+        if actor.attributes[Attribute::Collide] & 2 == 0 || alternate_selected_player {
             return Ok(OrdinaryGroundPrevalidation::default());
         }
         let spatial = self.spatial(id)?;
@@ -137,7 +138,7 @@ impl ScriptWorld {
             current_surface,
             previous_surface,
             std::array::from_fn(|axis| current[axis].wrapping_sub(previous[axis])),
-            actor.attributes[89],
+            actor.attributes[Attribute::StickToSurface],
             default_motion,
         )
         .with_context(|| {

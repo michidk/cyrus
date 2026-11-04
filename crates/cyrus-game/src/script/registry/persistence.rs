@@ -318,7 +318,7 @@ struct ActorSnapshot {
     message_read: u8,
     runtime: Option<cyrus_script::persistence::Snapshot>,
     unavailable: Option<String>,
-    attributes: Vec<u8>,
+    attributes: cyrus_script::Attributes,
     control: Option<ControlSnapshot>,
     surface: Option<u8>,
     model: model::ModelSnapshot,
@@ -424,11 +424,6 @@ impl ActorSnapshot {
                 && self.source == actor.source.label()
                 && self.runtime_identifier == actor.runtime_identifier,
             "saved actor {}: installed allocation identity differs",
-            self.name
-        );
-        ensure!(
-            self.attributes.len() == actor.attributes.len(),
-            "saved actor {}: attribute count differs",
             self.name
         );
         ensure!(
@@ -1276,7 +1271,7 @@ impl LogicalSessionSnapshot {
         }
         ensure!(
             !current.actors.iter().any(|actor| {
-                actor.attributes.get(122).copied().unwrap_or(0) != 0
+                actor.attributes[cyrus_script::Attribute::NonMoving] != 0
                     && actor.model.has_static_model()
             }),
             "world {}: legacy actor prelight checkpoint unavailable; save again",

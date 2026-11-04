@@ -1,16 +1,13 @@
-//! Group synchronization channels: a rendezvous between actors that share an attribute-29 channel.
+//! Group synchronization channels: a rendezvous between actors that share an `attr_group` channel.
+//! A zero [`Attribute::Group`] means none, [`Attribute::User`] is an independent user channel, and
+//! a nonzero [`Attribute::AlwaysSync`] excludes the actor from its channel's rendezvous.
 //! `SyncWithGroup(group)` posts a group for the calling actor and waits until the channel releases that
 //! group; the channel is updated once per world-loop iteration after the family update.
 use super::ScriptActor;
+use cyrus_script::Attribute;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Actor data byte 29: the group channel an actor belongs to; zero means none.
-pub(super) const CHANNEL_ATTRIBUTE: usize = 29;
-/// Actor data byte 30: the independent user channel.
-pub(super) const USER_CHANNEL_ATTRIBUTE: usize = 30;
-/// Actor data byte 43: a nonzero value excludes the actor from its channel's rendezvous.
-const IGNORED_ATTRIBUTE: usize = 43;
 /// Set in a posted value, or in a channel's released value, once every active member has posted.
 const POSTED: u8 = 0x80;
 
@@ -44,8 +41,8 @@ impl GroupSync {
 
     pub(super) fn register_actors(&mut self, actors: &[ScriptActor]) {
         for (index, actor) in actors.iter().enumerate() {
-            self.register(index, actor.attributes()[CHANNEL_ATTRIBUTE]);
-            self.register_user(index, actor.attributes()[USER_CHANNEL_ATTRIBUTE]);
+            self.register(index, actor.attributes()[Attribute::Group]);
+            self.register_user(index, actor.attributes()[Attribute::User]);
         }
     }
 
@@ -55,7 +52,7 @@ impl GroupSync {
 
     pub(super) fn user_has_active(&self, actors: &[ScriptActor], channel: u8) -> bool {
         self.user.channels.iter().any(|(&index, &member_channel)| {
-            member_channel == channel && actors[index].attributes()[IGNORED_ATTRIBUTE] == 0
+            member_channel == channel && actors[index].attributes()[Attribute::AlwaysSync] == 0
         })
     }
 
@@ -117,7 +114,13 @@ impl GroupSync {
         let channels = self.channels.clone();
         self.update_members(actors.iter().enumerate().filter_map(|(index, actor)| {
             let channel = channels.get(&index).copied().unwrap_or(0);
-            (channel != 0).then(|| (index, channel, actor.attributes()[IGNORED_ATTRIBUTE] != 0))
+            (channel != 0).then(|| {
+                (
+                    index,
+                    channel,
+                    actor.attributes()[Attribute::AlwaysSync] != 0,
+                )
+            })
         }));
     }
 
@@ -177,7 +180,7 @@ impl UserSync {
                 continue;
             }
             let present = channels.entry(channel).or_insert([false; 256]);
-            if actors[index].attributes()[IGNORED_ATTRIBUTE] == 0 {
+            if actors[index].attributes()[Attribute::AlwaysSync] == 0 {
                 present[usize::from(self.posted.get(&index).copied().unwrap_or(0))] = true;
             }
         }

@@ -8,6 +8,7 @@
 //! motion interrupts every phase.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 type SoundSink<'a> =
     Option<&'a mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>;
@@ -66,7 +67,7 @@ impl ScriptWorld {
             .context("direct point control unavailable")?;
         if control.falling_state != 0 || control.queued_motion != 0 {
             self.globals.native_command.point_phase = 0;
-            self.actors[index].attributes[1] = 13;
+            self.actors[index].attributes[Attribute::Collide] = 13;
             self.mark_direct_point_active(index);
             return Ok(1);
         }
@@ -99,7 +100,7 @@ impl ScriptWorld {
             }
             return self.complete_point(id, 0);
         }
-        self.actors[index].attributes[1] = 12;
+        self.actors[index].attributes[Attribute::Collide] = 12;
         match phase {
             0 => self.globals.native_command.point_phase = 22,
             22 => {
@@ -117,7 +118,7 @@ impl ScriptWorld {
                 }
             }
             11 => {
-                self.actors[index].attributes[1] = 13;
+                self.actors[index].attributes[Attribute::Collide] = 13;
                 let sliding = self.actors[index]
                     .control
                     .as_ref()

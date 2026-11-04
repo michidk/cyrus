@@ -26,7 +26,7 @@ fn actor(id: usize, static_model_path: bool) -> LiveActor {
         model: Some(model(id, [0.0; 3])),
         ordinary_excluded: false,
         animation_excluded: false,
-        attribute_55: 0,
+        no_collide: 0,
         static_model_path,
         collision_flags: 2,
     }
@@ -124,7 +124,7 @@ fn live_exclusions_and_own_model_identity_are_independent() {
     let mut records: Vec<_> = (0..=6).map(|id| actor(id, true)).collect();
     records[1].ordinary_excluded = true;
     records[2].animation_excluded = true;
-    records[3].attribute_55 = 1;
+    records[3].no_collide = 1;
     records[4].model = None;
     records[5].model.as_mut().unwrap().position = [31.0, 0.0, 0.0];
     let result = CollisionCandidates::build(

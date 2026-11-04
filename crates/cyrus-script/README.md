@@ -19,6 +19,11 @@ Synthetic public-interface tests cover immediate statements, subroutines,
 shared locals, blocking completion, arithmetic, branches, and sticky failures.
 These tests do not establish complete game fidelity.
 
+`Attribute` names each actor attribute slot after the installed `SOUP386.DEF`
+equates, and `Attributes` holds an actor's 256 attribute bytes indexed only by
+`Attribute`. Asset preparation translates installed names to slots once; script
+calls such as `GetAttribute` address slots by number through `Attributes::bytes`.
+
 `CallResult::CompleteWithoutValue` lets a host complete an effect when no
 portable numeric result is established. Statements discard that result;
 formulas, conditions and arguments fail contextually when consuming it.

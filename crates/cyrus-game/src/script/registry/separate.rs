@@ -1,7 +1,7 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
-use crate::script::group_sync;
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 
 impl ScriptWorld {
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.
@@ -17,13 +17,12 @@ impl ScriptWorld {
             anyhow::bail!("world {}: shell script {name} not installed", self.world)
         };
         let actor = super::ScriptActor::shell(self.world, index, key, Some(template));
-        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[Attribute::Group];
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
-        self.globals.group_sync.register_user(
-            index,
-            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
-        );
+        self.globals
+            .group_sync
+            .register_user(index, self.actors[index].attributes()[Attribute::User]);
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
         }
@@ -68,7 +67,7 @@ impl ScriptWorld {
             "created object creator has no spatial state"
         );
         let mut actor = super::ScriptActor::created(self.world, index, key, template);
-        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[Attribute::Group];
         actor
             .control
             .as_mut()
@@ -76,10 +75,9 @@ impl ScriptWorld {
             .creator = Some(creator_index);
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
-        self.globals.group_sync.register_user(
-            index,
-            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
-        );
+        self.globals
+            .group_sync
+            .register_user(index, self.actors[index].attributes()[Attribute::User]);
         self.spatial
             .as_mut()
             .expect("created-object spatial state validated above")
@@ -104,14 +102,13 @@ impl ScriptWorld {
             anyhow::bail!("world {}: script {name} not installed", self.world)
         };
         let actor = super::ScriptActor::created(self.world, index, key, template);
-        let channel = actor.attributes()[group_sync::CHANNEL_ATTRIBUTE];
+        let channel = actor.attributes()[Attribute::Group];
         let has_namespace = actor.namespace.is_some();
         self.actors.push(actor);
         self.globals.group_sync.register(index, channel);
-        self.globals.group_sync.register_user(
-            index,
-            self.actors[index].attributes()[group_sync::USER_CHANNEL_ATTRIBUTE],
-        );
+        self.globals
+            .group_sync
+            .register_user(index, self.actors[index].attributes()[Attribute::User]);
         // Created records retain runtime identifier zero and the first namespace
         // registration, just like post-load creation. Restore must rebuild this
         // identity before ActorSnapshot validation and name-target resolution.
@@ -253,7 +250,7 @@ impl ScriptWorld {
             if actor.runtime.is_none() || actor.failure().is_some() {
                 continue;
             }
-            actor.attributes.fill(0);
+            actor.attributes = Default::default();
             actor.control = Some(Default::default());
             actor.surface = Some(0);
             let result = (|| -> Result<()> {
@@ -279,7 +276,7 @@ impl ScriptWorld {
             })();
             let actor = &mut self.actors[index];
             let finished = actor.control.as_ref().is_some_and(|control| control.killed);
-            actor.attributes.fill(0);
+            actor.attributes = Default::default();
             actor.control = None;
             actor.surface = None;
             if finished {
@@ -334,7 +331,7 @@ impl ScriptWorld {
             {
                 continue;
             }
-            actor.attributes.fill(0);
+            actor.attributes = Default::default();
             actor.control = Some(Default::default());
             actor.surface = Some(0);
             let result = (|| -> Result<()> {
@@ -364,7 +361,7 @@ impl ScriptWorld {
             // Separate records use temporary lifecycle state, so retain KillMe's terminal
             // result before clearing that state for the next traversal.
             let finished = actor.control.as_ref().is_some_and(|control| control.killed);
-            actor.attributes.fill(0);
+            actor.attributes = Default::default();
             actor.control = None;
             actor.surface = None;
             if finished {

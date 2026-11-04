@@ -2,6 +2,7 @@
 use super::ScriptActorId;
 use anyhow::{Context, Result};
 use cyrus_script::Argument;
+use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -98,7 +99,7 @@ impl ActivationInputs {
     pub fn compass_eligible(&self, player: &super::ScriptActor) -> Result<bool> {
         let actor = self.player_state(player)?;
         Ok(actor.compass_eligible(
-            player.attributes()[110],
+            player.attributes()[Attribute::HoldingWeapon],
             self.item_system_ready,
             self.shell_execution,
         ))
@@ -688,7 +689,7 @@ impl ActivationState {
         name: &str,
         arguments: &[Argument],
         inputs: Option<&ActivationInputs>,
-        receiver_attributes: &[u8],
+        receiver_attributes: &Attributes,
         selected_player: Option<(&super::ScriptActor, u16)>,
     ) -> Result<Option<i32>> {
         if name.eq_ignore_ascii_case("Deactivate") {
@@ -721,7 +722,7 @@ impl ActivationState {
             player.animation,
             player.weapon_assigned,
             player.weapon_drawn,
-            player_attributes[110],
+            player_attributes[Attribute::HoldingWeapon],
             inputs.item_system_ready,
             inputs.shell_execution,
         );
@@ -729,7 +730,8 @@ impl ActivationState {
             || inputs.dialogue_open
             || actor.on_rope
             || actor.on_edge()
-            || (player_attributes[105] == 1 && receiver_attributes[106] == 0)
+            || (player_attributes[Attribute::PlayerType] == 1
+                && receiver_attributes[Attribute::SpecialActivate] == 0)
             || self.owner.is_some_and(|owner| owner != receiver)
             || self.prompt.is_some()
             || holding
@@ -791,7 +793,8 @@ impl ActivationState {
             return Ok(ActivationOverlay::Prompt(prompt));
         }
         Ok(
-            if selected_player.attributes()[105] == 1 || !inputs.item_system_ready {
+            if selected_player.attributes()[Attribute::PlayerType] == 1 || !inputs.item_system_ready
+            {
                 ActivationOverlay::Hidden
             } else {
                 ActivationOverlay::Item {
@@ -801,7 +804,7 @@ impl ActivationState {
                         player.animation,
                         player.weapon_assigned,
                         player.weapon_drawn,
-                        selected_player.attributes()[110],
+                        selected_player.attributes()[Attribute::HoldingWeapon],
                         inputs.item_system_ready,
                         inputs.shell_execution,
                     )

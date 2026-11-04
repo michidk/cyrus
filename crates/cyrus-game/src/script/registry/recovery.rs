@@ -1,6 +1,7 @@
 //! Ordinary collision rollback restores separately owned position and receiver state.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::Attribute;
 use cyrus_world::{
     animation::ActorAnimationCheckpoint,
     sound::{AnimationSoundState, ScriptSound},
@@ -146,15 +147,15 @@ impl ScriptWorld {
             "world {} instance {index}: stable recovery of an object is unavailable",
             self.world
         );
-        let turn = i32::from(self.actors[index].attributes[15]);
+        let turn = i32::from(self.actors[index].attributes[Attribute::TurnSpeed]);
         ensure!(
             turn != 0,
-            "world {} instance {index}: ordinary stable recovery attribute 15 must admit a positive random bound",
+            "world {} instance {index}: ordinary stable recovery attr_turn_speed must admit a positive random bound",
             self.world
         );
         self.restore_ordinary_rollback(id, snapshot, sounds)?;
         let actor = &mut self.actors[index];
-        actor.attributes[6] = 0;
+        actor.attributes[Attribute::Weight] = 0;
         let control = actor
             .control
             .as_mut()
@@ -187,7 +188,7 @@ impl ScriptWorld {
     }
 
     /// The first half of the selected player's stable recovery: when its stable record is valid
-    /// and the probe rejects, restore the stable position, clear attribute 6, falling and sliding,
+    /// and the probe rejects, restore the stable position, clear `attr_weight`, falling and sliding,
     /// restore the movement flags and animation snapshot and mark collision transition bit 1.
     /// Returns the attempted position and the falling byte before recovery for the caller's
     /// follow-up ground response; `None` when no recovery happened.
@@ -221,7 +222,7 @@ impl ScriptWorld {
         let attempted = self.spatial(id)?.local.position;
         self.restore_ordinary_rollback(id, snapshot, sounds)?;
         let actor = &mut self.actors[index];
-        actor.attributes[6] = 0;
+        actor.attributes[Attribute::Weight] = 0;
         let control = actor
             .control
             .as_mut()
@@ -360,7 +361,7 @@ impl ScriptWorld {
             .local
             .position = position;
         let actor = &mut self.actors[index];
-        actor.attributes[6] = 0;
+        actor.attributes[Attribute::Weight] = 0;
         actor
             .control
             .as_mut()

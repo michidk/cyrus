@@ -169,7 +169,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
             .err()
             .unwrap()
             .to_string()
-            .contains("invalid attribute 29")
+            .contains("invalid Group attribute")
     );
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["steps"]["28"]["operation"]["target"] = 1.into();

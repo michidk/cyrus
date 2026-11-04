@@ -2,6 +2,7 @@
 use super::{ScriptActor, ScriptActorId, ScriptWorld};
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 struct Effects<'a> {
     generation: u64,
@@ -39,7 +40,7 @@ impl DialogueEffects for Effects<'_> {
             .actors
             .get_mut(speaker.index)
             .with_context(|| format!("dialogue speaker {} absent", speaker.index))?;
-        actor.attributes[117] = 1;
+        actor.attributes[Attribute::LockPos] = 1;
         Ok(())
     }
 }

@@ -3,6 +3,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::player::input::PlayerInput;
 use anyhow::{Context, Result, bail};
+use cyrus_script::Attribute;
 
 /// One key's quick-press counter. The release timer counts frames since the last release; a press
 /// inside the tap window raises the count, a longer gap restarts it.
@@ -126,7 +127,7 @@ impl ScriptWorld {
                 }),
             control.combat_death_default.is_some(),
             control.weapon_drawn,
-            actor.attributes[110],
+            actor.attributes[Attribute::HoldingWeapon],
             inputs
                 .hud
                 .map(|hud| hud.inventory_ready())
@@ -385,10 +386,10 @@ impl ScriptWorld {
     }
 
     /// The reach test before a combo move starts. A start proceeds when an actor with a combat
-    /// record in the move's arc and range is attackable (attribute 97 zero, or lifecycle selector 6),
-    /// and otherwise unless an actor in that arc and range is a protected one (attribute 97 nonzero,
+    /// record in the move's arc and range is attackable (`attr_npc` zero, or lifecycle selector 6),
+    /// and otherwise unless an actor in that arc and range is a protected one (`attr_npc` nonzero,
     /// selector neither 6 nor 8): then the player speaks the opponent-unarmed taunt (type 11 when the
-    /// target's attribute 118 is nonzero, else 10) and the move does not start. The forward move (3)
+    /// target's `attr_woman` is nonzero, else 10) and the move does not start. The forward move (3)
     /// tests the protected actor against an arc six times as wide. Arc and range come from the first
     /// motion of the move's own attack slot; the receiver itself is not excluded.
     fn attack_reach_admits(
@@ -453,7 +454,7 @@ impl ScriptWorld {
             };
             if control.combat.is_some()
                 && in_reach(self, other, 1.0)?
-                && (actor.attributes[97] == 0 || control.death_selector == 6)
+                && (actor.attributes[Attribute::Npc] == 0 || control.death_selector == 6)
             {
                 return Ok(true);
             }
@@ -463,12 +464,16 @@ impl ScriptWorld {
             let actor = &self.actors[index];
             let selector = actor.control.as_ref().map(|control| control.death_selector);
             if matches!(selector, Some(6 | 8))
-                || actor.attributes[97] == 0
+                || actor.attributes[Attribute::Npc] == 0
                 || !in_reach(self, other, if kind == 3 { 6.0 } else { 1.0 })?
             {
                 continue;
             }
-            let trigger = if actor.attributes[118] != 0 { 11 } else { 10 };
+            let trigger = if actor.attributes[Attribute::Woman] != 0 {
+                11
+            } else {
+                10
+            };
             self.request_combat_taunt(id, trigger, 0, inputs, random, sounds)?;
             return Ok(false);
         }
@@ -581,7 +586,7 @@ impl ScriptWorld {
             clock,
             inputs,
             random,
-            // The lunge is a forward step of attribute 16; it requests no animation and so no sound.
+            // The lunge is a forward step of `attr_fight_lunge_speed`; it requests no animation and so no sound.
             |world, id, _distance, _mode| {
                 world.step_player(id, "Lunge", inputs, &mut |_, _| {
                     bail!("selected-player lunge sound unsupported")

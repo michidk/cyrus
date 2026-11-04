@@ -113,7 +113,7 @@ pub struct LiveActor {
     pub model: Option<ModelBounds>,
     pub ordinary_excluded: bool,
     pub animation_excluded: bool,
-    pub attribute_55: u8,
+    pub no_collide: u8,
     pub static_model_path: bool,
     pub collision_flags: u8,
 }
@@ -223,7 +223,7 @@ impl CollisionCandidates {
             if self.faces.len() == 64 && self.actors.len() == 64 {
                 return Ok(());
             }
-            if record.ordinary_excluded || record.animation_excluded || record.attribute_55 != 0 {
+            if record.ordinary_excluded || record.animation_excluded || record.no_collide != 0 {
                 continue;
             }
             let Some(model) = record.model else {

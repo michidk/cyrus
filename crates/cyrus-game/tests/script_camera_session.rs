@@ -5,6 +5,7 @@ use cyrus_game::script::{
     GameplayGlobals, ScriptHud, ScriptInputs, ScriptStage, ScriptWorld, WorldRestoreContext,
     WorldSnapshotSources,
 };
+use cyrus_script::Attribute;
 use cyrus_script::Thread;
 use cyrus_script::program::*;
 use serde_json::json;
@@ -21,7 +22,7 @@ fn actor(operations: Vec<Operation>, origin: u32) -> Actor {
         namespace: None,
         instance_variables: vec![vec![]],
         location_offsets: vec![],
-        attributes: BTreeMap::new(),
+        attributes: Default::default(),
         combat_taunts: vec![],
         native_hook: None,
         program: Program {
@@ -73,7 +74,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 29,
+        version: 30,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -137,7 +138,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
                 initial_value: 0,
             }],
             references: vec![],
-            attributes: (0..256).map(|index| format!("attr_{index}")).collect(),
+            attributes: vec![],
         },
         actors,
         instances: vec![Instance {
@@ -237,11 +238,7 @@ fn show_player_holds_the_snap_bit_for_one_poll_then_completes() {
 #[test]
 fn show_player_requests_the_combat_slot_while_the_player_holds_a_weapon() {
     let mut data = scripts(&["CYRUS", "CAMERA"]);
-    data.actors
-        .get_mut("CYRUS")
-        .unwrap()
-        .attributes
-        .insert("attr_110".into(), 1);
+    data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 7).unwrap();
     let hud = ScriptHud::default();
@@ -389,11 +386,7 @@ fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
     ] {
         let mut data = scripts(&["CYRUS", "CAMERA"]);
         data.camera = settings.clone();
-        data.actors
-            .get_mut("CYRUS")
-            .unwrap()
-            .attributes
-            .insert("attr_105".into(), player_type);
+        data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::PlayerType] = player_type;
         data.content_id = data.content_identity().unwrap();
         let world = ScriptWorld::prepare(&data, 7).unwrap();
         let records = &world.camera().unwrap().records;
@@ -498,18 +491,14 @@ fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
     let mut data = scripts_calling("showObjPan", &[3, -2, 5, 3]);
     // A nonzero slave attribute selects the composed pose: the master's pose plus the offset.
     let mut master = actor(vec![Operation::End { target: 0 }], 900);
-    master.attributes.insert("attr_25".into(), 1);
+    master.attributes[Attribute::Master] = 1;
     data.actors.insert("MASTER".into(), master);
     let mut placement = data.instances[0].clone();
     placement.object_id = 1;
     placement.actor = "MASTER".into();
     placement.map_position = [20, 30, 40];
     data.instances.push(placement);
-    data.actors
-        .get_mut("ACTOR")
-        .unwrap()
-        .attributes
-        .insert("attr_26".into(), 1);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 7).unwrap();
     world.prepare_spatial().unwrap();
@@ -624,11 +613,7 @@ fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() 
     assert_eq!(world.camera().unwrap().scripted_active, 1);
 
     let mut data = scripts_calling("showCyrusPan", &[3, -2, 5, 3]);
-    data.actors
-        .get_mut("CYRUS")
-        .unwrap()
-        .attributes
-        .insert("attr_110".into(), 1);
+    data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
     let mut world = prepared(&mut data);
     let before = world.camera().unwrap().clone();
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
@@ -892,11 +877,7 @@ mod live {
             ..Default::default()
         };
         if holding {
-            data.actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("attr_110".into(), 1);
+            data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
         }
         let mut world = prepared(&mut data);
         world.initialize_camera_pose(start()).unwrap();

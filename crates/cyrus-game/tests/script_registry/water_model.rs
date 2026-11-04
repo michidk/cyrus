@@ -3,6 +3,7 @@ use cyrus_assets::effects::{EffectImage, Effects};
 use cyrus_game::script::{
     ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage, camera::CameraPose,
 };
+use cyrus_script::Attribute;
 
 pub(super) fn effects() -> Effects {
     Effects {
@@ -135,13 +136,7 @@ fn water_models_use_installed_depth_and_strict_prior_height_effect_threshold() {
 fn selected_water_prepass_clears_direction_and_uses_null_source_death() {
     for surface in 1..=4 {
         let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
-            scripts.definition.attributes[105] = "skip_death".into();
-            scripts
-                .actors
-                .get_mut("CYRUS")
-                .unwrap()
-                .attributes
-                .insert("skip_death".into(), 1);
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::PlayerType] = 1;
         });
         let index = world
             .actors()
@@ -235,7 +230,7 @@ fn selected_water_prepass_clears_direction_and_uses_null_source_death() {
             [0; 2]
         );
         assert_eq!(
-            world.actors()[index].attributes()[3],
+            world.actors()[index].attributes()[Attribute::Health],
             if matches!(surface, 2 | 4) { 0 } else { 50 }
         );
         assert_eq!(world.model_position(player).unwrap().unwrap()[1], 58.0);

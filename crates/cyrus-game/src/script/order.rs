@@ -1,6 +1,7 @@
 //! Fresh-world ordinary actor membership and cached view-window traversal.
 use super::{ScriptActor, ScriptActorId, ScriptActorSource};
 use anyhow::Result;
+use cyrus_script::Attribute;
 use std::collections::BTreeMap;
 
 pub(super) struct ActorLists {
@@ -87,7 +88,7 @@ impl ActorLists {
             .flat_map(|(_, indices)| indices.iter())
             .chain(self.persistent.iter())
             .copied()
-            .filter(|&index| actors[index].attributes()[122] != 0)
+            .filter(|&index| actors[index].attributes()[Attribute::NonMoving] != 0)
             .map(|index| ScriptActorId { generation, index })
             .collect()
     }
@@ -163,7 +164,9 @@ impl ActorLists {
                 }
                 if let Some(cell) = self.cells.get(&[first[0] + x, first[1] + z]) {
                     for &index in cell {
-                        if !(border_x || border_z) || actors[index].attributes()[113] == 0 {
+                        if !(border_x || border_z)
+                            || actors[index].attributes()[Attribute::ShortMapping] == 0
+                        {
                             self.selected.push(ScriptActorId { generation, index });
                         }
                     }

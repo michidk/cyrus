@@ -1,6 +1,7 @@
 //! The nonplayer step hazard test follows the original's destination surface classification.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Receiver-relative destination check. Forward is WalkForward's admission;
 /// the other directions follow preservation's fight-spacing admission rules.
@@ -87,7 +88,8 @@ impl ScriptWorld {
         if control.rope_attached {
             return Ok(false);
         }
-        if control.death_selector == 7 && self.actors[index].attributes[1] & 1 == 0 {
+        if control.death_selector == 7 && self.actors[index].attributes[Attribute::Collide] & 1 == 0
+        {
             return Ok(true);
         }
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
@@ -95,10 +97,18 @@ impl ScriptWorld {
         let shape = self.ordinary_collision_shape(id)?;
         let attributes = &self.actors[index].attributes;
         let (axis, attribute, extent, reverse) = match direction {
-            OrdinaryStepDirection::Forward => (2, 12, shape.positive_extent[2], false),
-            OrdinaryStepDirection::Left => (0, 10, shape.negative_extent[0], true),
-            OrdinaryStepDirection::Right => (0, 10, shape.positive_extent[0], false),
-            OrdinaryStepDirection::Backward => (2, 13, shape.negative_extent[2], true),
+            OrdinaryStepDirection::Forward => {
+                (2, Attribute::ForwardWalk, shape.positive_extent[2], false)
+            }
+            OrdinaryStepDirection::Left => {
+                (0, Attribute::SideSpeed, shape.negative_extent[0], true)
+            }
+            OrdinaryStepDirection::Right => {
+                (0, Attribute::SideSpeed, shape.positive_extent[0], false)
+            }
+            OrdinaryStepDirection::Backward => {
+                (2, Attribute::BackwardWalk, shape.negative_extent[2], true)
+            }
         };
         let amount = i32::from(attributes[attribute])
             .wrapping_add(extent)
@@ -172,8 +182,8 @@ impl ScriptWorld {
 
     /// `MoveForward`'s forward step check. `None` when the check needs the collision query and
     /// none was supplied. Passes outright for a receiver whose lifecycle byte is 7 and whose
-    /// attribute 1 has bit 0 clear, and for one whose attribute 1 has bit 1 clear (no hazard test);
-    /// otherwise the destination, half of attribute byte 8 ahead, must not be a hazard.
+    /// `attr_collide` has bit 0 clear, and for one whose `attr_collide` has bit 1 clear (no hazard test);
+    /// otherwise the destination, half of `attr_forward_speed` ahead, must not be a hazard.
     pub fn forward_step_clear(
         &self,
         id: ScriptActorId,
@@ -187,15 +197,18 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("forward step check control unavailable")?;
-        if (control.death_selector == 7 && actor.attributes[1] & 1 == 0)
-            || actor.attributes[1] & 2 == 0
+        if (control.death_selector == 7 && actor.attributes[Attribute::Collide] & 1 == 0)
+            || actor.attributes[Attribute::Collide] & 2 == 0
         {
             return Ok(Some(true));
         }
         let Some(query) = query else {
             return Ok(None);
         };
-        let distance = ((i32::from(actor.attributes[8]) << 8).wrapping_mul(frame_scale) >> 8) >> 1;
+        let distance = ((i32::from(actor.attributes[Attribute::ForwardSpeed]) << 8)
+            .wrapping_mul(frame_scale)
+            >> 8)
+            >> 1;
         let spatial = self.spatial(id)?;
         let destination = cyrus_world::transform::translate_forward(
             self.sight_position(index)?,
@@ -212,7 +225,7 @@ impl ScriptWorld {
 
     /// Whether stepping to `destination` (Q8 position) is hazardous: the destination surface is a
     /// steep slope, unless both the destination and the current surface are floors. Applies only
-    /// to actors whose attribute 1 has bit 1 set, and not to the selected player while its
+    /// to actors whose `attr_collide` has bit 1 set, and not to the selected player while its
     /// support-history counter is nonzero. A surface missing at one of the two points
     /// counts as class one (**Inferred**: the original reads an uninitialized record there).
     pub fn step_hazard(
@@ -225,7 +238,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
-        if actor.attributes[1] & 2 == 0 {
+        if actor.attributes[Attribute::Collide] & 2 == 0 {
             return Ok(false);
         }
         // The selected player skips the test while its support-history counter is nonzero.

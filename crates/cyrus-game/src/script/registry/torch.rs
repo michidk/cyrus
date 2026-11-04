@@ -6,14 +6,12 @@
 //! belongs to the attachment owner and is not modelled here.
 use super::{GameHost, ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 const LIGHTING: u8 = 33;
 const DOUSING: u8 = 34;
 const LIGHT_GROUP: u16 = 149;
 const DOUSE_GROUP: u16 = 150;
-/// Attributes holding the progress threshold of the lighting and dousing groups.
-const LIGHT_FRAME_ATTRIBUTE: usize = 103;
-const DOUSE_FRAME_ATTRIBUTE: usize = 104;
 
 impl ScriptWorld {
     fn torch_gates(&self, id: ScriptActorId, inputs: &TorchInputs, group: u16) -> Result<bool> {
@@ -163,8 +161,8 @@ impl ScriptWorld {
         }
         let state = control.living_state;
         let (group, threshold) = match state {
-            LIGHTING => (LIGHT_GROUP, LIGHT_FRAME_ATTRIBUTE),
-            DOUSING => (DOUSE_GROUP, DOUSE_FRAME_ATTRIBUTE),
+            LIGHTING => (LIGHT_GROUP, Attribute::LightFrame),
+            DOUSING => (DOUSE_GROUP, Attribute::UnlightFrame),
             _ => return Ok(()),
         };
         self.request_ordinary_group(id, group, false, ticks, sounds)?;
@@ -244,7 +242,7 @@ impl ScriptWorld {
                     }),
                 control.combat.is_some(),
                 control.weapon_drawn,
-                actor.attributes[110],
+                actor.attributes[Attribute::HoldingWeapon],
                 item_system_ready,
                 shell,
             ),

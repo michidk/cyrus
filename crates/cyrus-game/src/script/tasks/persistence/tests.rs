@@ -3659,7 +3659,7 @@ fn walk_backward_matches_the_original_routine() {
     use cyrus_assets::animation::Animations;
     use cyrus_world::animation::ActorAnimation;
     // Rows from the original routine run in an emulator with duration 1: heading, step counter,
-    // attribute 11, attribute 13, attribute 9, frame scale, resulting position, packed counter byte.
+    // `attr_step_type`, `attr_backward_walk`, `attr_backward_speed`, frame scale, resulting position, packed counter byte.
     let rows: Vec<[i64; 10]> = serde_json::from_str(
         r#"[
 [0,0,0,8,3,256,0,0,-2048,64],

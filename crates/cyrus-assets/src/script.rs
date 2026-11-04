@@ -4,6 +4,7 @@ pub mod inventory;
 pub mod weapon;
 use anyhow::Context;
 use cyrus_script::program::{Call, Definition, Program};
+use cyrus_script::{Attribute, Attributes};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -457,10 +458,10 @@ pub struct Actor {
     pub location_offsets: Vec<[i32; 3]>,
     pub program: Program,
     /// Independent actor-load attribute defaults; model-path message groups are assigned later.
-    pub attributes: BTreeMap<String, u8>,
+    pub attributes: Attributes,
     /// Per-update RAHK native call, distinct from the RASC entry continuation.
     pub native_hook: Option<Call>,
-    /// Consecutive COMBAT.INI records selected by RAEX and attr_num_taunts.
+    /// Consecutive COMBAT.INI records selected by RAEX and [`Attribute::NumTaunts`].
     #[serde(default)]
     pub combat_taunts: Vec<CombatTaunt>,
 }
@@ -566,7 +567,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 29,
+            self.version == 30,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
@@ -599,11 +600,7 @@ impl Scripts {
             self.world
         );
         for (name, actor) in &self.actors {
-            let taunt_count = actor
-                .attributes
-                .get("attr_num_taunts")
-                .copied()
-                .unwrap_or(0);
+            let taunt_count = actor.attributes[Attribute::NumTaunts];
             anyhow::ensure!(
                 actor.combat_taunts.len() == usize::from(taunt_count),
                 "world {} actor {name}: incomplete combat taunts, expected {taunt_count}",

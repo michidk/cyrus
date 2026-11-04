@@ -1,6 +1,7 @@
 //! Queued and falling vertical arithmetic retains the original byte timer.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::Attribute;
 
 /// Factor and clock inputs follow preservation's vertical motion rules;
 /// the caller supplies the entry for the current timer and the entry after an
@@ -97,7 +98,7 @@ pub struct OrdinaryVerticalState {
 /// Apply one original ascending arithmetic stage, without animation dispatch.
 pub fn ordinary_queued_vertical(
     mut state: OrdinaryVerticalState,
-    attribute_32: u8,
+    jump_height: u8,
     input: OrdinaryVerticalInputs,
 ) -> OrdinaryVerticalState {
     if input.model_controls_vertical {
@@ -105,7 +106,7 @@ pub fn ordinary_queued_vertical(
     }
     state.y = state
         .origin_y
-        .wrapping_sub(i32::from(attribute_32).wrapping_mul(input.factor));
+        .wrapping_sub(i32::from(jump_height).wrapping_mul(input.factor));
     state.timer = state
         .timer
         .wrapping_add(input.fine_ticks.wrapping_add(input.additional_ticks) as u8);
@@ -120,7 +121,7 @@ pub fn ordinary_queued_vertical(
 /// the signed timer is nonpositive; otherwise it is the current timer entry.
 pub fn ordinary_falling_vertical(
     mut state: OrdinaryVerticalState,
-    attribute_32: u8,
+    jump_height: u8,
     input: OrdinaryVerticalInputs,
 ) -> OrdinaryVerticalState {
     if input.model_controls_vertical {
@@ -131,7 +132,7 @@ pub fn ordinary_falling_vertical(
         .wrapping_mul(512)
         .wrapping_sub(256) as i32;
     let ticks = input.fine_ticks.wrapping_add(input.additional_ticks);
-    let scaled = i32::from(attribute_32).wrapping_mul(input.factor);
+    let scaled = i32::from(jump_height).wrapping_mul(input.factor);
     if (state.timer as i8) > 0 {
         state.y = state
             .origin_y
@@ -237,7 +238,8 @@ impl ScriptWorld {
             queued: control.queued_motion,
             falling: control.falling_state,
         };
-        let after = ordinary_queued_vertical(before, actor.attributes[32], input);
+        let after =
+            ordinary_queued_vertical(before, actor.attributes[Attribute::JumpHeight], input);
         let force = !input.model_controls_vertical
             && input.advanced_factor > 255
             && before.queued & 128 != 0
@@ -324,7 +326,7 @@ impl ScriptWorld {
                 queued: control.queued_motion,
                 falling: control.falling_state,
             },
-            self.actors[index].attributes[32],
+            self.actors[index].attributes[Attribute::JumpHeight],
             input,
         );
         self.spatial

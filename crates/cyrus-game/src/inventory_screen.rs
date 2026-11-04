@@ -1,6 +1,7 @@
 //! Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 //! Rules follow preservation's `docs/engine/hud.md` inventory screen section.
 use anyhow::Context;
+use cyrus_script::Attribute;
 
 /// Directions held during one screen update, after the host resolves installed bindings.
 #[derive(Clone, Copy, Default)]
@@ -289,13 +290,18 @@ fn drive(
             let (items, selected) = hud
                 .inventory_list()
                 .context("inventory: installed inventory data unavailable")?;
-            // Attribute 105 value 1 empties the list.
+            // `attr_player_type` value 1 empties the list.
             let world = actors.as_ref().and_then(|actors| actors.current.as_ref());
             let player_type = world
                 .context("inventory: no world")?
                 .player_activation_state()
                 .ok()
-                .and_then(|(id, _)| world?.actors().get(id.index).map(|a| a.attributes()[105]));
+                .and_then(|(id, _)| {
+                    world?
+                        .actors()
+                        .get(id.index)
+                        .map(|a| a.attributes()[Attribute::PlayerType])
+                });
             let items = if player_type == Some(1) {
                 Vec::new()
             } else {

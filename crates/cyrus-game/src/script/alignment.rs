@@ -2,29 +2,30 @@
 //! targets", "Alignment distance thresholds" and "PlayerFaceObj". The functions are pure.
 //! `PlayerFaceObj` runs on them as a native task; the `PlayerLineUp` native that owns the mode,
 //! fallback flag and reference, and the player's movement, is not implemented.
+use cyrus_script::{Attribute, Attributes};
 
-/// Attribute index of the speed byte for the player's current animation group, or `None` when
+/// Attribute holding the speed byte for the player's current animation group, or `None` when
 /// the group selects no speed (the speed is then zero).
-pub fn speed_attribute(group: u16) -> Option<usize> {
+pub fn speed_attribute(group: u16) -> Option<Attribute> {
     match group {
-        18 | 30 | 142 => Some(8),
-        19 | 143 => Some(9),
-        20 | 21 => Some(12),
-        22 | 23 => Some(13),
-        24..=27 => Some(10),
-        31 => Some(19),
-        92 | 93 => Some(17),
+        18 | 30 | 142 => Some(Attribute::ForwardSpeed),
+        19 | 143 => Some(Attribute::BackwardSpeed),
+        20 | 21 => Some(Attribute::ForwardWalk),
+        22 | 23 => Some(Attribute::BackwardWalk),
+        24..=27 => Some(Attribute::SideSpeed),
+        31 => Some(Attribute::FightForwardWalk),
+        92 | 93 => Some(Attribute::FightForwardSpeed),
         _ => None,
     }
 }
 
 /// Speed byte for `group`: zero without a current group or attribute table, and for groups that
 /// select no attribute.
-pub fn speed(group: Option<u16>, attributes: Option<&[u8]>) -> u8 {
+pub fn speed(group: Option<u16>, attributes: Option<&Attributes>) -> u8 {
     group
         .and_then(speed_attribute)
         .zip(attributes)
-        .map_or(0, |(index, attributes)| attributes[index])
+        .map_or(0, |(attribute, attributes)| attributes[attribute])
 }
 
 fn scaled(value: i32, scale: i32) -> i32 {
@@ -140,7 +141,7 @@ pub struct FacingInput {
     /// [`speed`] of the player's current group.
     pub speed: u8,
     pub frame_scale: u32,
-    /// Attribute 21 holding a weapon or in combat mode, otherwise attribute 15.
+    /// `attr_fight_turn_speed` holding a weapon or in combat mode, otherwise `attr_turn_speed`.
     pub rate_attribute: u8,
     pub holding_weapon: bool,
     pub torch: bool,
@@ -206,10 +207,16 @@ mod tests {
 
     #[test]
     fn speed_follows_the_current_group_and_missing_state_is_zero() {
-        let mut attributes = [0u8; 256];
-        for (index, value) in [(8, 1), (9, 2), (10, 3), (12, 4), (13, 5), (17, 6), (19, 7)] {
-            attributes[index] = value;
-        }
+        let mut attributes = Attributes::default();
+        attributes.extend([
+            (Attribute::ForwardSpeed, 1),
+            (Attribute::BackwardSpeed, 2),
+            (Attribute::SideSpeed, 3),
+            (Attribute::ForwardWalk, 4),
+            (Attribute::BackwardWalk, 5),
+            (Attribute::FightForwardSpeed, 6),
+            (Attribute::FightForwardWalk, 7),
+        ]);
         let expected = [
             (18, 1),
             (30, 1),
@@ -311,8 +318,8 @@ mod tests {
 
     #[test]
     fn the_turn_step_matches_the_original_routine() {
-        // Rows from the original turn helper in an emulator: heading, target, attribute 15 (attribute
-        // 21 is three more), frame scale, holding, combat, torch, heading after, requested group
+        // Rows from the original turn helper in an emulator: heading, target, `attr_turn_speed`
+        // (`attr_fight_turn_speed` is three more), frame scale, holding, combat, torch, heading after, requested group
         // (-1 none) and the helper's zero or nonzero report.
         let rows: Vec<[i64; 10]> = serde_json::from_str(
             r#"[
@@ -996,7 +1003,7 @@ mod tests {
 
     #[test]
     fn the_facing_step_matches_the_original_routine() {
-        // Rows from the original facing helper in an emulator (attribute 15 is 12, no weapon):
+        // Rows from the original facing helper in an emulator (`attr_turn_speed` is 12, no weapon):
         // player X/Z, receiver offset, heading, speed, frame scale, then the player's X/Z and
         // heading afterwards, the requested group (-1 none) and the helper's report.
         let rows: Vec<[i64; 12]> = serde_json::from_str(

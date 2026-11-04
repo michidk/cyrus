@@ -155,7 +155,7 @@ pub struct PacedDefenceInput {
     pub pacing_sum: i32,
     pub facing_alike: bool,
     pub target_in_combat_stance: bool,
-    pub attribute_58: u8,
+    pub aggression: u8,
 }
 
 /// Receiver-owned queries sampled only when the paced picker reaches their branch.
@@ -259,7 +259,7 @@ pub fn paced_defence_with_queries(
                 chosen = index as i32;
             }
         } else {
-            decision.defence_counter = 129 - i32::from(input.attribute_58);
+            decision.defence_counter = 129 - i32::from(input.aggression);
             let candidate_timing = queries.near_timing(index)?;
             if candidate_timing < near_timing
                 && input
@@ -400,12 +400,12 @@ pub struct DefenceStartInput {
     pub cooldown: u32,
     pub drawing: bool,
     pub sheathing: bool,
-    pub attribute_16: u8,
+    pub fight_lunge_speed: u8,
 }
 
 /// Start an admitted defence synchronously, following preservation's
 /// [starter rules](https://github.com/michidk/redguard-preservation/pull/112).
-/// Selected-player kind four calls movement with attribute 16 shifted eight bits
+/// Selected-player kind four calls movement with `attr_fight_lunge_speed` shifted eight bits
 /// and mode one before either selector write. Movement failure is an unsupported
 /// host error; a supported movement result never gates admission. The executor
 /// receives request zero and may change both selectors before this call returns.
@@ -430,7 +430,7 @@ pub fn start_defence(
         return Ok(false);
     }
     if kind == 4 && input.selected_player {
-        movement(i32::from(input.attribute_16) << 8, 1)?;
+        movement(i32::from(input.fight_lunge_speed) << 8, 1)?;
     }
     *defence_selector = kind;
     *selected = kind;
@@ -806,8 +806,8 @@ pub struct DefenceSelectionInput {
     pub facing_alike: bool,
     /// Combat stance is the armed predicate or combat flag mask 0x04.
     pub target_in_combat_stance: bool,
-    /// Actor attribute 58, used when facing differs and the target is in combat stance.
-    pub attribute_58: u8,
+    /// Actor `attr_aggression`, used when facing differs and the target is in combat stance.
+    pub aggression: u8,
     /// Per-actor value plus shared tick counter, with signed 32-bit wrapping addition.
     pub pacing_sum: i32,
     /// The defence pacing divisor, required only on the admitted no-move branch.
@@ -844,7 +844,7 @@ pub trait DefenceSelectionServices {
 /// and [collision timing](https://github.com/michidk/redguard-preservation/commit/79a4f36388dc9e8563af7ed2da2e6d1bb6dc5f7b).
 ///
 /// Armed, with the shared health-death/controller override clear and no move selected, it sets the defence counter to one when
-/// the two face alike or the target is outside combat stance, and to `129 - attribute 58`
+/// the two face alike or the target is outside combat stance, and to `129 - attr_aggression`
 /// otherwise. On a zero pacing remainder it picks the best usable defence when the target is
 /// mid-move and its signed command cursor exceeds the wrapping sum of its motion's first
 /// collision frame and collision duration, or an open defence when the target's selected move is
@@ -869,7 +869,7 @@ pub fn defence_selection(
         decision.defence_counter = if i.facing_alike || !i.target_in_combat_stance {
             1
         } else {
-            129 - i32::from(i.attribute_58)
+            129 - i32::from(i.aggression)
         };
         if i.pacing_sum
             .checked_rem(i.defence_pacing)
@@ -998,7 +998,7 @@ mod tests {
             cooldown: 0,
             drawing: false,
             sheathing: false,
-            attribute_16: 18,
+            fight_lunge_speed: 18,
         };
         let mut effect = None;
         assert!(
@@ -1058,7 +1058,7 @@ mod tests {
             cooldown: 0,
             drawing: false,
             sheathing: false,
-            attribute_16: 18,
+            fight_lunge_speed: 18,
         };
         let (mut selected, mut selector) = (-1, -77);
         let moved = std::cell::Cell::new(false);
@@ -1275,7 +1275,7 @@ mod tests {
             pacing_sum: 10,
             facing_alike: true,
             target_in_combat_stance: true,
-            attribute_58: 29,
+            aggression: 29,
         }
     }
 
@@ -2029,7 +2029,7 @@ mod tests {
             own_window_far: 400,
             facing_alike: false,
             target_in_combat_stance: true,
-            attribute_58: 29,
+            aggression: 29,
             pacing_sum: 10,
             defence_pacing: 5,
             target_selected: 2,
@@ -2434,7 +2434,7 @@ mod tests {
             own_window_far: 400,
             facing_alike: true,
             target_in_combat_stance: true,
-            attribute_58: 29,
+            aggression: 29,
             pacing_sum: 10,
             defence_pacing: 5,
             target_selected: 2,

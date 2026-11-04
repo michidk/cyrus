@@ -1,10 +1,11 @@
 //! Script cache contracts use authored data and optional read-only installed extraction.
 use cyrus_assets::script::*;
 use cyrus_script::program::*;
+use cyrus_script::{Attribute, Attributes};
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 29,
+        version: 30,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -347,22 +348,12 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
                 "{} actor {name} native hook",
                 path.display()
             );
-            let attribute = |index: usize| {
-                let key = scripts
-                    .definition
-                    .attributes
-                    .get(index)
-                    .filter(|name| !name.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| format!("attr_{index}"));
-                actor.attributes[&key]
-            };
             assert_eq!(
                 actor.combat_taunts.len(),
-                usize::from(attribute(85)),
+                usize::from(actor.attributes[Attribute::NumTaunts]),
                 "{name}: authored combat taunt count"
             );
-            if attribute(14) != 0 {
+            if actor.attributes[Attribute::Combat] != 0 {
                 assert_eq!(
                     scripts.combat_attacks.len(),
                     89,
@@ -374,10 +365,26 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
                 assert_eq!(scripts.combat_attacks[0].motions[0].arc_center, Some(0));
             }
             taunts += actor.combat_taunts.len();
-            assert_eq!(attribute(115), attribute(6), "{name}: reserved weight");
-            assert_eq!(attribute(119), attribute(1), "{name}: reserved collision");
-            assert_ne!(attribute(34), 0, "{name}: sheath frame default");
-            assert_ne!(attribute(35), 0, "{name}: draw frame default");
+            assert_eq!(
+                actor.attributes[Attribute::ReservedWeight],
+                actor.attributes[Attribute::Weight],
+                "{name}: reserved weight"
+            );
+            assert_eq!(
+                actor.attributes[Attribute::ReservedCollide],
+                actor.attributes[Attribute::Collide],
+                "{name}: reserved collision"
+            );
+            assert_ne!(
+                actor.attributes[Attribute::SheathFrame],
+                0,
+                "{name}: sheath frame default"
+            );
+            assert_ne!(
+                actor.attributes[Attribute::DrawFrame],
+                0,
+                "{name}: draw frame default"
+            );
         }
         assert!(
             scripts
@@ -438,7 +445,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             namespace: None,
             instance_variables: vec![vec![]],
             location_offsets: vec![],
-            attributes: BTreeMap::new(),
+            attributes: Attributes::default(),
             combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 3,
@@ -651,7 +658,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 29);
+    assert_eq!(scripts.version, 30);
     assert!(scripts.shells.is_empty(), "no installed shell programs");
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
@@ -772,7 +779,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
             namespace: None,
             instance_variables: vec![vec![]],
             location_offsets: vec![],
-            attributes: BTreeMap::new(),
+            attributes: Attributes::default(),
             combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 0,
@@ -975,7 +982,7 @@ fn authored_location_offsets_participate_in_content_identity() {
                 },
             )]),
         },
-        attributes: BTreeMap::new(),
+        attributes: Attributes::default(),
         combat_taunts: vec![],
         native_hook: None,
     };
@@ -1075,7 +1082,11 @@ fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_l
                     },
                 )]),
             },
-            attributes: BTreeMap::from([("attr_num_taunts".into(), 1)]),
+            attributes: {
+                let mut attributes = Attributes::default();
+                attributes[Attribute::NumTaunts] = 1;
+                attributes
+            },
             native_hook: None,
             combat_taunts: vec![CombatTaunt {
                 trigger: 0,

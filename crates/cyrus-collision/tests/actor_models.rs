@@ -325,7 +325,7 @@ fn live_support_retains_owner_and_duplicate_order_and_follows_supplied_pose() {
                 }),
                 ordinary_excluded: false,
                 animation_excluded: false,
-                attribute_55: 0,
+                no_collide: 0,
                 static_model_path: true,
                 collision_flags: 4,
             }],
