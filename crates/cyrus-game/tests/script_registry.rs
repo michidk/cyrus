@@ -38452,3 +38452,166 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
         );
     }
 }
+
+#[test]
+fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
+    use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+
+    // Preservation player.md: grounded tops below the quarter-height boundary select class 2;
+    // those above it select class 1. Both enter through the jump key before queued jumping.
+    for (top, expected_group, expected_living) in [
+        (-10, 90, 13),
+        (-12, 90, 13),
+        (-13, 86, 11),
+        (-44, 86, 11),
+        (-45, 32, 0),
+    ] {
+        let (scripts, world, mut data, mut scene) = player_walking_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        for group in [32, 86, 90] {
+            definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({
+                "group_index":group,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":1}]
+            }));
+        }
+        let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
+        let player = world.id(index).unwrap();
+        world
+            .advance(
+                player,
+                cyrus_game::script::ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        world
+            .place_selected_player([522 * 256, -1536, 542 * 256], 0)
+            .unwrap();
+        world.refresh_model_presentations(&data, &[player]).unwrap();
+        let map = world.id(0).unwrap();
+        scene.collision.placements.push(StaticPlacement {
+            id: 300,
+            model: "LEDGE".into(),
+            position: [512, 0, 512],
+            rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+        });
+        scene.collision.models.insert(
+            "LEDGE".into(),
+            CollisionModel {
+                flags: 0,
+                geometry: CollisionGeometry {
+                    version: Some(*b"v5.0"),
+                    radius: 300.,
+                    vertices: vec![
+                        [-100., top as f32, 60.],
+                        [100., top as f32, 60.],
+                        [100., 20., 60.],
+                        [-100., 20., 60.],
+                        [-100., top as f32, 160.],
+                        [100., top as f32, 160.],
+                        [100., 20., 160.],
+                        [-100., 20., 160.],
+                    ],
+                    normals: vec![
+                        [0., 0., -1.],
+                        [0., -1., 0.],
+                        [0., 0., 1.],
+                        [0., 1., 0.],
+                        [-1., 0., 0.],
+                        [1., 0., 0.],
+                    ],
+                    faces: vec![
+                        vec![0, 3, 2, 1],
+                        vec![0, 1, 5, 4],
+                        vec![4, 5, 6, 7],
+                        vec![3, 7, 6, 2],
+                        vec![0, 4, 7, 3],
+                        vec![1, 2, 6, 5],
+                    ],
+                    textures: Some(vec![None; 6]),
+                    subobjects: vec![cyrus_assets::collision::CollisionSubobject {
+                        center: [0., 0., 100.],
+                        radius: 300.,
+                        extents: Some([200.; 3]),
+                        faces: (0..6).collect(),
+                    }],
+                },
+            },
+        );
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])
+            .unwrap();
+        let query = OrdinaryGroundQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            distance: 4,
+            sidedness: false,
+        };
+        let held = cyrus_game::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        };
+        world
+            .advance_player_controller(
+                player,
+                query,
+                cyrus_game::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                    }),
+                    shell_execution: Some(false),
+                    fine_ticks: Some(0),
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        let inspected = world.inspect(index, 1);
+        let actor = &inspected["actors"][0];
+        assert_eq!(
+            actor["animation"]["current_group"], expected_group,
+            "top {top}"
+        );
+        assert_eq!(
+            actor["control"]["living_state"], expected_living,
+            "top {top}"
+        );
+        assert_eq!(
+            actor["control"]["queued_motion"],
+            u8::from(expected_group == 32)
+        );
+        assert_eq!(actor["control"]["falling_state"], 0);
+    }
+}
