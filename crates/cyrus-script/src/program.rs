@@ -221,6 +221,6 @@ pub struct Flag {
 pub struct Definition {
     pub functions: Vec<Function>,
     pub flags: Vec<Flag>,
-    pub references: Vec<String>,
+    pub references: Vec<crate::Property>,
     pub attributes: Vec<String>,
 }

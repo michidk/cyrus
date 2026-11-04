@@ -1,7 +1,7 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
-use cyrus_script::{AnimationGroup, Attribute, Attributes};
+use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
 mod activation;
 mod attack;
 mod attack_input;
@@ -584,7 +584,7 @@ pub struct ScriptWorld {
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
     node_timer: Option<i32>,
-    reference_names: Vec<String>,
+    references: Vec<Property>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
@@ -1239,7 +1239,7 @@ impl ScriptWorld {
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
             node_timer: scripts.node_timer,
-            reference_names: scripts.definition.references.clone(),
+            references: scripts.definition.references.clone(),
             names,
             actor_lists: None,
             markers: None,
@@ -4490,11 +4490,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         ))
     }
 
-    fn property_name(&self, target: &Target, reference: u16) -> Result<&str> {
+    fn property(&self, target: &Target, reference: u16) -> Result<Property> {
         self.registry
-            .reference_names
+            .references
             .get(usize::from(reference))
-            .map(String::as_str)
+            .copied()
             .with_context(|| format!("property {target:?}.{reference}: installed reference absent"))
     }
 
@@ -4566,22 +4566,23 @@ pub(super) fn raex_word(
 /// engine/SOUPPROPS.md) place `rope_wait` at +0x1b0 (the companion motion byte), `slide_flag` at
 /// +0x1b1 (sliding), `fall_flag` at +0x1b2 (falling), `jump_flag` at +0x1b3 (queued motion) and
 /// `extra_flag` at +0x1b4 (living state). `extra_time` (+0x1b5) has no cyrus field and stays unsupported.
-fn motion_property<'a>(control: &'a mut ActorControlState, name: &str) -> Option<&'a mut u8> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "rope_wait" => &mut control.motion_companion,
-        "slide_flag" => &mut control.sliding_state,
-        "fall_flag" => &mut control.falling_state,
-        "jump_flag" => &mut control.queued_motion,
-        "extra_flag" => &mut control.living_state,
+fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
+    Some(match name {
+        Property::RopeWait => &mut control.motion_companion,
+        Property::SlideFlag => &mut control.sliding_state,
+        Property::FallFlag => &mut control.falling_state,
+        Property::JumpFlag => &mut control.queued_motion,
+        Property::ExtraFlag => &mut control.living_state,
         _ => return None,
     })
 }
 
-fn pose_property(name: &str) -> Option<PoseProperty> {
-    let find = |names: [&str; 3]| names.iter().position(|n| name.eq_ignore_ascii_case(n));
-    find(["pos.vx", "pos.vy", "pos.vz"])
+fn pose_property(name: Property) -> Option<PoseProperty> {
+    use Property::{AngleVx, AngleVy, AngleVz, PosVx, PosVy, PosVz};
+    let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
+    find([PosVx, PosVy, PosVz])
         .map(PoseProperty::Position)
-        .or_else(|| find(["angle.vx", "angle.vy", "angle.vz"]).map(PoseProperty::Angle))
+        .or_else(|| find([AngleVx, AngleVy, AngleVz]).map(PoseProperty::Angle))
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -4618,8 +4619,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
     }
 
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
-        let name = self.property_name(target, reference)?;
-        if name.eq_ignore_ascii_case("anim.current") {
+        let name = self.property(target, reference)?;
+        if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
                 .animation
@@ -4631,9 +4632,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .map_or(-1, |group| i32::from(group.index() as i16))
                 }));
         }
-        if let Some(word) = ["grip[0]", "grip[1]"]
+        if let Some(word) = [Property::Grip0, Property::Grip1]
             .iter()
-            .position(|word| name.eq_ignore_ascii_case(word))
+            .position(|&word| word == name)
         {
             let index = self.property_receiver(target)?;
             let actor = &self.registry.actors[index];
@@ -4651,9 +4652,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
             return Ok(i32::from(value));
         }
-        if let Some(word) = ["scabbard[0]", "scabbard[1]"]
+        if let Some(word) = [Property::Scabbard0, Property::Scabbard1]
             .iter()
-            .position(|word| name.eq_ignore_ascii_case(word))
+            .position(|&word| word == name)
         {
             let index = self.property_receiver(target)?;
             let actor = &self.registry.actors[index];
@@ -4675,7 +4676,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(i32::from(value));
         }
-        if name.eq_ignore_ascii_case("torch_timer") {
+        if name == Property::TorchTimer {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
@@ -4684,8 +4685,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(i32::from(control.torch_burning));
         }
         // `rope` holds a record pointer in the original; installed scripts only test it against zero.
-        if name.eq_ignore_ascii_case("rope") || name.eq_ignore_ascii_case("hide") {
-            let rope = name.eq_ignore_ascii_case("rope");
+        if name == Property::Rope || name == Property::Hide {
+            let rope = name == Property::Rope;
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
@@ -4698,14 +4699,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }));
         }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
-            let name = name.to_owned();
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             return Ok(i32::from(
-                *motion_property(control, &name).expect("named motion byte"),
+                *motion_property(control, name).expect("named motion byte"),
             ));
         }
         let pose = pose_property(name)
@@ -4724,8 +4724,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
     }
 
     fn write_property(&mut self, target: &Target, reference: u16, value: i32) -> Result<()> {
-        let name = self.property_name(target, reference)?;
-        if name.eq_ignore_ascii_case("torch_timer") {
+        let name = self.property(target, reference)?;
+        if name == Property::TorchTimer {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
@@ -4735,20 +4735,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(());
         }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
-            let name = name.to_owned();
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            *motion_property(control, &name).expect("named motion byte") = value as u8;
+            *motion_property(control, name).expect("named motion byte") = value as u8;
             return Ok(());
         }
-        let scabbard = ["scabbard[0]", "scabbard[1]"]
+        let scabbard = [Property::Scabbard0, Property::Scabbard1]
             .iter()
-            .position(|word| name.eq_ignore_ascii_case(word));
-        if name.eq_ignore_ascii_case("hide") || scabbard.is_some() {
-            let name = name.to_owned();
+            .position(|&word| word == name);
+        if name == Property::Hide || scabbard.is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
@@ -4760,8 +4758,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
-        let name = name.to_owned();
-        let pose = pose_property(&name)
+        let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} write unsupported"))?;
         let index = self.property_receiver(target)?;
         let local = &mut self
@@ -7434,7 +7431,7 @@ mod fighting_tests {
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],
             node_timer: None,
-            reference_names: definition.references,
+            references: definition.references,
             names: BTreeMap::new(),
             actor_lists: None,
             markers: None,

@@ -2,7 +2,7 @@
 use crate::script::{Actor, ClockSettings, CombatTaunt, Instance, Scripts, UpdateSettings};
 use anyhow::{Context, Result};
 use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
-use cyrus_script::{Attribute, Attributes, Native};
+use cyrus_script::{Attribute, Attributes, Native, Property};
 use rgpre::import::{
     rgm::{
         self, RgmFile,
@@ -223,7 +223,14 @@ pub fn prepare_source(
                 initial_value: flag.initial_value,
             })
             .collect(),
-        references: definition.references,
+        references: definition
+            .references
+            .iter()
+            .map(|name| {
+                Property::from_name(name)
+                    .with_context(|| format!("world {world} SOUP386.DEF: reference {name} unknown"))
+            })
+            .collect::<Result<_>>()?,
         attributes: definition.attributes,
     };
     let shells = world_shells(source, &system, world, &actors)?;

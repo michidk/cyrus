@@ -1,10 +1,10 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
-use cyrus_script::Native;
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_script::{Attribute, Attributes};
+use cyrus_script::{Native, Property};
 use std::collections::BTreeMap;
 
 struct NoServices;
@@ -178,7 +178,7 @@ fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
     use cyrus_game::script::ScriptInputs;
     let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
-    scripts.definition.references = vec!["angle.vy".into()];
+    scripts.definition.references = vec![Property::AngleVy];
     scripts.instances[0].angles[1] = 111;
     scripts.instances[1].angles[1] = 222;
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
@@ -274,7 +274,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
     }) {
         let mut scripts = cache();
         scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
-        scripts.definition.references = vec!["angle.vy".into()];
+        scripts.definition.references = vec![Property::AngleVy];
         let kill = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
             name: Native::KillMe,
@@ -524,7 +524,7 @@ fn created_objects_use_identifier_zero_and_first_namespace_registration_wins() {
     created.namespace = Some("projectile".into());
     created.instance_variables = vec![vec![0]];
     created.program.strings = vec!["projectile".into()];
-    scripts.definition.references = vec!["angle.vy".into()];
+    scripts.definition.references = vec![Property::AngleVy];
     created.program.steps = BTreeMap::from([
         (
             0,
@@ -7198,7 +7198,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
         });
         let mut steps = BTreeMap::new();
         let falling = scripts.definition.references.len() as u16;
-        scripts.definition.references.push("fall_flag".into());
+        scripts.definition.references.push(Property::FallFlag);
         for (offset, axis, delta) in [(0, 0, -3341), (1, 2, 1893)] {
             steps.insert(
                 offset,
@@ -16403,8 +16403,8 @@ fn player_arc_dispatch_returns_receiver_relative_result() {
 
 fn heading_property_scripts(reference: u16, object: Object) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec!["unsupported".into(); usize::from(reference) + 1];
-    scripts.definition.references[usize::from(reference)] = "angle.vy".into();
+    scripts.definition.references = vec![Property::Address; usize::from(reference) + 1];
+    scripts.definition.references[usize::from(reference)] = Property::AngleVy;
     scripts.instances[0].angles[1] = 1536;
     let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
     program.strings = vec!["logic".into()];
@@ -16481,12 +16481,12 @@ fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
 #[test]
 fn heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes() {
     for (spatial, name, write, expected) in [
-        (false, "angle.vy", false, "spatial owner unavailable"),
-        (true, "unknown", false, "unsupported"),
-        (true, "angle.vy", true, "unsupported"),
+        (false, Property::AngleVy, false, "spatial owner unavailable"),
+        (true, Property::Address, false, "unsupported"),
+        (true, Property::AngleVy, true, "unsupported"),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         if write {
             scripts
                 .actors
@@ -16537,9 +16537,12 @@ fn heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_write
 
 #[test]
 fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
-    for (axis, name) in ["angle.vx", "angle.vy", "angle.vz"].into_iter().enumerate() {
+    for (axis, name) in [Property::AngleVx, Property::AngleVy, Property::AngleVz]
+        .into_iter()
+        .enumerate()
+    {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         scripts.instances[0].angles = [100, 1536, 300];
         let step = scripts
             .actors
@@ -16588,14 +16591,17 @@ fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
 
 #[test]
 fn position_properties_read_local_coordinates_without_refreshing_pose() {
-    for (axis, name) in ["pos.vx", "pos.vy", "pos.vz"].into_iter().enumerate() {
+    for (axis, name) in [Property::PosVx, Property::PosVy, Property::PosVz]
+        .into_iter()
+        .enumerate()
+    {
         for (object, selected) in [
             (Object::Me, false),
             (Object::Player, true),
             (Object::Named { string: 0 }, false),
         ] {
             let mut scripts = heading_property_scripts(294, object);
-            scripts.definition.references[294] = name.into();
+            scripts.definition.references[294] = name;
             scripts.instances[0].map_position = [-7, 11, -13];
             add_standalone_receivers(&mut scripts);
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -16637,7 +16643,10 @@ fn position_properties_read_local_coordinates_without_refreshing_pose() {
 
 #[test]
 fn position_property_writes_change_only_the_selected_local_coordinate() {
-    for (axis, name) in ["pos.vx", "pos.vy", "pos.vz"].into_iter().enumerate() {
+    for (axis, name) in [Property::PosVx, Property::PosVy, Property::PosVz]
+        .into_iter()
+        .enumerate()
+    {
         for (object, selected) in [
             (Object::Me, false),
             (Object::Player, true),
@@ -16645,7 +16654,7 @@ fn position_property_writes_change_only_the_selected_local_coordinate() {
         ] {
             for value in [i32::MIN, -1, 0, 1, i32::MAX] {
                 let mut scripts = heading_property_scripts(294, object.clone());
-                scripts.definition.references[294] = name.into();
+                scripts.definition.references[294] = name;
                 let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
                 let read = program.steps[&0].operation.clone();
                 program.steps.insert(
@@ -16722,7 +16731,7 @@ fn position_property_writes_change_only_the_selected_local_coordinate() {
 #[test]
 fn position_property_access_keeps_attached_effective_pose_until_family_refresh() {
     let mut scripts = heading_property_scripts(294, Object::Me);
-    scripts.definition.references[294] = "pos.vx".into();
+    scripts.definition.references[294] = Property::PosVx;
     let mut child = scripts.actors["LOGIC"].clone();
     child.namespace = Some("child".into());
     child.attributes[Attribute::Slave] = 1;
@@ -16801,7 +16810,7 @@ fn position_property_access_keeps_attached_effective_pose_until_family_refresh()
 
 fn family_model_fixture(collision: u8) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = heading_property_scripts(294, Object::Me);
-    scripts.definition.references[294] = "pos.vx".into();
+    scripts.definition.references[294] = Property::PosVx;
     let mut child = scripts.actors["LOGIC"].clone();
     child.attributes[Attribute::Slave] = 1;
     child.attributes[Attribute::Collide] = collision;
@@ -17167,11 +17176,11 @@ fn automatic_group_release_waits_for_the_next_model_phase() {
 #[test]
 fn position_property_rejects_unavailable_owner_and_unknown_reference() {
     for (name, prepare, expected) in [
-        ("pos.vx", false, "spatial owner unavailable"),
-        ("unknown", true, "unsupported"),
+        (Property::PosVx, false, "spatial owner unavailable"),
+        (Property::Address, true, "unsupported"),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         scripts
             .actors
             .get_mut("LOGIC")
@@ -17237,7 +17246,7 @@ fn current_animation_property_reads_signed_group_without_advancing_playback() {
             (Object::Named { string: 0 }, false),
         ] {
             let mut scripts = heading_property_scripts(294, object);
-            scripts.definition.references[294] = "anim.current".into();
+            scripts.definition.references[294] = Property::AnimCurrent;
             add_standalone_receivers(&mut scripts);
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
             let caller = world.id(0).unwrap();
@@ -17317,7 +17326,7 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
             (Object::Named { string: 0 }, false),
         ] {
             let mut scripts = heading_property_scripts(294, object.clone());
-            scripts.definition.references[294] = "torch_timer".into();
+            scripts.definition.references[294] = Property::TorchTimer;
             let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
             let read = program.steps[&0].operation.clone();
             program.steps.insert(
@@ -17391,14 +17400,14 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
 fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     for (name, field) in [
-        ("rope_wait", "motion_companion"),
-        ("slide_flag", "sliding_state"),
-        ("fall_flag", "falling_state"),
-        ("jump_flag", "queued_motion"),
-        ("extra_flag", "living_state"),
+        (Property::RopeWait, "motion_companion"),
+        (Property::SlideFlag, "sliding_state"),
+        (Property::FallFlag, "falling_state"),
+        (Property::JumpFlag, "queued_motion"),
+        (Property::ExtraFlag, "living_state"),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
         let read = program.steps[&0].operation.clone();
         program.steps.insert(
@@ -17463,13 +17472,13 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     // (property, value written first, then read back)
     for (name, write, read) in [
-        ("hide", Some(1), true),
-        ("rope", None, true),
-        ("scabbard[0]", Some(42), true),
-        ("scabbard[1]", Some(-3), true),
+        (Property::Hide, Some(1), true),
+        (Property::Rope, None, true),
+        (Property::Scabbard0, Some(42), true),
+        (Property::Scabbard1, Some(-3), true),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
         let read_step = program.steps[&0].operation.clone();
         let mut steps = vec![];
@@ -17518,14 +17527,14 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
             .unwrap_or_else(|error| panic!("{name}: {error:#}"));
         let control = serde_json::to_value(world.actors()[0].control_state().unwrap()).unwrap();
         match name {
-            "hide" => {
+            Property::Hide => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [1]);
                 assert_eq!(control["hidden"], true);
             }
-            "rope" => {
+            Property::Rope => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
             }
-            "scabbard[0]" => {
+            Property::Scabbard0 => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [42]);
                 assert_eq!(control["scabbard_override"], serde_json::json!([42, null]));
             }
@@ -17541,9 +17550,9 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
 fn scabbard_properties_read_signed_installed_raex_words() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
-    for (name, expected) in [("scabbard[0]", -32768), ("SCABBARD[1]", 32767)] {
+    for (name, expected) in [(Property::Scabbard0, -32768), (Property::Scabbard1, 32767)] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         add_standalone_receivers(&mut scripts);
         let data = Animations {
             version: 2,
@@ -17584,9 +17593,9 @@ fn scabbard_properties_read_signed_installed_raex_words() {
 fn grip_properties_read_signed_installed_raex_words() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
-    for (name, expected) in [("grip[0]", -32768), ("GRIP[1]", 32767)] {
+    for (name, expected) in [(Property::Grip0, -32768), (Property::Grip1, 32767)] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         add_standalone_receivers(&mut scripts);
         let data = Animations {
             version: 2,
@@ -17623,7 +17632,7 @@ fn grip_properties_read_signed_installed_raex_words() {
 fn current_animation_property_without_an_association_returns_zero() {
     for object in [Object::Me, Object::Player, Object::Named { string: 0 }] {
         let mut scripts = heading_property_scripts(294, object);
-        scripts.definition.references[294] = "anim.current".into();
+        scripts.definition.references[294] = Property::AnimCurrent;
         add_standalone_receivers(&mut scripts);
         let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
         let caller = world.id(0).unwrap();
@@ -17648,12 +17657,22 @@ fn current_animation_property_without_an_association_returns_zero() {
 #[test]
 fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
     for (name, write, separate, expected) in [
-        ("anim.current", true, false, "write unsupported"),
-        ("torch_timer", false, true, "control owner unavailable"),
-        ("torch_timer", true, true, "control owner unavailable"),
+        (Property::AnimCurrent, true, false, "write unsupported"),
+        (
+            Property::TorchTimer,
+            false,
+            true,
+            "control owner unavailable",
+        ),
+        (
+            Property::TorchTimer,
+            true,
+            true,
+            "control owner unavailable",
+        ),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name.into();
+        scripts.definition.references[294] = name;
         if separate {
             scripts.instances[0].object_type = 2;
         }

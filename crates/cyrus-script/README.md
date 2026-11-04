@@ -37,6 +37,11 @@ the DEF does not declare (`showObjWorld`, `showObjWorldPan`, `DialogBegin`,
 `Native`, which serializes as its installed spelling, and hosts receive it in
 `Host::call`.
 
+`Property` names every SOUP object property after the `SOUP386.DEF` `[refs]`
+list, in DEF order (`pos.vx` is `Property::PosVx`, `grip[0]` is
+`Property::Grip0`). The definition's references carry `Property`, which
+serializes as its installed spelling.
+
 `CallResult::CompleteWithoutValue` lets a host complete an effect when no
 portable numeric result is established. Statements discard that result;
 formulas, conditions and arguments fail contextually when consuming it.

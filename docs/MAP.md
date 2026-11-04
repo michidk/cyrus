@@ -302,6 +302,7 @@ module where it is defined and regenerate.
 - `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
 - `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
 - `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.
+- `src/property.rs` — SOUP object properties: the `[refs]` list of the installed `SOUP386.DEF`.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 - `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.

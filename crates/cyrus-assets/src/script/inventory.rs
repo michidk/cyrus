@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 pub struct Inventory {
     pub world: u32,
     pub declared_functions: Vec<cyrus_script::Native>,
-    pub declared_references: Vec<String>,
+    pub declared_references: Vec<cyrus_script::Property>,
     pub actors: BTreeMap<String, ActorInventory>,
     pub unsupported: BTreeMap<String, String>,
 }

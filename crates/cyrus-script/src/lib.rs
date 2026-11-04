@@ -2,9 +2,11 @@
 mod animation_group;
 mod attribute;
 mod native;
+mod property;
 pub use animation_group::AnimationGroup;
 pub use attribute::{Attribute, Attributes};
 pub use native::Native;
+pub use property::Property;
 pub mod persistence;
 pub mod program;
 mod routing;
