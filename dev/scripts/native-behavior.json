@@ -2603,14 +2603,15 @@
       "native": "IsBroadcastWaiting",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; original messaging semantics remain unrecovered",
+      "scope": "Direct named SOUP call dispatch; recovered broadcast-selection availability predicate, production messaging-state owner missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
+        "https://github.com/michidk/redguard-preservation/commit/acbe00e4d34622bfe336f4d729a0fb3d0fd4a6f6"
       ],
-      "limits": "Verified by exhaustive source-name/dispatch inspection: no named handler for this catalogue entry in the production host or delegated native services. Internal combat-message queues do not implement this public SOUP call. No dedicated public-call rejection assertion was located. Unknown: original argument, sender identity, queue/broadcast lifetime and return contract; no published contract found in the pinned preservation docs. Zero static occurrences in27 historical exports do not establish absence from hidden unsupported bodies. Missing means absent named call implementation, not absence of all messaging. No Rust tests or original/native/browser runtime acceptance run for this audit.",
-      "reviewed_revision": "6cb2d435fc1689a55d7a1fbd69098f3b46376875"
+      "limits": "Verified: installed zero-argument named binding is byte-identical to the accepted broadcast-availability helper. With valid receiver storage and present context, equal selection/no-selection bytes return zero and unequal bytes return one; no consumption, entry lookup or sender read occurs. Absent context requests a diagnostic, not ordinary empty zero. Original receiver storage is not validated. Production GameHost still has no named handler. Implementation is blocked on authoritative messaging context presence, per-receiver selection and sentinel ownership with lifecycle/save/restore semantics; internal combat queues do not supply that contract. Existing helper evidence was reused without rerunning it. Unknown: natural diagnostic recovery. No Rust/public/native/browser runtime acceptance or implementation performed for this classification.",
+      "reviewed_revision": "9b50f7b644820a61942eb76d6c6bc983192f3fe2"
     },
     {
       "native": "IsMessageWaiting",
