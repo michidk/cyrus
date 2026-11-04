@@ -1,13 +1,14 @@
 //! The quick sword and quick health keys: the world loop's key handler for the selected player.
 use super::{GameHost, ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::QuickKeys;
+use crate::script::inventory::{FLAMING_SABRE, HEALTH_POTION, SABRE, SOUL_SWORD};
 use anyhow::{Context, Result};
 use cyrus_script::{Attribute, Native};
 
 /// Items the sword key looks for, in order; the third is used without being selected.
-const SWORDS: [u16; 3] = [1, 13, 75];
+const SWORDS: [u16; 3] = [SABRE, SOUL_SWORD, FLAMING_SABRE];
 /// The installed health potion and the health below which it heals a fixed amount.
-const POTION: (u16, u8, i32) = (4, 0x56, 15);
+const POTION: (u16, u8, i32) = (HEALTH_POTION, 0x56, 15);
 const MAXIMUM_HEALTH: i32 = 100;
 
 impl ScriptWorld {
@@ -118,7 +119,7 @@ impl GameHost<'_, '_, '_, '_> {
                 for sword in SWORDS {
                     if hud.item_count(sword)? != 0 {
                         // The last sword is used without being selected.
-                        if sword != SWORDS[2] {
+                        if sword != FLAMING_SABRE {
                             hud.select_item(sword)?;
                         }
                         self.use_item(sword)?;

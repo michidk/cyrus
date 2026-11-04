@@ -1,6 +1,7 @@
 //! Receiver-owned attack execution through the four defense slots and shared animation owner.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::attack_step_with_animation;
+use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -227,10 +228,10 @@ impl ScriptWorld {
                 sounds,
             )?;
         }
-        // The original restores a charged (item 75) sender through the ordinary
+        // The original restores a charged (flaming sabre) sender through the ordinary
         // chargeWeapon(0) swap after the damage response. Keep this after health
         // and death dispatch so a failed earlier service retains its writes.
-        if self.actors[sender_index].attributes[Attribute::Weapon] == 75 {
+        if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
             self.restore_charged_sender_weapon(sender, inputs)?;
         }
         let combat = self.actors[receiver_index]
@@ -253,8 +254,8 @@ impl ScriptWorld {
 
     /// Apply the installed `chargeWeapon(0)` inventory swap for a hit sender.
     /// This is the production equivalent of the original post-damage restoration
-    /// branch: item 1 is added, the sender's weapon attribute becomes 1, item 75
-    /// is emptied, and item 1 is selected.
+    /// branch: the sabre is added and becomes the sender's weapon attribute, the
+    /// flaming sabre is emptied, and the sabre is selected.
     fn restore_charged_sender_weapon(
         &mut self,
         sender: ScriptActorId,
@@ -268,7 +269,7 @@ impl ScriptWorld {
         }
         let sender_index = self.resolve(sender)?;
         let actors = &mut self.actors;
-        hud.add_item(1, 1, &mut |weapon| {
+        hud.add_item(SABRE, 1, &mut |weapon| {
             // Inventory acquisition may repair an empty selection. The original
             // restoration service belongs to the hit sender, so that repair must
             // update the sender's weapon attribute even when the sender is not the
@@ -276,9 +277,9 @@ impl ScriptWorld {
             actors[sender_index].attributes[Attribute::Weapon] = weapon;
             Ok(())
         })?;
-        actors[sender_index].attributes[Attribute::Weapon] = 1;
-        hud.remove_item(75)?;
-        hud.select_item(1)
+        actors[sender_index].attributes[Attribute::Weapon] = SABRE as u8;
+        hud.remove_item(FLAMING_SABRE)?;
+        hud.select_item(SABRE)
     }
     /// The direct-damage response (`0xd005`): displace the receiver 3000 units away from the
     /// sender, then (for the selected player) return at once while a death-animation override is
@@ -394,7 +395,7 @@ impl ScriptWorld {
         // Direct damage uses the same post-response charged-weapon restoration
         // as the scaled hit path. Keep it after health and death dispatch so
         // earlier service failures retain their writes.
-        if self.actors[sender_index].attributes[Attribute::Weapon] == 75 {
+        if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
             self.restore_charged_sender_weapon(sender, inputs)?;
         }
         Ok(())

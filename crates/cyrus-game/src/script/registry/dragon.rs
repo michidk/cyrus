@@ -1,6 +1,7 @@
 //! `DragonBreath` and `DragonBreathTask`: the dragon's smoke while it speaks, its fireball and the
 //! item swap when it dies. The task form runs the same update every frame until it returns zero.
 use super::GameHost;
+use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use crate::script::spatial::query_bearing;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::distance::rounded_distance;
@@ -18,8 +19,8 @@ const FIREBALL: &str = "DRAGBALL";
 /// Distance under which the dragon does not breathe, in Q8 units.
 const MINIMUM_RANGE: i32 = 0x19000;
 /// Item the dragon's death takes from the player, and the item it gives in exchange.
-const DEATH_ITEM_TAKEN: u16 = 0x4b;
-const DEATH_ITEM_GIVEN: u16 = 1;
+const DEATH_ITEM_TAKEN: u16 = FLAMING_SABRE;
+const DEATH_ITEM_GIVEN: u16 = SABRE;
 /// The fireball leaves pitched this far above the line between the two grip vertices.
 const FIREBALL_PITCH_OFFSET: i32 = 0x78;
 

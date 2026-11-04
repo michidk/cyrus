@@ -5447,7 +5447,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .remove_item(item)?;
             return Ok(CallResult::Complete(0));
         }
-        // chargeWeapon(1) swaps the player's weapon item 1 for item 75 (the charged weapon) and any
+        // chargeWeapon(1) swaps the player's sabre for the flaming sabre (the charged weapon) and any
         // other operand swaps back: add the new item, record it as the weapon attribute, empty the
         // old item and select the new one. A closed inventory skips the adds and removals, and the
         // selection then fails as the original's does.
@@ -5456,9 +5456,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("chargeWeapon requires one argument")
             };
             let (take, drop) = if charge.integer()? as i16 == 1 {
-                (75, 1)
+                (super::inventory::FLAMING_SABRE, super::inventory::SABRE)
             } else {
-                (1, 75)
+                (super::inventory::SABRE, super::inventory::FLAMING_SABRE)
             };
             self.add_session_item(take, 1)?;
             self.registry.actors[self.index].attributes[Attribute::Weapon] = take as u8;

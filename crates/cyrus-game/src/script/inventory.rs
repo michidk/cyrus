@@ -3,6 +3,14 @@ use anyhow::{Context, Result};
 use cyrus_assets::hud::{HudAsset, InventoryItem};
 use std::collections::BTreeMap;
 
+// Items the engine addresses by fixed index (preservation `engine/hud.md`, `engine/SOUP.md`), named
+// after the installed ITEM.INI comments.
+pub(super) const SABRE: u16 = 1;
+pub(super) const HEALTH_POTION: u16 = 4;
+pub(super) const SOUL_SWORD: u16 = 13;
+/// The charged weapon `chargeWeapon(1)` swaps in for the sabre.
+pub(super) const FLAMING_SABRE: u16 = 75;
+
 /// Current item presentation. Ownership includes hidden items; cycling excludes them.
 pub struct InventoryView {
     pub selected: Option<u16>,
