@@ -34915,16 +34915,21 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
 
 #[test]
 fn ordinary_update_starts_and_continues_an_animated_fall_after_a_support_miss() {
-    ordinary_animated_fall_landing(false, false);
+    ordinary_animated_fall_landing(false, false, false);
 }
 
 #[test]
 fn ordinary_update_resolves_landing_surface_before_fatal_damage() {
-    ordinary_animated_fall_landing(true, true);
-    ordinary_animated_fall_landing(false, true);
+    ordinary_animated_fall_landing(true, true, false);
+    ordinary_animated_fall_landing(false, true, false);
 }
 
-fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool) {
+#[test]
+fn ordinary_update_defers_falling_to_the_active_model_vertical_marker() {
+    ordinary_animated_fall_landing(false, false, true);
+}
+
+fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_vertical: bool) {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();
     scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
@@ -34956,6 +34961,15 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool) {
             "group_index":group,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]
         })));
+    if model_vertical {
+        for group in definition["animation_groups"].as_array_mut().unwrap() {
+            group["commands"] = serde_json::json!([
+                {"opcode":5},
+                {"opcode":0,"frame_reference":10},
+                {"opcode":2,"value":0}
+            ]);
+        }
+    }
     world
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
@@ -34994,6 +35008,18 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool) {
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.falling_state, 1);
     assert_eq!(control.fall_origin_y, start_y + 32 * 256);
+    if model_vertical {
+        // Both entry and subsequent host updates must retain the model's vertical ownership.
+        for _ in 0..3 {
+            let control = world.actors()[id.index].control_state().unwrap();
+            assert_eq!(control.falling_state, 1);
+            assert_eq!(control.fall_timer, 30);
+            assert_eq!(control.fall_origin_y, start_y + 32 * 256);
+            assert_eq!(world.spatial(id).unwrap().local.position[1], start_y);
+            step(&mut world, &scene);
+        }
+        return;
+    }
     // Entry runs the writer once: factor[30] is 256, so Y is unchanged and the byte timer drops by eight.
     assert_eq!(
         (
@@ -36225,6 +36251,145 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
     assert_eq!(
         serde_json::to_value(world.globals()).unwrap()["controller_prelude"]["conditional_ticks"],
         6
+    );
+}
+
+#[test]
+fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion() {
+    use cyrus_game::script::{
+        ActivationInputs, PlayerCollisionSource, ScriptActorSource, ScriptInputs,
+    };
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "Jump".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let cyrus = scripts.actors.get_mut("CYRUS").unwrap();
+        cyrus
+            .program
+            .steps
+            .insert(0, assign_call(1, function_id, "Jump", &[]));
+    });
+    let player_index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let _player = world.id(player_index).unwrap();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let mut saved = saved;
+    saved["actors"][player_index]["animation"] = serde_json::Value::Null;
+    saved["actors"][player_index]["control"]["living_state"] = 15.into();
+    saved["actors"][player_index]["control"]["stable_position_valid"] = true.into();
+    saved["actors"][player_index]["model"]["ledge_support"] =
+        serde_json::json!([world.generation(), 0]);
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        },
+        cyrus_game::script::WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let player = world.id(player_index).unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "group_index":56,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+        }));
+    world.bind_animation(player, &data, 0).unwrap();
+    world
+        .advance(
+            player,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    world.set_actor_surface(player, 0).unwrap();
+    let activation = ActivationInputs {
+        player,
+        actors: BTreeMap::new(),
+        labels: BTreeMap::new(),
+        lockout: 0,
+        dialogue_open: false,
+        lineup_result: 0,
+        use_held: false,
+        item_system_ready: false,
+        shell_execution: false,
+        render_disabled: false,
+    };
+    let before_position = world.spatial(player).unwrap().local.position;
+    let actor_ids = world
+        .actors()
+        .iter()
+        .enumerate()
+        .map(|(index, _)| world.id(index).unwrap())
+        .collect::<Vec<_>>();
+    world
+        .advance(
+            player,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                activation: Some(&activation),
+                nominal_ticks: Some(0),
+                fine_ticks: Some(0),
+                frame_scale: Some(256),
+                player_collision: Some(PlayerCollisionSource {
+                    scene: &scene,
+                    animations: &data,
+                    view: [10, 30],
+                    actors: &actor_ids,
+                }),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    let control = world.actors()[player_index].control_state().unwrap();
+    assert!(!control.stable_position_valid);
+    assert_eq!(control.queued_motion, 0);
+    assert_eq!(control.falling_state, 0);
+    assert_eq!(control.living_state, 0);
+    assert_eq!(control.action_transition_counter, 6);
+    assert_eq!(
+        world.spatial(player).unwrap().local.position,
+        before_position
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert!(saved["actors"][player_index]["model"]["ledge_support"].is_null());
+    assert_eq!(
+        world.inspect(player_index, 1)["actors"][0]["animation"]["current_group"],
+        56
     );
 }
 
