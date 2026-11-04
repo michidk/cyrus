@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-exclude = ["dev/vendor/smk", "dev/vendor/rodio"]
+exclude = ["dev/vendor/smk", "dev/vendor/rodio", "dev/vendor/cpal"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-config", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
@@ -39,6 +39,7 @@ cyrus-config = { path = "crates/cyrus-config" }
 [patch.crates-io]
 # The published bitmap2ttf still uses SystemTime::now, which panics on WASM.
 bitmap2ttf = { git = "https://github.com/michidk/bitmap2ttf", rev = "6801e76ffee2edf96f3086ec70cd163cd6984081" }
+cpal = { path = "dev/vendor/cpal" }
 rodio = { path = "dev/vendor/rodio" }
 
 

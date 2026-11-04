@@ -47,7 +47,11 @@ retained WebAudio buffer per live player, so loading
 and rendering on the main thread do not interrupt the track. Its checkpoint maps
 the audio render clock to the original interleaved source cursor. Preparation
 retains channel ordering even when a diagnostic checkpoint falls between stereo
-samples. Browser effects continue through the shared streaming backend.
+samples. Browser effects continue through the shared streaming backend. After a main-thread
+underrun, that backend rebases new buffer starts against the audio clock so
+expired timestamps do not make successive buffers overlap. Audio production can
+still pause while the main thread is busy. The vendored CPAL change and its
+removal condition are documented in `dev/vendor/cpal/README.md`.
 
 Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
 game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;
