@@ -5019,10 +5019,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
+        "https://github.com/michidk/redguard-preservation/commit/a8cf261"
       ],
-      "limits": "Verified by inspected public assertions: 300 truncates to44 through corresponding MyAI getter. Source checks one integer and stores its low byte. Setter/readback proves retained byte access, not an AI behavior transition, death response or original/native/browser execution of the named setter. Unknown: routed receiver/replacement and downstream behavior acceptance. Rust assertions inspected only, not rerun. No original/native/browser runtime run for this catalogue review. Static occurrence counts cannot exclude Unsupported actor bodies in the historical schema-27 corpus.",
-      "reviewed_revision": "dbe2ee58f3274aa40748381c133f111ae3dcb4d2"
+      "limits": "Verified independent installed function parms1/exact binding/full49-byte call-free native.25152 original CPU cases/7 effective original-byte semantic controls PASS; original bytes restored and final corpus rerun PASS. Two receivers/all256 low-byte arguments plus six selected full32 words/three initial selector patterns/two control-field values/two surrounding word pairs/two memory patterns. Writes low argument byte directly to receiver lifecycle selector, returns0 and leaves argument register equal receiver; five preserved registers/stack/canary/full both-actor memory checked. No separate control-record dereference, null check, enable gate or service call in complete handler. Native null/invalid receiver remains unsafe/unsupported; not emulated as no-op/error. Unknown producer/replacement/lifetime/downstream AI transitions/full32 joint domain/VM admission/natural original/native/browser gameplay parity. Existing production setter/readback fixture is separate; no Rust rerun or production completion.",
+      "reviewed_revision": "c7db2a59adf7552cdfd06eda8405628606265054"
     },
     {
       "native": "SetAiMode",
