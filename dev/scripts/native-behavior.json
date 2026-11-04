@@ -4678,15 +4678,16 @@
       "native": "ObjectParallelLineUp",
       "status": "missing",
       "owner": 5,
-      "scope": "Direct named timing/presentation dispatch",
+      "scope": "Named task-target-relative parallel alignment wrapper; production dispatch missing",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
       "tests": [],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
+        "https://github.com/michidk/redguard-preservation/pull/288"
       ],
-      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified: installed task3 declaration and independently mapped complete118-byte wrapper. Static41-instruction dataflow plus22 operand/call-identity refusal controls establish shared task-target position/orientation access, unrotated X/Z offsets, unchanged Y, heading+angle masked2047, receiving actor forwarded to parallel mover and mover result returned unchanged. No wrapper unavailable-target fallback or shared player-lineup-result write. Existing published shared mover facts reused without execution. Unknown: target constructor/retirement/save-load/world replacement ownership, unsafe accessor inputs, full mover/VM/production continuation and original/native/browser parity. Missing status/tests retained; no production implementation or execution acceptance. Next owner5/root task-lifecycle agreement before isolated public task implementation; no selected-player or zero-coordinate substitute.",
+      "reviewed_revision": "638fff564de25d4aea441db9bc20abc8d7dc225f"
     },
     {
       "native": "ObjectPickupLineUp",
