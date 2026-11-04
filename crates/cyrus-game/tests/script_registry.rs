@@ -38662,6 +38662,15 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
 
 #[test]
 fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
+    grounded_jump_selects_ledges(false);
+}
+
+#[test]
+fn selected_native_jump_selects_low_and_high_ledges_before_queued_jump() {
+    grounded_jump_selects_ledges(true);
+}
+
+fn grounded_jump_selects_ledges(native_jump: bool) {
     use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_game::script::{
@@ -38677,7 +38686,23 @@ fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
         (-44, 86, 11),
         (-45, 32, 0),
     ] {
-        let (scripts, world, mut data, mut scene) = player_walking_fixture();
+        let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
+            if native_jump {
+                let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+                scripts.definition.functions.push(Function {
+                    name: "Jump".into(),
+                    param_count: 0,
+                    kind: CallKind::Function,
+                });
+                scripts
+                    .actors
+                    .get_mut("CYRUS")
+                    .unwrap()
+                    .program
+                    .steps
+                    .insert(0, assign_call(1, function_id, "Jump", &[]));
+            }
+        });
         let index = world
             .actors()
             .iter()
@@ -38790,31 +38815,69 @@ fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
             jump: true,
             ..Default::default()
         };
-        world
-            .advance_player_controller(
+        if native_jump {
+            let activation = cyrus_game::script::ActivationInputs {
                 player,
-                query,
-                cyrus_game::clock::ClockStep {
-                    frame_scale: 256,
-                    nominal_ticks: 0,
-                    fine_ticks: 0,
-                },
-                ScriptInputs {
-                    player_controller: Some(PlayerControllerInput {
-                        held: &held,
-                        walk_mode: false,
-                        auto_defend: false,
-                    }),
-                    shell_execution: Some(false),
-                    fine_ticks: Some(0),
-                    nominal_ticks: Some(0),
-                    frame_scale: Some(256),
-                    ..Default::default()
-                },
-                &mut cyrus_game::random::EngineRandom::default(),
-                &mut |_, _| Ok(()),
-            )
-            .unwrap();
+                actors: BTreeMap::new(),
+                labels: BTreeMap::new(),
+                lockout: 0,
+                dialogue_open: false,
+                lineup_result: 0,
+                use_held: false,
+                item_system_ready: false,
+                shell_execution: false,
+                render_disabled: false,
+            };
+            world
+                .advance(
+                    player,
+                    ScriptStage::OrdinaryMain,
+                    ScriptInputs {
+                        activation: Some(&activation),
+                        player_collision: Some(cyrus_game::script::PlayerCollisionSource {
+                            scene: &scene,
+                            animations: &data,
+                            view: [522, 542],
+                            actors: &[player, map],
+                        }),
+                        shell_execution: Some(false),
+                        fine_ticks: Some(0),
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut |_, _| Ok(())),
+                    None,
+                    100,
+                )
+                .unwrap();
+        } else {
+            world
+                .advance_player_controller(
+                    player,
+                    query,
+                    cyrus_game::clock::ClockStep {
+                        frame_scale: 256,
+                        nominal_ticks: 0,
+                        fine_ticks: 0,
+                    },
+                    ScriptInputs {
+                        player_controller: Some(PlayerControllerInput {
+                            held: &held,
+                            walk_mode: false,
+                            auto_defend: false,
+                        }),
+                        shell_execution: Some(false),
+                        fine_ticks: Some(0),
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    &mut cyrus_game::random::EngineRandom::default(),
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap();
+        }
         let inspected = world.inspect(index, 1);
         let actor = &inspected["actors"][0];
         assert_eq!(
