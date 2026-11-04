@@ -5221,10 +5221,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
+        "https://github.com/michidk/redguard-preservation/commit/e664f8c"
       ],
-      "limits": "Verified inspected public fixture checks only fresh-state zero plus extra-argument rejection. Source predicate uses living_state10..19. No populated edge-state public fixture located. Unknown: true/boundary/override branches through public named calls and original/native/browser query acceptance. Broader locomotion/combat tests do not prove this predicate executes. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified independent installed function parms0/exact binding/full86-byte call-free native.36864 original CPU cases/13 effective original-byte semantic controls PASS; bytes restored/final corpus rerun PASS. Null plus two receivers/all256 state bytes/three differing unused EDX words/two constructed control-field values/two surrounding word pairs/two fill patterns. Null returns0; unsigned receiver state byte10..19 inclusive returns1, otherwise0; no selected-player/control-record/collision lookup or enable gate. Full both-actor-plus-surrounding memory/six preserved registers/stack/canary checked, no mutations or external IO. Effective null/bounds/equality/byte-versus-word/field/receiver/result/cleanup controls require normal exit/full output; no crash/timeout/transport accepted. Existing HUD range fact corroborated, newly bounds receiver/null/source/width/ABI. Unknown malformed nonnull pointers/producer/lifecycle/VM admission/natural original/native/browser edge continuation/fulljoint gameplay parity. Production partial retained, fresh-state fixture separate; no Rust rerun.",
+      "reviewed_revision": "1ce06415dcda1d4406ae11c7d80d7dd6ca1addeb"
     },
     {
       "native": "IsInAir",
