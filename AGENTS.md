@@ -205,6 +205,15 @@ untracked working memory. Each crate has a `README.md` with its commands.
 - Document public APIs with their invariants, units, and provenance where
   applicable. Use explicit names that make the code readable without tracing
   unrelated modules.
+- Write idiomatic Rust. Model closed sets such as actions, input sources,
+  devices, modes and states as enums or newtypes with methods, not integer
+  codes, `usize` slot constants or parallel arrays. Use the standard traits
+  (`From`/`TryFrom`, `FromStr`, `Display`, `Index`) instead of ad hoc
+  conversion helpers, `Option` and `Result` instead of sentinel values, and
+  pattern matching and iterators instead of flag juggling and index
+  arithmetic. Parse integers from installed files or persisted documents into
+  these types once at the boundary, and convert back only where they are
+  written.
 - Use the real names of engine fields, never bare indices or placeholder
   names such as `attr_31` or `group 93`. Actor attributes go through the typed
   `cyrus_script::Attribute` and animation groups through
