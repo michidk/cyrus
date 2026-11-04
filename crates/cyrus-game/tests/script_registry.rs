@@ -38895,3 +38895,97 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
         assert_eq!(actor["control"]["falling_state"], 0);
     }
 }
+
+#[test]
+fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
+    use cyrus_game::script::{
+        OrdinaryInputs, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
+        let actor = scripts.actors.get_mut("CYRUS").unwrap();
+        actor.attributes.insert("attr_31".into(), 8);
+        actor.attributes.insert("attr_32".into(), 32);
+        actor.attributes.insert("attr_44".into(), 18);
+    });
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|a| a["script_name"] == "CYRUS")
+        .unwrap();
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|group| group["group_index"] != 18);
+    for group in [18, 32, 34, 35, 38, 39, 40] {
+        definition["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":group,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+            }));
+    }
+    let stable = [600 * 256, 20 * 256, 600 * 256];
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 18, |saved| {
+        saved["actors"][index]["control"]["directional_state"] = serde_json::json!([1, 0]);
+        saved["actors"][index]["control"]["stable_local_position"] = serde_json::json!(stable);
+    });
+    let player = world.id(index).unwrap();
+    world
+        .place_selected_player([stable[0] + 256, stable[1] + 512, stable[2] + 256], 0)
+        .unwrap();
+    world.refresh_model_presentations(&data, &[player]).unwrap();
+    scene.settings.post_collide_height = 50;
+    scene.terrain = None;
+    let hud = cyrus_game::script::ScriptHud::default();
+    let held = cyrus_game::player::input::PlayerInput::default();
+    world
+        .update_ordinary(
+            &data,
+            [600, 600],
+            OrdinaryInputs {
+                scripts: ScriptInputs {
+                    hud: Some(&hud),
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                    }),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    fine_ticks: Some(8),
+                    step_fps: Some(12),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                scene: Some(&scene),
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    let actor = &world.actors()[index];
+    assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    let control = actor.control_state().unwrap();
+    assert_eq!(control.directional_state, [0, 0]);
+    assert_eq!(control.queued_motion, 8);
+    assert_eq!(control.falling_state, 0);
+    assert_eq!(control.fall_origin_y, stable[1]);
+    assert_eq!(control.fall_timer, 8);
+    assert!(!control.stable_position_valid);
+    assert_eq!(
+        world.spatial(player).unwrap().local.position,
+        [stable[0], stable[1] - 512, stable[2]]
+    );
+    assert_eq!(
+        world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+        34
+    );
+}

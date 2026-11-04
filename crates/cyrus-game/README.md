@@ -46,6 +46,10 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: selected-player walk-off recovery restores the retained stable position
+and enters the selected jump service before forcing its recovery group and running
+queued arbitration. It uses the same selected edge gates as ordinary jump entry.
+
 Verified: ordinary falling resolves and stores the regained support's surface
 before landing damage. Water surfaces suppress fall damage; dry support retains
 the configured hurt and fatal thresholds, following preservation's

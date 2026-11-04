@@ -326,6 +326,7 @@ impl ScriptWorld {
         query: super::ground::OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
         fine_ticks: u32,
+        frame_scale: Option<u32>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let actor = &mut self.actors[id.index];
@@ -345,7 +346,21 @@ impl ScriptWorld {
             .actor_mut(id.index)?
             .local
             .position = stable;
-        self.begin_ordinary_jump(id, query.animations, 8, task_active, environment, sounds)?;
+        if environment.selected_player == Some(id) {
+            self.begin_player_jump(
+                id,
+                query,
+                environment,
+                super::ledge_states::LedgeTiming {
+                    fine_ticks,
+                    frame_scale,
+                },
+                8,
+                sounds,
+            )?;
+        } else {
+            self.begin_ordinary_jump(id, query.animations, 8, task_active, environment, sounds)?;
+        }
         if self.updates.animation_system {
             self.request_ordinary_group(
                 id,
@@ -424,7 +439,14 @@ impl ScriptWorld {
             return Ok(());
         }
         if control.directional_state.iter().any(|byte| byte & 3 != 0) {
-            return self.recover_ordinary_fall_entry(id, query, environment, fine_ticks, sounds);
+            return self.recover_ordinary_fall_entry(
+                id,
+                query,
+                environment,
+                fine_ticks,
+                frame_scale,
+                sounds,
+            );
         }
         let group = self.actors[id.index]
             .animation
