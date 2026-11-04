@@ -60,6 +60,10 @@ completes immediately after admission and its state writes; selected-player
 edge and hang services use the caller's receiver-bound collision geometry.
 Its contract follows preservation's `player.md#script-jump`.
 
+Verified: a nonselected receiver in hanging state 15
+clears its stable-position-valid flag and completes without starting motion;
+selected-player hang release retains its own admission gates.
+
 Verified: the pre-script queued/falling stage carries backward motion 3 through
 ordinary backward displacement, including startup counters, animation suppression,
 stance admission and the exact queued-3 retained heading. It shares the existing

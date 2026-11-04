@@ -255,10 +255,7 @@ impl super::ScriptWorld {
             .expect("validated Jump control")
             .stable_position_valid = false;
         if hanging && !selected {
-            anyhow::bail!(
-                "world {} instance {index} Jump state-15 release requires selected player",
-                self.world
-            );
+            return Ok(());
         }
         if selected {
             let query = geometry

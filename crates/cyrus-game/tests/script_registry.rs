@@ -36074,6 +36074,48 @@ fn script_jump_refusals_return_zero_without_changing_jump_state() {
 }
 
 #[test]
+fn script_jump_from_a_nonselected_hang_returns_without_initializing_motion() {
+    use cyrus_game::script::ScriptInputs;
+    let (mut world, _, _) = script_jump_fixture(0, |saved| {
+        saved["actors"][0]["control"]["living_state"] = 15.into();
+    });
+    let id = world.id(0).unwrap();
+    let before = world.inspect(0, 1);
+    let mut expected = before["actors"][0]["control"].clone();
+    expected["stable_position_valid"] = false.into();
+    world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+    let after = world.inspect(0, 1);
+    assert_eq!(after["actors"][0]["control"], expected);
+    assert_eq!(
+        after["actors"][0]["animation"],
+        before["actors"][0]["animation"]
+    );
+    assert_eq!(
+        after["actors"][0]["spatial"],
+        before["actors"][0]["spatial"]
+    );
+}
+
+#[test]
 fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
     use cyrus_game::script::{
         ActivationInputs, PlayerCollisionSource, ScriptActorSource, ScriptInputs,
