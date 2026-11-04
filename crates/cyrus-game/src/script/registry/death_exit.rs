@@ -1,7 +1,7 @@
 //! End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 use super::ScriptWorld;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use serde::Serialize;
 
 /// Result of preservation's world-loop exit arbitration. Dispatch is host-owned.
@@ -251,7 +251,9 @@ impl ScriptWorld {
         self.refresh_transform(selected)?;
         if !swapped && let Some(animation) = self.actors[to].animation.as_mut() {
             for _ in 0..2 {
-                let frame = animation.playback.request(0, 0, ticks)?;
+                let frame = animation
+                    .playback
+                    .request(AnimationGroup::PANIC, 0, ticks)?;
                 animation.frame = frame.or(animation.frame);
             }
         }
@@ -260,7 +262,10 @@ impl ScriptWorld {
 }
 
 fn animation_complete(group: i32, cursor: i32, progress: u8) -> bool {
-    if matches!(group, 13 | 74) {
+    if [AnimationGroup::MISC4, AnimationGroup::LAND_DEATH]
+        .map(i32::from)
+        .contains(&group)
+    {
         cursor <= i32::from(progress)
     } else {
         (cursor as u16) != u16::from(progress)

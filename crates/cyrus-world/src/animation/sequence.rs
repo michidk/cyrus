@@ -1,6 +1,7 @@
 //! Current-group playback and reverse rules from preservation's engine/animation.md.
 use super::Animations;
 use anyhow::Context;
+use cyrus_script::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -162,7 +163,7 @@ impl FrameSequence {
     pub fn from_asset(
         data: &Animations,
         actor: &str,
-        group: u16,
+        group: AnimationGroup,
         loops: u8,
     ) -> anyhow::Result<FrameSequence> {
         data.require_version()?;
@@ -172,7 +173,7 @@ impl FrameSequence {
             .as_array()
             .with_context(|| format!("{context}: groups absent"))?
             .iter()
-            .find(|candidate| candidate["group_index"].as_u64() == Some(u64::from(group)))
+            .find(|candidate| candidate["group_index"].as_u64() == Some(u64::from(group.index())))
             .with_context(|| format!("{context}: absent"))?;
         FrameSequence::from_group(context, selected, loops, 0)
     }

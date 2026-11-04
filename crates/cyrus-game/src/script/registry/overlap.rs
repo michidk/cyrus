@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Query two logical actors' current selected overlap shapes. Self never
@@ -406,7 +406,7 @@ impl ScriptWorld {
 
     /// Land the actor on the other: set its support, clear its sliding, falling and queued-motion
     /// bytes and enter living state 27, unless the landing is refused (living states 10 to 19, 27
-    /// and 28, deep water, or no group 10 on the other actor). Body-response bit `0x80` is set
+    /// and 28, deep water, or no `anim_misc1` on the other actor). Body-response bit `0x80` is set
     /// either way. The two retained action dwords the original also clears are not modelled.
     fn land_on_actor(
         &mut self,
@@ -422,7 +422,7 @@ impl ScriptWorld {
         let other_has_group = self.actors[other.index]
             .animation
             .as_ref()
-            .is_some_and(|animation| animation.playback.has_group(10));
+            .is_some_and(|animation| animation.playback.has_group(AnimationGroup::MISC1));
         let admitted = !(10..=19).contains(&living)
             && living != 27
             && living != 28

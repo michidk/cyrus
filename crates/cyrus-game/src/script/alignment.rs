@@ -2,26 +2,37 @@
 //! targets", "Alignment distance thresholds" and "PlayerFaceObj". The functions are pure.
 //! `PlayerFaceObj` runs on them as a native task; the `PlayerLineUp` native that owns the mode,
 //! fallback flag and reference, and the player's movement, is not implemented.
-use cyrus_script::{Attribute, Attributes};
+use cyrus_script::{AnimationGroup, Attribute, Attributes};
 
 /// Attribute holding the speed byte for the player's current animation group, or `None` when
 /// the group selects no speed (the speed is then zero).
-pub fn speed_attribute(group: u16) -> Option<Attribute> {
+pub fn speed_attribute(group: AnimationGroup) -> Option<Attribute> {
     match group {
-        18 | 30 | 142 => Some(Attribute::ForwardSpeed),
-        19 | 143 => Some(Attribute::BackwardSpeed),
-        20 | 21 => Some(Attribute::ForwardWalk),
-        22 | 23 => Some(Attribute::BackwardWalk),
-        24..=27 => Some(Attribute::SideSpeed),
-        31 => Some(Attribute::FightForwardWalk),
-        92 | 93 => Some(Attribute::FightForwardSpeed),
+        AnimationGroup::RUN | AnimationGroup::RUN_TORCH | AnimationGroup::SWIM_FORWARD => {
+            Some(Attribute::ForwardSpeed)
+        }
+        AnimationGroup::RUN_BACKWARD | AnimationGroup::SWIM_BACKWARD => {
+            Some(Attribute::BackwardSpeed)
+        }
+        AnimationGroup::WALK | AnimationGroup::WALK_FORWARD_TORCH => Some(Attribute::ForwardWalk),
+        AnimationGroup::WALK_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH => {
+            Some(Attribute::BackwardWalk)
+        }
+        AnimationGroup::STEP_LEFT
+        | AnimationGroup::STEP_LEFT_TORCH
+        | AnimationGroup::STEP_RIGHT
+        | AnimationGroup::STEP_RIGHT_TORCH => Some(Attribute::SideSpeed),
+        AnimationGroup::FIGHT_RUN => Some(Attribute::FightForwardWalk),
+        AnimationGroup::FIGHT_FORW | AnimationGroup::FIGHT_BACK => {
+            Some(Attribute::FightForwardSpeed)
+        }
         _ => None,
     }
 }
 
 /// Speed byte for `group`: zero without a current group or attribute table, and for groups that
 /// select no attribute.
-pub fn speed(group: Option<u16>, attributes: Option<&Attributes>) -> u8 {
+pub fn speed(group: Option<AnimationGroup>, attributes: Option<&Attributes>) -> u8 {
     group
         .and_then(speed_attribute)
         .zip(attributes)
@@ -154,7 +165,10 @@ pub enum Facing {
     Arrived,
     /// The heading after the step and the turn animation it requests. No requested group means the
     /// heading reached the target, which reports zero; otherwise the step reports nonzero.
-    Turning { heading: u16, group: Option<u16> },
+    Turning {
+        heading: u16,
+        group: Option<AnimationGroup>,
+    },
 }
 
 impl Facing {
@@ -237,13 +251,13 @@ mod tests {
         ];
         for (group, value) in expected {
             assert_eq!(
-                speed(Some(group), Some(&attributes)),
+                speed(Some(AnimationGroup::from_index(group)), Some(&attributes)),
                 value,
                 "group {group}"
             );
         }
         assert_eq!(speed(None, Some(&attributes)), 0);
-        assert_eq!(speed(Some(18), None), 0);
+        assert_eq!(speed(Some(AnimationGroup::RUN), None), 0);
     }
 
     #[test]
@@ -299,7 +313,7 @@ mod tests {
                 facing([0; 3], heading, [0, 0, -25600], 0),
                 Facing::Turning {
                     heading: expected.0,
-                    group: Some(expected.1),
+                    group: Some(AnimationGroup::from_index(expected.1)),
                 },
                 "heading {heading}"
             );
@@ -996,7 +1010,11 @@ mod tests {
                 "heading {heading} target {target} attribute {attribute} scale {scale} holding {holding} combat {combat} torch {torch}"
             );
             assert_eq!(i64::from(turn.heading), after, "{label}");
-            assert_eq!(turn.group.map_or(-1, i64::from), group, "{label}");
+            assert_eq!(
+                turn.group.map_or(-1, |group| i64::from(group.index())),
+                group,
+                "{label}"
+            );
             assert_eq!(turn.group.is_some(), report != 0, "{label}");
         }
     }
@@ -1339,7 +1357,11 @@ mod tests {
                 } => {
                     assert_eq!((x, z), (px, pz), "{label}");
                     assert_eq!(i64::from(turned), after, "{label}");
-                    assert_eq!(requested.map_or(-1, i64::from), group, "{label}");
+                    assert_eq!(
+                        requested.map_or(-1, |group| i64::from(group.index())),
+                        group,
+                        "{label}"
+                    );
                     assert_eq!(facing.ongoing(), report != 0, "{label}");
                 }
             }

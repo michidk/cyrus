@@ -5,16 +5,18 @@
 //! The call takes a power (how quickly the lift decays), a forward-speed scalar and a steering
 //! flag. Installed content calls it once, on the selected player, as `BounceObject(160, 40, 1)`.
 use anyhow::{Context, Result};
+use cyrus_script::AnimationGroup;
 
 /// Lifecycle bytes the task owns: requested-entry, rising and falling.
 const ENTRY: u8 = 30;
 const RISING: u8 = 31;
 const FALLING: u8 = 32;
 /// The animation groups the entry request waits for: weapon, torch, plain.
-const ENTRY_GROUPS: [u16; 3] = [114, 66, 65];
-/// Descent group a held or drawn weapon uses, and the group that keeps it.
-const WEAPON_DESCENT: u16 = 113;
-const WEAPON_DESCENT_KEPT: u16 = 115;
+const ENTRY_GROUPS: [AnimationGroup; 3] = [
+    AnimationGroup::FIGHT_LAND,
+    AnimationGroup::LAND_TORCH,
+    AnimationGroup::LAND,
+];
 
 /// Arguments of one call, in script order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,8 +68,8 @@ pub trait BouncePort {
     fn is_selected_player(&self) -> bool;
     /// Scaled right minus scaled left ground-turn amount.
     fn turn_delta(&self, scale: u32) -> i64;
-    fn current_group(&self) -> Option<u16>;
-    fn request_group(&mut self, group: u16, force: bool) -> Result<()>;
+    fn current_group(&self) -> Option<AnimationGroup>;
+    fn request_group(&mut self, group: AnimationGroup, force: bool) -> Result<()>;
 }
 
 /// Horizontal step per call before the frame scale, from the speed scalar.
@@ -142,21 +144,28 @@ pub fn step<P: BouncePort + ?Sized>(
         if port.lift() <= 0 {
             port.begin_fall();
             if weapon {
-                if port.current_group() != Some(WEAPON_DESCENT_KEPT) {
-                    port.request_group(WEAPON_DESCENT, true)?;
+                if port.current_group() != Some(AnimationGroup::FIGHT_FALL_ATTACK) {
+                    port.request_group(AnimationGroup::FIGHT_FALL, true)?;
                 }
             } else {
-                port.request_group(if port.torch_burning() { 57 } else { 56 }, true)?;
+                port.request_group(
+                    if port.torch_burning() {
+                        AnimationGroup::FALL_TORCH
+                    } else {
+                        AnimationGroup::FALL
+                    },
+                    true,
+                )?;
             }
             port.set_living_state(FALLING);
         } else {
             port.request_group(
                 if weapon {
-                    112
+                    AnimationGroup::FIGHT_JUMP
                 } else if port.torch_burning() {
-                    38
+                    AnimationGroup::JUMP_TORCH
                 } else {
-                    39
+                    AnimationGroup::JUMP
                 },
                 false,
             )?;
@@ -190,8 +199,8 @@ mod tests {
         heading: u16,
         selected: bool,
         turn: i64,
-        group: Option<u16>,
-        requests: Vec<(u16, bool)>,
+        group: Option<AnimationGroup>,
+        requests: Vec<(AnimationGroup, bool)>,
         cleared: usize,
         fall_started: bool,
     }
@@ -260,10 +269,10 @@ mod tests {
         fn turn_delta(&self, _: u32) -> i64 {
             self.turn
         }
-        fn current_group(&self) -> Option<u16> {
+        fn current_group(&self) -> Option<AnimationGroup> {
             self.group
         }
-        fn request_group(&mut self, group: u16, force: bool) -> Result<()> {
+        fn request_group(&mut self, group: AnimationGroup, force: bool) -> Result<()> {
             self.requests.push((group, force));
             Ok(())
         }
@@ -321,11 +330,15 @@ mod tests {
 
     #[test]
     fn bounce_object_entry_request_picks_weapon_torch_or_plain_group() {
-        for (holding, torch, group) in [(true, false, 114), (false, true, 66), (false, false, 65)] {
+        for (holding, torch, group) in [
+            (true, false, AnimationGroup::FIGHT_LAND),
+            (false, true, AnimationGroup::LAND_TORCH),
+            (false, false, AnimationGroup::LAND),
+        ] {
             let mut actor = Actor {
                 holding,
                 torch,
-                group: Some(0),
+                group: Some(AnimationGroup::PANIC),
                 ..ready()
             };
             let mut state = BounceState::default();
@@ -338,20 +351,20 @@ mod tests {
     #[test]
     fn rising_waits_for_the_entry_group_then_lifts_and_decays() {
         let mut actor = Actor {
-            group: Some(0),
+            group: Some(AnimationGroup::PANIC),
             ..ready()
         };
         let mut state = BounceState::default();
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         assert_eq!(actor.living, ENTRY);
         assert_eq!(actor.position, [0; 3]);
-        actor.group = Some(65);
+        actor.group = Some(AnimationGroup::FIRST_LAND_GROUP);
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         assert_eq!(actor.living, RISING);
         // Lift 80 * 256, minus the decay (256 - 160) * 16 after the first rise.
         assert_eq!(actor.position[1], -80 * 256);
         assert_eq!(actor.lift, 80 * 256 - 1536);
-        assert_eq!(actor.requests.last(), Some(&(39, false)));
+        assert_eq!(actor.requests.last(), Some(&(AnimationGroup::JUMP, false)));
         // The horizontal step is (128 - 40) * 256 / 3 along the heading.
         assert_eq!(forward_step(40, 256), 7509);
     }
@@ -361,7 +374,7 @@ mod tests {
         let mut actor = Actor {
             living: RISING,
             lift: 1000,
-            group: Some(65),
+            group: Some(AnimationGroup::FIRST_LAND_GROUP),
             falling: 0,
             ..ready()
         };
@@ -369,7 +382,7 @@ mod tests {
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         assert!(actor.fall_started);
         assert_eq!(actor.living, FALLING);
-        assert_eq!(actor.requests, [(56, true)]);
+        assert_eq!(actor.requests, [(AnimationGroup::FALL, true)]);
         // Falling continues until the ordinary landing clears the falling byte.
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
         actor.falling = 0;
@@ -383,7 +396,7 @@ mod tests {
             living: RISING,
             lift: 10,
             holding: true,
-            group: Some(115),
+            group: Some(AnimationGroup::FIGHT_FALL_ATTACK),
             ..ready()
         };
         step(&mut kept, &mut BounceState { started: true }, ARGS).unwrap();
@@ -392,20 +405,20 @@ mod tests {
             living: RISING,
             lift: 10,
             drawn: true,
-            group: Some(1),
+            group: Some(AnimationGroup::IDLE1),
             ..ready()
         };
         step(&mut weapon, &mut BounceState { started: true }, ARGS).unwrap();
-        assert_eq!(weapon.requests, [(113, true)]);
+        assert_eq!(weapon.requests, [(AnimationGroup::FIGHT_FALL, true)]);
         let mut torch = Actor {
             living: RISING,
             lift: 10,
             torch: true,
-            group: Some(1),
+            group: Some(AnimationGroup::IDLE1),
             ..ready()
         };
         step(&mut torch, &mut BounceState { started: true }, ARGS).unwrap();
-        assert_eq!(torch.requests, [(57, true)]);
+        assert_eq!(torch.requests, [(AnimationGroup::FALL_TORCH, true)]);
     }
 
     #[test]

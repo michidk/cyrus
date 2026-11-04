@@ -2,8 +2,8 @@
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
 use cyrus_script::program::*;
+use cyrus_script::{AnimationGroup, Thread};
 use cyrus_script::{Attribute, Attributes};
 use cyrus_world::animation::AnimationSound;
 use serde_json::json;
@@ -222,7 +222,7 @@ fn animation_wait_and_flags_share_one_runtime_and_separate_stages() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, id, ScriptStage::Animation);
     stage(&mut world, id, BODY);
@@ -251,7 +251,7 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
     let caller = world.id(0).unwrap();
     let receiver = world.id(1).unwrap();
     world
-        .bind_animation(receiver, &animations(&scripts, true), 1)
+        .bind_animation(receiver, &animations(&scripts, true), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, receiver, ScriptStage::Animation);
     let mut events = Vec::new();
@@ -310,7 +310,7 @@ fn pause_resume_and_stop_keep_wait_and_animation_tokens_distinct() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, id, BODY);
     stage(&mut world, id, TASKS);
@@ -337,7 +337,7 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
     asset.world += 1;
     assert!(
         world
-            .bind_animation(id, &asset, 1)
+            .bind_animation(id, &asset, AnimationGroup::IDLE1)
             .unwrap_err()
             .to_string()
             .contains("belongs to world")
@@ -346,13 +346,13 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
     asset.metadata["script_content_id"] = "wrong".into();
     assert!(
         world
-            .bind_animation(id, &asset, 1)
+            .bind_animation(id, &asset, AnimationGroup::IDLE1)
             .unwrap_err()
             .to_string()
             .contains("generation mismatch")
     );
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     for stage in [BODY, TASKS, ScriptStage::Animation] {
         assert!(
@@ -439,7 +439,9 @@ fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
     ]);
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
-    world.bind_animation(id, &data, 1).unwrap();
+    world
+        .bind_animation(id, &data, AnimationGroup::IDLE1)
+        .unwrap();
     let mut calls = 0;
     let mut emit = |_, _| -> anyhow::Result<()> {
         calls += 1;
@@ -532,7 +534,7 @@ fn changing_count_after_animation_task_started_does_not_reset_finite_playback() 
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, id, BODY);
     stage(&mut world, id, TASKS);
@@ -557,7 +559,7 @@ fn unsupported_animation_group_is_not_narrowed_into_a_valid_request() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     let error = world
         .advance(
@@ -591,7 +593,7 @@ fn simultaneous_animation_tasks_share_playback_but_complete_independently() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, id, BODY);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
@@ -616,7 +618,7 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
     let caller = world.id(0).unwrap();
     let receiver = world.id(1).unwrap();
     world
-        .bind_animation(receiver, &animations(&scripts, true), 1)
+        .bind_animation(receiver, &animations(&scripts, true), AnimationGroup::IDLE1)
         .unwrap();
     let mut calls = 0;
     let mut fail = |_: ScriptActorId, _: ScriptSound| {
@@ -678,7 +680,7 @@ fn missing_animation_group_keeps_requesting_fallback_without_completing_task() {
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&scripts, false), 1)
+        .bind_animation(id, &animations(&scripts, false), AnimationGroup::IDLE1)
         .unwrap();
     stage(&mut world, id, BODY);
     for _ in 0..3 {
@@ -1197,7 +1199,9 @@ fn activation_world_with_attributes(
         torch_burning: 0,
         weapon_assigned: false,
         weapon_drawn: false,
-        animation: Some(cyrus_game::script::ActivationAnimation { group: Some(0) }),
+        animation: Some(cyrus_game::script::ActivationAnimation {
+            group: Some(AnimationGroup::PANIC),
+        }),
     };
     let inputs = ActivationInputs {
         player: world.id(2).unwrap(),
@@ -1410,7 +1414,7 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
                     .animation
                     .as_mut()
                     .unwrap()
-                    .group = Some(91)
+                    .group = Some(AnimationGroup::DRAW_SWORD)
             }
             7 => {
                 inputs
@@ -1420,7 +1424,7 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
                     .animation
                     .as_mut()
                     .unwrap()
-                    .group = Some(129)
+                    .group = Some(AnimationGroup::SHEATH_SWORD)
             }
             8 => {
                 let player = inputs.actors.get_mut(&2).unwrap();
@@ -1618,7 +1622,9 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
                         "actors": [{"script_name": "CYRUS", "animation_groups": []}]
                     }),
                 };
-                world.bind_animation(inputs.player, &data, 0).unwrap();
+                world
+                    .bind_animation(inputs.player, &data, AnimationGroup::PANIC)
+                    .unwrap();
             }
             world
                 .advance(
@@ -3730,7 +3736,9 @@ fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
         if bound {
             let mut animation = animations(&data, false);
             animation.metadata["actors"][0]["script_name"] = json!("CYRUS");
-            world.bind_animation(selected, &animation, 1).unwrap();
+            world
+                .bind_animation(selected, &animation, AnimationGroup::IDLE1)
+                .unwrap();
         }
         let mut asset = inventory_fixture(&[(1, count)]);
         asset.inventory.get_mut(&1).unwrap().weapon = weapon;
@@ -3863,7 +3871,9 @@ fn ordinary_weapon_default_uses_shared_inventory_readiness() {
         let mut world = ScriptWorld::prepare(&source, 1).unwrap();
         for index in 0..2 {
             let id = world.id(index).unwrap();
-            world.bind_animation(id, &data, 91).unwrap();
+            world
+                .bind_animation(id, &data, AnimationGroup::DRAW_SWORD)
+                .unwrap();
             stage(&mut world, id, ScriptStage::Animation);
         }
         let hud = ScriptHud::default();
@@ -4028,7 +4038,9 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
                 "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
             }]);
             let receiver = world.id(1).unwrap();
-            world.bind_animation(receiver, &animation, group).unwrap();
+            world
+                .bind_animation(receiver, &animation, AnimationGroup::from_index(group))
+                .unwrap();
             stage(&mut world, receiver, ScriptStage::Animation);
         }
         let hud = ScriptHud::default();
@@ -4869,7 +4881,8 @@ fn world_snapshot_resumes_displayed_animation_and_native_completion_together() {
     };
     let mut live = ScriptWorld::prepare(&scripts, 7).unwrap();
     let id = live.id(0).unwrap();
-    live.bind_animation(id, &data, 1).unwrap();
+    live.bind_animation(id, &data, AnimationGroup::IDLE1)
+        .unwrap();
     stage(&mut live, id, ScriptStage::Animation);
     stage(&mut live, id, BODY);
     assert_eq!(live.animation_frame(id).unwrap(), Some(1));
@@ -5132,13 +5145,13 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &animations(&data, false), 7)
+        .bind_animation(id, &animations(&data, false), AnimationGroup::IDLE_LEDGE)
         .unwrap();
     stage(&mut world, id, BODY);
     assert_eq!(
         world.animation_frame(id).unwrap(),
         Some(0),
-        "group 1 started"
+        "`anim_idle1` started"
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
     assert_eq!(world.flags(), [9], "the script continued in the same stage");
@@ -5191,7 +5204,9 @@ fn installed_play_animation_multitask_retains_one_slot_across_end_and_stops_expl
         }
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
         let id = world.id(0).unwrap();
-        world.bind_animation(id, &animation_data, 10).unwrap();
+        world
+            .bind_animation(id, &animation_data, AnimationGroup::MISC1)
+            .unwrap();
         for _ in 0..8 {
             stage(&mut world, id, BODY);
             stage(&mut world, id, TASKS);
@@ -5408,7 +5423,11 @@ fn move_backward_requests_the_walk_group_then_steps_along_the_reversed_heading()
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &move_backward_animations(&data, &[0, 19]), 0)
+        .bind_animation(
+            id,
+            &move_backward_animations(&data, &[0, 19]),
+            AnimationGroup::PANIC,
+        )
         .unwrap();
     let hud = locomotion_hud();
     let start = world.spatial(id).unwrap().local.position;
@@ -5443,7 +5462,11 @@ fn move_backward_without_the_group_never_moves_and_still_completes() {
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &move_backward_animations(&data, &[0]), 0)
+        .bind_animation(
+            id,
+            &move_backward_animations(&data, &[0]),
+            AnimationGroup::PANIC,
+        )
         .unwrap();
     let hud = locomotion_hud();
     let start = world.spatial(id).unwrap().local.position;
@@ -5477,7 +5500,11 @@ fn strafe_world(name: &str, step: u8) -> (ScriptWorld, ScriptActorId) {
     let id = world.id(0).unwrap();
     let group = if name == "MoveLeft" { 24 } else { 26 };
     world
-        .bind_animation(id, &move_backward_animations(&data, &[0, group]), 0)
+        .bind_animation(
+            id,
+            &move_backward_animations(&data, &[0, group]),
+            AnimationGroup::PANIC,
+        )
         .unwrap();
     (world, id)
 }
@@ -5615,7 +5642,11 @@ fn move_forward_world(step: u8) -> (ScriptWorld, ScriptActorId, Scripts) {
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &move_backward_animations(&data, &[0, 18]), 0)
+        .bind_animation(
+            id,
+            &move_backward_animations(&data, &[0, 18]),
+            AnimationGroup::PANIC,
+        )
         .unwrap();
     (world, id, data)
 }
@@ -5747,7 +5778,9 @@ fn backward_attribute_ramp_survives_task_passes_and_world_restoration() {
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let mut id = world.id(0).unwrap();
-    world.bind_animation(id, &animation, 0).unwrap();
+    world
+        .bind_animation(id, &animation, AnimationGroup::PANIC)
+        .unwrap();
     let hud = locomotion_hud();
     for (index, (z, counter)) in [(-512, 64), (-1194, 128), (-2218, 192), (-4266, 192)]
         .into_iter()
@@ -5802,7 +5835,9 @@ fn routed_backward_task_advances_only_the_receivers_counter() {
     world.prepare_spatial().unwrap();
     let caller = world.id(0).unwrap();
     let receiver = world.id(1).unwrap();
-    world.bind_animation(receiver, &animation, 0).unwrap();
+    world
+        .bind_animation(receiver, &animation, AnimationGroup::PANIC)
+        .unwrap();
     let hud = locomotion_hud();
     locomotion_stage(&mut world, caller, BODY, &hud);
     assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
@@ -5877,7 +5912,9 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
     world.prepare_spatial().unwrap();
     for index in 0..2 {
         let id = world.id(index).unwrap();
-        world.bind_animation(id, &animation, 1).unwrap();
+        world
+            .bind_animation(id, &animation, AnimationGroup::IDLE1)
+            .unwrap();
         world.set_actor_surface(id, 0).unwrap();
         world.apply_ordinary_directional_motion(id, 3, 0).unwrap();
         assert_eq!(
@@ -5968,7 +6005,11 @@ fn walk_forward_world_with(
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &move_backward_animations(&data, &[0, 20]), 0)
+        .bind_animation(
+            id,
+            &move_backward_animations(&data, &[0, 20]),
+            AnimationGroup::PANIC,
+        )
         .unwrap();
     world.set_actor_surface(id, surface).unwrap();
     (world, id)

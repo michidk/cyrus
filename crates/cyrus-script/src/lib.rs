@@ -1,5 +1,7 @@
 //! Explicit SOUP invocation, continuations and values from preservation's engine contract.
+mod animation_group;
 mod attribute;
+pub use animation_group::AnimationGroup;
 pub use attribute::{Attribute, Attributes};
 pub mod persistence;
 pub mod program;

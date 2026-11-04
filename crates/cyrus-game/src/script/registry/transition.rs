@@ -1,7 +1,7 @@
 //! Obstacle motion transitions follow preservation's ordinary forward wrapper.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Current motion bytes and weapon predicate for a single original transition.
 /// Logical Y is Q8; `attr_jump_height` is its unsigned installed map-unit offset.
@@ -13,7 +13,7 @@ pub struct ObstacleTransitionInput {
     pub logical_y: i32,
     pub fall_attribute: u8,
     pub holding_weapon: bool,
-    pub current_group: Option<u16>,
+    pub current_group: Option<AnimationGroup>,
 }
 
 /// Newly started fall bookkeeping. The group is a forced request, not a default.
@@ -21,7 +21,7 @@ pub struct ObstacleTransitionInput {
 pub struct ObstacleFallStart {
     pub origin_y: i32,
     pub timer: u8,
-    pub force_group: Option<u16>,
+    pub force_group: Option<AnimationGroup>,
 }
 
 /// Original byte writes and newly added result bits. Unmentioned bookkeeping
@@ -72,11 +72,11 @@ pub fn ordinary_obstacle_transition(input: ObstacleTransitionInput) -> Option<Ob
                 .wrapping_add(i32::from(input.fall_attribute) * 256),
             timer: 30,
             force_group: if result.falling_state & 0x80 != 0 {
-                Some(58)
+                Some(AnimationGroup::FALL_UP_ARMS)
             } else if !input.holding_weapon {
-                Some(56)
-            } else if input.current_group != Some(113) {
-                Some(113)
+                Some(AnimationGroup::FALL)
+            } else if input.current_group != Some(AnimationGroup::FIGHT_FALL) {
+                Some(AnimationGroup::FIGHT_FALL)
             } else {
                 None
             },
@@ -258,9 +258,9 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// The animation requests of an admitted actor landing: group 10 on the other actor, then
-    /// the landing group on the actor: 114 holding a weapon, else 66 with a burning torch, else
-    /// 65. Requests need the animation system and a prepared animation; otherwise they are
+    /// The animation requests of an admitted actor landing: `anim_misc1` on the other actor, then
+    /// the landing group on the actor: `anim_fight_land` holding a weapon, else `anim_land_torch` with a burning torch, else
+    /// `anim_land`. Requests need the animation system and a prepared animation; otherwise they are
     /// skipped, as the original's request routine does.
     fn request_landing_groups(
         &mut self,
@@ -273,7 +273,13 @@ impl ScriptWorld {
             return Ok(());
         }
         if self.actors[other.index].animation.is_some() {
-            self.request_ordinary_group(other, 10, false, environment.ticks, sounds)?;
+            self.request_ordinary_group(
+                other,
+                AnimationGroup::MISC1,
+                false,
+                environment.ticks,
+                sounds,
+            )?;
         }
         let actor = &self.actors[id.index];
         let control = actor
@@ -297,11 +303,11 @@ impl ScriptWorld {
             environment.shell_execution,
         );
         let landing = if holding {
-            114
+            AnimationGroup::FIGHT_LAND
         } else if control.torch_burning != 0 {
-            66
+            AnimationGroup::LAND_TORCH
         } else {
-            65
+            AnimationGroup::FIRST_LAND_GROUP
         };
         if actor.animation.is_some() {
             self.request_ordinary_group(id, landing, false, environment.ticks, sounds)?;

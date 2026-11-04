@@ -11,7 +11,7 @@ use crate::player::{
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::animation::AnimationSound;
 
 #[derive(Clone)]
@@ -249,7 +249,10 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .and_then(|animation| animation.playback.current_group());
-            if matches!(group, Some(129 | 91)) {
+            if matches!(
+                group,
+                Some(AnimationGroup::SHEATH_SWORD | AnimationGroup::DRAW_SWORD)
+            ) {
                 return Ok(());
             }
             world.turn_player(id, input.held, holding, timing, sounds)?;
@@ -268,7 +271,7 @@ impl ScriptWorld {
                     world.step_player(id, function, inputs, sounds)
                 }
                 // Deep water delegates WalkForward to MoveForward and an armed stance walks in
-                // group 31 (preservation SOUP.md); only the unarmed dry walk is the walking stage.
+                // `anim_fight_run` (preservation SOUP.md); only the unarmed dry walk is the walking stage.
                 SheathedAction::WalkForward
                     if walk_forward_is_scripted(armed, world.actor_surface(id)?) =>
                 {
@@ -365,8 +368,9 @@ impl ScriptWorld {
         if control.directional_state.iter().any(|byte| byte & 1 != 0) {
             return Ok(());
         }
-        if matches!(group, Some(65..=74))
-            || control.queued_motion != 0
+        if group.is_some_and(|group| {
+            (AnimationGroup::FIRST_LAND_GROUP..=AnimationGroup::LAST_LAND_GROUP).contains(&group)
+        }) || control.queued_motion != 0
             || control.falling_state != 0
         {
             control
@@ -376,7 +380,10 @@ impl ScriptWorld {
             return Ok(());
         }
         let step_hold = step_type == 0 || (control.movement_flags >> 4) & 3 == 3;
-        if step_hold && matches!(group, Some(18 | 30)) && !exit_reached {
+        if step_hold
+            && matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
+            && !exit_reached
+        {
             control.directional_state[0] |= 3;
             control.jump_window = 0;
             return Ok(());
@@ -498,7 +505,8 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        self.globals.set_player_death_override_group(74)?;
+        self.globals
+            .set_player_death_override_group(i32::from(AnimationGroup::LAND_DEATH))?;
         let source = super::super::activation::NativeSource::Actor {
             generation: id.generation,
             index: id.index,
@@ -508,7 +516,7 @@ impl ScriptWorld {
 
     /// The sheathed player's controller while its queued or falling byte is nonzero. Turning
     /// has been skipped and every movement helper refuses, so only these writes remain: forward
-    /// steering of queued motion 1 in groups 32 and 33, the falling jump key's clearing of the
+    /// steering of queued motion 1 in `anim_jump_start` and `anim_jump_start_torch`, the falling jump key's clearing of the
     /// companion motion byte, and the jump-key arbitration that clears the directional-state
     /// low bits.
     fn control_airborne_player(
@@ -644,7 +652,7 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .and_then(|animation| animation.playback.current_group()),
-            Some(18 | 30)
+            Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH)
         );
         let angles = self.spatial(id)?.local.angles;
         let result = turn::ground_turn(
@@ -1057,7 +1065,7 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .context("walking animation unavailable")?;
-            if continuation && animation.playback.current_group() != Some(20) {
+            if continuation && animation.playback.current_group() != Some(AnimationGroup::WALK) {
                 return Ok(false);
             }
             let pose = self.spatial(id)?.local;
@@ -1390,19 +1398,34 @@ fn walk_forward_is_scripted(armed: bool, surface: u8) -> bool {
 }
 
 /// The jump entry the key arbitration starts refuses while the player is in deep water (surface 2
-/// or 4) or in group 114, 116, 130 or 131 (preservation player.md "Jump-key arbitration").
-fn jump_key_refused(surface: u8, group: Option<u16>) -> bool {
-    matches!(surface, 2 | 4) || matches!(group, Some(114 | 116 | 130 | 131))
+/// or 4) or in `anim_fight_land`, `anim_fight_land_attack`, `anim_fight_land_right` or `anim_fight_land_left` (preservation player.md "Jump-key arbitration").
+fn jump_key_refused(surface: u8, group: Option<AnimationGroup>) -> bool {
+    matches!(surface, 2 | 4)
+        || matches!(
+            group,
+            Some(
+                AnimationGroup::FIGHT_LAND
+                    | AnimationGroup::FIGHT_LAND_ATTACK
+                    | AnimationGroup::FIGHT_LAND_RIGHT
+                    | AnimationGroup::FIGHT_LAND_LEFT
+            )
+        )
 }
 
-/// The airborne controller's writes: forward steering of queued motion 1 in groups 32 and 33,
+/// The airborne controller's writes: forward steering of queued motion 1 in `anim_jump_start` and `anim_jump_start_torch`,
 /// the falling jump key's clearing of the companion motion byte, and the jump-key arbitration.
 fn steer_airborne(
     control: &mut super::ActorControlState,
-    group: Option<u16>,
+    group: Option<AnimationGroup>,
     held: &crate::player::input::PlayerInput,
 ) {
-    if held.forward && control.queued_motion & 127 == 1 && matches!(group, Some(32 | 33)) {
+    if held.forward
+        && control.queued_motion & 127 == 1
+        && matches!(
+            group,
+            Some(AnimationGroup::JUMP_START | AnimationGroup::JUMP_START_TORCH)
+        )
+    {
         control.queued_motion = 2;
     }
     if held.jump {
@@ -1434,9 +1457,9 @@ mod airborne_tests {
             queued_motion: 0x81,
             ..Default::default()
         };
-        steer_airborne(&mut control, Some(30), &held);
+        steer_airborne(&mut control, Some(AnimationGroup::RUN_TORCH), &held);
         assert_eq!(control.queued_motion, 0x81);
-        steer_airborne(&mut control, Some(32), &held);
+        steer_airborne(&mut control, Some(AnimationGroup::JUMP_START), &held);
         assert_eq!(control.queued_motion, 2);
     }
 
@@ -1451,11 +1474,14 @@ mod airborne_tests {
 
     #[test]
     fn the_jump_key_entry_is_refused_in_deep_water_and_landing_groups() {
-        assert!(super::jump_key_refused(4, Some(141)));
+        assert!(super::jump_key_refused(4, Some(AnimationGroup::SWIM_IDLE)));
         assert!(super::jump_key_refused(2, None));
-        assert!(super::jump_key_refused(0, Some(130)));
-        assert!(!super::jump_key_refused(1, Some(141)));
-        assert!(!super::jump_key_refused(0, Some(18)));
+        assert!(super::jump_key_refused(
+            0,
+            Some(AnimationGroup::FIGHT_LAND_RIGHT)
+        ));
+        assert!(!super::jump_key_refused(1, Some(AnimationGroup::SWIM_IDLE)));
+        assert!(!super::jump_key_refused(0, Some(AnimationGroup::RUN)));
     }
 
     #[test]

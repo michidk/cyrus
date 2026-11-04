@@ -2,7 +2,7 @@
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
-use cyrus_script::{Argument, CallResult, Host, Target, Thread};
+use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_script::{Attribute, Attributes};
 use std::collections::BTreeMap;
 
@@ -2803,7 +2803,9 @@ fn map_default_selection_observes_script_writes_and_updates_the_shared_frame() {
         (91, false, 60),
     ] {
         let mut selected = ScriptWorld::prepare(&scripts, 1).unwrap();
-        selected.bind_animation(id, &data, initial_group).unwrap();
+        selected
+            .bind_animation(id, &data, AnimationGroup::from_index(initial_group))
+            .unwrap();
         selected
             .advance(id, ScriptStage::Animation, inputs, None, None, 20)
             .unwrap();
@@ -4811,7 +4813,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         globals
             .prepare_player_idle(
                 false,
-                Some(20),
+                Some(AnimationGroup::WALK),
                 100,
                 &mut cyrus_game::random::EngineRandom::from_state(5),
             )
@@ -8866,17 +8868,24 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
                 fall_start: Some(ObstacleFallStart {
                     origin_y: 4352,
                     timer: 30,
-                    force_group: Some(56)
+                    force_group: Some(AnimationGroup::FALL)
                 })
             })
         );
     }
     for (queued, holding, current, falling, group, clear) in [
-        (24, false, None, 1, Some(56), true),
-        (5, false, None, 1, Some(56), false),
-        (0x85, false, None, 0x81, Some(58), false),
-        (5, true, None, 1, Some(113), false),
-        (5, true, Some(113), 1, None, false),
+        (24, false, None, 1, Some(AnimationGroup::FALL), true),
+        (5, false, None, 1, Some(AnimationGroup::FALL), false),
+        (
+            0x85,
+            false,
+            None,
+            0x81,
+            Some(AnimationGroup::FALL_UP_ARMS),
+            false,
+        ),
+        (5, true, None, 1, Some(AnimationGroup::FIGHT_FALL), false),
+        (5, true, Some(AnimationGroup::FIGHT_FALL), 1, None, false),
     ] {
         assert_eq!(
             ordinary_obstacle_transition(ObstacleTransitionInput {
@@ -9496,7 +9505,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     let input = OrdinaryQueuedInputs {
         queued: 0,
         torch_burning: 0,
-        current_group: Some(0),
+        current_group: Some(AnimationGroup::PANIC),
         pending_group: None,
         has_group_49: true,
         has_group_50: true,
@@ -9532,14 +9541,18 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
                 queued,
                 torch_burning,
                 holding_weapon: holding,
-                current_group: Some(if torch_burning == 0 { 49 } else { 50 }),
+                current_group: Some(if torch_burning == 0 {
+                    AnimationGroup::JUMP_BACKWARD
+                } else {
+                    AnimationGroup::JUMP_BACKWARD_TORCH
+                }),
                 ..input
             }),
             OrdinaryQueuedAction {
                 clear_queued: false,
                 handled: true,
                 advance_vertical: true,
-                request_group: Some(group)
+                request_group: Some(AnimationGroup::from_index(group))
             }
         );
     }
@@ -9547,7 +9560,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
         assert_eq!(
             ordinary_queued_action(OrdinaryQueuedInputs {
                 queued: 1,
-                pending_group: Some(pending),
+                pending_group: Some(AnimationGroup::from_index(pending)),
                 edge_handled: true,
                 ..input
             }),
@@ -9558,7 +9571,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
         ordinary_queued_action(OrdinaryQueuedInputs {
             queued: 3,
             has_group_49: false,
-            pending_group: Some(32),
+            pending_group: Some(AnimationGroup::JUMP_START),
             edge_handled: true,
             ..input
         }),
@@ -9769,38 +9782,41 @@ fn ordinary_falling_requests_preserve_priority_and_short_distance_boundary() {
     };
     assert_eq!(ordinary_falling_request(0, 0, false, None, 0, 0), None);
     assert_eq!(
-        ordinary_falling_request(131, 0, true, Some(115), 0, 0),
-        requested(63)
+        ordinary_falling_request(131, 0, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
+        requested(AnimationGroup::FALL_BACKWARD)
     );
     assert_eq!(
-        ordinary_falling_request(131, 1, true, Some(115), 0, 0),
-        requested(64)
+        ordinary_falling_request(131, 1, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
+        requested(AnimationGroup::FALL_BACKWARD_TORCH)
     );
     assert_eq!(
         ordinary_falling_request(136, 0, true, None, 0, 0),
-        requested(58)
+        requested(AnimationGroup::FALL_UP_ARMS)
     );
     assert_eq!(
         ordinary_falling_request(8, 0, true, None, 32767, 0),
-        requested(59)
+        requested(AnimationGroup::FALL_RUN)
     );
     assert_eq!(
         ordinary_falling_request(9, 1, false, None, -32767, 0),
-        requested(62)
+        requested(AnimationGroup::FALL_LEFT_TORCH)
     );
     assert_eq!(
         ordinary_falling_request(8, 0, false, None, 32768, 0),
-        requested(56)
+        requested(AnimationGroup::FALL)
     );
     assert_eq!(
         ordinary_falling_request(9, 1, false, None, -32768, 0),
-        requested(57)
+        requested(AnimationGroup::FALL_TORCH)
     );
-    assert_eq!(ordinary_falling_request(1, 0, true, Some(115), 0, 0), None);
     assert_eq!(
-        ordinary_falling_request(1, 0, true, Some(114), 0, 0),
+        ordinary_falling_request(1, 0, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
+        None
+    );
+    assert_eq!(
+        ordinary_falling_request(1, 0, true, Some(AnimationGroup::FIGHT_LAND), 0, 0),
         Some(OrdinaryFallingRequest {
-            group: 113,
+            group: AnimationGroup::FIGHT_FALL,
             force: true
         })
     );
@@ -9925,12 +9941,12 @@ fn ordinary_falling_reads_the_replacement_groups_vertical_marker() {
         };
         assert_eq!(
             world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
-            0
+            AnimationGroup::PANIC.index()
         );
         assert!(fall(&mut world));
         assert_eq!(
             world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
-            56
+            AnimationGroup::FALL.index()
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.falling_state, 1);
@@ -9994,44 +10010,58 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
 #[test]
 fn ordinary_animated_fall_entry_distinguishes_rollback_from_start() {
     use cyrus_game::script::{OrdinaryFallEntry, ordinary_fall_entry};
-    for group in [18, 30] {
+    for group in [AnimationGroup::RUN, AnimationGroup::RUN_TORCH] {
         assert_eq!(
-            ordinary_fall_entry(group, 7, true, 1, true),
-            OrdinaryFallEntry::RestoreStable { force_group: 7 }
-        );
-        assert_eq!(
-            ordinary_fall_entry(group, 7, false, 0, true),
-            OrdinaryFallEntry::Start {
-                force_group: Some(59)
+            ordinary_fall_entry(group, AnimationGroup::IDLE_LEDGE, true, 1, true),
+            OrdinaryFallEntry::RestoreStable {
+                force_group: AnimationGroup::IDLE_LEDGE
             }
         );
         assert_eq!(
-            ordinary_fall_entry(group, 7, false, 1, false),
+            ordinary_fall_entry(group, AnimationGroup::IDLE_LEDGE, false, 0, true),
             OrdinaryFallEntry::Start {
-                force_group: Some(60)
+                force_group: Some(AnimationGroup::FALL_RUN)
+            }
+        );
+        assert_eq!(
+            ordinary_fall_entry(group, AnimationGroup::IDLE_LEDGE, false, 1, false),
+            OrdinaryFallEntry::Start {
+                force_group: Some(AnimationGroup::FALL_RIGHT_TORCH)
             }
         );
     }
     assert_eq!(
-        ordinary_fall_entry(0, 0, true, 0, false),
+        ordinary_fall_entry(AnimationGroup::PANIC, AnimationGroup::PANIC, true, 0, false),
         OrdinaryFallEntry::Start {
-            force_group: Some(56)
+            force_group: Some(AnimationGroup::FALL)
         }
     );
     assert_eq!(
-        ordinary_fall_entry(0, 0, true, 1, false),
+        ordinary_fall_entry(AnimationGroup::PANIC, AnimationGroup::PANIC, true, 1, false),
         OrdinaryFallEntry::Start {
-            force_group: Some(57)
+            force_group: Some(AnimationGroup::FALL_TORCH)
         }
     );
     assert_eq!(
-        ordinary_fall_entry(114, 0, false, 1, true),
+        ordinary_fall_entry(
+            AnimationGroup::FIGHT_LAND,
+            AnimationGroup::PANIC,
+            false,
+            1,
+            true
+        ),
         OrdinaryFallEntry::Start {
-            force_group: Some(113)
+            force_group: Some(AnimationGroup::FIGHT_FALL)
         }
     );
     assert_eq!(
-        ordinary_fall_entry(115, 0, false, 0, true),
+        ordinary_fall_entry(
+            AnimationGroup::FIGHT_FALL_ATTACK,
+            AnimationGroup::PANIC,
+            false,
+            0,
+            true
+        ),
         OrdinaryFallEntry::Start { force_group: None }
     );
 }
@@ -10262,15 +10292,15 @@ fn ordinary_landing_requests_keep_selected_player_weapon_state_separate() {
     for (motion, dry, torch, armed) in [(8, 67, 68, 130), (9, 69, 70, 131)] {
         assert_eq!(
             request(motion | 128, 0, true, Some(false), None).unwrap(),
-            Some(dry)
+            Some(AnimationGroup::from_index(dry))
         );
         assert_eq!(
             request(motion, 1, false, Some(false), None).unwrap(),
-            Some(torch)
+            Some(AnimationGroup::from_index(torch))
         );
         assert_eq!(
             request(motion, 0, false, Some(true), None).unwrap(),
-            Some(armed)
+            Some(AnimationGroup::from_index(armed))
         );
         assert!(
             request(motion, 0, false, None, None)
@@ -10279,11 +10309,26 @@ fn ordinary_landing_requests_keep_selected_player_weapon_state_separate() {
                 .contains("selected-player")
         );
     }
-    assert_eq!(request(1, 0, false, None, None).unwrap(), Some(65));
-    assert_eq!(request(1, 1, false, None, None).unwrap(), Some(66));
-    assert_eq!(request(1, 0, true, None, Some(114)).unwrap(), Some(114));
-    assert_eq!(request(1, 0, true, None, Some(115)).unwrap(), None);
-    assert_eq!(request(1, 0, true, None, Some(116)).unwrap(), None);
+    assert_eq!(
+        request(1, 0, false, None, None).unwrap(),
+        Some(AnimationGroup::FIRST_LAND_GROUP)
+    );
+    assert_eq!(
+        request(1, 1, false, None, None).unwrap(),
+        Some(AnimationGroup::LAND_TORCH)
+    );
+    assert_eq!(
+        request(1, 0, true, None, Some(AnimationGroup::FIGHT_LAND)).unwrap(),
+        Some(AnimationGroup::FIGHT_LAND)
+    );
+    assert_eq!(
+        request(1, 0, true, None, Some(AnimationGroup::FIGHT_FALL_ATTACK)).unwrap(),
+        None
+    );
+    assert_eq!(
+        request(1, 0, true, None, Some(AnimationGroup::FIGHT_LAND_ATTACK)).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -10636,7 +10681,7 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
         OrdinarySlide {
             movement_heading: 0,
             target_heading: 0,
-            group: 75,
+            group: AnimationGroup::SLIDE,
             movement_bits: 0x30,
             distance: 4608,
         }
@@ -10646,7 +10691,7 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
         OrdinarySlide {
             movement_heading: 0,
             target_heading: 1024,
-            group: 78,
+            group: AnimationGroup::SLIDE_BACKWARD_TORCH,
             movement_bits: 0xc0,
             distance: 2304,
         }
@@ -10660,7 +10705,7 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
         ordinary_slope_turn(0, 100, 12, 128, false, false),
         OrdinarySlopeTurn {
             heading: 8,
-            group: Some(14)
+            group: Some(AnimationGroup::TURN_LEFT)
         }
     );
     assert_eq!(
@@ -10674,14 +10719,14 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
         ordinary_slope_turn(0, 1024, 12, 256, true, false),
         OrdinarySlopeTurn {
             heading: 12,
-            group: Some(96)
+            group: Some(AnimationGroup::FIGHT_TURN_LEFT)
         }
     );
     assert_eq!(
         ordinary_slope_turn(1024, 0, 12, 256, false, true),
         OrdinarySlopeTurn {
             heading: 1012,
-            group: Some(17)
+            group: Some(AnimationGroup::TURN_RIGHT_TORCH)
         }
     );
 }
@@ -14632,8 +14677,8 @@ fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
         ..Default::default()
     };
     step(&mut world, &held);
-    // Original: Down + Space from the backward run group jumps in group 49 (queued 3) and starts
-    // the controller cooldown; the unarmed standing jump (group 32, queued 1) is wrong here.
+    // Original: Down + Space from the backward run group jumps in `anim_jump_backward` (queued 3) and starts
+    // the controller cooldown; the unarmed standing jump (`anim_jump_start`, queued 1) is wrong here.
     assert_eq!(
         world.actors()[index].control_state().unwrap().queued_motion,
         3
@@ -17113,7 +17158,9 @@ fn current_animation_property_reads_signed_group_without_advancing_playback() {
                 unsupported: Default::default(),
             };
             if let Some(group) = group {
-                world.bind_animation(receiver, &data, group).unwrap();
+                world
+                    .bind_animation(receiver, &data, AnimationGroup::from_index(group))
+                    .unwrap();
             }
             if start {
                 world
@@ -17591,7 +17638,9 @@ fn animation_frame_waits_resume_from_the_correct_owner_without_advancing_playbac
             models: Default::default(),
             unsupported: Default::default(),
         };
-        world.bind_animation(receiver, &data, 7).unwrap();
+        world
+            .bind_animation(receiver, &data, AnimationGroup::IDLE_LEDGE)
+            .unwrap();
         world
             .advance(
                 receiver,
@@ -18406,7 +18455,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 if mode == 11 {
                     assert_eq!(
                         world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
-                        0 // Missing 122 uses the animation owner's default, not health's fallback 121.
+                        AnimationGroup::PANIC.index() // Missing `anim_death_fight_hard` uses the animation owner's default, not health's fallback `anim_death_fight_stab`.
                     );
                 }
             }
@@ -21149,7 +21198,9 @@ fn facing_world(
             models: Default::default(),
             unsupported: Default::default(),
         };
-        world.bind_animation(id, &data, group).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::from_index(group))
+            .unwrap();
         world
             .advance(
                 id,
@@ -21428,7 +21479,9 @@ fn movement_fixture(
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
-    world.bind_animation(id, &data, initial_group).unwrap();
+    world
+        .bind_animation(id, &data, AnimationGroup::from_index(initial_group))
+        .unwrap();
     world
         .advance(
             id,
@@ -21617,8 +21670,14 @@ fn forward_amount_waits_for_current_animation_without_advancing_counter() {
         assert_eq!(control.movement_flags, counter);
         let state = world.inspect(0, 1);
         assert_eq!(state["globals"]["locomotion_called"], called);
-        assert_eq!(state["actors"][0]["animation"]["current_group"], 30);
-        assert_eq!(state["actors"][0]["animation"]["pending_group"], 18);
+        assert_eq!(
+            state["actors"][0]["animation"]["current_group"],
+            AnimationGroup::RUN_TORCH.index()
+        );
+        assert_eq!(
+            state["actors"][0]["animation"]["pending_group"],
+            AnimationGroup::RUN.index()
+        );
     }
 }
 
@@ -23485,7 +23544,7 @@ fn counter_fixture_timing(
             .unwrap();
         let group = groups
             .iter_mut()
-            .find(|group| group["group_index"] == 19)
+            .find(|group| group["group_index"] == AnimationGroup::RUN_BACKWARD.index())
             .unwrap();
         group["commands"].as_array_mut().unwrap().insert(
             0,
@@ -23517,7 +23576,9 @@ fn counter_fixture_timing(
         .unwrap();
         for index in 0..2 {
             let id = world.id(index).unwrap();
-            world.bind_animation(id, &data, 18).unwrap();
+            world
+                .bind_animation(id, &data, AnimationGroup::RUN)
+                .unwrap();
             world
                 .advance(
                     id,
@@ -23597,7 +23658,7 @@ fn live_counter_starts_receiver_animation_then_marks_target_without_a_task() {
     assert_eq!(target.flags, 0x10);
     assert_eq!(
         world.inspect(0, 2)["actors"][0]["animation"]["current_group"],
-        19
+        AnimationGroup::RUN_BACKWARD.index()
     );
     assert_eq!(random.state(), 1);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
@@ -23911,7 +23972,7 @@ fn live_counter_sound_failure_retains_start_action_but_does_not_mark_target() {
         );
         assert_eq!(
             world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
-            19
+            AnimationGroup::RUN_BACKWARD.index()
         );
     }
 }
@@ -24591,11 +24652,11 @@ fn disengaged_turn_bypasses_arrival_and_movement_services() {
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 2040);
     assert_eq!(
         world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
-        18
+        AnimationGroup::RUN.index()
     );
     assert_eq!(
         world.inspect(0, 1)["actors"][0]["animation"]["pending_group"],
-        15
+        AnimationGroup::TURN_RIGHT.index()
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
@@ -26157,7 +26218,9 @@ fn point_default_animation_dispatches_sound_before_completion_and_propagates_fai
         world.prepare_spatial().unwrap();
         world.prepare_navigation(&data).unwrap();
         let id = world.id(0).unwrap();
-        world.bind_animation(id, &data, 0).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::PANIC)
+            .unwrap();
         let position = world.spatial(id).unwrap().local.position;
         let mut cues = 0;
         let result=world.move_ordinary_point(id,position,0,ScriptInputs {nominal_ticks:Some(1),frame_scale:Some(256),..Default::default()}, None,Some(&mut |actor,sound| {
@@ -26466,7 +26529,9 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
         world.prepare_spatial().unwrap();
         world.prepare_navigation(&data).unwrap();
         let id = world.id(0).unwrap();
-        world.bind_animation(id, &data, 0).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::PANIC)
+            .unwrap();
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][0]["control"]["navigation"] =
             serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
@@ -26672,7 +26737,7 @@ fn point_node_facing_sound_failure_precedes_heading_phase_and_random_changes() {
         .unwrap();
     let group = groups
         .iter_mut()
-        .find(|group| group["group_index"] == 97)
+        .find(|group| group["group_index"] == AnimationGroup::FIGHT_TURN_RIGHT.index())
         .unwrap();
     group["commands"] = serde_json::json!([
         {"opcode":4,"sound_param":17,"volume_shift":0},{"opcode":0,"frame_reference":97},{"opcode":2,"value":0}
@@ -26681,7 +26746,9 @@ fn point_node_facing_sound_failure_precedes_heading_phase_and_random_changes() {
     world.prepare_spatial().unwrap();
     world.prepare_navigation(&data).unwrap();
     let id = world.id(0).unwrap();
-    world.bind_animation(id, &data, 18).unwrap();
+    world
+        .bind_animation(id, &data, AnimationGroup::RUN)
+        .unwrap();
     let mut saved = movement_snapshot(&world, &scripts, &data);
     saved["actors"][0]["attributes"][110] = 1.into();
     saved["actors"][0]["attributes"][90] = 1.into();
@@ -26820,7 +26887,9 @@ fn point_delay_fixture(
     world.prepare_navigation(&data).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
-    world.bind_animation(id, &data, 18).unwrap();
+    world
+        .bind_animation(id, &data, AnimationGroup::RUN)
+        .unwrap();
     world
         .advance(
             id,
@@ -27667,7 +27736,7 @@ fn point_route_completion_releases_claims_and_retains_phase_and_history() {
         world.prepare_spatial().unwrap();
         world.prepare_navigation(&data).unwrap();
         world
-            .bind_animation(world.id(0).unwrap(), &data, 18)
+            .bind_animation(world.id(0).unwrap(), &data, AnimationGroup::RUN)
             .unwrap();
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][0]["attributes"][95] = 1.into();
@@ -27867,7 +27936,7 @@ fn point_direct_visible_completion_and_rejection_use_live_geometry_owner() {
         data.metadata["walk_node_maps"] = point_data.metadata["walk_node_maps"].clone();
         world.prepare_navigation(&data).unwrap();
         world
-            .bind_animation(world.id(0).unwrap(), &data, 18)
+            .bind_animation(world.id(0).unwrap(), &data, AnimationGroup::RUN)
             .unwrap();
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][0]["attributes"][93] = 1.into();
@@ -29726,7 +29795,11 @@ fn replace_health_test_animation(
     )
     .unwrap();
     restored
-        .bind_animation(restored.id(index).unwrap(), data, group)
+        .bind_animation(
+            restored.id(index).unwrap(),
+            data,
+            AnimationGroup::from_index(group),
+        )
         .unwrap();
     restored
 }
@@ -29984,7 +30057,8 @@ fn selected_health_ledge_reset_uses_torch_counter_independently_of_weapon_state(
             assert_eq!(control.weapon_drawn, weapon_drawn);
             assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
             assert_eq!(
-                world.inspect(index, 1)["actors"][0]["animation"]["current_group"] == 56,
+                world.inspect(index, 1)["actors"][0]["animation"]["current_group"]
+                    == AnimationGroup::FALL.index(),
                 torch == 0,
             );
         }
@@ -30214,7 +30288,9 @@ fn contact_death_prefers_122_then_121_and_retains_combat_default() {
         saved["actors"][0]["animation"] = serde_json::Value::Null;
         let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
         let id = world.id(0).unwrap();
-        world.bind_animation(id, &data, 18).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::RUN)
+            .unwrap();
         world
             .dispatch_contact_death(id, selector, Some(1), &mut |_, _| Ok(()))
             .unwrap();
@@ -33073,7 +33149,9 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
                 torch_burning: 0,
                 weapon_assigned: true,
                 weapon_drawn: false,
-                animation: Some(ActivationAnimation { group: Some(0) }),
+                animation: Some(ActivationAnimation {
+                    group: Some(AnimationGroup::PANIC),
+                }),
             };
             let activation = ActivationInputs {
                 player,
@@ -34294,7 +34372,7 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
     assert_eq!(
         world.globals().player_death_override_group(),
         Some(121),
-        "the fixture table has no group 122, so a zero-selector death falls back to 121"
+        "the fixture table has no `anim_death_fight_hard`, so a zero-selector death falls back to `anim_death_fight_stab`"
     );
     let control = world.actors()[receiver.index].control_state().unwrap();
     assert_eq!(control.death_selector, 8);
@@ -35649,7 +35727,7 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
     // An unchanged returned surface does nothing, and neither does dry to dry.
     assert_eq!(surface_transition((4, 4, 4), false), (None, vec![]));
     assert_eq!(surface_transition((0, 10, 10), true), (None, vec![]));
-    // Dry land to deep water: group 143, or 142 moving forward, and the entry sound 71.
+    // Dry land to deep water: `anim_swim_backward`, or `anim_swim_forward` moving forward, and the entry sound 71.
     for (forward, expected) in [(false, 143), (true, 142)] {
         let (group, sounds) = surface_transition((0, 4, 4), forward);
         assert_eq!(group, Some(expected));
@@ -35663,7 +35741,7 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
             }]
         ));
     }
-    // Deep water to dry land: the exit sound 70 and group 19, or 18 moving forward.
+    // Deep water to dry land: the exit sound 70 and `anim_run_backward`, or `anim_run` moving forward.
     for (forward, expected) in [(false, 19), (true, 18)] {
         let (group, sounds) = surface_transition((4, 10, 10), forward);
         assert_eq!(group, Some(expected));
@@ -35980,7 +36058,9 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
     )
     .unwrap();
     let player = world.id(player_index).unwrap();
-    world.bind_animation(player, &data, 19).unwrap();
+    world
+        .bind_animation(player, &data, AnimationGroup::RUN_BACKWARD)
+        .unwrap();
     world
         .advance(
             player,
@@ -36110,7 +36190,9 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
             "group_index":56,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
         }));
-    world.bind_animation(player, &data, 0).unwrap();
+    world
+        .bind_animation(player, &data, AnimationGroup::PANIC)
+        .unwrap();
     world
         .advance(
             player,
@@ -36181,7 +36263,7 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
     assert!(saved["actors"][player_index]["model"]["ledge_support"].is_null());
     assert_eq!(
         world.inspect(player_index, 1)["actors"][0]["animation"]["current_group"],
-        56
+        AnimationGroup::FALL.index()
     );
 }
 
@@ -36510,9 +36592,10 @@ fn climbing_forward_queues_motion_without_leaving_the_climb() {
             "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
         }));
     let mut playback =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
     let frame = playback
-        .force_request_with_sounds(86, 0, 0, &mut |_| Ok(()))
+        .force_request_with_sounds(AnimationGroup::PULL_UP_LEDGE, 0, 0, &mut |_| Ok(()))
         .unwrap();
     data.metadata["markers"] = serde_json::json!([]);
     data.metadata["walk_node_maps"] = serde_json::json!([]);
@@ -36602,10 +36685,14 @@ fn climbing_forward_queues_motion_without_leaving_the_climb() {
         let inspected = world.inspect(index, 1);
         let actor = &inspected["actors"][0];
         assert_eq!(
-            actor["animation"]["pending_group"], 18,
+            actor["animation"]["pending_group"],
+            AnimationGroup::RUN.index(),
             "forward request survives release during the climb"
         );
-        assert_eq!(actor["animation"]["current_group"], 86);
+        assert_eq!(
+            actor["animation"]["current_group"],
+            AnimationGroup::PULL_UP_LEDGE.index()
+        );
         assert_eq!(actor["control"]["living_state"], 11);
         assert_eq!(
             actor["spatial"], before,
@@ -36683,7 +36770,7 @@ fn hanging_backward_releases_without_the_walk_key() {
         );
         assert_eq!(
             world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
-            56
+            AnimationGroup::FALL.index()
         );
     }
 }
@@ -37596,7 +37683,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
     )
     .unwrap();
     world
-        .bind_animation(world.id(index).unwrap(), &data, 0)
+        .bind_animation(world.id(index).unwrap(), &data, AnimationGroup::PANIC)
         .unwrap();
     let tick = |world: &mut ScriptWorld, jump| {
         let held = PlayerInput {
@@ -38510,7 +38597,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
             .as_array_mut()
             .unwrap()
             .iter_mut()
-            .find(|group| group["group_index"] == 0)
+            .find(|group| group["group_index"] == AnimationGroup::PANIC.index())
             .unwrap();
         idle["commands"].as_array_mut().unwrap().insert(
             0,
@@ -38707,7 +38794,7 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
     definition["animation_groups"]
         .as_array_mut()
         .unwrap()
-        .retain(|group| group["group_index"] != 18);
+        .retain(|group| group["group_index"] != AnimationGroup::RUN.index());
     for group in [18, 32, 34, 35, 38, 39, 40] {
         definition["animation_groups"]
             .as_array_mut()
@@ -38772,6 +38859,6 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
     );
     assert_eq!(
         world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
-        34
+        AnimationGroup::JUMP_RUN_START.index()
     );
 }

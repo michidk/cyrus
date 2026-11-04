@@ -1,12 +1,13 @@
 //! Player attributes and upright collision bounds from preservation's RGM metadata.
 use anyhow::Context;
+use cyrus_script::AnimationGroup;
 use serde::Deserialize;
 
 /// Installed CYRUS definition. Extents are nonnegative map units in original axes.
 #[derive(Clone, Debug)]
 pub struct PlayerDefinition {
     /// Ordinary sheathed idle default from `attr_panic_group`, per preservation player.md.
-    pub ordinary_default_group: u8,
+    pub ordinary_default_group: AnimationGroup,
     pub forward_walk: u8,
     pub forward_speed: u8,
     pub step_type: u8,
@@ -87,7 +88,9 @@ impl PlayerDefinition {
         let scale =
             i16::try_from(scale).context("CYRUS RAEX: collision scale outside i16 range")?;
         Ok(Self {
-            ordinary_default_group: attribute("attr_panic_group")?,
+            ordinary_default_group: AnimationGroup::from_index(
+                attribute("attr_panic_group")?.into(),
+            ),
             forward_walk: attribute("attr_forward_walk")?,
             forward_speed: attribute("attr_forward_speed")?,
             step_type: attribute("attr_step_type")?,

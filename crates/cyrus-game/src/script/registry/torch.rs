@@ -1,20 +1,23 @@
 //! Torches: `LightTorch` and `UnlightTorch`, the burn countdown and the held-torch progression.
 //!
 //! A torch burns while the actor's counter is nonzero. Lighting and dousing are lifecycle states
-//! 33 and 34 that play animation groups 149 and 150; the counter changes once the group reaches
+//! 33 and 34 that play `anim_light_torch` and `anim_unlight_torch`; the counter changes once the group reaches
 //! the actor's lighting or dousing frame threshold. Presentation of the held torch and its light
 //! belongs to the attachment owner and is not modelled here.
 use super::{GameHost, ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 const LIGHTING: u8 = 33;
 const DOUSING: u8 = 34;
-const LIGHT_GROUP: u16 = 149;
-const DOUSE_GROUP: u16 = 150;
 
 impl ScriptWorld {
-    fn torch_gates(&self, id: ScriptActorId, inputs: &TorchInputs, group: u16) -> Result<bool> {
+    fn torch_gates(
+        &self,
+        id: ScriptActorId,
+        inputs: &TorchInputs,
+        group: AnimationGroup,
+    ) -> Result<bool> {
         let actor = &self.actors[self.resolve(id)?];
         let Some(control) = actor.control.as_ref() else {
             return Ok(false);
@@ -38,7 +41,7 @@ impl ScriptWorld {
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        if !self.torch_gates(id, &inputs, LIGHT_GROUP)? {
+        if !self.torch_gates(id, &inputs, AnimationGroup::LIGHT_TORCH)? {
             return Ok(());
         }
         let index = self.resolve(id)?;
@@ -58,7 +61,7 @@ impl ScriptWorld {
         if refused {
             return Ok(());
         }
-        self.request_ordinary_group(id, LIGHT_GROUP, false, ticks, sounds)?;
+        self.request_ordinary_group(id, AnimationGroup::LIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = LIGHTING;
         control.motion_companion = 0;
@@ -73,14 +76,14 @@ impl ScriptWorld {
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        if !self.torch_gates(id, &inputs, DOUSE_GROUP)? {
+        if !self.torch_gates(id, &inputs, AnimationGroup::UNLIGHT_TORCH)? {
             return Ok(());
         }
         let index = self.resolve(id)?;
         if lighting_or_dousing(&self.actors[index]) || inputs.drawing || inputs.sheathing {
             return Ok(());
         }
-        self.request_ordinary_group(id, DOUSE_GROUP, false, ticks, sounds)?;
+        self.request_ordinary_group(id, AnimationGroup::UNLIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = DOUSING;
         control.motion_companion = 0;
@@ -161,8 +164,8 @@ impl ScriptWorld {
         }
         let state = control.living_state;
         let (group, threshold) = match state {
-            LIGHTING => (LIGHT_GROUP, Attribute::LightFrame),
-            DOUSING => (DOUSE_GROUP, Attribute::UnlightFrame),
+            LIGHTING => (AnimationGroup::LIGHT_TORCH, Attribute::LightFrame),
+            DOUSING => (AnimationGroup::UNLIGHT_TORCH, Attribute::UnlightFrame),
             _ => return Ok(()),
         };
         self.request_ordinary_group(id, group, false, ticks, sounds)?;
@@ -214,7 +217,11 @@ fn lighting_or_dousing(actor: &super::ScriptActor) -> bool {
         .as_ref()
         .map_or(0, |control| control.living_state);
     let group = actor.bound_animation_group().flatten();
-    matches!(state, LIGHTING | DOUSING) || matches!(group, Some(LIGHT_GROUP | DOUSE_GROUP))
+    matches!(state, LIGHTING | DOUSING)
+        || matches!(
+            group,
+            Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+        )
 }
 
 impl ScriptWorld {

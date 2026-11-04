@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::attack_step_with_animation;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Apply the d001 response after message intent clears. The order follows the
@@ -107,7 +107,7 @@ impl ScriptWorld {
             .nominal_ticks
             .context("hit response nominal ticks unavailable")?;
         let reaction_group = if !selected {
-            117
+            AnimationGroup::FIGHT_HURT_1
         } else {
             let holding = self.spacing_weapon(receiver, inputs)?.1;
             let stance = self.actors[receiver_index]
@@ -117,11 +117,19 @@ impl ScriptWorld {
                 .is_some_and(|combat| combat.flags & 4 != 0);
             let odd = self.globals.world_loop_frame & 1 != 0;
             if holding || stance {
-                if odd { 118 } else { 117 }
+                if odd {
+                    AnimationGroup::FIGHT_HURT_2
+                } else {
+                    AnimationGroup::FIGHT_HURT_1
+                }
             } else if self.actors[receiver_index]
                 .animation
                 .as_ref()
-                .is_some_and(|animation| animation.playback.has_group(119))
+                .is_some_and(|animation| {
+                    animation
+                        .playback
+                        .has_group(AnimationGroup::FIGHT_HURT_FRONT)
+                })
             {
                 let own = self.spatial(receiver)?.local;
                 let target = self.spatial(sender)?.local;
@@ -130,14 +138,14 @@ impl ScriptWorld {
                     target.position,
                     i32::from(own.angles[1]),
                 ) {
-                    119
+                    AnimationGroup::FIGHT_HURT_FRONT
                 } else {
-                    120
+                    AnimationGroup::FIGHT_HURT_BACK
                 }
             } else if odd {
-                133
+                AnimationGroup::EXPLORE_HURT_2
             } else {
-                132
+                AnimationGroup::EXPLORE_HURT_1
             }
         };
         if self.actors[receiver_index].animation.is_some() {
@@ -274,7 +282,7 @@ impl ScriptWorld {
     }
     /// The direct-damage response (`0xd005`): displace the receiver 3000 units away from the
     /// sender, then (for the selected player) return at once while a death-animation override is
-    /// set. A nonplayer starts hit-reaction group 117; the selected player starts 117 or 118 by
+    /// set. A nonplayer starts hit-reaction `anim_fight_hurt_1`; the selected player starts `anim_fight_hurt_1` or `anim_fight_hurt_2` by
     /// world-loop parity while holding a weapon or in combat stance (the drawn-weapon bit of its
     /// combat record), else 132 or 133. The selected player's health response is skipped while the
     /// damage-suppression cheat is on. Otherwise the sender's `attr_damage` is subtracted from the
@@ -331,13 +339,13 @@ impl ScriptWorld {
                     .is_some_and(|combat| combat.flags & 4 != 0);
             let odd = self.globals.world_loop_frame & 1 != 0;
             Some(match (stance, odd) {
-                (true, false) => 117,
-                (true, true) => 118,
-                (false, false) => 132,
-                (false, true) => 133,
+                (true, false) => AnimationGroup::FIGHT_HURT_1,
+                (true, true) => AnimationGroup::FIGHT_HURT_2,
+                (false, false) => AnimationGroup::EXPLORE_HURT_1,
+                (false, true) => AnimationGroup::EXPLORE_HURT_2,
             })
         } else {
-            Some(117)
+            Some(AnimationGroup::FIGHT_HURT_1)
         };
         if let Some(group) = group
             && self.actors[receiver_index].animation.is_some()
@@ -784,7 +792,7 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Contact death with a nonzero selector skips group 122 and checks group 121.
+    /// Contact death with a nonzero selector skips `anim_death_fight_hard` and checks `anim_death_fight_stab`.
     /// Missing groups still assign death selector eight. Group defaults and walk-node
     /// release follow preservation's contact-death animation dispatch contract.
     pub fn dispatch_contact_death(
@@ -796,10 +804,13 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         let group = self.actors[index].animation.as_ref().and_then(|animation| {
-            [122, 121]
-                .into_iter()
-                .filter(|group| selector == 0 || *group != 122)
-                .find(|group| animation.playback.has_group(*group))
+            [
+                AnimationGroup::DEATH_FIGHT_HARD,
+                AnimationGroup::DEATH_FIGHT_STAB,
+            ]
+            .into_iter()
+            .filter(|group| selector == 0 || *group != AnimationGroup::DEATH_FIGHT_HARD)
+            .find(|group| animation.playback.has_group(*group))
         });
         if let Some(group) = group {
             let ticks = ticks.context("contact death nominal ticks unavailable")?;
@@ -814,7 +825,12 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .expect("validated death control")
-                    .combat_death_default = Some(if group == 122 { 124 } else { 123 });
+                    .combat_death_default =
+                    Some(i32::from(if group == AnimationGroup::DEATH_FIGHT_HARD {
+                        AnimationGroup::DEATH_FIGHT_HARD_END
+                    } else {
+                        AnimationGroup::DEATH_FIGHT_STAB_END
+                    }));
             }
         }
         self.actors[index]
@@ -830,7 +846,7 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         index: usize,
-        group: u16,
+        group: AnimationGroup,
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
@@ -866,7 +882,7 @@ impl ScriptWorld {
 
     /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
     /// response); the weapon-contact caller uses [`Self::dispatch_contact_death`] instead.
-    /// Selector zero prefers group 122 when present, otherwise group 121; the selected player
+    /// Selector zero prefers `anim_death_fight_hard` when present, otherwise `anim_death_fight_stab`; the selected player
     /// does not consult its weapon (unarmed idle deaths end in either group). With `attr_death_type`
     /// clear, the selected player stores the group as the death override when none is set (its
     /// death controller starts the animation); a nonplayer force-starts it, stores death default
@@ -903,10 +919,12 @@ impl ScriptWorld {
         }
         if self.actors[index].attributes[Attribute::DeathType] == 0 {
             let animation = self.actors[index].animation.as_ref();
-            let group = if selector == 0 && animation.is_some_and(|a| a.playback.has_group(122)) {
-                122
+            let group = if selector == 0
+                && animation.is_some_and(|a| a.playback.has_group(AnimationGroup::DEATH_FIGHT_HARD))
+            {
+                AnimationGroup::DEATH_FIGHT_HARD
             } else {
-                121
+                AnimationGroup::DEATH_FIGHT_STAB
             };
             if selected {
                 if self
@@ -931,7 +949,12 @@ impl ScriptWorld {
                     .as_mut()
                     .context("combat death control unavailable")?;
                 anyhow::ensure!(control.combat.is_some(), "combat death record unavailable");
-                control.combat_death_default = Some(if group == 122 { 124 } else { 123 });
+                control.combat_death_default =
+                    Some(i32::from(if group == AnimationGroup::DEATH_FIGHT_HARD {
+                        AnimationGroup::DEATH_FIGHT_HARD_END
+                    } else {
+                        AnimationGroup::DEATH_FIGHT_STAB_END
+                    }));
                 // Without a selected player nothing is excluded; the search skips the receiver
                 // itself, so passing it excludes no other candidate.
                 let player = self
@@ -1066,8 +1089,9 @@ impl ScriptWorld {
                 current,
                 || Some(group),
                 &mut |group| {
-                    let group =
-                        u16::try_from(group).context("animation group outside u16 range")?;
+                    let group = AnimationGroup::from_index(
+                        u16::try_from(group).context("animation group outside u16 range")?,
+                    );
                     let frame = animation.playback.force_request_with_sounds(
                         group,
                         0,

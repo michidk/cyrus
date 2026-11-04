@@ -1393,6 +1393,7 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cyrus_script::AnimationGroup;
     use std::collections::BTreeMap;
 
     fn frames(candle: &mut Candle, health: u8, n: usize) -> Vec<u16> {
@@ -1814,7 +1815,9 @@ mod tests {
             torch_burning: 0,
             weapon_assigned: false,
             weapon_drawn: false,
-            animation: Some(cyrus_game::script::ActivationAnimation { group: Some(0) }),
+            animation: Some(cyrus_game::script::ActivationAnimation {
+                group: Some(AnimationGroup::PANIC),
+            }),
         };
         let inputs = ActivationInputs {
             player: world.id(1).unwrap(),
@@ -2433,7 +2436,11 @@ mod tests {
                     7 | 8 => {
                         inputs.actors.get_mut(&1).unwrap().animation =
                             Some(cyrus_game::script::ActivationAnimation {
-                                group: Some(if gate == 7 { 149 } else { 150 }),
+                                group: Some(if gate == 7 {
+                                    AnimationGroup::LIGHT_TORCH
+                                } else {
+                                    AnimationGroup::UNLIGHT_TORCH
+                                }),
                             })
                     }
                     _ => inputs.actors.get_mut(&1).unwrap().torch_burning = 1,

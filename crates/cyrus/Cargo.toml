@@ -23,6 +23,7 @@ cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
+cyrus-script.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true
 blake3.workspace = true

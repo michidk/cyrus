@@ -1,6 +1,6 @@
 //! `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 //! current animation group and movement this update.
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// The selected player's state as `PlayerStatus` reads it.
 #[derive(Clone, Copy, Debug, Default)]
@@ -9,7 +9,7 @@ pub struct PlayerStatusInput {
     pub falling_state: u8,
     pub sliding_state: u8,
     pub living_state: u8,
-    pub group: Option<u16>,
+    pub group: Option<AnimationGroup>,
     /// Whether the local position differs from the one saved at the update's entry.
     pub moved: bool,
 }
@@ -46,12 +46,30 @@ pub fn player_status(input: PlayerStatusInput) -> i32 {
         }
     }
     for (groups, class) in [
-        ([0x12, 0x1e], 15),
-        ([0x13, 0x17], 16),
-        ([0x18, 0x19], 17),
-        ([0x1a, 0x1b], 18),
-        ([0x14, 0x15], 19),
-        ([0x16, 0x16], 20),
+        ([AnimationGroup::RUN, AnimationGroup::RUN_TORCH], 15),
+        (
+            [
+                AnimationGroup::RUN_BACKWARD,
+                AnimationGroup::WALK_BACKWARD_TORCH,
+            ],
+            16,
+        ),
+        (
+            [AnimationGroup::STEP_LEFT, AnimationGroup::STEP_LEFT_TORCH],
+            17,
+        ),
+        (
+            [AnimationGroup::STEP_RIGHT, AnimationGroup::STEP_RIGHT_TORCH],
+            18,
+        ),
+        (
+            [AnimationGroup::WALK, AnimationGroup::WALK_FORWARD_TORCH],
+            19,
+        ),
+        (
+            [AnimationGroup::WALK_BACKWARD, AnimationGroup::WALK_BACKWARD],
+            20,
+        ),
     ] {
         if group.is_some_and(|group| groups.contains(&group)) {
             return class;
@@ -81,13 +99,18 @@ pub fn player_turned_direction(heading: u16, history: u16) -> i32 {
 
 /// Attribute `PlayerMovementSpeed` returns for the player's current animation group, or
 /// `None` for groups without one (the native then returns zero).
-pub fn movement_speed_attribute(group: u16) -> Option<Attribute> {
+pub fn movement_speed_attribute(group: AnimationGroup) -> Option<Attribute> {
     match group {
-        18 | 30 => Some(Attribute::ForwardSpeed),
-        19 => Some(Attribute::BackwardSpeed),
-        20 | 21 => Some(Attribute::ForwardWalk),
-        22 | 23 => Some(Attribute::BackwardWalk),
-        24..=27 => Some(Attribute::SideSpeed),
+        AnimationGroup::RUN | AnimationGroup::RUN_TORCH => Some(Attribute::ForwardSpeed),
+        AnimationGroup::RUN_BACKWARD => Some(Attribute::BackwardSpeed),
+        AnimationGroup::WALK | AnimationGroup::WALK_FORWARD_TORCH => Some(Attribute::ForwardWalk),
+        AnimationGroup::WALK_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH => {
+            Some(Attribute::BackwardWalk)
+        }
+        AnimationGroup::STEP_LEFT
+        | AnimationGroup::STEP_LEFT_TORCH
+        | AnimationGroup::STEP_RIGHT
+        | AnimationGroup::STEP_RIGHT_TORCH => Some(Attribute::SideSpeed),
         _ => None,
     }
 }
@@ -138,7 +161,10 @@ mod tests {
             (0x15, 19),
             (0x16, 20),
         ] {
-            assert_eq!(status(|i| i.group = Some(group)), class);
+            assert_eq!(
+                status(|i| i.group = Some(AnimationGroup::from_index(group))),
+                class
+            );
         }
         // Earlier rules shadow later ones.
         assert_eq!(
@@ -152,14 +178,14 @@ mod tests {
         assert_eq!(
             status(|i| {
                 i.living_state = 0x0a;
-                i.group = Some(0x12);
+                i.group = Some(AnimationGroup::RUN);
                 i.moved = true;
             }),
             9
         );
         assert_eq!(
             status(|i| {
-                i.group = Some(0x12);
+                i.group = Some(AnimationGroup::RUN);
                 i.moved = true;
             }),
             15
@@ -437,13 +463,16 @@ mod tests {
         )
         .unwrap();
         for (group, expected) in speed {
-            let value = movement_speed_attribute(group).map_or(0, |index| match index {
-                Attribute::ForwardSpeed => 0x11,
-                Attribute::BackwardSpeed => 0x22,
-                Attribute::SideSpeed => 0x33,
-                Attribute::ForwardWalk => 0x44,
-                _ => 0x55,
-            });
+            let value =
+                movement_speed_attribute(AnimationGroup::from_index(group)).map_or(0, |index| {
+                    match index {
+                        Attribute::ForwardSpeed => 0x11,
+                        Attribute::BackwardSpeed => 0x22,
+                        Attribute::SideSpeed => 0x33,
+                        Attribute::ForwardWalk => 0x44,
+                        _ => 0x55,
+                    }
+                });
             assert_eq!(value, expected, "group {group}");
         }
         let arctan: Vec<(i32, i32, i32)> = serde_json::from_str(

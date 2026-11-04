@@ -2,14 +2,14 @@
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// A class-two slide decision in Q8 distance and 1/2048-turn headings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrdinarySlide {
     pub movement_heading: u16,
     pub target_heading: u16,
-    pub group: u16,
+    pub group: AnimationGroup,
     pub movement_bits: u8,
     pub distance: i32,
 }
@@ -41,10 +41,10 @@ pub fn ordinary_slide(
         movement_heading,
         target_heading: (movement_heading + if forward { 0 } else { 1024 }) & 2047,
         group: match (forward, torch) {
-            (true, false) => 75,
-            (true, true) => 77,
-            (false, false) => 76,
-            (false, true) => 78,
+            (true, false) => AnimationGroup::SLIDE,
+            (true, true) => AnimationGroup::SLIDE_FORWARD_TORCH,
+            (false, false) => AnimationGroup::SLIDE_BACKWARD,
+            (false, true) => AnimationGroup::SLIDE_BACKWARD_TORCH,
         },
         movement_bits: if forward { 0x30 } else { 0xc0 },
         distance: slide_speed
@@ -59,7 +59,7 @@ pub fn ordinary_slide(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrdinarySlopeTurn {
     pub heading: u16,
-    pub group: Option<u16>,
+    pub group: Option<AnimationGroup>,
 }
 
 /// Turn rate is clamped after frame scaling. Weapon state chooses animation;
@@ -82,12 +82,12 @@ pub fn ordinary_slope_turn(
     }
     let positive = delta > 0;
     let group = match (holding_weapon, positive, torch) {
-        (true, true, _) => 96,
-        (true, false, _) => 97,
-        (false, true, false) => 14,
-        (false, true, true) => 16,
-        (false, false, false) => 15,
-        (false, false, true) => 17,
+        (true, true, _) => AnimationGroup::FIGHT_TURN_LEFT,
+        (true, false, _) => AnimationGroup::FIGHT_TURN_RIGHT,
+        (false, true, false) => AnimationGroup::TURN_LEFT,
+        (false, true, true) => AnimationGroup::TURN_LEFT_TORCH,
+        (false, false, false) => AnimationGroup::TURN_RIGHT,
+        (false, false, true) => AnimationGroup::TURN_RIGHT_TORCH,
     };
     OrdinarySlopeTurn {
         heading: (i32::from(local_heading).wrapping_add(if positive { rate } else { -rate }) & 2047)
@@ -294,13 +294,28 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
         let attribute = match group {
-            Some(18 | 30 | 142) => Attribute::ForwardSpeed,
-            Some(19 | 143) => Attribute::BackwardSpeed,
-            Some(20 | 21) => Attribute::ForwardWalk,
-            Some(22 | 23) => Attribute::BackwardWalk,
-            Some(24..=27) => Attribute::SideSpeed,
-            Some(31) => Attribute::FightForwardWalk,
-            Some(92 | 93) => Attribute::FightForwardSpeed,
+            Some(
+                AnimationGroup::RUN | AnimationGroup::RUN_TORCH | AnimationGroup::SWIM_FORWARD,
+            ) => Attribute::ForwardSpeed,
+            Some(AnimationGroup::RUN_BACKWARD | AnimationGroup::SWIM_BACKWARD) => {
+                Attribute::BackwardSpeed
+            }
+            Some(AnimationGroup::WALK | AnimationGroup::WALK_FORWARD_TORCH) => {
+                Attribute::ForwardWalk
+            }
+            Some(AnimationGroup::WALK_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH) => {
+                Attribute::BackwardWalk
+            }
+            Some(
+                AnimationGroup::STEP_LEFT
+                | AnimationGroup::STEP_LEFT_TORCH
+                | AnimationGroup::STEP_RIGHT
+                | AnimationGroup::STEP_RIGHT_TORCH,
+            ) => Attribute::SideSpeed,
+            Some(AnimationGroup::FIGHT_RUN) => Attribute::FightForwardWalk,
+            Some(AnimationGroup::FIGHT_FORW | AnimationGroup::FIGHT_BACK) => {
+                Attribute::FightForwardSpeed
+            }
             _ => return 0,
         };
         actor.attributes[attribute]
@@ -351,7 +366,7 @@ impl ScriptWorld {
     pub(super) fn request_ordinary_group(
         &mut self,
         id: ScriptActorId,
-        group: u16,
+        group: AnimationGroup,
         force: bool,
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
@@ -437,10 +452,16 @@ impl ScriptWorld {
             }
             _ => None,
         }) else {
-            if !matches!(animation.playback.current_group(), Some(75..=78)) {
+            if !animation.playback.current_group().is_some_and(|group| {
+                (AnimationGroup::SLIDE..=AnimationGroup::SLIDE_BACKWARD_TORCH).contains(&group)
+            }) {
                 self.request_ordinary_group(
                     id,
-                    if torch { 77 } else { 75 },
+                    if torch {
+                        AnimationGroup::SLIDE_FORWARD_TORCH
+                    } else {
+                        AnimationGroup::SLIDE
+                    },
                     false,
                     inputs.ticks,
                     sounds,

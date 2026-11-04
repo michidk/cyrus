@@ -1,7 +1,7 @@
 //! Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 use super::ScriptActorId;
 use anyhow::{Context, Result};
-use cyrus_script::Argument;
+use cyrus_script::{AnimationGroup, Argument};
 use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 /// Existing animation state, which may not have a current group yet.
 #[derive(Clone, Copy, Debug)]
 pub struct ActivationAnimation {
-    pub group: Option<u16>,
+    pub group: Option<AnimationGroup>,
 }
 
 /// Caller-established actor state; absence of a record means unknown, not eligible.
@@ -35,8 +35,12 @@ impl ActivationActor {
         let actor = self;
         let group = actor.animation.and_then(|animation| animation.group);
         let animated = item_system_ready && !shell_execution && actor.animation.is_some();
-        let climbing =
-            animated && (matches!(actor.state, 33 | 34) || matches!(group, Some(149 | 150)));
+        let climbing = animated
+            && (matches!(actor.state, 33 | 34)
+                || matches!(
+                    group,
+                    Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+                ));
         item_system_ready
             && !shell_execution
             && !matches!(actor.water_state, 2 | 4)
@@ -71,8 +75,8 @@ pub(super) fn weapon_predicates(
 ) -> (bool, bool, bool) {
     let ready = item_system_ready && !shell_execution && animation.is_some();
     let group = animation.and_then(|animation| animation.group);
-    let drawing = ready && (state == 20 || group == Some(91));
-    let sheathing = ready && (state == 21 || group == Some(129));
+    let drawing = ready && (state == 20 || group == Some(AnimationGroup::DRAW_SWORD));
+    let sheathing = ready && (state == 21 || group == Some(AnimationGroup::SHEATH_SWORD));
     let holding =
         holding_attribute != 0 || (ready && weapon_assigned && weapon_drawn && !sheathing);
     (holding, drawing, sheathing)
@@ -483,11 +487,11 @@ impl GameplayGlobals {
     pub fn prepare_player_idle(
         &mut self,
         on_rope: bool,
-        current_group: Option<u16>,
+        current_group: Option<AnimationGroup>,
         health: u8,
         random: &mut crate::random::EngineRandom,
-    ) -> Result<Option<u16>> {
-        if on_rope || current_group != Some(0) {
+    ) -> Result<Option<AnimationGroup>> {
+        if on_rope || current_group != Some(AnimationGroup::PANIC) {
             self.player_idle_counter = Some(0);
         }
         if self
@@ -502,12 +506,16 @@ impl GameplayGlobals {
             .player_idle_counter
             .context("player idle: counter initialization unavailable")?;
         let group = if health < 40 && counter > 4 {
-            4
+            AnimationGroup::IDLE_HURT
         } else if health >= 40 && counter > 12 {
             loop {
                 let draw = random.draw() & 3;
                 if draw != 3 {
-                    break draw as u16 + 1;
+                    break [
+                        AnimationGroup::IDLE1,
+                        AnimationGroup::IDLE2,
+                        AnimationGroup::IDLE3,
+                    ][draw as usize];
                 }
             }
         } else {
@@ -820,6 +828,7 @@ mod idle_tests {
     use super::GameplayGlobals;
     use super::{NativeSource, ScriptActorId};
     use crate::random::EngineRandom;
+    use cyrus_script::AnimationGroup;
 
     impl GameplayGlobals {
         /// Both preliminary halves, refusing the pending action the world owns.
@@ -1233,13 +1242,13 @@ mod idle_tests {
         let mut random = EngineRandom::from_state(5);
         assert!(
             globals
-                .prepare_player_idle(false, Some(0), 100, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::PANIC), 100, &mut random)
                 .is_err()
         );
         globals.lockout_player(2);
         assert_eq!(
             globals
-                .prepare_player_idle(false, Some(20), 100, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::WALK), 100, &mut random)
                 .unwrap(),
             None
         );
@@ -1255,7 +1264,7 @@ mod idle_tests {
         globals.advance_player_idle_clock(13);
         assert_eq!(
             globals
-                .prepare_player_idle(false, Some(0), 100, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::PANIC), 100, &mut random)
                 .unwrap(),
             None
         );
@@ -1265,9 +1274,9 @@ mod idle_tests {
         globals.begin_topic_menu();
         assert_eq!(
             globals
-                .prepare_player_idle(false, Some(0), 100, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::PANIC), 100, &mut random)
                 .unwrap(),
-            Some(2)
+            Some(AnimationGroup::IDLE2)
         );
         assert_eq!(random.state(), 2701728395);
         assert_eq!(globals.player_idle_counter(), Some(-1));
@@ -1275,22 +1284,22 @@ mod idle_tests {
         globals.advance_player_idle_clock(5);
         assert_eq!(
             globals
-                .prepare_player_idle(false, Some(0), 39, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::PANIC), 39, &mut random)
                 .unwrap(),
             None
         );
         globals.advance_player_idle_clock(1);
         assert_eq!(
             globals
-                .prepare_player_idle(false, Some(0), 39, &mut random)
+                .prepare_player_idle(false, Some(AnimationGroup::PANIC), 39, &mut random)
                 .unwrap(),
-            Some(4)
+            Some(AnimationGroup::IDLE_HURT)
         );
         assert_eq!(random.state(), 2701728395);
         assert_eq!(globals.player_idle_counter(), Some(-1));
         assert_eq!(
             globals
-                .prepare_player_idle(true, Some(0), 39, &mut random)
+                .prepare_player_idle(true, Some(AnimationGroup::PANIC), 39, &mut random)
                 .unwrap(),
             None
         );

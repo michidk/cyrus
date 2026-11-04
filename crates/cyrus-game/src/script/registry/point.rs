@@ -12,7 +12,7 @@
 //! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Walk toward a local Q8 horizontal destination with a Q8 arrival tolerance.
@@ -549,7 +549,11 @@ impl ScriptWorld {
                 let group = loop {
                     let choice = random.draw() & 3;
                     if choice < 3 {
-                        break (choice + 1) as u16;
+                        break [
+                            AnimationGroup::IDLE1,
+                            AnimationGroup::IDLE2,
+                            AnimationGroup::IDLE3,
+                        ][choice as usize];
                     }
                 };
                 self.request_ordinary_group(

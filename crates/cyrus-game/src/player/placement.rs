@@ -1,4 +1,5 @@
 //! Marker-based entry from preservation's player and RGM documentation.
+use cyrus_script::AnimationGroup;
 mod persistence;
 use super::Player;
 use anyhow::Context;
@@ -152,7 +153,7 @@ pub(crate) fn initial_role_animation(
     let (mut animation, mut frame) =
         ActorAnimation::initialize(data, actor, nominal_ticks, sounds)?;
     frame = animation
-        .force_request_with_sounds(0, 0, nominal_ticks, sounds)?
+        .force_request_with_sounds(AnimationGroup::PANIC, 0, nominal_ticks, sounds)?
         .or(frame);
     Ok((animation, frame))
 }

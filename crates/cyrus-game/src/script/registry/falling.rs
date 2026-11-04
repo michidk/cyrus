@@ -1,7 +1,7 @@
 //! Falling continuation requests precede the shared vertical writer.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// What the selected player's landing needs beyond the nonplayer response: the health services
 /// publish through the HUD and draw random numbers, and a steep support changes the fatal path.
@@ -14,7 +14,7 @@ pub(super) struct SelectedLanding<'a, 'b> {
 /// Animation request selected by an admitted unsupported-ground continuation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrdinaryFallingRequest {
-    pub group: u16,
+    pub group: AnimationGroup,
     pub force: bool,
 }
 
@@ -24,7 +24,7 @@ pub fn ordinary_falling_request(
     falling: u8,
     torch_burning: u8,
     holding_weapon: bool,
-    current_group: Option<u16>,
+    current_group: Option<AnimationGroup>,
     local_y: i32,
     origin_y: i32,
 ) -> Option<OrdinaryFallingRequest> {
@@ -33,22 +33,36 @@ pub fn ordinary_falling_request(
     }
     let torch = torch_burning != 0;
     let group = if falling & 127 == 3 {
-        if torch { 64 } else { 63 }
+        if torch {
+            AnimationGroup::FALL_BACKWARD_TORCH
+        } else {
+            AnimationGroup::FALL_BACKWARD
+        }
     } else if falling & 128 != 0 && !torch {
-        58
+        AnimationGroup::FALL_UP_ARMS
     } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768 && falling == 8 {
-        if torch { 60 } else { 59 }
+        if torch {
+            AnimationGroup::FALL_RIGHT_TORCH
+        } else {
+            AnimationGroup::FALL_RUN
+        }
     } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768 && falling == 9 {
-        if torch { 62 } else { 61 }
+        if torch {
+            AnimationGroup::FALL_LEFT_TORCH
+        } else {
+            AnimationGroup::FALL_LEFT
+        }
     } else if holding_weapon {
-        return (current_group != Some(115)).then_some(OrdinaryFallingRequest {
-            group: 113,
-            force: true,
-        });
+        return (current_group != Some(AnimationGroup::FIGHT_FALL_ATTACK)).then_some(
+            OrdinaryFallingRequest {
+                group: AnimationGroup::FIGHT_FALL,
+                force: true,
+            },
+        );
     } else if torch {
-        57
+        AnimationGroup::FALL_TORCH
     } else {
-        56
+        AnimationGroup::FALL
     };
     Some(OrdinaryFallingRequest {
         group,
@@ -97,34 +111,46 @@ pub fn ordinary_directional_motion(
 /// Entry decision after selector, recovery and horizontal-displacement services.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OrdinaryFallEntry {
-    RestoreStable { force_group: u16 },
-    Start { force_group: Option<u16> },
+    RestoreStable { force_group: AnimationGroup },
+    Start { force_group: Option<AnimationGroup> },
 }
 
 /// Select the documented final animated entry branch. This is separate from
 /// continuation priority and must run after the preceding admission services.
 pub fn ordinary_fall_entry(
-    current_group: u16,
-    default_group: u16,
+    current_group: AnimationGroup,
+    default_group: AnimationGroup,
     exit_reached: bool,
     torch_burning: u8,
     holding_weapon: bool,
 ) -> OrdinaryFallEntry {
-    if matches!(current_group, 18 | 30) {
+    if matches!(
+        current_group,
+        AnimationGroup::RUN | AnimationGroup::RUN_TORCH
+    ) {
         if exit_reached {
             return OrdinaryFallEntry::RestoreStable {
                 force_group: default_group,
             };
         }
         return OrdinaryFallEntry::Start {
-            force_group: Some(if torch_burning == 0 { 59 } else { 60 }),
+            force_group: Some(if torch_burning == 0 {
+                AnimationGroup::FALL_RUN
+            } else {
+                AnimationGroup::FALL_RIGHT_TORCH
+            }),
         };
     }
     OrdinaryFallEntry::Start {
         force_group: if holding_weapon {
-            (current_group != 115).then_some(113)
+            (current_group != AnimationGroup::FIGHT_FALL_ATTACK)
+                .then_some(AnimationGroup::FIGHT_FALL)
         } else {
-            Some(if torch_burning == 0 { 56 } else { 57 })
+            Some(if torch_burning == 0 {
+                AnimationGroup::FALL
+            } else {
+                AnimationGroup::FALL_TORCH
+            })
         },
     }
 }
@@ -236,12 +262,20 @@ impl ScriptWorld {
             return Ok(true);
         }
         let health = ordinary_health_value(actor.attributes[Attribute::Health], change);
-        let death_group =
-            if control.falling_state != 0 || matches!(group, Some(114 | 116 | 130 | 131)) {
-                74
-            } else {
-                134
-            };
+        let death_group = if control.falling_state != 0
+            || matches!(
+                group,
+                Some(
+                    AnimationGroup::FIGHT_LAND
+                        | AnimationGroup::FIGHT_LAND_ATTACK
+                        | AnimationGroup::FIGHT_LAND_RIGHT
+                        | AnimationGroup::FIGHT_LAND_LEFT
+                )
+            ) {
+            AnimationGroup::LAND_DEATH
+        } else {
+            AnimationGroup::DEATH_EXPLORE
+        };
         self.actors[index].attributes[Attribute::Health] = health;
         if health == 0 && holding {
             // An armed receiver dies through the contact death dispatch with selector zero.
@@ -377,11 +411,14 @@ impl ScriptWorld {
                     return Ok(decision);
                 }
                 // The death presentation comes from the override group, not an animation request.
-                self.globals.set_player_death_override_group(74)?;
+                self.globals
+                    .set_player_death_override_group(i32::from(AnimationGroup::LAND_DEATH))?;
                 Some((None, -256))
             }
-            OrdinaryLandingDecision::Fatal => Some((Some(74), -256)),
-            OrdinaryLandingDecision::Hurt { health_change } => Some((Some(73), health_change)),
+            OrdinaryLandingDecision::Fatal => Some((Some(AnimationGroup::LAND_DEATH), -256)),
+            OrdinaryLandingDecision::Hurt { health_change } => {
+                Some((Some(AnimationGroup::LAND_HURT), health_change))
+            }
             OrdinaryLandingDecision::HurtExcluded => None,
             OrdinaryLandingDecision::Ordinary => return Ok(decision),
         };
@@ -991,8 +1028,8 @@ pub fn ordinary_landing_request(
     torch_burning: u8,
     holding_weapon: bool,
     selected_player_holding_weapon: Option<bool>,
-    current_group: Option<u16>,
-) -> Result<Option<u16>> {
+    current_group: Option<AnimationGroup>,
+) -> Result<Option<AnimationGroup>> {
     if falling == 0 {
         return Ok(None);
     }
@@ -1002,25 +1039,33 @@ pub fn ordinary_landing_request(
             if selected_player_holding_weapon
                 .context("landing state 8 selected-player weapon predicate unavailable")?
             {
-                130
+                AnimationGroup::FIGHT_LAND_RIGHT
             } else if torch {
-                68
+                AnimationGroup::LAND_RIGHT_TORCH
             } else {
-                67
+                AnimationGroup::LAND_RUN
             },
         ),
         9 => Some(
             if selected_player_holding_weapon
                 .context("landing state 9 selected-player weapon predicate unavailable")?
             {
-                131
+                AnimationGroup::FIGHT_LAND_LEFT
             } else if torch {
-                70
+                AnimationGroup::LAND_LEFT_TORCH
             } else {
-                69
+                AnimationGroup::LAND_LEFT
             },
         ),
-        _ if !holding_weapon => Some(if torch { 66 } else { 65 }),
-        _ => (!matches!(current_group, Some(115 | 116))).then_some(114),
+        _ if !holding_weapon => Some(if torch {
+            AnimationGroup::LAND_TORCH
+        } else {
+            AnimationGroup::FIRST_LAND_GROUP
+        }),
+        _ => (!matches!(
+            current_group,
+            Some(AnimationGroup::FIGHT_FALL_ATTACK | AnimationGroup::FIGHT_LAND_ATTACK)
+        ))
+        .then_some(AnimationGroup::FIGHT_LAND),
     })
 }

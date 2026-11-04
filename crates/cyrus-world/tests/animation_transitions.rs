@@ -1,4 +1,5 @@
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 use cyrus_world::animation::AnimationSound;
 use serde_json::{Value, json};
 
@@ -27,8 +28,11 @@ fn model_initialization_preserves_the_selected_frame_and_shared_ticks() {
             })
             .unwrap();
         assert_eq!(frame, Some(10));
-        assert_eq!(animation.default_group(), 0);
-        assert_eq!(animation.current_group(), Some(0));
+        assert_eq!(animation.default_group(), AnimationGroup::from_index(0));
+        assert_eq!(
+            animation.current_group(),
+            Some(AnimationGroup::from_index(0))
+        );
         assert_eq!(animation.pending_group(), None);
         assert_eq!(animation.advance(1).unwrap(), Some(next_frame));
     }
@@ -43,7 +47,12 @@ fn changed_current_default_replaces_immediately_and_preserves_sound_order() {
             {"opcode":4,"sound_param":8,"volume_shift":0},{"opcode":0,"frame_reference":80},
             {"opcode":0,"frame_reference":81},{"opcode":2,"value":1}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
         events.push(event);
@@ -51,13 +60,17 @@ fn changed_current_default_replaces_immediately_and_preserves_sound_order() {
     };
     actor.advance_with_sounds(1, &mut sounds).unwrap();
     assert_eq!(
-        actor.select_default_with_sounds(8, 1, &mut sounds).unwrap(),
+        actor
+            .select_default_with_sounds(AnimationGroup::from_index(8), 1, &mut sounds)
+            .unwrap(),
         Some(80)
     );
-    assert_eq!(actor.current_group(), Some(8));
-    assert_eq!(actor.default_group(), 8);
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(8)));
+    assert_eq!(actor.default_group(), AnimationGroup::from_index(8));
     assert_eq!(
-        actor.select_default_with_sounds(8, 1, &mut sounds).unwrap(),
+        actor
+            .select_default_with_sounds(AnimationGroup::from_index(8), 1, &mut sounds)
+            .unwrap(),
         None
     );
     assert_eq!(actor.advance_with_sounds(1, &mut sounds).unwrap(), Some(81));
@@ -86,19 +99,33 @@ fn changed_default_retargets_pending_request_using_ordinary_priority() {
         {"group_index":9,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":90}]}
     ]));
     for (new_default, pending) in [(8, 8), (1, 7)] {
-        let mut actor =
-            cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
-        actor.request(9, 0, 0).unwrap();
-        actor.request(7, 0, 0).unwrap();
+        let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(7),
+        )
+        .unwrap();
+        actor.request(AnimationGroup::from_index(9), 0, 0).unwrap();
+        actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
         assert_eq!(
             actor
-                .select_default_with_sounds(new_default, 0, &mut |_| Ok(()))
+                .select_default_with_sounds(
+                    AnimationGroup::from_index(new_default),
+                    0,
+                    &mut |_| Ok(())
+                )
                 .unwrap(),
             None
         );
-        assert_eq!(actor.current_group(), Some(9));
-        assert_eq!(actor.default_group(), new_default);
-        assert_eq!(actor.pending_group(), Some(pending));
+        assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(9)));
+        assert_eq!(
+            actor.default_group(),
+            AnimationGroup::from_index(new_default)
+        );
+        assert_eq!(
+            actor.pending_group(),
+            Some(AnimationGroup::from_index(pending))
+        );
     }
 }
 
@@ -111,23 +138,28 @@ fn changed_default_does_not_force_an_old_default_past_its_exit_marker() {
         {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":80}]},
         {"group_index":9,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":90}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 9).unwrap();
-    actor.request(7, 0, 1).unwrap();
-    actor.request(9, 0, 1).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(9),
+    )
+    .unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 1).unwrap();
+    actor.request(AnimationGroup::from_index(9), 0, 1).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(71));
     actor
-        .select_default_with_sounds(7, 0, &mut |_| Ok(()))
+        .select_default_with_sounds(AnimationGroup::from_index(7), 0, &mut |_| Ok(()))
         .unwrap();
-    assert_eq!(actor.current_group(), Some(7));
-    assert_eq!(actor.pending_group(), Some(9));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
+    assert_eq!(actor.pending_group(), Some(AnimationGroup::from_index(9)));
     assert_eq!(
         actor
-            .select_default_with_sounds(8, 0, &mut |_| Ok(()))
+            .select_default_with_sounds(AnimationGroup::from_index(8), 0, &mut |_| Ok(()))
             .unwrap(),
         None
     );
-    assert_eq!(actor.current_group(), Some(7));
-    assert_eq!(actor.pending_group(), Some(9));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
+    assert_eq!(actor.pending_group(), Some(AnimationGroup::from_index(9)));
 }
 
 #[test]
@@ -141,9 +173,20 @@ fn type_one_finishes_its_exit_tail_before_selecting_the_pending_default() {
             {"opcode":0,"frame_reference":2},{"opcode":0,"frame_reference":3},
             {"opcode":1}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
-    assert_eq!(actor.request(0, 0, 1).unwrap(), None);
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
+    assert_eq!(
+        actor.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
+    assert_eq!(
+        actor.request(AnimationGroup::from_index(0), 0, 1).unwrap(),
+        None
+    );
     for (ticks, frame, group, marker) in [
         (1, 2, 7, true),
         (0, 2, 7, true),
@@ -151,7 +194,10 @@ fn type_one_finishes_its_exit_tail_before_selecting_the_pending_default() {
         (1, 9, 0, false),
     ] {
         assert_eq!(actor.advance(ticks).unwrap(), Some(frame));
-        assert_eq!(actor.current_group(), Some(group));
+        assert_eq!(
+            actor.current_group(),
+            Some(AnimationGroup::from_index(group))
+        );
         assert_eq!(actor.translation_suppressed(), marker);
     }
 }
@@ -166,16 +212,24 @@ fn type_one_delay_precedes_replacement_by_a_pending_non_default() {
             {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},
             {"opcode":12,"value":2},{"opcode":0,"frame_reference":3}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
-    actor.request(0, 0, 0).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
+    assert_eq!(
+        actor.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
+    actor.request(AnimationGroup::from_index(0), 0, 0).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(2));
     assert_eq!(actor.advance(1).unwrap(), None);
-    actor.request(8, 0, 0).unwrap();
+    actor.request(AnimationGroup::from_index(8), 0, 0).unwrap();
     assert_eq!(actor.advance(1).unwrap(), None);
-    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(actor.advance(1).unwrap(), Some(8));
-    assert_eq!(actor.current_group(), Some(8));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(8)));
 }
 
 #[test]
@@ -188,14 +242,21 @@ fn authored_sounds_dispatch_once_per_command_with_rate_offsets_and_end_stop() {
             {"opcode":0,"frame_reference":1},
             {"opcode":4,"sound_param":7,"volume_shift":2},{"opcode":1}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
         events.push(event);
         Ok(())
     };
     assert_eq!(
-        actor.request_with_sounds(7, 0, 1, &mut sounds).unwrap(),
+        actor
+            .request_with_sounds(AnimationGroup::from_index(7), 0, 1, &mut sounds)
+            .unwrap(),
         Some(0)
     );
     assert_eq!(actor.advance_with_sounds(1, &mut sounds).unwrap(), Some(1));
@@ -224,7 +285,12 @@ fn replacing_the_current_default_forgets_its_sound_without_stopping_it() {
             {"opcode":4,"sound_param":4,"volume_shift":0},{"opcode":0,"frame_reference":1}]},
         {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":8}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
         events.push(event);
@@ -232,7 +298,9 @@ fn replacing_the_current_default_forgets_its_sound_without_stopping_it() {
     };
     assert_eq!(actor.advance_with_sounds(0, &mut sounds).unwrap(), Some(1));
     assert_eq!(
-        actor.request_with_sounds(8, 0, 1, &mut sounds).unwrap(),
+        actor
+            .request_with_sounds(AnimationGroup::from_index(8), 0, 1, &mut sounds)
+            .unwrap(),
         Some(8)
     );
     assert_eq!(
@@ -254,8 +322,12 @@ fn invalid_sound_fields_and_handler_failures_stop_with_context() {
             json!([{"group_index":7,"anim_id":1,"anim_type":1,"commands":[
             {"opcode":4,"sound_param":effect,"volume_shift":shift},{"opcode":0,"frame_reference":0}]}]),
         );
-        let mut actor =
-            cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+        let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(7),
+        )
+        .unwrap();
         let error = actor
             .advance_with_sounds(0, &mut |_| Ok(()))
             .unwrap_err()
@@ -271,7 +343,12 @@ fn invalid_sound_fields_and_handler_failures_stop_with_context() {
         json!([{"group_index":7,"anim_id":1,"anim_type":1,"commands":[
         {"opcode":4,"sound_param":4,"volume_shift":0},{"opcode":0,"frame_reference":0}]}]),
     );
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
     let error = actor
         .advance_with_sounds(0, &mut |_| anyhow::bail!("channel unavailable"))
         .unwrap_err()
@@ -292,37 +369,38 @@ fn collision_checkpoint_restores_cursor_pending_and_sound_state_but_keeps_defaul
         {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":80}]}
     ]));
     let mut events = Vec::new();
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 8).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(8)).unwrap();
     actor
-        .request_with_sounds(0, 0, 0, &mut |sound| {
+        .request_with_sounds(AnimationGroup::from_index(0), 0, 0, &mut |sound| {
             events.push(sound);
             Ok(())
         })
         .unwrap();
     actor
-        .request_with_sounds(7, 0, 0, &mut |sound| {
+        .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |sound| {
             events.push(sound);
             Ok(())
         })
         .unwrap();
     let checkpoint = actor.checkpoint().unwrap();
     actor
-        .select_default_with_sounds(7, 0, &mut |sound| {
+        .select_default_with_sounds(AnimationGroup::from_index(7), 0, &mut |sound| {
             events.push(sound);
             Ok(())
         })
         .unwrap();
     actor
-        .force_request_with_sounds(8, 0, 0, &mut |sound| {
+        .force_request_with_sounds(AnimationGroup::from_index(8), 0, 0, &mut |sound| {
             events.push(sound);
             Ok(())
         })
         .unwrap();
-    assert_eq!(actor.current_group(), Some(8));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(8)));
     actor.restore_checkpoint(&checkpoint).unwrap();
-    assert_eq!(actor.default_group(), 7);
-    assert_eq!(actor.current_group(), Some(0));
-    assert_eq!(actor.pending_group(), Some(7));
+    assert_eq!(actor.default_group(), AnimationGroup::from_index(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(0)));
+    assert_eq!(actor.pending_group(), Some(AnimationGroup::from_index(7)));
     let count = events.len();
     assert_eq!(
         actor
@@ -375,26 +453,40 @@ fn type_two_asset() -> Animations {
 
 #[test]
 fn type_two_ignores_a_pending_default_at_go_to_future() {
-    let mut actor =
-        cyrus_world::animation::ActorAnimation::from_asset(&type_two_asset(), "ACTOR", 0).unwrap();
-    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
-    actor.request(0, 0, 1).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &type_two_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
+    assert_eq!(
+        actor.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
+    actor.request(AnimationGroup::from_index(0), 0, 1).unwrap();
     // Type one would jump to the exit tail (frame 2); type two plays frame 1 first.
     assert_eq!(actor.advance(1).unwrap(), Some(1));
     assert!(!actor.exit_reached());
-    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
 }
 
 #[test]
 fn type_two_exits_for_a_pending_non_default_group() {
-    let mut actor =
-        cyrus_world::animation::ActorAnimation::from_asset(&type_two_asset(), "ACTOR", 0).unwrap();
-    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
-    actor.request(8, 0, 0).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &type_two_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
+    assert_eq!(
+        actor.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
+    actor.request(AnimationGroup::from_index(8), 0, 0).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(2));
     assert!(actor.exit_reached());
     assert_eq!(actor.advance(1).unwrap(), Some(8));
-    assert_eq!(actor.current_group(), Some(8));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(8)));
 }
 
 #[test]
@@ -407,11 +499,16 @@ fn cancelling_a_pending_request_preserves_current_frame_sound_and_loop_count() {
         {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
             {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
     ]));
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(0),
+    )
+    .unwrap();
     let mut events = Vec::new();
     assert_eq!(
         actor
-            .force_request_with_sounds(7, 0, 1, &mut |event| {
+            .force_request_with_sounds(AnimationGroup::from_index(7), 0, 1, &mut |event| {
                 events.push(event);
                 Ok(())
             })
@@ -420,12 +517,12 @@ fn cancelling_a_pending_request_preserves_current_frame_sound_and_loop_count() {
     );
     actor.set_loop_count(1).unwrap();
     actor
-        .request_with_sounds(8, 0, 1, &mut |event| {
+        .request_with_sounds(AnimationGroup::from_index(8), 0, 1, &mut |event| {
             events.push(event);
             Ok(())
         })
         .unwrap();
-    assert_eq!(actor.pending_group(), Some(8));
+    assert_eq!(actor.pending_group(), Some(AnimationGroup::from_index(8)));
     let before = serde_json::to_value(actor.snapshot()).unwrap();
     actor.clear_pending_request();
     let after = serde_json::to_value(actor.snapshot()).unwrap();
@@ -460,9 +557,15 @@ fn death_override_retains_current_cursor_and_replaces_exit_loop_state() {
             {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
     ]));
     for loops in [0, 1, 7, 255] {
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-        assert_eq!(actor.force_request(7, 0, 1).unwrap(), Some(70));
-        actor.request(8, 0, 0).unwrap();
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+        assert_eq!(
+            actor
+                .force_request(AnimationGroup::from_index(7), 0, 1)
+                .unwrap(),
+            Some(70)
+        );
+        actor.request(AnimationGroup::from_index(8), 0, 0).unwrap();
         actor.set_loop_count(loops).unwrap();
         let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
         saved["current"][1]["exit_reached"] = true.into();
@@ -474,9 +577,11 @@ fn death_override_retains_current_cursor_and_replaces_exit_loop_state() {
         .unwrap();
         assert_eq!(
             actor
-                .select_death_override_with_sounds(7, u32::MAX, &mut |_| panic!(
-                    "retained animation must not restart"
-                ))
+                .select_death_override_with_sounds(
+                    AnimationGroup::from_index(7),
+                    u32::MAX,
+                    &mut |_| panic!("retained animation must not restart")
+                )
                 .unwrap(),
             None
         );
@@ -486,7 +591,7 @@ fn death_override_retains_current_cursor_and_replaces_exit_loop_state() {
         saved["current"][1]["loops"] = 32.into();
         assert_eq!(serde_json::to_value(actor.snapshot()).unwrap(), saved);
         assert_eq!(actor.advance(1).unwrap(), Some(71));
-        assert_eq!(actor.current_group(), Some(7));
+        assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
     }
 }
 
@@ -501,16 +606,21 @@ fn changed_death_override_starts_before_return_and_preserves_failed_default() {
             {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
     ]));
     for fail in [false, true] {
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 8).unwrap();
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(8)).unwrap();
         actor.advance(1).unwrap();
         let mut events = Vec::new();
-        let result = actor.select_death_override_with_sounds(7, 1, &mut |event| {
-            let reject = fail && matches!(event, AnimationSound::Play { .. });
-            events.push(event);
-            anyhow::ensure!(!reject, "death sound rejected");
-            Ok(())
-        });
-        assert_eq!(actor.default_group(), 7);
+        let result = actor.select_death_override_with_sounds(
+            AnimationGroup::from_index(7),
+            1,
+            &mut |event| {
+                let reject = fail && matches!(event, AnimationSound::Play { .. });
+                events.push(event);
+                anyhow::ensure!(!reject, "death sound rejected");
+                Ok(())
+            },
+        );
+        assert_eq!(actor.default_group(), AnimationGroup::from_index(7));
         assert_eq!(
             events,
             vec![AnimationSound::Play {
@@ -522,14 +632,16 @@ fn changed_death_override_starts_before_return_and_preserves_failed_default() {
             assert!(result.is_err());
             assert!(
                 actor
-                    .select_death_override_with_sounds(7, 1, &mut |_| panic!(
-                        "sticky failure replay"
-                    ))
+                    .select_death_override_with_sounds(
+                        AnimationGroup::from_index(7),
+                        1,
+                        &mut |_| panic!("sticky failure replay")
+                    )
                     .is_err()
             );
         } else {
             assert_eq!(result.unwrap(), Some(70));
-            assert_eq!(actor.current_group(), Some(7));
+            assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
         }
     }
 }

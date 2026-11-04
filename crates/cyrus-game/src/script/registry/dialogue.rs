@@ -2,7 +2,7 @@
 use super::{ScriptActor, ScriptActorId, ScriptWorld};
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 struct Effects<'a> {
     generation: u64,
@@ -338,7 +338,7 @@ pub(super) fn present_taunt(
                     .animation
                     .as_ref()
                     .context("combat taunt animation not prepared")?;
-                Some(group)
+                Some(AnimationGroup::from_index(group))
             } else {
                 None
             };

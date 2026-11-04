@@ -4,7 +4,7 @@ use crate::clock::{ClockStep, SimulationClock, bios_tick};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{animation::AnimationRequest, sound::SoundCue};
 
 /// Current presentation view in original Q8 coordinates, tied to its world asset.
@@ -555,7 +555,14 @@ impl ScriptWorld {
                         .animation
                         .as_ref()
                         .and_then(|animation| animation.playback.current_group())
-                        .is_some_and(|group| matches!(group, 18 | 94 | 95));
+                        .is_some_and(|group| {
+                            matches!(
+                                group,
+                                AnimationGroup::RUN
+                                    | AnimationGroup::FIGHT_CIRCLE_LEFT
+                                    | AnimationGroup::FIGHT_CIRCLE_RIGHT
+                            )
+                        });
                 if !selected_role || player_continuation {
                     // The walk continues in its movement group when this update requested no movement.
                     let query = inputs.locomotion_geometry.map(|geometry| {

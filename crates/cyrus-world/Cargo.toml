@@ -7,6 +7,7 @@ edition.workspace = true
 log.workspace = true
 bevy = { workspace = true, features = ["bevy_asset"] }
 cyrus-assets.workspace = true
+cyrus-script.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

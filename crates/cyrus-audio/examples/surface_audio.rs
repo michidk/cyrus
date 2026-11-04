@@ -26,6 +26,7 @@ use cyrus_game::player::{
     placement::initial_animation,
     walk::WalkingStartup,
 };
+use cyrus_script::AnimationGroup;
 use cyrus_world::{
     animation::{ActorAnimation, AnimationSound},
     sound::{SoundCue, SoundSurface},
@@ -46,7 +47,7 @@ struct Case {
     name: String,
     initial_surface: u8,
     collision_attribute: u8,
-    group: u16,
+    group: AnimationGroup,
     #[serde(default)]
     grounded: bool,
     #[serde(default)]
@@ -198,7 +199,7 @@ fn main() -> Result<()> {
             "case {}: entry_ticks requires grounded mode",
             case.name
         );
-        let mut animation = ActorAnimation::from_asset(&data, "CYRUS", 0)?;
+        let mut animation = ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)?;
         let mut history = SupportHistory::new(0, 0);
         let mut surface = case.initial_surface;
         let mut veto = 0;
@@ -277,7 +278,10 @@ fn grounded_steps(
     data: &Animations,
     mixer: (&mut App, Entity, &[Vec<u8>]),
 ) -> Result<Vec<Value>> {
-    ensure!(case.group == 0, "grounded entry requires group 0");
+    ensure!(
+        case.group == AnimationGroup::PANIC,
+        "grounded entry requires `anim_panic`"
+    );
     ensure!(case.entry_ticks <= 1024, "entry_ticks exceeds 1024");
     let first = case.steps.first().context("no grounded steps")?;
     let definition = scene
@@ -789,7 +793,7 @@ mod tests {
         case.steps[0].movement.as_mut().unwrap().walk = false;
         let report = grounded_steps(&case, &scene, &data, (&mut app, actor, &bank)).unwrap();
         assert_eq!(report[0]["input_frame_reference"], 1);
-        assert_eq!(report[0]["input_group"], 0);
+        assert_eq!(report[0]["input_group"], AnimationGroup::PANIC.index());
         assert_eq!(report[0]["input_pending_group"], Value::Null);
         assert_eq!(report[0]["position_q8"], json!([131072, -16384, 131072]));
         assert_eq!(report[0]["events"], json!([]));

@@ -1,5 +1,6 @@
 //! Script-request cues share the ordinary actor's sound handler and tick input.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 use cyrus_world::animation::AnimationSound;
 use serde_json::json;
 
@@ -30,9 +31,11 @@ fn asset() -> Animations {
 #[test]
 fn script_requests_dispatch_authored_cues_before_the_immediate_pose() {
     let data = asset();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC)
+            .unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
-    actor.request(0, 0, 1).unwrap();
+    actor.request(AnimationGroup::PANIC, 0, 1).unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
         events.push(event);
@@ -86,7 +89,9 @@ fn script_requests_dispatch_authored_cues_before_the_immediate_pose() {
 #[test]
 fn script_sound_failures_keep_context_and_do_not_retry_the_cue() {
     let data = asset();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC)
+            .unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     let mut calls = 0;
     let mut sounds = |_| {
@@ -112,7 +117,9 @@ fn script_sound_failures_keep_context_and_do_not_retry_the_cue() {
 #[test]
 fn forced_replacement_forgets_the_prior_sound_before_its_immediate_cue() {
     let data = asset();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC)
+            .unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
         events.push(event);
@@ -120,25 +127,25 @@ fn forced_replacement_forgets_the_prior_sound_before_its_immediate_cue() {
     };
     assert_eq!(
         actor
-            .force_request_with_sounds(7, 0, 0, &mut sounds)
+            .force_request_with_sounds(AnimationGroup::IDLE_LEDGE, 0, 0, &mut sounds)
             .unwrap(),
         Some(1)
     );
     assert_eq!(
         actor
-            .force_request_with_sounds(7, 0, 0, &mut sounds)
+            .force_request_with_sounds(AnimationGroup::IDLE_LEDGE, 0, 0, &mut sounds)
             .unwrap(),
         None
     );
     assert_eq!(
         actor
-            .force_request_with_sounds(0, 0, 0, &mut sounds)
+            .force_request_with_sounds(AnimationGroup::PANIC, 0, 0, &mut sounds)
             .unwrap(),
         Some(9)
     );
     assert_eq!(
         actor
-            .force_request_with_sounds(7, 0, 0, &mut sounds)
+            .force_request_with_sounds(AnimationGroup::IDLE_LEDGE, 0, 0, &mut sounds)
             .unwrap(),
         Some(1)
     );

@@ -8,7 +8,7 @@ use cyrus_collision::{
     candidates::CollisionCandidates, collision_mesh::BodyProbe, collision_world::ResidualBodyQuery,
     ground::SupportSource,
 };
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Forward offsets of the scan's two passes, in local Q8.
 const LEDGE_SCAN_PASSES: [i32; 2] = [0, 6144];
@@ -20,8 +20,6 @@ const LEDGE_SCAN_HALF_HEIGHT: i32 = 40960;
 const LEDGE_TABLE: usize = 4;
 /// Local Q8 distance behind the wall at which the actor's spheres are fitted.
 const LEDGE_FIT_OFFSET: i32 = 4096;
-/// Group whose first frame's grip vertex is the hand position.
-const LEDGE_HAND_GROUP: u64 = 7;
 
 impl ScriptWorld {
     /// Run the selected player's edge service for an animated actor without support. Returns
@@ -184,7 +182,7 @@ impl ScriptWorld {
         Ok(scan?.hand_nearest(pose.position[1]).is_some())
     }
 
-    /// The state-33/34 and group-149/150 block, which applies only while animation is enabled
+    /// The state-33/34 and `anim_light_torch`/`anim_unlight_torch` block, which applies only while animation is enabled
     /// and shell context is clear.
     pub(super) fn ledge_blocked(
         &self,
@@ -202,7 +200,10 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .is_some_and(|control| matches!(control.living_state, 33 | 34))
-                || matches!(group, Some(149 | 150)))
+                || matches!(
+                    group,
+                    Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+                ))
     }
 
     /// The ledge scan result: 1 when a class 1 record exists, else 2 for class 2, else 3 for class
@@ -429,7 +430,8 @@ impl ScriptWorld {
                 });
             }
             if stance.airborne && stance.hand_y.is_none() && !records.is_empty() {
-                stance.grip = self.group_hand_vertex(id, query.animations, LEDGE_HAND_GROUP)?;
+                stance.grip =
+                    self.group_hand_vertex(id, query.animations, AnimationGroup::IDLE_LEDGE)?;
                 stance.hand_y = Some(match stance.grip {
                     Some(grip) => y.wrapping_add(grip[1] >> 8),
                     None => y.wrapping_sub(1000),
@@ -582,16 +584,16 @@ impl ScriptWorld {
         &self,
         id: ScriptActorId,
         data: &cyrus_assets::animation::Animations,
-        group: u64,
+        group: AnimationGroup,
     ) -> Result<Option<[i32; 3]>> {
         let index = self.resolve(id)?;
         let metadata = data.actor(self.actors[index].name())?;
         let Some(reference) = metadata["animation_groups"]
             .as_array()
             .and_then(|groups| {
-                groups
-                    .iter()
-                    .find(|candidate| candidate["group_index"].as_u64() == Some(group))
+                groups.iter().find(|candidate| {
+                    candidate["group_index"].as_u64() == Some(u64::from(group.index()))
+                })
             })
             .and_then(|group| group["commands"].as_array())
             .and_then(|commands| commands.iter().find(|command| command["opcode"] == 0))

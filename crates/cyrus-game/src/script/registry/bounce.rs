@@ -3,7 +3,7 @@
 use super::{GameHost, ScriptActorId};
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 struct BounceActor<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -185,13 +185,13 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     fn turn_delta(&self, scale: u32) -> i64 {
         self.host.registry.globals.turn.delta(scale)
     }
-    fn current_group(&self) -> Option<u16> {
+    fn current_group(&self) -> Option<AnimationGroup> {
         self.host.registry.actors[self.id.index]
             .animation
             .as_ref()
             .and_then(|animation| animation.playback.current_group())
     }
-    fn request_group(&mut self, group: u16, force: bool) -> Result<()> {
+    fn request_group(&mut self, group: AnimationGroup, force: bool) -> Result<()> {
         let sounds = self
             .host
             .sounds

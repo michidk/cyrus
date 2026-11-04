@@ -1,13 +1,13 @@
 //! Queued motion admission precedes its request and vertical writer.
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Current receiver state and established edge-service outcome.
 #[derive(Clone, Copy, Debug)]
 pub struct OrdinaryQueuedInputs {
     pub queued: u8,
     pub torch_burning: u8,
-    pub current_group: Option<u16>,
-    pub pending_group: Option<u16>,
+    pub current_group: Option<AnimationGroup>,
+    pub pending_group: Option<AnimationGroup>,
     pub has_group_49: bool,
     pub has_group_50: bool,
     pub holding_weapon: bool,
@@ -21,7 +21,7 @@ pub struct OrdinaryQueuedAction {
     pub clear_queued: bool,
     pub handled: bool,
     pub advance_vertical: bool,
-    pub request_group: Option<u16>,
+    pub request_group: Option<AnimationGroup>,
 }
 
 /// Resolve the original low/high-byte state and pending-group arbitration.
@@ -44,15 +44,21 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
             action.clear_queued = true;
             return action;
         }
-        if input.current_group != Some(if torch { 50 } else { 49 }) {
+        if input.current_group
+            != Some(if torch {
+                AnimationGroup::JUMP_BACKWARD_TORCH
+            } else {
+                AnimationGroup::JUMP_BACKWARD
+            })
+        {
             action.handled = torch;
             return action;
         }
     }
-    if input
-        .pending_group
-        .is_some_and(|group| (32..=37).contains(&group) || group == 111)
-    {
+    if input.pending_group.is_some_and(|group| {
+        (AnimationGroup::JUMP_START..=AnimationGroup::JUMP_LEFT_START_TORCH).contains(&group)
+            || group == AnimationGroup::FIGHT_JUMP_START
+    }) {
         return action;
     }
     if input.edge_handled {
@@ -62,35 +68,39 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
     }
     action.request_group = match low {
         1 => Some(if torch {
-            38
+            AnimationGroup::JUMP_TORCH
         } else if high {
-            40
+            AnimationGroup::JUMP_UP_ARMS
         } else if input.holding_weapon {
-            112
+            AnimationGroup::FIGHT_JUMP
         } else {
-            39
+            AnimationGroup::JUMP
         }),
         2 => Some(if torch {
-            41
+            AnimationGroup::JUMP_FORWARD_TORCH
         } else if high {
-            43
+            AnimationGroup::JUMP_FORWARD_ARMS
         } else {
-            42
+            AnimationGroup::JUMP_FORWARD
         }),
-        3 => Some(if torch { 50 } else { 49 }),
-        8 | 24 => Some(if torch {
-            45
-        } else if high {
-            48
+        3 => Some(if torch {
+            AnimationGroup::JUMP_BACKWARD_TORCH
         } else {
-            44
+            AnimationGroup::JUMP_BACKWARD
+        }),
+        8 | 24 => Some(if torch {
+            AnimationGroup::JUMP_RIGHT_TORCH
+        } else if high {
+            AnimationGroup::JUMP_RUN_ARMS
+        } else {
+            AnimationGroup::JUMP_RUN
         }),
         9 => Some(if torch {
-            47
+            AnimationGroup::JUMP_LEFT_TORCH
         } else if high {
-            48
+            AnimationGroup::JUMP_RUN_ARMS
         } else {
-            46
+            AnimationGroup::JUMP_LEFT
         }),
         _ => None,
     };
@@ -218,7 +228,13 @@ impl super::ScriptWorld {
             || control.falling_state != 0
             || control.sliding_state != 0
             || !matches!(control.living_state, 0 | 15)
-            || matches!(group, 114 | 116 | 130 | 131)
+            || matches!(
+                group,
+                AnimationGroup::FIGHT_LAND
+                    | AnimationGroup::FIGHT_LAND_ATTACK
+                    | AnimationGroup::FIGHT_LAND_RIGHT
+                    | AnimationGroup::FIGHT_LAND_LEFT
+            )
             || (selected
                 && actor.attributes[Attribute::PlayerType] == 1
                 && (1..=4).contains(&surface))
@@ -420,7 +436,10 @@ impl super::ScriptWorld {
         let suppressed = animation.playback.translation_suppressed();
         let length = if stance {
             i32::from(actor.attributes[Attribute::FightBackwardSpeed]) << 8
-        } else if matches!(group, Some(76 | 78)) {
+        } else if matches!(
+            group,
+            Some(AnimationGroup::SLIDE_BACKWARD | AnimationGroup::SLIDE_BACKWARD_TORCH)
+        ) {
             i32::from(actor.attributes[Attribute::ForwardSpeed]) << 7
         } else {
             i32::from(actor.attributes[Attribute::BackwardSpeed]) << 8
@@ -577,25 +596,36 @@ impl super::ScriptWorld {
         let force = control.jump_selector != 0;
         let selected = environment.selected_player == Some(id);
         let (queued, request) = if force {
-            (24, 85)
+            (24, AnimationGroup::ROPE_JUMP)
         } else {
             match group {
-                18 => {
+                AnimationGroup::RUN => {
                     if requested_motion == 9 {
-                        (9, 36)
+                        (9, AnimationGroup::JUMP_LEFT_START)
                     } else {
-                        (8, 34)
+                        (8, AnimationGroup::JUMP_RUN_START)
                     }
                 }
-                30 => {
+                AnimationGroup::RUN_TORCH => {
                     if requested_motion == 9 {
-                        (9, 37)
+                        (9, AnimationGroup::JUMP_LEFT_START_TORCH)
                     } else {
-                        (8, 35)
+                        (8, AnimationGroup::JUMP_RIGHT_START_TORCH)
                     }
                 }
-                19 | 23 if script_native || selected => (3, if group == 19 { 49 } else { 50 }),
-                31 if script_native => (8, 34),
+                AnimationGroup::RUN_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH
+                    if script_native || selected =>
+                {
+                    (
+                        3,
+                        if group == AnimationGroup::RUN_BACKWARD {
+                            AnimationGroup::JUMP_BACKWARD
+                        } else {
+                            AnimationGroup::JUMP_BACKWARD_TORCH
+                        },
+                    )
+                }
+                AnimationGroup::FIGHT_RUN if script_native => (8, AnimationGroup::JUMP_RUN_START),
                 _ if script_native => {
                     let holding = super::super::activation::weapon_predicates(
                         control.living_state,
@@ -616,19 +646,30 @@ impl super::ScriptWorld {
                                     .as_ref()
                                     .is_some_and(|combat| combat.flags & 4 != 0))
                         {
-                            111
+                            AnimationGroup::FIGHT_JUMP_START
                         } else if control.torch_burning == 0 {
-                            32
+                            AnimationGroup::JUMP_START
                         } else {
-                            33
+                            AnimationGroup::JUMP_START_TORCH
                         },
                     )
                 }
-                _ => (1, if control.torch_burning == 0 { 32 } else { 33 }),
+                _ => (
+                    1,
+                    if control.torch_burning == 0 {
+                        AnimationGroup::JUMP_START
+                    } else {
+                        AnimationGroup::JUMP_START_TORCH
+                    },
+                ),
             }
         };
         // The selected player's key jump from a backward run group takes the script row as well.
-        let selected_backward = selected && matches!(group, 19 | 23);
+        let selected_backward = selected
+            && matches!(
+                group,
+                AnimationGroup::RUN_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH
+            );
         let heading = (script_native || selected_backward)
             .then(|| self.spatial(id).map(|pose| pose.local.angles[1]))
             .transpose()?;
@@ -647,7 +688,16 @@ impl super::ScriptWorld {
         control.fall_timer = 0;
         control.sliding_distance = 0;
         control.queued_motion = queued;
-        if !force && ((script_native && matches!(group, 19 | 23 | 31)) || selected_backward) {
+        if !force
+            && ((script_native
+                && matches!(
+                    group,
+                    AnimationGroup::RUN_BACKWARD
+                        | AnimationGroup::WALK_BACKWARD_TORCH
+                        | AnimationGroup::FIGHT_RUN
+                ))
+                || selected_backward)
+        {
             control.motion_vector[1] = i32::from(heading.expect("script Jump heading"));
         }
         if self.updates.animation_system {
@@ -748,8 +798,10 @@ impl super::ScriptWorld {
             torch_burning: control.torch_burning,
             current_group: animation.playback.current_group(),
             pending_group: animation.playback.pending_group(),
-            has_group_49: animation.playback.has_group(49),
-            has_group_50: animation.playback.has_group(50),
+            has_group_49: animation.playback.has_group(AnimationGroup::JUMP_BACKWARD),
+            has_group_50: animation
+                .playback
+                .has_group(AnimationGroup::JUMP_BACKWARD_TORCH),
             holding_weapon: holding,
             edge_handled: false,
         });
@@ -880,14 +932,16 @@ impl super::ScriptWorld {
 }
 
 impl super::ActorControlState {
-    fn advance_action_words(&mut self, ticks: u32, group: Option<u16>) -> Option<u8> {
+    fn advance_action_words(&mut self, ticks: u32, group: Option<AnimationGroup>) -> Option<u8> {
         self.jump_window = self.jump_window.wrapping_add(ticks as u8);
         if self.jump_window > 36 {
             self.directional_state[1] |= self.directional_state[0];
             self.directional_state[0] = 0;
             self.jump_window = 0;
         }
-        if self.queued_motion != 0 || !matches!(group, Some(18 | 30)) {
+        if self.queued_motion != 0
+            || !matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
+        {
             self.directional_state
                 .iter_mut()
                 .for_each(|word| *word &= !3);
@@ -909,6 +963,7 @@ impl super::ActorControlState {
 #[cfg(test)]
 mod action_word_tests {
     use super::super::ActorControlState;
+    use cyrus_script::AnimationGroup;
 
     #[test]
     fn action_promotion_uses_wrapping_byte_and_strict_threshold() {
@@ -917,23 +972,35 @@ mod action_word_tests {
             jump_window: 35,
             ..Default::default()
         };
-        assert_eq!(control.advance_action_words(1, Some(18)), None);
+        assert_eq!(
+            control.advance_action_words(1, Some(AnimationGroup::RUN)),
+            None
+        );
         assert_eq!(control.directional_state, [2147483907, 1073741824]);
-        assert_eq!(control.advance_action_words(1, Some(18)), Some(8));
+        assert_eq!(
+            control.advance_action_words(1, Some(AnimationGroup::RUN)),
+            Some(8)
+        );
         assert_eq!(control.directional_state, [0, 3221225728]);
         assert_eq!(control.jump_window, 0);
         control.jump_window = 255;
         control.directional_state = [0x102, 0];
-        assert_eq!(control.advance_action_words(1, Some(30)), None);
+        assert_eq!(
+            control.advance_action_words(1, Some(AnimationGroup::RUN_TORCH)),
+            None
+        );
         assert_eq!(control.jump_window, 0);
         assert_eq!(control.directional_state, [0x102, 0]);
-        assert_eq!(control.advance_action_words(37, Some(30)), Some(9));
+        assert_eq!(
+            control.advance_action_words(37, Some(AnimationGroup::RUN_TORCH)),
+            Some(9)
+        );
         assert_eq!(control.directional_state, [0, 0x100]);
     }
 
     #[test]
     fn queued_or_other_group_clears_only_low_bits_after_promotion() {
-        for (queued, group) in [(1, 18), (0, 19)] {
+        for (queued, group) in [(1, AnimationGroup::RUN), (0, AnimationGroup::RUN_BACKWARD)] {
             let mut control = ActorControlState {
                 directional_state: [0x123, 0x202],
                 queued_motion: queued,

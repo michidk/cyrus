@@ -26,3 +26,4 @@ wasm-bindgen = "0.2"
 [dev-dependencies]
 redguard-preservation.workspace = true
 cyrus-collision.workspace = true
+cyrus-script.workspace = true

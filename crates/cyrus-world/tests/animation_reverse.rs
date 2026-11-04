@@ -1,4 +1,5 @@
 //! Reverse playback, retained direction and original command boundaries through the actor API.
+use cyrus_script::AnimationGroup;
 use cyrus_world::animation::{
     ActorAnimation, ActorAnimationSnapshot, AnimationSound, Animations, TransitionDecision,
 };
@@ -19,8 +20,9 @@ fn data() -> Animations {
 #[test]
 fn reverse_retains_direction_in_snapshots_and_checkpoints() {
     let data = data();
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["current"][1]["command"] = 3.into();
     saved["current"][1]["countdown"] = 0.into();
@@ -70,8 +72,9 @@ fn reverse_controls_match_original_literal_scenarios() {
         let mut data = data();
         data.metadata["actors"][0]["animation_groups"][1]["commands"][3] =
             json!({"opcode":opcode,"value":operand});
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-        actor.request(7, 0, 0).unwrap();
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+        actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
         let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
         saved["current"][1]["command"] = 3.into();
         saved["current"][1]["loops"] = loops.into();
@@ -98,8 +101,9 @@ fn reverse_sound_dispatches_and_actor_events_remain_explicit() {
     let mut data = data();
     data.metadata["actors"][0]["animation_groups"][1]["commands"][3] =
         json!({"opcode":4,"sound_param":1,"volume_shift":2});
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["current"][1]["command"] = 3.into();
     saved["reverse"] = true.into();
@@ -124,8 +128,9 @@ fn reverse_sound_dispatches_and_actor_events_remain_explicit() {
     );
     data.metadata["actors"][0]["animation_groups"][1]["commands"][3] =
         json!({"opcode":11,"value":1});
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["current"][1]["command"] = 3.into();
     saved["reverse"] = true.into();
@@ -134,8 +139,9 @@ fn reverse_sound_dispatches_and_actor_events_remain_explicit() {
     assert!(
         format!("{:#}", actor.advance(0).unwrap_err()).contains("opcode 11 playback unsupported")
     );
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["current"][1]["command"] = 3.into();
     saved["reverse"] = true.into();
@@ -166,10 +172,11 @@ fn forward_actor_events_dispatch_in_command_order_before_the_next_frame() {
         {"opcode":0,"frame_reference":71},
         {"opcode":1}
     ]);
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut seen = vec![];
     let frame = actor
-        .request_with_sounds(7, 0, 0, &mut |event| {
+        .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |event| {
             seen.push(event);
             Ok(())
         })
@@ -185,10 +192,15 @@ fn forward_actor_events_dispatch_in_command_order_before_the_next_frame() {
             }
         ]
     );
-    let mut bare = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut bare =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     assert!(
-        format!("{:#}", bare.request(7, 0, 0).unwrap_err())
-            .contains("opcode 11 playback unsupported")
+        format!(
+            "{:#}",
+            bare.request(AnimationGroup::from_index(7), 0, 0)
+                .unwrap_err()
+        )
+        .contains("opcode 11 playback unsupported")
     );
 }
 
@@ -209,8 +221,9 @@ fn reverse_frame_countdown_and_delay_match_original_scenarios() {
     ] {
         let mut data = data();
         data.metadata["actors"][0]["animation_groups"][1]["anim_id"] = 3.into();
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-        actor.request(7, 0, 0).unwrap();
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+        actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
         let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
         saved["current"][1]["command"] = cursor.into();
         saved["current"][1]["countdown"] = countdown.into();
@@ -227,7 +240,7 @@ fn reverse_frame_countdown_and_delay_match_original_scenarios() {
         );
         let saved = serde_json::to_value(actor.snapshot()).unwrap();
         if ended {
-            assert_eq!(actor.current_group(), Some(0));
+            assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(0)));
             assert!(!actor.is_reversed());
             assert_eq!(actor.frame_wait_state().unwrap().2, 0);
         } else {
@@ -242,20 +255,28 @@ fn reverse_frame_countdown_and_delay_match_original_scenarios() {
 #[test]
 fn direction_changes_do_not_advance_and_new_groups_reset_direction() {
     let data = data();
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     actor.set_reverse(true).unwrap();
     let saved = actor.snapshot();
     actor = ActorAnimation::from_snapshot(&data, "ACTOR", saved).unwrap();
     assert!(actor.is_reversed());
     assert_eq!(actor.current_group(), None);
-    actor.request(7, 0, 0).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     assert!(!actor.is_reversed());
     let before = actor.frame_wait_state().unwrap();
     actor.set_reverse(true).unwrap();
     assert_eq!(actor.frame_wait_state().unwrap(), before);
-    actor.force_request(7, 0, 0).unwrap();
+    actor
+        .force_request(AnimationGroup::from_index(7), 0, 0)
+        .unwrap();
     assert!(actor.is_reversed());
-    assert_eq!(actor.force_request(0, 0, 0).unwrap(), Some(900));
+    assert_eq!(
+        actor
+            .force_request(AnimationGroup::from_index(0), 0, 0)
+            .unwrap(),
+        Some(900)
+    );
     assert!(!actor.is_reversed());
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["version"] = 2.into();
@@ -275,9 +296,12 @@ fn reverse_boundary_sound_failure_restores_its_signed_cursor_and_sticky_error() 
         {"opcode":0,"frame_reference":70}, {"opcode":4,"sound_param":1,"volume_shift":0},
         {"opcode":0,"frame_reference":72}, {"opcode":2,"value":0}
     ]);
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut accept = |_| Ok(());
-    actor.request_with_sounds(7, 0, 0, &mut accept).unwrap();
+    actor
+        .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut accept)
+        .unwrap();
     for _ in 0..3 {
         actor.advance_with_sounds(1, &mut accept).unwrap();
     }
@@ -316,11 +340,12 @@ fn a_mask_four_transition_follows_the_falling_byte_without_asking_the_host() {
         {"opcode":1}
     ]);
     for (falling, frame) in [(false, 70), (true, 80)] {
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
         actor.set_motion_active(falling);
         let mut seen = vec![];
         let shown = actor
-            .request_with_sounds(7, 0, 0, &mut |event| {
+            .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |event| {
                 seen.push(event);
                 Ok(())
             })
@@ -338,10 +363,11 @@ fn a_yielded_mask_eight_transition_keeps_its_cursor_and_ends_the_update() {
         {"opcode":0,"frame_reference":70},
         {"opcode":1}
     ]);
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut asked = 0;
     let shown = actor
-        .request_with_decisions(7, 0, 0, &mut |_| {
+        .request_with_decisions(AnimationGroup::from_index(7), 0, 0, &mut |_| {
             asked += 1;
             Ok(TransitionDecision::Yield)
         })
@@ -373,10 +399,11 @@ fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
         {"opcode":0,"frame_reference":70},
         {"opcode":1}
     ]);
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut seen = vec![];
     let frame = actor
-        .request_with_sounds(7, 0, 0, &mut |event| {
+        .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |event| {
             seen.push(event);
             Ok(())
         })
@@ -393,24 +420,33 @@ fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
             target: 36
         }]
     );
-    let mut refused = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut refused =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let error = refused
-        .request_with_sounds(7, 0, 0, &mut |_| anyhow::bail!("combat state unmodelled"))
+        .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |_| {
+            anyhow::bail!("combat state unmodelled")
+        })
         .unwrap_err();
     assert!(
         format!("{error:#}").contains("combat state unmodelled"),
         "{error:#}"
     );
-    let mut bare = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut bare =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     assert!(
-        format!("{:#}", bare.request(7, 0, 0).unwrap_err())
-            .contains("opcode 15 playback unsupported")
+        format!(
+            "{:#}",
+            bare.request(AnimationGroup::from_index(7), 0, 0)
+                .unwrap_err()
+        )
+        .contains("opcode 15 playback unsupported")
     );
     // Reverse playback steps back over the command without asking the host.
     let mut data = self::data();
     data.metadata["actors"][0]["animation_groups"][1]["commands"][3] = transition;
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
     saved["current"][1]["command"] = 3.into();
     saved["reverse"] = true.into();
@@ -423,13 +459,24 @@ fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
 #[test]
 fn a_skipping_request_starts_the_group_at_once_two_frames_in() {
     let data = data();
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    assert_eq!(actor.request_skipping_frames(7, 0, 2).unwrap(), Some(72));
-    assert_eq!(actor.current_group(), Some(7));
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    assert_eq!(
+        actor
+            .request_skipping_frames(AnimationGroup::from_index(7), 0, 2)
+            .unwrap(),
+        Some(72)
+    );
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(actor.frame_wait_state().unwrap().2, 2);
     assert_eq!(actor.current_command_cursor().unwrap(), Some(2));
     // Already playing with enough frames shown: only a pending request would clear.
-    assert_eq!(actor.request_skipping_frames(7, 0, 2).unwrap(), None);
+    assert_eq!(
+        actor
+            .request_skipping_frames(AnimationGroup::from_index(7), 0, 2)
+            .unwrap(),
+        None
+    );
     assert_eq!(actor.frame_wait_state().unwrap().2, 2);
 }
 
@@ -441,10 +488,11 @@ fn skipping_request_releases_the_previous_sound_once() {
         {"opcode":0,"frame_reference":900},
         {"opcode":2,"value":1}
     ]);
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut started = Vec::new();
     actor
-        .request_with_sounds(0, 0, 0, &mut |event| {
+        .request_with_sounds(AnimationGroup::from_index(0), 0, 0, &mut |event| {
             started.push(event);
             Ok(())
         })
@@ -459,19 +507,24 @@ fn skipping_request_releases_the_previous_sound_once() {
     let mut events = Vec::new();
     assert_eq!(
         actor
-            .request_skipping_frames_with_sounds(7, 0, 2, &mut |event| {
-                events.push(event);
-                Ok(())
-            })
+            .request_skipping_frames_with_sounds(
+                AnimationGroup::from_index(7),
+                0,
+                2,
+                &mut |event| {
+                    events.push(event);
+                    Ok(())
+                }
+            )
             .unwrap(),
         Some(72)
     );
     assert_eq!(events, [AnimationSound::Forget]);
-    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(actor.frame_wait_state().unwrap().2, 2);
     assert_eq!(
         actor
-            .request_skipping_frames_with_sounds(7, 0, 2, &mut |_| {
+            .request_skipping_frames_with_sounds(AnimationGroup::from_index(7), 0, 2, &mut |_| {
                 anyhow::bail!("retained playback must not dispatch sound")
             })
             .unwrap(),

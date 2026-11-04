@@ -1,6 +1,7 @@
 //! Installed player data, frame sources and the original walking release sequence.
 use cyrus_assets::install::GameInstall;
 use cyrus_game::player::data::PlayerScene;
+use cyrus_script::AnimationGroup;
 
 #[test]
 fn installed_scene_exports_original_player_and_ground_inputs() {
@@ -268,9 +269,9 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
         walk::WalkingStartup,
     };
     use cyrus_world::animation::ActorAnimation;
-    let mut animation = ActorAnimation::from_asset(data, "CYRUS", 0).unwrap();
+    let mut animation = ActorAnimation::from_asset(data, "CYRUS", AnimationGroup::PANIC).unwrap();
     let mut reference = animation
-        .request_with_sounds(20, 0, 1, &mut |_| Ok(()))
+        .request_with_sounds(AnimationGroup::WALK, 0, 1, &mut |_| Ok(()))
         .unwrap()
         .unwrap();
     for _ in 0..64 {
@@ -310,18 +311,18 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
     let mut veto = 0;
     let mut z = walk.position[2];
     for (group, model, pose, displacement, marker) in [
-        (20, "CYRSA001", 8, 2048, false),
-        (20, "CYRSA001", 9, 2048, false),
-        (20, "CYRSA001", 10, 2048, false),
-        (20, "CYRSA001", 11, 2048, false),
-        (20, "CYRSA001", 12, 2048, false),
-        (20, "CYRSA001", 26, 0, true),
-        (20, "CYRSA001", 27, 0, true),
-        (20, "CYRSA001", 28, 0, true),
-        (20, "CYRSA001", 29, 0, true),
-        (20, "CYRSA001", 30, 0, true),
-        (20, "CYRSA001", 31, 0, true),
-        (0, "CYRSA004", 1, 0, false),
+        (AnimationGroup::WALK, "CYRSA001", 8, 2048, false),
+        (AnimationGroup::WALK, "CYRSA001", 9, 2048, false),
+        (AnimationGroup::WALK, "CYRSA001", 10, 2048, false),
+        (AnimationGroup::WALK, "CYRSA001", 11, 2048, false),
+        (AnimationGroup::WALK, "CYRSA001", 12, 2048, false),
+        (AnimationGroup::WALK, "CYRSA001", 26, 0, true),
+        (AnimationGroup::WALK, "CYRSA001", 27, 0, true),
+        (AnimationGroup::WALK, "CYRSA001", 28, 0, true),
+        (AnimationGroup::WALK, "CYRSA001", 29, 0, true),
+        (AnimationGroup::WALK, "CYRSA001", 30, 0, true),
+        (AnimationGroup::WALK, "CYRSA001", 31, 0, true),
+        (AnimationGroup::PANIC, "CYRSA004", 1, 0, false),
     ] {
         reference = cyrus_game::player::grounded::advance_animation(
             scene,
@@ -363,7 +364,7 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
         assert_eq!(walk.position, [10_448_896, -190_464, z], "pose {pose}");
         assert_eq!(
             animation.pending_group(),
-            if group == 20 { Some(0) } else { None }
+            (group == AnimationGroup::WALK).then_some(AnimationGroup::PANIC)
         );
     }
     assert_eq!(walk.startup.advance(8, 24, 256, true), 512);

@@ -24,6 +24,12 @@ equates, and `Attributes` holds an actor's 256 attribute bytes indexed only by
 `Attribute`. Asset preparation translates installed names to slots once; script
 calls such as `GetAttribute` address slots by number through `Attributes::bytes`.
 
+`AnimationGroup` is an animation group number with a constant for every group
+the `SOUP386.DEF` animation-group equates name, aliases included
+(`AnimationGroup::RUN` is `anim_run`). Groups 169 to 177 have no DEF name.
+`AnimationGroup::from_index` is for numbers that are data: a script argument,
+an installed group record, a control-port request.
+
 `CallResult::CompleteWithoutValue` lets a host complete an effect when no
 portable numeric result is established. Statements discard that result;
 formulas, conditions and arguments fail contextually when consuming it.

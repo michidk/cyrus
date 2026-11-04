@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Read the current motion's zero-based counter-attack reference.
@@ -516,8 +516,9 @@ impl ScriptWorld {
                 requested,
                 &view,
                 &mut |group| {
-                    let group =
-                        u16::try_from(group).context("animation group outside u16 range")?;
+                    let group = AnimationGroup::from_index(
+                        u16::try_from(group).context("animation group outside u16 range")?,
+                    );
                     let frame =
                         animation
                             .playback

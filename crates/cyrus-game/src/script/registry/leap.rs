@@ -1,9 +1,10 @@
 //! The leap that a route link flagged `0x4000` starts, from preservation's SOUP.md phase twelve.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_script::AnimationGroup;
 
 impl ScriptWorld {
-    /// Start a nonplayer leap: queued motion 2 and the jump request (group 32, or 33 with a
+    /// Start a nonplayer leap: queued motion 2 and the jump request (`anim_jump_start`, or `anim_jump_start_torch` with a
     /// burning torch), with the fall origin at the current Y. Returns whether it started; a
     /// refused start leaves everything but the stable-position flag untouched. The selected
     /// player's cooldown and edge entry are not modeled, so it fails explicitly.
@@ -32,8 +33,15 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        if matches!(group, Some(114 | 116 | 130 | 131))
-            || matches!(surface, 2 | 4)
+        if matches!(
+            group,
+            Some(
+                AnimationGroup::FIGHT_LAND
+                    | AnimationGroup::FIGHT_LAND_ATTACK
+                    | AnimationGroup::FIGHT_LAND_RIGHT
+                    | AnimationGroup::FIGHT_LAND_LEFT
+            )
+        ) || matches!(surface, 2 | 4)
             || control.rope_attached
             || control.queued_motion != 0
             || control.falling_state != 0
@@ -58,7 +66,17 @@ impl ScriptWorld {
         control.sliding_distance = 0;
         control.queued_motion = 2;
         if self.updates.animation_system {
-            self.request_ordinary_group(id, if torch { 33 } else { 32 }, false, ticks, sounds)?;
+            self.request_ordinary_group(
+                id,
+                if torch {
+                    AnimationGroup::JUMP_START_TORCH
+                } else {
+                    AnimationGroup::JUMP_START
+                },
+                false,
+                ticks,
+                sounds,
+            )?;
         }
         Ok(true)
     }

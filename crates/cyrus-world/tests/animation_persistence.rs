@@ -1,5 +1,6 @@
 //! Complete animation saves resume through public playback APIs without replaying cues.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 use cyrus_world::animation::{ActorAnimation, ActorAnimationSnapshot, AnimationSound};
 use serde_json::{Value, json};
 
@@ -35,18 +36,19 @@ fn resume(data: &Animations, actor: &ActorAnimation) -> ActorAnimation {
 }
 
 fn pending_sound(data: &Animations) -> ActorAnimation {
-    let mut actor = ActorAnimation::from_asset(data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     let mut sounds = Vec::new();
     assert_eq!(
         actor
-            .request_with_sounds(7, 0, 0, &mut |sound| {
+            .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |sound| {
                 sounds.push(sound);
                 Ok(())
             })
             .unwrap(),
         Some(70)
     );
-    actor.request(8, 0, 0).unwrap();
+    actor.request(AnimationGroup::from_index(8), 0, 0).unwrap();
     assert_eq!(
         sounds,
         [AnimationSound::Play {
@@ -62,9 +64,15 @@ fn pending_default_and_sound_state_resume_without_replaying_play() {
     let data = sound_asset();
     let mut original = pending_sound(&data);
     let mut restored = resume(&data, &original);
-    assert_eq!(restored.current_group(), Some(7));
-    assert_eq!(restored.pending_group(), Some(8));
-    assert_eq!(restored.default_group(), 0);
+    assert_eq!(
+        restored.current_group(),
+        Some(AnimationGroup::from_index(7))
+    );
+    assert_eq!(
+        restored.pending_group(),
+        Some(AnimationGroup::from_index(8))
+    );
+    assert_eq!(restored.default_group(), AnimationGroup::from_index(0));
     let mut original_sounds = Vec::new();
     let mut restored_sounds = Vec::new();
     let mut frames = Vec::new();
@@ -96,7 +104,10 @@ fn pending_default_and_sound_state_resume_without_replaying_play() {
         ]
     );
     assert_eq!(restored_sounds, original_sounds);
-    assert_eq!(restored.current_group(), Some(0));
+    assert_eq!(
+        restored.current_group(),
+        Some(AnimationGroup::from_index(0))
+    );
     assert_eq!(restored.pending_group(), None);
 }
 
@@ -108,7 +119,7 @@ fn replacing_a_restored_sound_receiver_forgets_without_replaying_or_stopping() {
     let mut sounds = Vec::new();
     assert_eq!(
         restored
-            .force_request_with_sounds(8, 0, 0, &mut |sound| {
+            .force_request_with_sounds(AnimationGroup::from_index(8), 0, 0, &mut |sound| {
                 sounds.push(sound);
                 Ok(())
             })
@@ -124,17 +135,21 @@ fn finite_loops_and_wrapped_effective_speed_countdown_are_retained() {
         {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
             {"opcode":0,"frame_reference":70},{"opcode":2,"value":0},{"opcode":1}]}
     ]));
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(99)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     actor.set_loop_count(2).unwrap();
     let mut restored = resume(&data, &actor);
     let frames: Vec<_> = (0..3).map(|_| restored.advance(1).unwrap()).collect();
     assert_eq!(frames, [Some(70), Some(70), None]);
-    assert_eq!(restored.default_group(), 99);
+    assert_eq!(restored.default_group(), AnimationGroup::from_index(99));
     assert_eq!(restored.current_group(), None);
 
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
-    actor.request(7, 255, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(99)).unwrap();
+    actor
+        .request(AnimationGroup::from_index(7), 255, 0)
+        .unwrap();
     actor.set_loop_count(2).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(70));
     let mut restored = resume(&data, &actor);
@@ -156,8 +171,9 @@ fn hold_pause_and_release_write_the_wait_byte_the_advance_honours() {
             {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},
             {"opcode":0,"frame_reference":72},{"opcode":0,"frame_reference":73}]}
     ]));
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(99)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
     let first = actor.advance(1).unwrap();
     assert!(first.is_some());
     actor.set_wait(u8::MAX).unwrap();
@@ -178,8 +194,14 @@ fn delay_and_translation_latch_resume_at_the_same_frame_without_synthetic_ticks(
             {"opcode":5},{"opcode":12,"value":3},
             {"opcode":0,"frame_reference":70},{"opcode":2,"value":2}]}
     ]));
-    let mut original = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
-    assert_eq!(original.request(7, 0, 0).unwrap(), None);
+    let mut original =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(99)).unwrap();
+    assert_eq!(
+        original
+            .request(AnimationGroup::from_index(7), 0, 0)
+            .unwrap(),
+        None
+    );
     let mut restored = resume(&data, &original);
     assert!(restored.translation_suppressed());
     let mut frames = Vec::new();
@@ -204,15 +226,22 @@ fn type_one_exit_tail_and_pending_default_remain_distinct() {
             {"opcode":2,"value":0},{"opcode":0,"frame_reference":71},
             {"opcode":12,"value":3},{"opcode":0,"frame_reference":72},{"opcode":1}]}
     ]));
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    actor.request(7, 0, 0).unwrap();
-    actor.request(0, 0, 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
+    actor.request(AnimationGroup::from_index(0), 0, 0).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(70));
     assert_eq!(actor.advance(1).unwrap(), Some(71));
     let mut restored = resume(&data, &actor);
     assert!(restored.exit_reached());
-    assert_eq!(restored.current_group(), Some(7));
-    assert_eq!(restored.pending_group(), Some(0));
+    assert_eq!(
+        restored.current_group(),
+        Some(AnimationGroup::from_index(7))
+    );
+    assert_eq!(
+        restored.pending_group(),
+        Some(AnimationGroup::from_index(0))
+    );
     let frames: Vec<_> = (0..4).map(|_| restored.advance(1).unwrap()).collect();
     assert_eq!(frames, [None, None, None, Some(900)]);
 }
@@ -224,12 +253,19 @@ fn final_delay_and_out_of_range_sticky_failure_are_legitimate_snapshots() {
             {"group_index":7,"anim_id":0,"anim_type":0,"commands":[
                 {"opcode":12,"value":delay}]}
         ]));
-        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
-        assert_eq!(actor.request(7, 0, 0).unwrap(), None);
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(99)).unwrap();
+        assert_eq!(
+            actor.request(AnimationGroup::from_index(7), 0, 0).unwrap(),
+            None
+        );
         let mut restored = resume(&data, &actor);
         if delay == 255 {
             assert_eq!(restored.advance(u32::MAX).unwrap(), None);
-            assert_eq!(restored.current_group(), Some(7));
+            assert_eq!(
+                restored.current_group(),
+                Some(AnimationGroup::from_index(7))
+            );
         } else {
             assert!(restored.advance(3).is_err());
             let failure = restored.failure().unwrap().to_string();
@@ -244,10 +280,13 @@ fn final_delay_and_out_of_range_sticky_failure_are_legitimate_snapshots() {
 #[test]
 fn sound_failure_is_sticky_across_restore_and_does_not_retry_dispatch() {
     let data = sound_asset();
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     assert!(
         actor
-            .request_with_sounds(7, 0, 0, &mut |_| anyhow::bail!("channel unavailable"))
+            .request_with_sounds(AnimationGroup::from_index(7), 0, 0, &mut |_| anyhow::bail!(
+                "channel unavailable"
+            ))
             .is_err()
     );
     let mut restored = resume(&data, &actor);
@@ -302,11 +341,11 @@ fn malformed_state_and_changed_sources_reject_without_changing_live_playback() {
 #[test]
 fn inactive_snapshot_does_not_initialize_or_select_a_default() {
     let data = sound_asset();
-    let actor = ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let actor = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(7)).unwrap();
     let restored = resume(&data, &actor);
     assert_eq!(restored.current_group(), None);
     assert_eq!(restored.pending_group(), None);
-    assert_eq!(restored.default_group(), 7);
+    assert_eq!(restored.default_group(), AnimationGroup::from_index(7));
     assert_eq!(
         serde_json::to_value(restored.snapshot()).unwrap(),
         serde_json::to_value(actor.snapshot()).unwrap()
@@ -319,7 +358,8 @@ fn frame_progress_survives_loops_snapshot_and_collision_rollback() {
         {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
             {"opcode":0,"frame_reference":900},{"opcode":2,"value":0}]}
     ]));
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     assert_eq!(actor.advance(0).unwrap(), Some(900));
     assert_eq!(actor.frame_wait_state().unwrap(), (0, -1, 0));
     assert_eq!(actor.advance(1).unwrap(), Some(900));
@@ -366,7 +406,8 @@ fn combat_command_cursor_tracks_commands_through_delay_loop_and_restore() {
         {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
             {"opcode":5},{"opcode":0,"frame_reference":700},{"opcode":1}]}
     ]));
-    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
     assert_eq!(actor.current_command_cursor().unwrap(), None);
     for (ticks, cursor, progress) in [
         (0, 0, 0),
@@ -390,7 +431,12 @@ fn combat_command_cursor_tracks_commands_through_delay_loop_and_restore() {
         assert_eq!(restored.current_command_cursor().unwrap(), Some(cursor));
         assert_eq!(actor.current_command_cursor().unwrap(), Some(cursor));
     }
-    assert_eq!(actor.force_request(7, 0, 0).unwrap(), Some(700));
+    assert_eq!(
+        actor
+            .force_request(AnimationGroup::from_index(7), 0, 0)
+            .unwrap(),
+        Some(700)
+    );
     assert_eq!(actor.current_command_cursor().unwrap(), Some(1));
     assert_eq!(actor.frame_wait_state().unwrap(), (7, -1, 0));
 }

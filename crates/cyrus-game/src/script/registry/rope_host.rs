@@ -9,20 +9,8 @@ use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
-/// Group requests the rope controls make.
-const GROUP_IDLE: u16 = 6;
-const GROUP_CLIMB_UP: u16 = 82;
-const GROUP_CLIMB_DOWN: u16 = 83;
-const GROUP_GRAB: u16 = 84;
-const GROUP_JUMP: u16 = 85;
-/// The hanging pose the idle request settles into, and the two poses the chain update promotes it to.
-const GROUP_HANG: u16 = 79;
-const GROUP_HANG_DIRECTED: u16 = 80;
-const GROUP_HANG_PITCHED: u16 = 81;
-/// The animation group whose first frame supplies the hand point of the grab.
-const GROUP_HAND: u64 = 79;
 /// Links searched below the requested one start this many before it.
 const HAND_SEARCH_BACK: i32 = 8;
 /// The ordinary jump entry's queued motion after a rope release.
@@ -302,7 +290,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        self.request_ordinary_group(id, GROUP_GRAB, false, ticks, sounds)?;
+        self.request_ordinary_group(id, AnimationGroup::ROPE_GRAB, false, ticks, sounds)?;
         let pose = self.spatial(id)?.local;
         let heading = i32::from(pose.angles[1]);
         let step = {
@@ -391,7 +379,7 @@ impl ScriptWorld {
         );
         let weapon = self.holding_weapon(index);
         if weapon || (!up && !down) {
-            self.request_ordinary_group(id, GROUP_IDLE, false, ticks, sounds)?;
+            self.request_ordinary_group(id, AnimationGroup::IDLE_ROPE, false, ticks, sounds)?;
         }
         if jump {
             if !self.player_rope.latch {
@@ -478,7 +466,7 @@ impl ScriptWorld {
 
     /// The chain update's pose choice for a hanging selected player (preservation "Rope control
     /// while attached"): with no group pending, or the plain hanging group, and neither Up nor Down
-    /// held, a rope with a nonzero direction byte requests group 80, otherwise group 81 while the
+    /// held, a rope with a nonzero direction byte requests `anim_rope_swing_forward`, otherwise `anim_rope_swing_back` while the
     /// player is pitched.
     fn promote_hanging_group(
         &mut self,
@@ -502,7 +490,7 @@ impl ScriptWorld {
     }
 
     /// The link nearest below the player's hand, searched from eight links before `start`: the
-    /// hand point is the grip vertex of the first frame of group 79 plus the player's height and
+    /// hand point is the grip vertex of the first frame of `anim_rope_panic` plus the player's height and
     /// two link lengths, and the winner is the link at or above it that is closest. Without that
     /// frame `start` stands. Near the ground the hand height is clamped a margin (the grip's height
     /// plus the actor's feet extent) above the floor probe.
@@ -514,7 +502,7 @@ impl ScriptWorld {
         data: &Animations,
         probe: Option<RopeProbe<'_>>,
     ) -> Result<i32> {
-        let Some(grip) = self.group_hand_vertex(id, data, GROUP_HAND)? else {
+        let Some(grip) = self.group_hand_vertex(id, data, AnimationGroup::ROPE_PANIC)? else {
             return Ok(start);
         };
         let rope = &self.ropes[rope_index];
@@ -649,7 +637,11 @@ impl ScriptWorld {
         {
             return Ok(());
         }
-        let group = if up { GROUP_CLIMB_UP } else { GROUP_CLIMB_DOWN };
+        let group = if up {
+            AnimationGroup::ROPE_UP
+        } else {
+            AnimationGroup::ROPE_DOWN
+        };
         if up {
             let playback = &self.actors[index]
                 .animation
@@ -780,7 +772,7 @@ impl ScriptWorld {
         self.player_rope.latch = true;
         self.player_rope.turn_rate = 0;
         self.player_rope.previous_node = None;
-        self.request_ordinary_group(id, GROUP_JUMP, true, ticks, sounds)
+        self.request_ordinary_group(id, AnimationGroup::ROPE_JUMP, true, ticks, sounds)
     }
 
     /// Puts the player on its link, measures the node's speed and sets the actor's pitch from the
@@ -825,9 +817,9 @@ impl ScriptWorld {
             (-(accumulated >> 8)) & 0x7ff
         };
         let mut position = engine.map(|value| (value * 256.0).round() as i32);
-        // The hand sits on the node: the player moves by the grip vertex of the group 79 pose,
+        // The hand sits on the node: the player moves by the grip vertex of the `anim_rope_panic` pose,
         // negated and rotated by its own orientation (heading, rope pitch, no roll).
-        if let Some(grip) = self.group_hand_vertex(id, data, GROUP_HAND)? {
+        if let Some(grip) = self.group_hand_vertex(id, data, AnimationGroup::ROPE_PANIC)? {
             let offset =
                 cyrus_world::transform::Matrix::orientation([pitch as u16, heading as u16, 0])
                     .transform([0, grip[1].wrapping_neg(), grip[2].wrapping_neg()])?;
@@ -850,30 +842,34 @@ impl ScriptWorld {
 
 /// The group the selected player's ordinary update requests while attached with the view key up:
 /// 83 for Down, otherwise 82 for Up (preservation "Rope control while attached").
-fn ordinary_climb_group(up: bool, down: bool, look: bool) -> Option<u16> {
+fn ordinary_climb_group(up: bool, down: bool, look: bool) -> Option<AnimationGroup> {
     match (look, down, up) {
         (true, ..) => None,
-        (false, true, _) => Some(GROUP_CLIMB_DOWN),
-        (false, false, true) => Some(GROUP_CLIMB_UP),
+        (false, true, _) => Some(AnimationGroup::ROPE_DOWN),
+        (false, false, true) => Some(AnimationGroup::ROPE_UP),
         _ => None,
     }
 }
 
-/// Whether the climb-up helper requests group 82: always when another group is current, and again
+/// Whether the climb-up helper requests `anim_rope_up`: always when another group is current, and again
 /// for the current group only while its exit marker is clear (preservation "Rope control while
-/// attached"). Climb down requests group 83 every update.
-fn repeats_climb_up_request(current: Option<u16>, exit_reached: bool) -> bool {
-    current != Some(GROUP_CLIMB_UP) || !exit_reached
+/// attached"). Climb down requests `anim_rope_down` every update.
+fn repeats_climb_up_request(current: Option<AnimationGroup>, exit_reached: bool) -> bool {
+    current != Some(AnimationGroup::ROPE_UP) || !exit_reached
 }
 
 /// The group a hanging player is promoted to, if any; see `promote_hanging_group`.
-fn hanging_group(pending: Option<u16>, direction: u8, pitch: u16) -> Option<u16> {
-    if pending.is_some_and(|group| group != GROUP_HANG) {
+fn hanging_group(
+    pending: Option<AnimationGroup>,
+    direction: u8,
+    pitch: u16,
+) -> Option<AnimationGroup> {
+    if pending.is_some_and(|group| group != AnimationGroup::ROPE_PANIC) {
         None
     } else if direction != 0 {
-        Some(GROUP_HANG_DIRECTED)
+        Some(AnimationGroup::ROPE_SWING_FORWARD)
     } else if pitch != 0 {
-        Some(GROUP_HANG_PITCHED)
+        Some(AnimationGroup::ROPE_SWING_BACK)
     } else {
         None
     }
@@ -885,28 +881,55 @@ mod tests {
 
     #[test]
     fn a_hanging_player_is_promoted_by_the_rope_direction_then_its_pitch() {
-        assert_eq!(hanging_group(None, 1, 0), Some(80));
-        assert_eq!(hanging_group(Some(79), 1, 0), Some(80));
-        assert_eq!(hanging_group(None, 0, 5), Some(81));
+        assert_eq!(
+            hanging_group(None, 1, 0),
+            Some(AnimationGroup::ROPE_SWING_FORWARD)
+        );
+        assert_eq!(
+            hanging_group(Some(AnimationGroup::ROPE_PANIC), 1, 0),
+            Some(AnimationGroup::ROPE_SWING_FORWARD)
+        );
+        assert_eq!(
+            hanging_group(None, 0, 5),
+            Some(AnimationGroup::ROPE_SWING_BACK)
+        );
         assert_eq!(hanging_group(None, 0, 0), None);
-        assert_eq!(hanging_group(Some(82), 1, 5), None);
+        assert_eq!(hanging_group(Some(AnimationGroup::ROPE_UP), 1, 5), None);
     }
 
     #[test]
     fn the_ordinary_update_requests_83_for_down_else_82_for_up_unless_look_is_held() {
-        assert_eq!(ordinary_climb_group(false, true, false), Some(83));
-        assert_eq!(ordinary_climb_group(true, true, false), Some(83));
-        assert_eq!(ordinary_climb_group(true, false, false), Some(82));
+        assert_eq!(
+            ordinary_climb_group(false, true, false),
+            Some(AnimationGroup::ROPE_DOWN)
+        );
+        assert_eq!(
+            ordinary_climb_group(true, true, false),
+            Some(AnimationGroup::ROPE_DOWN)
+        );
+        assert_eq!(
+            ordinary_climb_group(true, false, false),
+            Some(AnimationGroup::ROPE_UP)
+        );
         assert_eq!(ordinary_climb_group(false, false, false), None);
         assert_eq!(ordinary_climb_group(true, true, true), None);
     }
 
     #[test]
     fn climb_up_repeats_its_request_only_before_the_exit_marker() {
-        assert!(repeats_climb_up_request(Some(80), true));
+        assert!(repeats_climb_up_request(
+            Some(AnimationGroup::ROPE_SWING_FORWARD),
+            true
+        ));
         assert!(repeats_climb_up_request(None, false));
-        assert!(repeats_climb_up_request(Some(82), false));
-        assert!(!repeats_climb_up_request(Some(82), true));
+        assert!(repeats_climb_up_request(
+            Some(AnimationGroup::ROPE_UP),
+            false
+        ));
+        assert!(!repeats_climb_up_request(
+            Some(AnimationGroup::ROPE_UP),
+            true
+        ));
     }
 
     #[test]

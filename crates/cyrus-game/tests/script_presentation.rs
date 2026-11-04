@@ -4,7 +4,7 @@ use cyrus_assets::{animation::Animations, script::Scripts};
 use cyrus_game::script::{
     ScriptActors, ScriptBinding, ScriptPlugin, ScriptScene, ScriptStage, Thread,
 };
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{
     animation::{
         AnimationPlayback, AnimationPlugin, AnimationPose, AnimationRequest, AnimationTick,
@@ -312,7 +312,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
                 .current
                 .as_mut()
                 .unwrap()
-                .bind_animation(id, data, 1)
+                .bind_animation(id, data, AnimationGroup::IDLE1)
                 .unwrap();
         });
     app.world_mut()
@@ -353,7 +353,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
             .get(&animation_handle)
             .unwrap(),
         "ACTOR",
-        9,
+        AnimationGroup::MISC0,
         1,
     )
     .unwrap();

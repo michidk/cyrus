@@ -1,7 +1,7 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -255,7 +255,7 @@ impl ScriptWorld {
                 if self.actors[index]
                     .animation
                     .as_ref()
-                    .is_some_and(|a| a.playback.has_group(31))
+                    .is_some_and(|a| a.playback.has_group(AnimationGroup::FIGHT_RUN))
                 {
                     self.move_ordinary(id, OrdinaryMovement::WalkForward, 1, 0, inputs, sounds)?;
                 }
@@ -263,7 +263,7 @@ impl ScriptWorld {
                 if self.actors[index]
                     .animation
                     .as_ref()
-                    .is_some_and(|a| a.playback.has_group(92))
+                    .is_some_and(|a| a.playback.has_group(AnimationGroup::FIGHT_FORW))
                 {
                     let query = inputs.locomotion_geometry.map(|geometry| {
                         super::obstacle::OrdinaryObstacleQuery {
@@ -601,18 +601,18 @@ impl ScriptWorld {
             let (group, attribute) =
                 if inputs.holding_weapon || combat.is_some_and(|combat| combat.flags & 4 != 0) {
                     if combat.is_some_and(|combat| combat.action == 4) {
-                        (106, Attribute::FightLungeSpeed)
+                        (AnimationGroup::ATTACK_LUNGE, Attribute::FightLungeSpeed)
                     } else {
-                        (92, Attribute::FightForwardSpeed)
+                        (AnimationGroup::FIGHT_FORW, Attribute::FightForwardSpeed)
                     }
                 } else {
                     (
                         if deep {
-                            142
+                            AnimationGroup::SWIM_FORWARD
                         } else if control.torch_burning != 0 {
-                            30
+                            AnimationGroup::RUN_TORCH
                         } else {
-                            18
+                            AnimationGroup::RUN
                         },
                         Attribute::ForwardSpeed,
                     )
@@ -684,17 +684,40 @@ enum Continuation {
 }
 
 impl Continuation {
-    fn of(group: u16) -> Option<Self> {
+    fn of(group: AnimationGroup) -> Option<Self> {
         use super::super::locomotion::Strafe;
         match group {
-            18 | 30 | 67..=70 | 75 | 77 | 92 | 106 | 130 | 131 | 142 => Some(Self::Forward),
-            19 | 76 | 78 | 93 => Some(Self::Backward),
-            94 => Some(Self::Circle(Strafe::Left)),
-            95 => Some(Self::Circle(Strafe::Right)),
-            20 | 21 | 31 => Some(Self::Walk),
-            22 | 23 => Some(Self::WalkBackward),
-            24 | 25 | 28 => Some(Self::Sidestep(Strafe::Left)),
-            26 | 27 | 29 => Some(Self::Sidestep(Strafe::Right)),
+            AnimationGroup::RUN
+            | AnimationGroup::RUN_TORCH
+            | AnimationGroup::LAND_RUN
+            | AnimationGroup::LAND_RIGHT_TORCH
+            | AnimationGroup::LAND_LEFT
+            | AnimationGroup::LAND_LEFT_TORCH
+            | AnimationGroup::SLIDE
+            | AnimationGroup::SLIDE_FORWARD_TORCH
+            | AnimationGroup::FIGHT_FORW
+            | AnimationGroup::ATTACK_LUNGE
+            | AnimationGroup::FIGHT_LAND_RIGHT
+            | AnimationGroup::FIGHT_LAND_LEFT
+            | AnimationGroup::SWIM_FORWARD => Some(Self::Forward),
+            AnimationGroup::RUN_BACKWARD
+            | AnimationGroup::SLIDE_BACKWARD
+            | AnimationGroup::SLIDE_BACKWARD_TORCH
+            | AnimationGroup::FIGHT_BACK => Some(Self::Backward),
+            AnimationGroup::FIGHT_CIRCLE_LEFT => Some(Self::Circle(Strafe::Left)),
+            AnimationGroup::FIGHT_CIRCLE_RIGHT => Some(Self::Circle(Strafe::Right)),
+            AnimationGroup::WALK
+            | AnimationGroup::WALK_FORWARD_TORCH
+            | AnimationGroup::FIGHT_RUN => Some(Self::Walk),
+            AnimationGroup::WALK_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH => {
+                Some(Self::WalkBackward)
+            }
+            AnimationGroup::STEP_LEFT
+            | AnimationGroup::STEP_LEFT_TORCH
+            | AnimationGroup::SHIMMY_LEFT_LEDGE => Some(Self::Sidestep(Strafe::Left)),
+            AnimationGroup::STEP_RIGHT
+            | AnimationGroup::STEP_RIGHT_TORCH
+            | AnimationGroup::SHIMMY_RIGHT_LEDGE => Some(Self::Sidestep(Strafe::Right)),
             _ => None,
         }
     }
@@ -850,14 +873,24 @@ impl ScriptWorld {
                 Continuation::Forward if stance => {
                     (i32::from(attributes[Attribute::FightForwardSpeed]) << 8, 4)
                 }
-                Continuation::Forward if matches!(group, Some(75 | 77)) => {
+                Continuation::Forward
+                    if matches!(
+                        group,
+                        Some(AnimationGroup::SLIDE | AnimationGroup::SLIDE_FORWARD_TORCH)
+                    ) =>
+                {
                     (i32::from(attributes[Attribute::ForwardSpeed]) << 7, 4)
                 }
                 Continuation::Forward => (i32::from(attributes[Attribute::ForwardSpeed]) << 8, 4),
                 Continuation::Backward if stance => {
                     (i32::from(attributes[Attribute::FightBackwardSpeed]) << 8, 6)
                 }
-                Continuation::Backward if matches!(group, Some(76 | 78)) => {
+                Continuation::Backward
+                    if matches!(
+                        group,
+                        Some(AnimationGroup::SLIDE_BACKWARD | AnimationGroup::SLIDE_BACKWARD_TORCH)
+                    ) =>
+                {
                     (i32::from(attributes[Attribute::ForwardSpeed]) << 7, 6)
                 }
                 Continuation::Backward => (i32::from(attributes[Attribute::BackwardSpeed]) << 8, 6),

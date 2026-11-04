@@ -2,8 +2,8 @@
 use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
 use cyrus_assets::animation::Animations;
-use cyrus_script::Attribute;
 use cyrus_script::program::{CallKind, Program};
+use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 
@@ -57,7 +57,7 @@ impl AnimationScript {
     pub fn program_counter(&self) -> u32 {
         self.runtime.program_counter(Thread::Main).unwrap()
     }
-    pub fn waiting_for_group(&self) -> Option<u16> {
+    pub fn waiting_for_group(&self) -> Option<AnimationGroup> {
         self.tasks.animation_group()
     }
     pub fn advance(

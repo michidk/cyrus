@@ -24,6 +24,7 @@ use cyrus_game::{
         WorldSnapshotSources,
     },
 };
+use cyrus_script::AnimationGroup;
 use cyrus_script::program::*;
 use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use serde_json::json;
@@ -582,7 +583,7 @@ fn exercise_runtime_session(
             animation_handle.clone(),
             &explicit_data,
             "ACTOR",
-            1,
+            AnimationGroup::IDLE1,
         )?)
         .id();
     let error = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)

@@ -1,7 +1,7 @@
 //! `UseItem`: the selected player uses an owned item, which starts the item's use script as a shell.
 use super::GameHost;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
 const WEAPON_ITEM: u32 = 1;
@@ -56,8 +56,11 @@ impl GameHost<'_, '_, '_, '_> {
         );
         let (holding, _, _) = self.actor_weapon_predicates(selected, "IsHoldingWeapon")?;
         let group = player.bound_animation_group().flatten();
-        let torch_change =
-            matches!(control.living_state, 0x21 | 0x22) || matches!(group, Some(0x95 | 0x96));
+        let torch_change = matches!(control.living_state, 0x21 | 0x22)
+            || matches!(
+                group,
+                Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
+            );
         let deep_water = matches!(player.surface, Some(2 | 4));
         if deep_water || holding || torch_change {
             return Ok(());

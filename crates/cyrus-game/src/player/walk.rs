@@ -1,5 +1,6 @@
 //! Forward-walking startup from redguard-preservation's
 //! `docs/engine/player.md`. Animation eligibility and collision are separate.
+use cyrus_script::AnimationGroup;
 
 /// Startup state for ordinary forward walking with `attr_step_type = 1`.
 #[derive(Clone, Copy)]
@@ -39,11 +40,12 @@ impl WalkingStartup {
         nominal_ticks: u32,
         sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<WalkingStep>> {
-        if !animation.has_group(20) {
+        if !animation.has_group(AnimationGroup::WALK) {
             return Ok(None);
         }
-        let frame = animation.request_with_sounds(20, 0, nominal_ticks, sounds)?;
-        if animation.current_group() != Some(20) {
+        let frame =
+            animation.request_with_sounds(AnimationGroup::WALK, 0, nominal_ticks, sounds)?;
+        if animation.current_group() != Some(AnimationGroup::WALK) {
             return Ok(None);
         }
         let distance = self.advance(

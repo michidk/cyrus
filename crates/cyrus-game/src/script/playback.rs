@@ -2,6 +2,7 @@
 use super::AnimationScript;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 use cyrus_world::{
     animation::{ActorAnimation, AnimationPose, AnimationRequest, AnimationTick},
     sound::SoundCue,
@@ -20,7 +21,7 @@ impl ScriptedPlayback {
         source: Handle<Animations>,
         data: &Animations,
         actor: &str,
-        default: u16,
+        default: AnimationGroup,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             source,

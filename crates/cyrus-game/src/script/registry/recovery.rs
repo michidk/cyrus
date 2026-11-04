@@ -1,7 +1,7 @@
 //! Ordinary collision rollback restores separately owned position and receiver state.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{
     animation::ActorAnimationCheckpoint,
     sound::{AnimationSoundState, ScriptSound},
@@ -96,7 +96,14 @@ impl ScriptWorld {
             landing_recovery: actor.animation.as_ref().is_some_and(|animation| {
                 matches!(
                     animation.playback.current_group(),
-                    Some(67..=70 | 130 | 131)
+                    Some(
+                        AnimationGroup::LAND_RUN
+                            | AnimationGroup::LAND_RIGHT_TORCH
+                            | AnimationGroup::LAND_LEFT
+                            | AnimationGroup::LAND_LEFT_TORCH
+                            | AnimationGroup::FIGHT_LAND_RIGHT
+                            | AnimationGroup::FIGHT_LAND_LEFT
+                    )
                 )
             }),
             movement_flags,

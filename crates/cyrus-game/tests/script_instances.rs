@@ -1,6 +1,6 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 #[test]
 fn installed_island_flags_advance_through_ordinary_updates() {
@@ -509,7 +509,9 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     };
     let initial_pitch = world.spatial(lever).unwrap().local.angles[0];
     // Explicit caller inputs isolate this sequence; they do not establish ordinary eligibility.
-    world.bind_animation(player, &animations, 0).unwrap();
+    world
+        .bind_animation(player, &animations, AnimationGroup::PANIC)
+        .unwrap();
     let state = ActivationActor {
         state: 0,
         on_rope: false,

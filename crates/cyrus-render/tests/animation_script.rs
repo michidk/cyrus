@@ -1,5 +1,6 @@
 //! Authored task scheduling through public APIs, with synthetic program descriptors.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 
 fn asset() -> Animations {
     serde_json::from_value(serde_json::json!({
@@ -64,7 +65,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
             .get(&source)
             .unwrap(),
         "ACTOR",
-        1,
+        AnimationGroup::IDLE1,
     )
     .unwrap();
     app.world_mut().resource_mut::<AnimationRequest>().0 = source;

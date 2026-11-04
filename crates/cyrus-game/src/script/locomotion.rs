@@ -1,5 +1,6 @@
 //! Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 //! The functions are pure: the caller owns the animation request, probe query and writes.
+use cyrus_script::AnimationGroup;
 
 /// Receiver state read by `MoveBackward`'s admission and animation choice.
 #[derive(Clone, Copy, Debug, Default)]
@@ -50,7 +51,7 @@ pub enum BackwardAdmission {
     /// The combat-stance probe was blocked: the call completes after setting motion direction 7.
     Blocked,
     /// Request `group`, then move by `step` whole units.
-    Proceed { group: u16, step: u8 },
+    Proceed { group: AnimationGroup, step: u8 },
 }
 
 /// Motion-direction byte value `MoveBackward` stores once admitted.
@@ -71,16 +72,16 @@ pub fn backward_admission(
             return BackwardAdmission::Blocked;
         }
         return BackwardAdmission::Proceed {
-            group: 93,
+            group: AnimationGroup::FIGHT_BACK,
             step: state.combat_step_attribute,
         };
     }
     let group = if matches!(state.surface, 2 | 4) {
-        143
+        AnimationGroup::SWIM_BACKWARD
     } else if state.torch_burning {
-        23
+        AnimationGroup::WALK_BACKWARD_TORCH
     } else {
-        19
+        AnimationGroup::RUN_BACKWARD
     };
     BackwardAdmission::Proceed {
         group,
@@ -121,31 +122,34 @@ impl Strafe {
     }
 
     /// Animation group of the combat-stance strafe.
-    pub fn combat_group(self) -> u16 {
+    pub fn combat_group(self) -> AnimationGroup {
         match self {
-            Self::Left => 94,
-            Self::Right => 95,
+            Self::Left => AnimationGroup::FIGHT_CIRCLE_LEFT,
+            Self::Right => AnimationGroup::FIGHT_CIRCLE_RIGHT,
         }
     }
 
     /// Both strafe groups; a receiver already in either completes without moving.
-    pub const COMBAT_GROUPS: [u16; 2] = [94, 95];
+    pub const COMBAT_GROUPS: [AnimationGroup; 2] = [
+        AnimationGroup::FIGHT_CIRCLE_LEFT,
+        AnimationGroup::FIGHT_CIRCLE_RIGHT,
+    ];
 
     /// Animation group of the sidestep along a ledge.
-    pub fn ledge_group(self) -> u16 {
+    pub fn ledge_group(self) -> AnimationGroup {
         match self {
-            Self::Left => 28,
-            Self::Right => 29,
+            Self::Left => AnimationGroup::SHIMMY_LEFT_LEDGE,
+            Self::Right => AnimationGroup::SHIMMY_RIGHT_LEDGE,
         }
     }
 
     /// Animation group of the ordinary (outside combat stance, dry) strafe.
-    pub fn ordinary_group(self, torch_burning: bool) -> u16 {
+    pub fn ordinary_group(self, torch_burning: bool) -> AnimationGroup {
         match (self, torch_burning) {
-            (Self::Left, false) => 24,
-            (Self::Left, true) => 25,
-            (Self::Right, false) => 26,
-            (Self::Right, true) => 27,
+            (Self::Left, false) => AnimationGroup::STEP_LEFT,
+            (Self::Left, true) => AnimationGroup::STEP_LEFT_TORCH,
+            (Self::Right, false) => AnimationGroup::STEP_RIGHT,
+            (Self::Right, true) => AnimationGroup::STEP_RIGHT_TORCH,
         }
     }
 
@@ -172,17 +176,21 @@ pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
     /// Hanging at an edge (lifecycle byte 15): after the ledge scan finds a record one step to the
-    /// side, request `group` (28 left, 29 right) and move along the ledge by the `attr_side_speed`
+    /// side, request `group` (`anim_shimmy_left_ledge` or `anim_shimmy_right_ledge`) and move along the ledge by the `attr_side_speed`
     /// step.
-    Ledge { group: u16 },
+    Ledge { group: AnimationGroup },
     /// Outside combat stance in deep water: after the lateral step check and the edge probe pass,
-    /// request `group` (143) and move by the `attr_side_speed` step.
-    DeepWater { group: u16 },
+    /// request `group` (`anim_swim_backward`) and move by the `attr_side_speed` step.
+    DeepWater { group: AnimationGroup },
     /// Outside combat stance, on dry ground: after the lateral step check passes, request `group`
     /// and move by the `attr_side_speed` step.
-    OutsideCombat { group: u16 },
+    OutsideCombat { group: AnimationGroup },
     /// Combat stance: request `group`, turn by `turn` and move by `step` whole units.
-    Combat { group: u16, step: u8, turn: u8 },
+    Combat {
+        group: AnimationGroup,
+        step: u8,
+        turn: u8,
+    },
 }
 
 /// Admission for `MoveLeft` and `MoveRight`: the shared idle admission, then the combat stance.
@@ -201,7 +209,9 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             group: strafe.ledge_group(),
         }
     } else if matches!(state.surface, 2 | 4) {
-        StrafeAdmission::DeepWater { group: 143 }
+        StrafeAdmission::DeepWater {
+            group: AnimationGroup::SWIM_BACKWARD,
+        }
     } else {
         StrafeAdmission::OutsideCombat {
             group: strafe.ordinary_group(state.torch_burning),
@@ -274,7 +284,7 @@ pub enum ForwardPlan {
     /// Deep water outside combat stance: the edge probe must pass first.
     NeedsEdgeProbe,
     /// Request `group`, then move by `step` whole units.
-    Proceed { group: u16, step: u8 },
+    Proceed { group: AnimationGroup, step: u8 },
 }
 
 pub fn forward_plan(state: &BackwardState) -> ForwardPlan {
@@ -283,14 +293,18 @@ pub fn forward_plan(state: &BackwardState) -> ForwardPlan {
             return ForwardPlan::Done;
         }
         return ForwardPlan::Proceed {
-            group: 92,
+            group: AnimationGroup::FIGHT_FORW,
             step: state.forward_combat_step_attribute,
         };
     }
     if matches!(state.surface, 2 | 4) {
         return ForwardPlan::NeedsEdgeProbe;
     }
-    let group = if state.torch_burning { 30 } else { 18 };
+    let group = if state.torch_burning {
+        AnimationGroup::RUN_TORCH
+    } else {
+        AnimationGroup::RUN
+    };
     ForwardPlan::Proceed {
         group,
         step: state.forward_step_attribute,
@@ -468,20 +482,20 @@ mod tests {
             BackwardAdmission::Proceed { group, step } => (group, step),
             other => panic!("{other:?}"),
         };
-        assert_eq!(group(ready()), (19, 8));
+        assert_eq!(group(ready()), (AnimationGroup::RUN_BACKWARD, 8));
         assert_eq!(
             group(BackwardState {
                 torch_burning: true,
                 ..ready()
             }),
-            (23, 8)
+            (AnimationGroup::WALK_BACKWARD_TORCH, 8)
         );
         assert_eq!(
             group(BackwardState {
                 surface: 2,
                 ..ready()
             }),
-            (143, 8)
+            (AnimationGroup::SWIM_BACKWARD, 8)
         );
         assert_eq!(
             group(BackwardState {
@@ -489,14 +503,14 @@ mod tests {
                 torch_burning: true,
                 ..ready()
             }),
-            (143, 8)
+            (AnimationGroup::SWIM_BACKWARD, 8)
         );
         assert_eq!(
             group(BackwardState {
                 holding_weapon: true,
                 ..ready()
             }),
-            (93, 18)
+            (AnimationGroup::FIGHT_BACK, 18)
         );
         assert_eq!(
             group(BackwardState {
@@ -504,7 +518,7 @@ mod tests {
                 surface: 2,
                 ..ready()
             }),
-            (93, 18)
+            (AnimationGroup::FIGHT_BACK, 18)
         );
     }
 
@@ -559,7 +573,7 @@ mod tests {
         assert_eq!(
             strafe_admission(combat, Strafe::Left),
             StrafeAdmission::Combat {
-                group: 94,
+                group: AnimationGroup::FIGHT_CIRCLE_LEFT,
                 step: 6,
                 turn: 4
             }
@@ -573,14 +587,16 @@ mod tests {
                 Strafe::Right
             ),
             StrafeAdmission::Combat {
-                group: 95,
+                group: AnimationGroup::FIGHT_CIRCLE_RIGHT,
                 step: 6,
                 turn: 4
             }
         );
         assert_eq!(
             strafe_admission(ready(), Strafe::Left),
-            StrafeAdmission::OutsideCombat { group: 24 }
+            StrafeAdmission::OutsideCombat {
+                group: AnimationGroup::STEP_LEFT
+            }
         );
         assert_eq!(
             strafe_admission(
@@ -590,7 +606,9 @@ mod tests {
                 },
                 Strafe::Right
             ),
-            StrafeAdmission::OutsideCombat { group: 27 }
+            StrafeAdmission::OutsideCombat {
+                group: AnimationGroup::STEP_RIGHT_TORCH
+            }
         );
         assert_eq!(
             strafe_admission(
@@ -600,7 +618,9 @@ mod tests {
                 },
                 Strafe::Right
             ),
-            StrafeAdmission::Ledge { group: 29 }
+            StrafeAdmission::Ledge {
+                group: AnimationGroup::SHIMMY_RIGHT_LEDGE
+            }
         );
         assert_eq!(
             strafe_admission(
@@ -610,12 +630,16 @@ mod tests {
                 },
                 Strafe::Left
             ),
-            StrafeAdmission::Ledge { group: 28 }
+            StrafeAdmission::Ledge {
+                group: AnimationGroup::SHIMMY_LEFT_LEDGE
+            }
         );
         for surface in [2, 4] {
             assert_eq!(
                 strafe_admission(BackwardState { surface, ..ready() }, Strafe::Right),
-                StrafeAdmission::DeepWater { group: 143 }
+                StrafeAdmission::DeepWater {
+                    group: AnimationGroup::SWIM_BACKWARD
+                }
             );
         }
         for refused in [
@@ -1715,8 +1739,14 @@ mod tests {
             (Strafe::Left.called_flag(), Strafe::Right.called_flag()),
             (1, 2)
         );
-        assert_eq!(Strafe::Right.ordinary_group(false), 26);
-        assert_eq!(Strafe::Right.ordinary_group(true), 27);
+        assert_eq!(
+            Strafe::Right.ordinary_group(false),
+            AnimationGroup::STEP_RIGHT
+        );
+        assert_eq!(
+            Strafe::Right.ordinary_group(true),
+            AnimationGroup::STEP_RIGHT_TORCH
+        );
     }
 
     #[test]
@@ -1775,14 +1805,20 @@ mod tests {
         }
         assert_eq!(
             forward_plan(&base),
-            ForwardPlan::Proceed { group: 18, step: 8 }
+            ForwardPlan::Proceed {
+                group: AnimationGroup::RUN,
+                step: 8
+            }
         );
         assert_eq!(
             forward_plan(&BackwardState {
                 torch_burning: true,
                 ..base
             }),
-            ForwardPlan::Proceed { group: 30, step: 8 }
+            ForwardPlan::Proceed {
+                group: AnimationGroup::RUN_TORCH,
+                step: 8
+            }
         );
         assert_eq!(
             forward_plan(&BackwardState { surface: 2, ..base }),
@@ -1795,7 +1831,7 @@ mod tests {
         assert_eq!(
             forward_plan(&combat),
             ForwardPlan::Proceed {
-                group: 92,
+                group: AnimationGroup::FIGHT_FORW,
                 step: 17
             }
         );
@@ -1813,7 +1849,7 @@ mod tests {
                 ..combat
             }),
             ForwardPlan::Proceed {
-                group: 92,
+                group: AnimationGroup::FIGHT_FORW,
                 step: 17
             }
         );

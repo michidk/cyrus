@@ -1,5 +1,6 @@
 //! Authored task scheduling through public APIs, with synthetic program descriptors.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 
 fn asset() -> Animations {
     serde_json::from_value(serde_json::json!({
@@ -33,12 +34,14 @@ fn asset() -> Animations {
 #[test]
 fn request_count_wait_and_end_restart_are_separate_script_stages() {
     let data = asset();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE1)
+            .unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "actor").unwrap();
-    actor.request(1, 0, 0).unwrap();
+    actor.request(AnimationGroup::IDLE1, 0, 0).unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), Some(1));
     assert_eq!(script.program_counter(), 14);
-    assert_eq!(script.waiting_for_group(), Some(7));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE_LEDGE));
 
     assert_eq!(actor.advance(1).unwrap(), Some(1));
     assert_eq!(
@@ -46,19 +49,19 @@ fn request_count_wait_and_end_restart_are_separate_script_stages() {
         Some(1),
         "the request invocation must not set the finite count"
     );
-    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE_LEDGE));
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
     assert_eq!(actor.advance(1).unwrap(), Some(0));
-    assert_eq!(actor.current_group(), Some(1));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE1));
 
     assert_eq!(script.advance(&mut actor, 1).unwrap(), Some(0));
-    assert_eq!(script.waiting_for_group(), Some(10));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::MISC1));
     assert_eq!(script.program_counter(), 28);
     script.advance(&mut actor, 0).unwrap();
     assert_eq!(actor.advance(1).unwrap(), Some(0));
     assert_eq!(
         actor.current_group(),
-        Some(1),
+        Some(AnimationGroup::IDLE1),
         "257 wraps to a byte loop count of one"
     );
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
@@ -68,27 +71,29 @@ fn request_count_wait_and_end_restart_are_separate_script_stages() {
         0,
         "End saves its target and yields without restarting in this stage"
     );
-    assert_eq!(actor.current_group(), Some(1));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE1));
     assert_eq!(
         script.advance(&mut actor, 0).unwrap(),
         Some(1),
         "a later eligible stage resumes the authored sequence"
     );
-    assert_eq!(script.waiting_for_group(), Some(7));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE_LEDGE));
 }
 
 #[test]
 fn a_task_already_current_starts_its_count_without_restarting_the_frame() {
     let data = asset();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    actor.request(7, 0, 0).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE1)
+            .unwrap();
+    actor.request(AnimationGroup::IDLE_LEDGE, 0, 0).unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
     assert_eq!(actor.advance(1).unwrap(), Some(1));
     assert_eq!(actor.advance(1).unwrap(), Some(0));
-    assert_eq!(actor.current_group(), Some(1));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE1));
     script.advance(&mut actor, 0).unwrap();
-    assert_eq!(script.waiting_for_group(), Some(10));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::MISC1));
 }
 
 #[test]
@@ -100,15 +105,17 @@ fn a_default_group_task_does_not_finish_when_the_same_group_restarts() {
         .push(serde_json::json!({"opcode":1}));
     data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["call"]["arguments"] =
         serde_json::json!([{"type":"integer","value":1},{"type":"integer","value":1}]);
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    actor.request(1, 0, 0).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE1)
+            .unwrap();
+    actor.request(AnimationGroup::IDLE1, 0, 0).unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     script.advance(&mut actor, 0).unwrap();
     actor.advance(1).unwrap();
     actor.advance(1).unwrap();
-    assert_eq!(actor.current_group(), Some(1));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE1));
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
-    assert_eq!(script.waiting_for_group(), Some(1));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE1));
     assert_eq!(
         script.program_counter(),
         14,
@@ -121,7 +128,9 @@ fn unsupported_operations_stop_with_a_sticky_world_actor_and_instruction_error()
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["call"]["function"] =
         "Sound".into();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE1)
+            .unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     let error = script.advance(&mut actor, 0).unwrap_err().to_string();
     assert_eq!(
@@ -218,23 +227,25 @@ fn an_animation_task_keeps_waiting_while_its_current_group_is_delayed() {
     data.metadata["actors"][0]["animation_groups"][1]["commands"] = serde_json::json!([
         {"opcode":12,"value":2}, {"opcode":0,"frame_reference":1}, {"opcode":1}
     ]);
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE1)
+            .unwrap();
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     actor.advance(0).unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
     for ticks in [0, 1] {
         assert_eq!(actor.advance(ticks).unwrap(), None);
         assert_eq!(script.advance(&mut actor, ticks).unwrap(), None);
-        assert_eq!(actor.current_group(), Some(7));
-        assert_eq!(script.waiting_for_group(), Some(7));
+        assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE_LEDGE));
+        assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE_LEDGE));
         assert_eq!(script.program_counter(), 14);
     }
     assert_eq!(actor.advance(1).unwrap(), Some(1));
     assert_eq!(script.advance(&mut actor, 1).unwrap(), None);
-    assert_eq!(script.waiting_for_group(), Some(7));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE_LEDGE));
     actor.advance(1).unwrap();
     assert_eq!(script.advance(&mut actor, 1).unwrap(), Some(0));
-    assert_eq!(script.waiting_for_group(), Some(10));
+    assert_eq!(script.waiting_for_group(), Some(AnimationGroup::MISC1));
     assert_eq!(script.program_counter(), 28);
 }
 
@@ -264,7 +275,7 @@ fn removed_playback_keeps_its_failure_for_audit_consumers() {
             .get(&source)
             .unwrap(),
         "ACTOR",
-        1,
+        AnimationGroup::IDLE1,
     )
     .unwrap();
     let entity = app.world_mut().spawn(playback).id();

@@ -5,7 +5,7 @@
 //! selected jump entry.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
 /// of the scan and the frame scale that sets the turn rate of a ledge turn.
@@ -88,9 +88,15 @@ impl ScriptWorld {
             return self.ledge_catch(&mut ctx, sounds);
         }
         match self.living(index) {
-            13 => self.ledge_climb(&ctx, 90, &LOW_FORWARD, &LOW_HEIGHT, 6),
+            13 => self.ledge_climb(
+                &ctx,
+                AnimationGroup::HAND_PLANT_LEDGE,
+                &LOW_FORWARD,
+                &LOW_HEIGHT,
+                6,
+            ),
             16 => {
-                self.force_ledge_group(&ctx, 86, sounds)?;
+                self.force_ledge_group(&ctx, AnimationGroup::PULL_UP_LEDGE, sounds)?;
                 self.set_living(index, 11);
                 self.actors[index]
                     .animation
@@ -98,11 +104,23 @@ impl ScriptWorld {
                     .context("ledge climb animation unavailable")?
                     .playback
                     .reset_frame_progress();
-                self.ledge_climb(&ctx, 86, &HIGH_FORWARD, &HIGH_HEIGHT, -1)
+                self.ledge_climb(
+                    &ctx,
+                    AnimationGroup::PULL_UP_LEDGE,
+                    &HIGH_FORWARD,
+                    &HIGH_HEIGHT,
+                    -1,
+                )
             }
-            11 => self.ledge_climb(&ctx, 86, &HIGH_FORWARD, &HIGH_HEIGHT, -1),
+            11 => self.ledge_climb(
+                &ctx,
+                AnimationGroup::PULL_UP_LEDGE,
+                &HIGH_FORWARD,
+                &HIGH_HEIGHT,
+                -1,
+            ),
             17 => {
-                self.force_ledge_group(&ctx, 56, sounds)?;
+                self.force_ledge_group(&ctx, AnimationGroup::FALL, sounds)?;
                 let control = self.actors[index]
                     .control
                     .as_mut()
@@ -232,7 +250,7 @@ impl ScriptWorld {
             None,
             Some(point[2].wrapping_add(dz)),
         )?;
-        self.force_ledge_group(ctx, 90, sounds)?;
+        self.force_ledge_group(ctx, AnimationGroup::HAND_PLANT_LEDGE, sounds)?;
         self.set_living(ctx.index, 13);
         Ok(None)
     }
@@ -305,19 +323,21 @@ impl ScriptWorld {
                 .animation
                 .as_mut()
                 .context("ledge climb animation unavailable")?;
-            let frame =
-                animation
-                    .playback
-                    .request_skipping_frames_with_sounds(86, 0, 2, &mut |sound| {
-                        sounds(
-                            id,
-                            super::super::ScriptSound::Animation {
-                                sound,
-                                surface,
-                                position,
-                            },
-                        )
-                    })?;
+            let frame = animation.playback.request_skipping_frames_with_sounds(
+                AnimationGroup::PULL_UP_LEDGE,
+                0,
+                2,
+                &mut |sound| {
+                    sounds(
+                        id,
+                        super::super::ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    )
+                },
+            )?;
             animation.frame = frame.or(animation.frame);
         }
         self.set_living(index, 11);
@@ -357,7 +377,15 @@ impl ScriptWorld {
             None,
             Some(point[2].wrapping_add(dz)),
         )?;
-        self.force_ledge_group(ctx, if record.flag == 0 { 88 } else { 89 }, sounds)?;
+        self.force_ledge_group(
+            ctx,
+            if record.flag == 0 {
+                AnimationGroup::SWING_LEDGE
+            } else {
+                AnimationGroup::GRAB_LEDGE
+            },
+            sounds,
+        )?;
         self.set_living(index, 15);
         self.spatial
             .as_mut()
@@ -447,7 +475,7 @@ impl ScriptWorld {
     fn ledge_climb(
         &mut self,
         ctx: &Transition<'_>,
-        group: u16,
+        group: AnimationGroup,
         forward: &[i32],
         height: &[i32],
         from_frame: i32,
@@ -513,7 +541,10 @@ impl ScriptWorld {
         let Some(animation) = self.actors[index].animation.as_mut() else {
             return Ok(());
         };
-        if matches!(animation.playback.current_group(), Some(86 | 90)) {
+        if matches!(
+            animation.playback.current_group(),
+            Some(AnimationGroup::PULL_UP_LEDGE | AnimationGroup::HAND_PLANT_LEDGE)
+        ) {
             animation.playback.clear_pending_request();
             return Ok(());
         }
@@ -587,7 +618,7 @@ impl ScriptWorld {
     fn force_ledge_group(
         &mut self,
         ctx: &Transition<'_>,
-        group: u16,
+        group: AnimationGroup,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         if self.updates.animation_system {

@@ -1,5 +1,6 @@
 //! Script-request cues share the ordinary actor's sound handler and tick input.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 use serde_json::json;
 
 fn asset() -> Animations {
@@ -105,10 +106,18 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             .resource::<Assets<Animations>>()
             .get(&source)
             .unwrap();
-        let group = (!scripted)
-            .then(|| AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap());
+        let group = (!scripted).then(|| {
+            AnimationPlayback::new(source.clone(), data, "ACTOR", AnimationGroup::IDLE_LEDGE, 1)
+                .unwrap()
+        });
         let script = scripted.then(|| {
-            cyrus_game::script::ScriptedPlayback::new(source.clone(), data, "ACTOR", 0).unwrap()
+            cyrus_game::script::ScriptedPlayback::new(
+                source.clone(),
+                data,
+                "ACTOR",
+                AnimationGroup::PANIC,
+            )
+            .unwrap()
         });
         app.world_mut().resource_mut::<AnimationRequest>().0 = source;
         let actor = app
@@ -164,7 +173,14 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
                 .resource::<Assets<Animations>>()
                 .get(&source)
                 .unwrap();
-            let playback = AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap();
+            let playback = AnimationPlayback::new(
+                source.clone(),
+                data,
+                "ACTOR",
+                AnimationGroup::IDLE_LEDGE,
+                1,
+            )
+            .unwrap();
             app.world_mut().entity_mut(actor).insert(playback);
             for ticks in [0, 1, 1, 1] {
                 app.world_mut().write_message(AnimationTick { ticks });

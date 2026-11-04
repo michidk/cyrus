@@ -14,7 +14,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::actor_models::ActorModelCollision;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Selected geometry and its stored transform, independent of later logical movement.
 /// The captured source pose has eight fractional bits. Stored model position and
@@ -915,10 +915,14 @@ impl ScriptWorld {
                 coverage = (coverage * 2).min(256);
             }
             let mut y = (pose.position[1] >> 8).wrapping_add(i32::from(coverage >> 2)) as f32;
-            if matches!(
-                self.actors[index].bound_animation_group().flatten(),
-                Some(141..=143)
-            ) {
+            if self.actors[index]
+                .bound_animation_group()
+                .flatten()
+                .is_some_and(|group| {
+                    (AnimationGroup::FIRST_SWIM_GROUP..=AnimationGroup::LAST_SWIM_GROUP)
+                        .contains(&group)
+                })
+            {
                 let scene = scene.context("water model swim-depth scene unavailable")?;
                 ensure!(
                     scene.world == self.world,
@@ -1140,7 +1144,8 @@ impl ScriptWorld {
             .and_then(|animation| animation.playback.current_group());
         let hand_model =
             control.living_state != 20 && (control.living_state == 21 || control.weapon_drawn);
-        let drawn = hand_model || (control.living_state != 20 && group == Some(129));
+        let drawn = hand_model
+            || (control.living_state != 20 && group == Some(AnimationGroup::SHEATH_SWORD));
         let model = if hand_model {
             &definition.hand_model
         } else {

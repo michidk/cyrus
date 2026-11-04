@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Prevalidation, selected support and the surface updater's (previous, returned) surfaces when it ran.
 type PointSupport = (
@@ -99,13 +99,23 @@ impl ScriptWorld {
         let forward = control.motion_direction == 2;
         let torch = control.torch_burning != 0;
         if deep(stored) {
-            self.request_ordinary_group(id, if forward { 142 } else { 143 }, false, ticks, sounds)?;
+            self.request_ordinary_group(
+                id,
+                if forward {
+                    AnimationGroup::SWIM_FORWARD
+                } else {
+                    AnimationGroup::SWIM_BACKWARD
+                },
+                false,
+                ticks,
+                sounds,
+            )?;
         } else if deep(previous) {
             let group = match (forward, torch) {
-                (true, false) => 18,
-                (true, true) => 30,
-                (false, false) => 19,
-                (false, true) => 23,
+                (true, false) => AnimationGroup::RUN,
+                (true, true) => AnimationGroup::RUN_TORCH,
+                (false, false) => AnimationGroup::RUN_BACKWARD,
+                (false, true) => AnimationGroup::WALK_BACKWARD_TORCH,
             };
             self.request_ordinary_group(id, group, false, ticks, sounds)?;
         }
@@ -365,7 +375,11 @@ impl ScriptWorld {
         if self.updates.animation_system {
             self.request_ordinary_group(
                 id,
-                if torch { 35 } else { 34 },
+                if torch {
+                    AnimationGroup::JUMP_RIGHT_START_TORCH
+                } else {
+                    AnimationGroup::JUMP_RUN_START
+                },
                 true,
                 environment.ticks,
                 sounds,
@@ -454,7 +468,10 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
         // The jump groups' last displacement: the retained direction at Q8 distance 4096.
-        if matches!(group, Some(41..=43)) {
+        if group.is_some_and(|group| {
+            (AnimationGroup::JUMP_FORWARD_TORCH..=AnimationGroup::JUMP_FORWARD_ARMS)
+                .contains(&group)
+        }) {
             let direction = self.actors[id.index]
                 .control
                 .as_ref()
@@ -492,7 +509,7 @@ impl ScriptWorld {
     }
 
     /// A slide that ends on support: past the installed slide hurt distance the actor is pushed
-    /// on, plays the hurt animation (group 73) and loses the installed zap of health. Sliding
+    /// on, plays the hurt animation (`anim_land_hurt`) and loses the installed zap of health. Sliding
     /// state clears either way. The selected player hurts whenever its pending action flag is
     /// raised too, stores death override 74 instead of requesting the animation, and takes the
     /// zap through its death-owning health (`selected` supplies that service's inputs).
@@ -530,13 +547,26 @@ impl ScriptWorld {
                 .and_then(|animation| animation.playback.current_group());
             self.apply_ordinary_directional_motion(
                 id,
-                if matches!(group, Some(75 | 77)) { 2 } else { 3 },
+                if matches!(
+                    group,
+                    Some(AnimationGroup::SLIDE | AnimationGroup::SLIDE_FORWARD_TORCH)
+                ) {
+                    2
+                } else {
+                    3
+                },
                 0x800,
             )?;
             if is_selected {
                 self.globals.set_player_death_override_group(74)?;
             } else if self.updates.animation_system {
-                self.request_ordinary_group(id, 73, false, environment.ticks, sounds)?;
+                self.request_ordinary_group(
+                    id,
+                    AnimationGroup::LAND_HURT,
+                    false,
+                    environment.ticks,
+                    sounds,
+                )?;
             }
             let (_, combat_active) = self.slope_stance(id, environment, None)?;
             self.change_health(

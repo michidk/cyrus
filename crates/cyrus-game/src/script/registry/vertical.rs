@@ -1,7 +1,7 @@
 //! Queued and falling vertical arithmetic retains the original byte timer.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Factor and clock inputs follow preservation's vertical motion rules;
 /// the caller supplies the entry for the current timer and the entry after an
@@ -276,9 +276,11 @@ impl ScriptWorld {
                 .animation
                 .as_mut()
                 .context("ordinary queued animation receiver not prepared")?;
-            let result = animation
-                .playback
-                .force_request_with_sounds(58, 0, ticks, &mut |sound| {
+            let result = animation.playback.force_request_with_sounds(
+                AnimationGroup::FALL_UP_ARMS,
+                0,
+                ticks,
+                &mut |sound| {
                     if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
                         return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
                     }
@@ -290,7 +292,8 @@ impl ScriptWorld {
                             position,
                         },
                     )
-                });
+                },
+            );
             match result {
                 Ok(frame) => animation.frame = frame.or(animation.frame),
                 Err(error) => {

@@ -1,5 +1,6 @@
 //! Public animation contracts. The exported-model check reports a missing install.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 
 fn asset() -> Animations {
     serde_json::from_value(serde_json::json!({
@@ -277,7 +278,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     let mut ended = false;
     for _ in 0..10_000 {
         actor.advance(1).unwrap();
-        actor.request(0, 0, 1).unwrap();
+        actor.request(AnimationGroup::PANIC, 0, 1).unwrap();
         let before = script.program_counter();
         script.advance(&mut actor, 1).unwrap();
         advance(&mut world, 1);
@@ -297,7 +298,15 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         }
     }
     assert!(ended, "the installed finite tasks must reach End");
-    assert_eq!(transitions, [1, 10, 1, 10]);
+    assert_eq!(
+        transitions,
+        [
+            AnimationGroup::IDLE1,
+            AnimationGroup::MISC1,
+            AnimationGroup::IDLE1,
+            AnimationGroup::MISC1
+        ]
+    );
     assert_eq!(script.program_counter(), 0);
     // Recorded original FLAG2 updates after its authored End, with supplied nominal ticks.
     for (ticks, expected_frame) in [
@@ -323,7 +332,10 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         (0, 5),
     ] {
         let frame = actor.advance(ticks).unwrap();
-        let frame = actor.request(0, 0, ticks).unwrap().or(frame);
+        let frame = actor
+            .request(AnimationGroup::PANIC, 0, ticks)
+            .unwrap()
+            .or(frame);
         let frame = script
             .advance(&mut actor, ticks)
             .unwrap()
@@ -339,8 +351,8 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         );
         let frame = data.resolve_frame("FLAG2", frame).unwrap();
         assert_eq!((&*frame.model, frame.frame), ("FLAGA01", expected_frame));
-        assert_eq!(actor.current_group(), Some(1));
-        assert_eq!(script.waiting_for_group(), Some(1));
+        assert_eq!(actor.current_group(), Some(AnimationGroup::IDLE1));
+        assert_eq!(script.waiting_for_group(), Some(AnimationGroup::IDLE1));
         assert_eq!(script.program_counter(), 14);
     }
     let resolved = data.resolve_frame("FLAG2", 2).unwrap();

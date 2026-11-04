@@ -2,6 +2,7 @@
 use super::{AnimationPose, AnimationRequest, Animations, FrameSequence, TransitionDecision};
 use crate::sound::SoundCue;
 use bevy::prelude::*;
+use cyrus_script::AnimationGroup;
 
 /// Explicit playback on one placed GLB node, bound to its source world asset.
 /// The caller supplies eligibility and nominal ticks; no world activation is inferred.
@@ -18,7 +19,7 @@ impl AnimationPlayback {
         source: Handle<Animations>,
         animations: &Animations,
         actor: &str,
-        group: u16,
+        group: AnimationGroup,
         loops: u8,
     ) -> anyhow::Result<Self> {
         Ok(Self {

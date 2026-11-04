@@ -2,6 +2,7 @@
 use super::sequence::{SequenceSnapshot, SoundDispatcher};
 use super::{AnimationSound, Animations, FrameSequence, TransitionDecision};
 use anyhow::Context;
+use cyrus_script::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -10,10 +11,10 @@ use std::collections::{BTreeMap, BTreeSet};
 /// default selection and each advancement's original nominal-tick input.
 pub struct ActorAnimation {
     context: String,
-    groups: BTreeMap<u16, serde_json::Value>,
-    default: u16,
-    current: Option<(u16, FrameSequence)>,
-    pending: Option<(u16, u8)>,
+    groups: BTreeMap<AnimationGroup, serde_json::Value>,
+    default: AnimationGroup,
+    current: Option<(AnimationGroup, FrameSequence)>,
+    pending: Option<(AnimationGroup, u8)>,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
@@ -27,8 +28,8 @@ pub struct ActorAnimation {
 /// This excludes the independently retained default and sticky host failure.
 pub struct ActorAnimationCheckpoint {
     context: String,
-    current: Option<(u16, FrameSequence)>,
-    pending: Option<(u16, u8)>,
+    current: Option<(AnimationGroup, FrameSequence)>,
+    pending: Option<(AnimationGroup, u8)>,
     frame_progress: u8,
     reverse: bool,
 }
@@ -40,10 +41,10 @@ pub struct ActorAnimationCheckpoint {
 pub struct ActorAnimationSnapshot {
     version: u32,
     context: String,
-    groups: BTreeMap<u16, serde_json::Value>,
-    default: u16,
-    current: Option<(u16, SequenceSnapshot)>,
-    pending: Option<(u16, u8)>,
+    groups: BTreeMap<AnimationGroup, serde_json::Value>,
+    default: AnimationGroup,
+    current: Option<(AnimationGroup, SequenceSnapshot)>,
+    pending: Option<(AnimationGroup, u8)>,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
@@ -154,7 +155,7 @@ impl ActorAnimation {
         Ok(())
     }
 
-    /// Initializes an animation-table model with the two ordinary group-zero requests
+    /// Initializes an animation-table model with the two ordinary `anim_panic` requests
     /// specified by preservation's engine/animation.md. The caller establishes the
     /// model loading path and supplies the shared nominal ticks and sound dispatcher.
     pub fn initialize_with_decisions(
@@ -163,10 +164,11 @@ impl ActorAnimation {
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<(Self, Option<u32>)> {
-        let mut animation = Self::from_asset(data, actor, 0)?;
-        let mut frame = animation.request_with_decisions(0, 0, ticks, sounds)?;
+        let mut animation = Self::from_asset(data, actor, AnimationGroup::PANIC)?;
+        let mut frame =
+            animation.request_with_decisions(AnimationGroup::PANIC, 0, ticks, sounds)?;
         frame = animation
-            .request_with_decisions(0, 0, ticks, sounds)?
+            .request_with_decisions(AnimationGroup::PANIC, 0, ticks, sounds)?
             .or(frame);
         Ok((animation, frame))
     }
@@ -176,7 +178,7 @@ impl ActorAnimation {
     pub fn from_asset(
         data: &Animations,
         actor: &str,
-        default: u16,
+        default: AnimationGroup,
     ) -> anyhow::Result<ActorAnimation> {
         data.require_version()?;
         let context = format!("world {} actor {actor}", data.world);
@@ -185,12 +187,14 @@ impl ActorAnimation {
             .as_array()
             .with_context(|| format!("{context}: groups absent"))?
         {
-            let index = u16::try_from(
-                group["group_index"]
-                    .as_u64()
-                    .with_context(|| format!("{context}: group index absent"))?,
-            )
-            .with_context(|| format!("{context}: group index outside u16 range"))?;
+            let index = AnimationGroup::from_index(
+                u16::try_from(
+                    group["group_index"]
+                        .as_u64()
+                        .with_context(|| format!("{context}: group index absent"))?,
+                )
+                .with_context(|| format!("{context}: group index outside u16 range"))?,
+            );
             anyhow::ensure!(
                 groups.insert(index, group.clone()).is_none(),
                 "{context} group {index}: duplicate group"
@@ -223,7 +227,7 @@ impl ActorAnimation {
     /// Follows preservation's engine/animation.md living default selection.
     pub fn select_default_with_decisions(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
@@ -256,7 +260,7 @@ impl ActorAnimation {
     /// Follows preservation's SOUP selected-player death animation override.
     pub fn select_death_override_with_decisions(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
     ) -> anyhow::Result<Option<u32>> {
@@ -293,9 +297,9 @@ impl ActorAnimation {
         self.check_failure()?;
         Ok((
             self.current_group()
-                .map_or(-1, |group| i32::from(group as i16)),
+                .map_or(-1, |group| i32::from(group.index() as i16)),
             self.pending_group()
-                .map_or(-1, |group| i32::from(group as i16)),
+                .map_or(-1, |group| i32::from(group.index() as i16)),
             self.frame_progress,
         ))
     }
@@ -317,7 +321,7 @@ impl ActorAnimation {
     /// only the pending request clears. Returns the displayed frame reference.
     pub fn request_skipping_frames(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         frames: u8,
     ) -> anyhow::Result<Option<u32>> {
@@ -328,7 +332,7 @@ impl ActorAnimation {
     /// Skipped commands do not dispatch events. Retaining the current group keeps its sound.
     pub fn request_skipping_frames_with_sounds(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         frames: u8,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
@@ -346,7 +350,7 @@ impl ActorAnimation {
 
     fn request_skipping_frames_inner(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         frames: u8,
         sounds: &mut SoundDispatcher<'_>,
@@ -411,8 +415,8 @@ impl ActorAnimation {
     }
 
     /// Cancel only a matching pending group, preserving current playback and progress.
-    /// Equipped-weapon sheath completion cancels group 129 this way.
-    pub fn cancel_pending_group(&mut self, group: u16) -> anyhow::Result<()> {
+    /// Equipped-weapon sheath completion cancels `anim_sheath_sword` this way.
+    pub fn cancel_pending_group(&mut self, group: AnimationGroup) -> anyhow::Result<()> {
         self.check_failure()?;
         if self.pending_group() == Some(group) {
             self.pending = None;
@@ -421,7 +425,7 @@ impl ActorAnimation {
     }
 
     /// The caller-selected playback default, distinct from the model's attribute default.
-    pub fn default_group(&self) -> u16 {
+    pub fn default_group(&self) -> AnimationGroup {
         self.default
     }
 
@@ -439,17 +443,17 @@ impl ActorAnimation {
     }
 
     /// Whether an authored group exists, before request fallback rules are applied.
-    pub fn has_group(&self, group: u16) -> bool {
+    pub fn has_group(&self, group: AnimationGroup) -> bool {
         self.groups.contains_key(&group)
     }
 
     /// Current group number, independent of whether its mesh frame changed.
-    pub fn current_group(&self) -> Option<u16> {
+    pub fn current_group(&self) -> Option<AnimationGroup> {
         self.current.as_ref().map(|(group, _)| *group)
     }
 
     /// The single pending group; ordinary requests do not form a queue.
-    pub fn pending_group(&self) -> Option<u16> {
+    pub fn pending_group(&self) -> Option<AnimationGroup> {
         self.pending.map(|(group, _)| group)
     }
 
@@ -481,7 +485,12 @@ impl ActorAnimation {
     /// Makes an ordinary request, advancing immediately only when no group is current.
     /// `ticks` is the existing shared increment, reused without adding a synthetic tick.
     /// A returned frame reference must be resolved through the source Animations asset.
-    pub fn request(&mut self, group: u16, modifier: u8, ticks: u32) -> anyhow::Result<Option<u32>> {
+    pub fn request(
+        &mut self,
+        group: AnimationGroup,
+        modifier: u8,
+        ticks: u32,
+    ) -> anyhow::Result<Option<u32>> {
         self.request_dispatch(group, modifier, ticks, &mut None)
     }
 
@@ -489,7 +498,7 @@ impl ActorAnimation {
     /// Use the same handler for subsequent advances and requests; it retains the last handle.
     pub fn request_with_decisions(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
@@ -499,7 +508,7 @@ impl ActorAnimation {
 
     pub(super) fn request_dispatch(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut SoundDispatcher<'_>,
@@ -529,7 +538,7 @@ impl ActorAnimation {
     /// before its exit marker only cancels the pending request, preserving its cursor.
     pub fn force_request(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
     ) -> anyhow::Result<Option<u32>> {
@@ -540,7 +549,7 @@ impl ActorAnimation {
     /// prior handle without stopping its channel; immediate cues reuse `ticks`.
     pub fn force_request_with_decisions(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>,
@@ -550,7 +559,7 @@ impl ActorAnimation {
 
     fn force_request_dispatch(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut SoundDispatcher<'_>,
@@ -573,7 +582,7 @@ impl ActorAnimation {
         }
     }
 
-    fn select_pending(&mut self, requested: u16, modifier: u8) {
+    fn select_pending(&mut self, requested: AnimationGroup, modifier: u8) {
         self.pending = if self.groups.contains_key(&requested) {
             Some((requested, modifier))
         } else if self.groups.contains_key(&self.default) {
@@ -712,7 +721,7 @@ impl ActorAnimation {
 
     pub fn select_default_with_sounds(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
@@ -724,7 +733,7 @@ impl ActorAnimation {
 
     pub fn select_death_override_with_sounds(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
@@ -736,7 +745,7 @@ impl ActorAnimation {
 
     pub fn request_with_sounds(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
@@ -749,7 +758,7 @@ impl ActorAnimation {
 
     pub fn force_request_with_sounds(
         &mut self,
-        group: u16,
+        group: AnimationGroup,
         modifier: u8,
         ticks: u32,
         sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,

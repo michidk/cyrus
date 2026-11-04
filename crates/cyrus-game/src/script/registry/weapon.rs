@@ -1,7 +1,7 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Shared engine gates for a caller-admitted weapon operation.
 /// Selected identity is validated against the current logical generation.
@@ -153,9 +153,11 @@ impl<'a> CombatReceiver<'a> {
         hud.validate_weapon(weapon)?;
         let state = control.living_state;
         let requested = match state {
-            20 => Some(91),
-            21 if actor.animation.as_ref().unwrap().playback.current_group() != Some(129) => {
-                Some(129)
+            20 => Some(AnimationGroup::DRAW_SWORD),
+            21 if actor.animation.as_ref().unwrap().playback.current_group()
+                != Some(AnimationGroup::SHEATH_SWORD) =>
+            {
+                Some(AnimationGroup::SHEATH_SWORD)
             }
             _ => None,
         };
@@ -195,17 +197,22 @@ impl<'a> CombatReceiver<'a> {
         }
         let (group, pending, progress) = animation.playback.frame_wait_state()?;
         let control = actor.control.as_mut().expect("validated weapon control");
-        if state == 20 && group == 91 && progress >= actor.attributes[Attribute::DrawFrame] {
+        if state == 20
+            && group == i32::from(AnimationGroup::DRAW_SWORD)
+            && progress >= actor.attributes[Attribute::DrawFrame]
+        {
             control.weapon_drawn = true;
             control.living_state = 0;
         } else if state == 21
-            && group == 129
+            && group == i32::from(AnimationGroup::SHEATH_SWORD)
             && progress >= actor.attributes[Attribute::SheathFrame]
         {
             control.weapon_drawn = false;
             control.living_state = 0;
             if pending == 129 {
-                animation.playback.cancel_pending_group(129)?;
+                animation
+                    .playback
+                    .cancel_pending_group(AnimationGroup::SHEATH_SWORD)?;
             }
         }
         Ok(())
@@ -231,10 +238,12 @@ impl<'a> CombatReceiver<'a> {
             );
         }
         if self.id == selected_player
-            && let Some(animation) = actor
-                .animation
-                .as_mut()
-                .filter(|animation| matches!(animation.playback.current_group(), Some(91 | 129)))
+            && let Some(animation) = actor.animation.as_mut().filter(|animation| {
+                matches!(
+                    animation.playback.current_group(),
+                    Some(AnimationGroup::DRAW_SWORD | AnimationGroup::SHEATH_SWORD)
+                )
+            })
         {
             let position = self.position;
             let surface = actor.surface;
@@ -378,7 +387,7 @@ impl<'a> CombatReceiver<'a> {
                 .actor
                 .animation
                 .as_ref()
-                .is_some_and(|animation| animation.playback.has_group(91))
+                .is_some_and(|animation| animation.playback.has_group(AnimationGroup::DRAW_SWORD))
             {
                 if !self
                     .actor
@@ -394,23 +403,30 @@ impl<'a> CombatReceiver<'a> {
                     let animation = actor.animation.as_mut().expect("group91 animation");
                     let frame = animation
                         .playback
-                        .force_request_with_sounds(91, 0, inputs.nominal_ticks, &mut |sound| {
-                            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                                return self
-                                    .events
-                                    .as_mut()
-                                    .context("combat actor-event services unavailable")?
-                                    .dispatch(flags);
-                            }
-                            sounds(
-                                self.id,
-                                crate::script::ScriptSound::Animation {
-                                    sound,
-                                    surface,
-                                    position,
-                                },
-                            )
-                        })
+                        .force_request_with_sounds(
+                            AnimationGroup::DRAW_SWORD,
+                            0,
+                            inputs.nominal_ticks,
+                            &mut |sound| {
+                                if let cyrus_world::animation::AnimationSound::Event { flags } =
+                                    sound
+                                {
+                                    return self
+                                        .events
+                                        .as_mut()
+                                        .context("combat actor-event services unavailable")?
+                                        .dispatch(flags);
+                                }
+                                sounds(
+                                    self.id,
+                                    crate::script::ScriptSound::Animation {
+                                        sound,
+                                        surface,
+                                        position,
+                                    },
+                                )
+                            },
+                        )
                         .map_err(|error| {
                             let message = format!(
                                 "world {} instance {} combat entry animation: {error:#}",
@@ -686,8 +702,12 @@ mod tests {
             tasks: Default::default(),
             native_commands: Default::default(),
             animation: Some(ScriptAnimation {
-                playback: cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0)
-                    .unwrap(),
+                playback: cyrus_world::animation::ActorAnimation::from_asset(
+                    &data,
+                    "CYRUS",
+                    AnimationGroup::PANIC,
+                )
+                .unwrap(),
                 frame: None,
             }),
             animation_failure: None,
@@ -755,7 +775,10 @@ mod tests {
                 actor.attributes[Attribute::DrawFrame] = threshold;
                 let group = if state == 20 { 91 } else { 129 };
                 let animation = actor.animation.as_mut().unwrap();
-                animation.playback.force_request(group, 0, 0).unwrap();
+                animation
+                    .playback
+                    .force_request(AnimationGroup::from_index(group), 0, 0)
+                    .unwrap();
                 for _ in 0..256 {
                     if animation.playback.frame_wait_state().unwrap().2 == 1 {
                         break;
@@ -763,7 +786,10 @@ mod tests {
                     animation.playback.advance(1).unwrap();
                 }
                 assert_eq!(animation.playback.frame_wait_state().unwrap().2, 1);
-                animation.playback.request(group, 0, 0).unwrap();
+                animation
+                    .playback
+                    .request(AnimationGroup::from_index(group), 0, 0)
+                    .unwrap();
                 let control = actor.control.as_mut().unwrap();
                 control.living_state = state;
                 control.motion_companion = 7;
@@ -794,14 +820,17 @@ mod tests {
                 );
                 assert_eq!(control.motion_companion, 7);
                 let playback = &actor.animation.as_ref().unwrap().playback;
-                assert_eq!(playback.current_group(), Some(group));
+                assert_eq!(
+                    playback.current_group(),
+                    Some(AnimationGroup::from_index(group))
+                );
                 assert_eq!(playback.frame_wait_state().unwrap().2, 1);
                 assert_eq!(
                     playback.pending_group(),
                     if state == 21 && threshold <= 1 {
                         None
                     } else {
-                        Some(group)
+                        Some(AnimationGroup::from_index(group))
                     }
                 );
             }
@@ -849,7 +878,7 @@ mod tests {
                 .unwrap()
                 .playback
                 .current_group(),
-            Some(129)
+            Some(AnimationGroup::SHEATH_SWORD)
         );
         receiver
             .update_weapon_transition(inputs, &hud, 0, &mut |_, _| Ok(()))

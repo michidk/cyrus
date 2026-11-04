@@ -1,5 +1,6 @@
 //! Ordinary ground-turn arithmetic from redguard-preservation's
 //! `docs/engine/player.md`. Eligibility and the simulation clock are separate.
+use cyrus_script::AnimationGroup;
 
 /// Independent held-direction acceleration for ordinary ground turning.
 /// Combat and other player states must select their own movement rules.
@@ -49,9 +50,14 @@ impl GroundTurn {
 
 /// Whether a direction's accumulator adds the player's fight-turn attributes (accel up to
 /// speed) instead of SYSTEM.INI's `turn_speed` up to `turn_max_speed`: the player holds a weapon
-/// (the shared weapon predicate) and plays a group other than 18 or 31, or its hand item is 51.
-pub fn fight_values_selected(holding: bool, group: Option<u16>, hand_item: Option<u8>) -> bool {
-    (holding && !matches!(group, Some(18 | 31))) || hand_item == Some(51)
+/// (the shared weapon predicate) and plays a group other than `anim_run` or `anim_fight_run`, or its hand item is 51.
+pub fn fight_values_selected(
+    holding: bool,
+    group: Option<AnimationGroup>,
+    hand_item: Option<u8>,
+) -> bool {
+    (holding && !matches!(group, Some(AnimationGroup::RUN | AnimationGroup::FIGHT_RUN)))
+        || hand_item == Some(51)
 }
 
 /// Heading after subtracting a signed turn amount, wrapped to 2048.
@@ -61,7 +67,7 @@ pub fn turned(heading: u16, delta: i64) -> u16 {
 
 /// Roll after one ordinary turn update, in 1/2048 turns.
 ///
-/// While `running` (current group 18 or 30) a left turn banks upward by 4 and a
+/// While `running` (current `anim_run` or `anim_run_torch`) a left turn banks upward by 4 and a
 /// right turn downward by 4, both stopping at 32 either side of zero; 8 per update
 /// on the far side. Otherwise roll relaxes toward zero by 8. `delta` is the signed
 /// amount from [`GroundTurn::delta`]; zero relaxes. Eligibility is the caller's.
@@ -101,7 +107,7 @@ pub fn relax(roll: u16) -> u16 {
 pub struct GroundTurnInput {
     /// Scaled right minus scaled left amount, from [`GroundTurn::delta`].
     pub delta: i64,
-    /// The current animation group is 18 or 30.
+    /// The current animation group is `anim_run` or `anim_run_torch`.
     pub running: bool,
     pub torch: bool,
     /// The walk key (installed key_a) is held.
@@ -120,7 +126,7 @@ pub struct GroundTurnInput {
 pub struct GroundTurnResult {
     pub heading: u16,
     pub roll: u16,
-    pub group: Option<u16>,
+    pub group: Option<AnimationGroup>,
 }
 
 /// The keyboard turn rule of preservation's player.md "Ground-turn eligibility and animation".
@@ -152,7 +158,13 @@ pub fn ground_turn(heading: u16, roll: u16, input: GroundTurnInput) -> GroundTur
             heading
         },
         roll,
-        group: (turns && animates && !input.animation_barred && input.delta != 0)
-            .then(|| 14 + u16::from(input.delta > 0) + 2 * u16::from(input.torch)),
+        group: (turns && animates && !input.animation_barred && input.delta != 0).then_some(
+            match (input.torch, input.delta > 0) {
+                (false, false) => AnimationGroup::TURN_LEFT,
+                (false, true) => AnimationGroup::TURN_RIGHT,
+                (true, false) => AnimationGroup::TURN_LEFT_TORCH,
+                (true, true) => AnimationGroup::TURN_RIGHT_TORCH,
+            },
+        ),
     }
 }

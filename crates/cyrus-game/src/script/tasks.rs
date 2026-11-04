@@ -1,7 +1,7 @@
 //! Actor-owned native task tokens share waits and animation requests.
 use anyhow::{Context, Result};
 use cyrus_script::program::CallKind;
-use cyrus_script::{Argument, CallResult, Invocation};
+use cyrus_script::{AnimationGroup, Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 use std::collections::BTreeMap;
 mod persistence;
@@ -394,6 +394,7 @@ fn request_talk_group(input: &mut AnimationCall<'_, '_>, group: i32) -> Result<(
     let group = u16::try_from(group)
         .ok()
         .filter(|group| *group <= i16::MAX as u16)
+        .map(AnimationGroup::from_index)
         .context("rtxAnim/RTXpAnim group outside supported signed range")?;
     let frame = match &mut input.sounds {
         Some(sounds) => input
@@ -410,8 +411,10 @@ fn request_talk_group(input: &mut AnimationCall<'_, '_>, group: i32) -> Result<(
 
 /// Preserve the engine's signed sixteen-bit animation-group representation while
 /// retaining the script's full integer operand for later comparisons.
-fn animation_group_bits(group: i32) -> Option<u16> {
-    i16::try_from(group).ok().map(|value| value as u16)
+fn animation_group_bits(group: i32) -> Option<AnimationGroup> {
+    i16::try_from(group)
+        .ok()
+        .map(|value| AnimationGroup::from_index(value as u16))
 }
 
 /// Animation half of `rtxAnim`/`RTXpAnim`; returns whether the task completes. The first group is
@@ -1482,10 +1485,17 @@ impl Task {
                         .context("WalkBackward motion state unavailable")?
                         .direction = BACKWARD_MOTION_DIRECTION;
                     if state.holding_weapon || state.combat_mode {
-                        (93, state.walk_backward_combat_step_attribute)
+                        (
+                            AnimationGroup::FIGHT_BACK,
+                            state.walk_backward_combat_step_attribute,
+                        )
                     } else {
                         (
-                            if state.torch_burning { 23 } else { 22 },
+                            if state.torch_burning {
+                                AnimationGroup::WALK_BACKWARD_TORCH
+                            } else {
+                                AnimationGroup::WALK_BACKWARD
+                            },
                             state.walk_backward_step_attribute,
                         )
                     }
@@ -1612,10 +1622,17 @@ impl Task {
                         (None, state.lunge_step_attribute)
                     } else if walking {
                         if state.holding_weapon || state.combat_mode {
-                            (Some(31), state.walk_combat_step_attribute)
+                            (
+                                Some(AnimationGroup::FIGHT_RUN),
+                                state.walk_combat_step_attribute,
+                            )
                         } else {
                             (
-                                Some(if state.torch_burning { 21 } else { 20 }),
+                                Some(if state.torch_burning {
+                                    AnimationGroup::WALK_FORWARD_TORCH
+                                } else {
+                                    AnimationGroup::WALK
+                                }),
                                 state.walk_step_attribute,
                             )
                         }
@@ -1629,7 +1646,10 @@ impl Task {
                                     return Ok(true);
                                 }
                                 halved = true;
-                                (Some(142), state.forward_step_attribute)
+                                (
+                                    Some(AnimationGroup::SWIM_FORWARD),
+                                    state.forward_step_attribute,
+                                )
                             }
                             ForwardPlan::Proceed { group, step } => (Some(group), step),
                         }
@@ -2380,7 +2400,8 @@ impl Task {
                     anyhow::bail!("PlayAnimation requires two arguments")
                 };
                 anyhow::ensure!(
-                    group.integer()? == 10 && modifier.integer()? == 0,
+                    group.integer()? == i32::from(AnimationGroup::MISC1)
+                        && modifier.integer()? == 0,
                     "PlayAnimation multitask operands unsupported; expected installed (10, 0)"
                 );
                 if services.animation_requests_enabled {
@@ -2388,12 +2409,15 @@ impl Task {
                         "PlayAnimation multitask requires prepared animation and nominal ticks",
                     )?;
                     let frame = match &mut input.sounds {
-                        Some(sounds) => {
-                            input
-                                .animation
-                                .request_with_sounds(10, 0, input.ticks, *sounds)?
-                        }
-                        None => input.animation.request(10, 0, input.ticks)?,
+                        Some(sounds) => input.animation.request_with_sounds(
+                            AnimationGroup::MISC1,
+                            0,
+                            input.ticks,
+                            *sounds,
+                        )?,
+                        None => input
+                            .animation
+                            .request(AnimationGroup::MISC1, 0, input.ticks)?,
                     };
                     *input.frame = frame.or(*input.frame);
                 }
@@ -2420,7 +2444,7 @@ impl Task {
                     let running = input
                         .animation
                         .current_group()
-                        .map(|group| i32::from(group as i16))
+                        .map(|group| i32::from(group.index() as i16))
                         == Some(requested);
                     if turning && running {
                         let pose = spatial
@@ -2433,7 +2457,7 @@ impl Task {
                     if input
                         .animation
                         .current_group()
-                        .map(|group| i32::from(group as i16))
+                        .map(|group| i32::from(group.index() as i16))
                         == Some(requested)
                     {
                         input.animation.set_loop_count(count)?;
@@ -2983,7 +3007,7 @@ impl NativeTasks {
             .with_context(|| format!("native task {token} absent"))?;
         Ok(())
     }
-    pub(super) fn animation_group(&self) -> Option<u16> {
+    pub(super) fn animation_group(&self) -> Option<AnimationGroup> {
         self.tasks.values().find_map(|task| match task {
             Task::Animation { group, .. } => animation_group_bits(*group),
             _ => None,
@@ -2994,12 +3018,22 @@ impl NativeTasks {
 #[cfg(test)]
 mod animation_group_tests {
     use super::animation_group_bits;
+    use cyrus_script::AnimationGroup;
 
     #[test]
     fn signed_group_operands_keep_their_bit_pattern() {
-        assert_eq!(animation_group_bits(-1), Some(u16::MAX));
-        assert_eq!(animation_group_bits(-32768), Some(0x8000));
-        assert_eq!(animation_group_bits(32767), Some(0x7fff));
+        assert_eq!(
+            animation_group_bits(-1),
+            Some(AnimationGroup::from_index(u16::MAX))
+        );
+        assert_eq!(
+            animation_group_bits(-32768),
+            Some(AnimationGroup::from_index(0x8000))
+        );
+        assert_eq!(
+            animation_group_bits(32767),
+            Some(AnimationGroup::from_index(0x7fff))
+        );
         assert_eq!(animation_group_bits(32768), None);
     }
 }

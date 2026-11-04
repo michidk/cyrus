@@ -1,6 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::program::{Call, CallKind, Operation};
-use cyrus_script::{Attribute, Attributes};
+use cyrus_script::{AnimationGroup, Attribute, Attributes};
 mod activation;
 mod attack;
 mod attack_input;
@@ -526,7 +526,7 @@ impl ScriptActor {
     pub fn support_actor(&self) -> Option<ScriptActorId> {
         self.model.support.actor
     }
-    pub(super) fn bound_animation_group(&self) -> Option<Option<u16>> {
+    pub(super) fn bound_animation_group(&self) -> Option<Option<AnimationGroup>> {
         self.animation
             .as_ref()
             .map(|animation| animation.playback.current_group())
@@ -2086,7 +2086,7 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         data: &Animations,
-        default: u16,
+        default: AnimationGroup,
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
         let playback = cyrus_world::animation::ActorAnimation::from_asset(
@@ -2231,19 +2231,22 @@ impl ScriptWorld {
         })?;
         let group = if control.death_selector == 8 {
             if let Some(default) = control.combat_death_default {
-                default as u16
-            } else if animation.playback.has_group(123) {
-                123
+                AnimationGroup::from_index(default as u16)
+            } else if animation
+                .playback
+                .has_group(AnimationGroup::DEATH_FIGHT_STAB_END)
+            {
+                AnimationGroup::DEATH_FIGHT_STAB_END
             } else {
-                124
+                AnimationGroup::DEATH_FIGHT_HARD_END
             }
         } else if selected && matches!(actor.surface, Some(2 | 4)) {
             // The selected player in deep water treads water after the weapon cleanup above.
-            141
+            AnimationGroup::SWIM_IDLE
         } else if control.rope_attached {
-            79
+            AnimationGroup::ROPE_PANIC
         } else if control.living_state == 15 {
-            7
+            AnimationGroup::IDLE_LEDGE
         } else {
             let (holding, drawing, sheathing) = super::activation::weapon_predicates(
                 control.living_state,
@@ -2257,13 +2260,13 @@ impl ScriptWorld {
                 false,
             );
             if sheathing {
-                u16::from(actor.attributes[Attribute::PanicGroup])
+                AnimationGroup::from_index(actor.attributes[Attribute::PanicGroup].into())
             } else if drawing || holding {
-                8
+                AnimationGroup::FIGHT_PANIC
             } else if control.torch_burning != 0 {
-                5
+                AnimationGroup::IDLE_TORCH
             } else {
-                u16::from(actor.attributes[Attribute::PanicGroup])
+                AnimationGroup::from_index(actor.attributes[Attribute::PanicGroup].into())
             }
         };
         let position = animation_sound_position(self.spatial.as_ref(), index);
@@ -4351,7 +4354,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         anyhow::bail!("selected-player mask-8 transition: {error:#}")
                     }
                     (Some(true), holding) => {
-                        // A held weapon runs the armed walk step (group 31), otherwise the
+                        // A held weapon runs the armed walk step (`anim_fight_run`), otherwise the
                         // ordinary forward step.
                         walk_step = Some(if matches!(holding, Some(Ok(true))) {
                             "WalkForward"
@@ -4424,8 +4427,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !armed {
             return Ok(true);
         }
-        let sheathing =
-            control.living_state == 21 || animation.playback.current_group() == Some(129);
+        let sheathing = control.living_state == 21
+            || animation.playback.current_group() == Some(AnimationGroup::SHEATH_SWORD);
         Ok(control.weapon_drawn && !sheathing)
     }
 
@@ -4610,7 +4613,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     animation
                         .playback
                         .current_group()
-                        .map_or(-1, |group| i32::from(group as i16))
+                        .map_or(-1, |group| i32::from(group.index() as i16))
                 }));
         }
         if let Some(word) = ["grip[0]", "grip[1]"]
@@ -4850,7 +4853,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .playback
                     .current_group()
                     .context("SetAction: current group unavailable")?;
-                if (65..=74).contains(&group)
+                if (AnimationGroup::FIRST_LAND_GROUP..=AnimationGroup::LAST_LAND_GROUP)
+                    .contains(&group)
                     || control.queued_motion != 0
                     || control.falling_state != 0
                 {
@@ -4861,7 +4865,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 } else {
                     let step_hold = actor.attributes[Attribute::StepType] == 0
                         || (control.movement_flags >> 4) & 3 == 3;
-                    if step_hold && matches!(group, 18 | 30) && !animation.playback.exit_reached() {
+                    if step_hold
+                        && matches!(group, AnimationGroup::RUN | AnimationGroup::RUN_TORCH)
+                        && !animation.playback.exit_reached()
+                    {
                         control.directional_state[0] |= 3;
                         control.jump_window = 0;
                     } else {
@@ -6363,7 +6370,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             let group = group.integer()?;
             let group_bits = i16::try_from(group)
-                .map(|value| value as u16)
+                .map(|value| AnimationGroup::from_index(value as u16))
                 .context("PlayAnimation group outside supported signed range")?;
             // The modifier is stored as one byte.
             let modifier = modifier.integer()? as u8;

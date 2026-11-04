@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 
 /// Shared results retained until the first ground prevalidation of the next wrapper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -131,7 +131,8 @@ impl ScriptWorld {
         };
         let default_motion = actor.animation.as_ref().is_some_and(|animation| {
             animation.playback.current_group().is_some_and(|group| {
-                group == animation.playback.default_group() || (20..=27).contains(&group)
+                group == animation.playback.default_group()
+                    || (AnimationGroup::WALK..=AnimationGroup::STEP_RIGHT_TORCH).contains(&group)
             })
         });
         ordinary_ground_prevalidation(

@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_script::{AnimationGroup, Attribute};
 use serde::{Deserialize, Serialize};
 
 /// Session health initialized separately from controller/combat inhibition.
@@ -196,7 +196,12 @@ impl ScriptWorld {
                     .animation
                     .as_ref()
                     .and_then(|animation| animation.playback.current_group())
-                    .is_some_and(|group| matches!(group, 149 | 150));
+                    .is_some_and(|group| {
+                        matches!(
+                            group,
+                            AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH
+                        )
+                    });
             if !torch_burning && !blocked {
                 let ticks = inputs
                     .nominal_ticks
@@ -211,26 +216,28 @@ impl ScriptWorld {
                     .animation
                     .as_mut()
                     .context("selected action animation unavailable")?;
-                let frame =
-                    animation
-                        .playback
-                        .force_request_with_sounds(56, 0, ticks, &mut |sound| {
-                            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                                return event_context.dispatch(
-                                    flags,
-                                    event_camera.as_mut(),
-                                    event_effects,
-                                );
-                            }
-                            sounds(
-                                id,
-                                ScriptSound::Animation {
-                                    sound,
-                                    surface,
-                                    position,
-                                },
-                            )
-                        })?;
+                let frame = animation.playback.force_request_with_sounds(
+                    AnimationGroup::FALL,
+                    0,
+                    ticks,
+                    &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
+                        sounds(
+                            id,
+                            ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    },
+                )?;
                 animation.frame = frame.or(animation.frame);
                 let control = actor.control.as_mut().expect("validated control");
                 control.action_transition_counter = 6;
@@ -342,15 +349,25 @@ impl ScriptWorld {
         ]
         .into_iter()
         .flatten()
-        .any(|group| matches!(group, 73 | 74 | 117 | 118 | 132 | 133));
+        .any(|group| {
+            matches!(
+                group,
+                AnimationGroup::LAND_HURT
+                    | AnimationGroup::LAND_DEATH
+                    | AnimationGroup::FIGHT_HURT_1
+                    | AnimationGroup::FIGHT_HURT_2
+                    | AnimationGroup::EXPLORE_HURT_1
+                    | AnimationGroup::EXPLORE_HURT_2
+            )
+        });
         if !suppressed {
             let odd = random.draw() & 1 != 0;
             let (_, holding) = self.spacing_weapon(id, inputs)?;
             let group = match (holding, odd) {
-                (false, false) => 133,
-                (false, true) => 132,
-                (true, false) => 118,
-                (true, true) => 117,
+                (false, false) => AnimationGroup::EXPLORE_HURT_2,
+                (false, true) => AnimationGroup::EXPLORE_HURT_1,
+                (true, false) => AnimationGroup::FIGHT_HURT_2,
+                (true, true) => AnimationGroup::FIGHT_HURT_1,
             };
             let ticks = inputs
                 .nominal_ticks
@@ -427,8 +444,10 @@ impl ScriptWorld {
             if let Some(error) = self.actors[index].failure() {
                 anyhow::bail!("{error}");
             }
-            let group = u16::try_from(group)
-                .context("selected death override outside animation group range")?;
+            let group = AnimationGroup::from_index(
+                u16::try_from(group)
+                    .context("selected death override outside animation group range")?,
+            );
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
             let event_context = super::effects::ActorEventContext::capture(self, id);
             let event_camera = &mut self.camera;
@@ -504,7 +523,11 @@ impl ScriptWorld {
                 .context("selected death override owner unavailable")?;
             if group == 0 {
                 let (_, holding) = self.spacing_weapon(id, inputs)?;
-                group = if holding { 122 } else { 134 };
+                group = i32::from(if holding {
+                    AnimationGroup::DEATH_FIGHT_HARD
+                } else {
+                    AnimationGroup::DEATH_EXPLORE
+                });
                 self.globals.set_player_death_override_group(group)?;
             }
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
@@ -518,8 +541,10 @@ impl ScriptWorld {
                 .as_mut()
                 .context("selected death animation unavailable")?;
             let frame = animation.playback.force_request_with_sounds(
-                u16::try_from(group)
-                    .context("selected death override outside animation group range")?,
+                AnimationGroup::from_index(
+                    u16::try_from(group)
+                        .context("selected death override outside animation group range")?,
+                ),
                 0,
                 ticks,
                 &mut |sound| {
@@ -820,7 +845,12 @@ impl ScriptWorld {
                 if control.falling_state != 0
                     || matches!(
                         animation.playback.current_group(),
-                        Some(114 | 116 | 130 | 131)
+                        Some(
+                            AnimationGroup::FIGHT_LAND
+                                | AnimationGroup::FIGHT_LAND_ATTACK
+                                | AnimationGroup::FIGHT_LAND_RIGHT
+                                | AnimationGroup::FIGHT_LAND_LEFT
+                        )
                     )
                 {
                     self.globals.set_player_death_override_group(74)?;
@@ -833,14 +863,14 @@ impl ScriptWorld {
                         .as_ref()
                         .expect("validated animation")
                         .playback
-                        .has_group(122)
+                        .has_group(AnimationGroup::DEATH_FIGHT_HARD)
                     {
-                        122
+                        AnimationGroup::DEATH_FIGHT_HARD
                     } else {
-                        121
+                        AnimationGroup::DEATH_FIGHT_STAB
                     }
                 } else {
-                    134
+                    AnimationGroup::DEATH_EXPLORE
                 };
                 let ticks = inputs
                     .nominal_ticks
@@ -880,7 +910,12 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .expect("validated control")
-                        .combat_death_default = Some(if group == 122 { 124 } else { 123 });
+                        .combat_death_default =
+                        Some(i32::from(if group == AnimationGroup::DEATH_FIGHT_HARD {
+                            AnimationGroup::DEATH_FIGHT_HARD_END
+                        } else {
+                            AnimationGroup::DEATH_FIGHT_STAB_END
+                        }));
                     self.release_held_walk_nodes(id)?;
                     self.actors[index]
                         .control

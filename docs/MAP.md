@@ -296,6 +296,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
+- `src/animation_group.rs` — Animation group numbers: the index of an actor's animation group.
 - `src/attribute.rs` — Actor attribute slots: the 256 bytes every SOUP actor carries.
 - `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
 - `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.

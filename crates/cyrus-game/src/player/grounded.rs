@@ -6,6 +6,7 @@ use cyrus_collision::{
     collision_world::StaticCandidates,
     ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
 };
+use cyrus_script::AnimationGroup;
 
 /// Inputs supplied by the admitted ordinary movement stage.
 pub struct ForwardWalk {
@@ -38,13 +39,11 @@ pub fn advance_animation(
     sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
 ) -> anyhow::Result<Option<u32>> {
     history.begin_player_update(ticks);
-    let default_group = u16::from(
-        scene
-            .definition
-            .as_ref()
-            .context("grounded update: player definition unavailable")?
-            .ordinary_default_group,
-    );
+    let default_group = scene
+        .definition
+        .as_ref()
+        .context("grounded update: player definition unavailable")?
+        .ordinary_default_group;
     let frame = animation.select_default_with_sounds(default_group, ticks, sounds)?;
     let frame = animation.advance_with_sounds(ticks, sounds)?.or(frame);
     Ok(animation
@@ -119,7 +118,7 @@ impl GroundedWalk {
             .as_ref()
             .context("walking continuation: player definition unavailable")?;
         let mut accepted = accepted;
-        if !accepted && animation.current_group() == Some(20) {
+        if !accepted && animation.current_group() == Some(AnimationGroup::WALK) {
             let probe = definition.forward_probe(self.position, query.rotation)?;
             if query
                 .forward_support(probe, shared.0, &mut self.surface, shared.1)?

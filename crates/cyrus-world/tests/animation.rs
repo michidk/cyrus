@@ -1,5 +1,6 @@
 //! Public animation contracts. The exported-model check reports a missing install.
 use cyrus_assets::animation::Animations;
+use cyrus_script::AnimationGroup;
 
 fn asset() -> Animations {
     serde_json::from_value(serde_json::json!({
@@ -92,36 +93,62 @@ fn plugin_loads_animation_sidecar_through_asset_server() {
 
 #[test]
 fn ordinary_default_requests_preserve_cursor_but_other_groups_start_immediately() {
-    let mut state =
-        cyrus_world::animation::ActorAnimation::from_asset(&request_asset(), "ACTOR", 1).unwrap();
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &request_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
     assert_eq!(state.current_group(), None);
-    assert_eq!(state.request(1, 0, 0).unwrap(), Some(0));
+    assert_eq!(
+        state.request(AnimationGroup::from_index(1), 0, 0).unwrap(),
+        Some(0)
+    );
     assert_eq!(state.advance(1).unwrap(), Some(0));
-    assert_eq!(state.request(1, 0, 1).unwrap(), None);
+    assert_eq!(
+        state.request(AnimationGroup::from_index(1), 0, 1).unwrap(),
+        None
+    );
     assert_eq!(
         state.advance(1).unwrap(),
         Some(1),
         "requesting the default must not restart it"
     );
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(1));
-    assert_eq!(state.current_group(), Some(7));
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(1)
+    );
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(state.pending_group(), None);
 }
 
 #[test]
 fn pending_priority_and_exit_select_replacement_in_the_same_update() {
-    let mut state =
-        cyrus_world::animation::ActorAnimation::from_asset(&request_asset(), "ACTOR", 1).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(1));
-    assert_eq!(state.request(20, 0, 0).unwrap(), None);
-    assert_eq!(state.request(10, 0, 0).unwrap(), None);
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &request_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(1)
+    );
+    assert_eq!(
+        state.request(AnimationGroup::from_index(20), 0, 0).unwrap(),
+        None
+    );
+    assert_eq!(
+        state.request(AnimationGroup::from_index(10), 0, 0).unwrap(),
+        None
+    );
     assert_eq!(
         state.pending_group(),
-        Some(20),
+        Some(AnimationGroup::from_index(20)),
         "lower requests cannot replace higher pending groups"
     );
     assert_eq!(state.advance(1).unwrap(), Some(0));
-    assert_eq!(state.current_group(), Some(20));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(20)));
     assert_eq!(state.pending_group(), None);
     assert!(state.translation_suppressed());
 }
@@ -129,47 +156,77 @@ fn pending_priority_and_exit_select_replacement_in_the_same_update() {
 #[test]
 fn absent_requests_fall_back_to_default_or_clear_pending() {
     let data = request_asset();
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(1));
-    state.request(20, 0, 0).unwrap();
-    state.request(21, 0, 0).unwrap();
-    assert_eq!(state.pending_group(), Some(1));
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(1)
+    );
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
+    state.request(AnimationGroup::from_index(21), 0, 0).unwrap();
+    assert_eq!(state.pending_group(), Some(AnimationGroup::from_index(1)));
     assert_eq!(state.advance(1).unwrap(), Some(0));
-    assert_eq!(state.current_group(), Some(1));
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 9).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(1));
-    state.request(20, 0, 0).unwrap();
-    state.request(21, 0, 0).unwrap();
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(1)));
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(9),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(1)
+    );
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
+    state.request(AnimationGroup::from_index(21), 0, 0).unwrap();
     assert_eq!(state.pending_group(), None);
-    assert_eq!(state.current_group(), Some(7));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(state.advance(1).unwrap(), Some(1));
 }
 
 #[test]
 fn finite_task_loops_defer_pending_transition_without_restarting_the_group() {
-    let mut state =
-        cyrus_world::animation::ActorAnimation::from_asset(&request_asset(), "ACTOR", 1).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(1));
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &request_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(1)
+    );
     state.set_loop_count(2).unwrap();
-    state.request(20, 0, 0).unwrap();
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
     assert_eq!(state.advance(1).unwrap(), Some(1));
-    assert_eq!(state.current_group(), Some(7));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(state.advance(1).unwrap(), Some(0));
-    assert_eq!(state.current_group(), Some(20));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(20)));
 }
 
 #[test]
 fn end_restarts_existing_default_using_the_same_ticks_and_byte_modifier_wraps() {
-    let mut state =
-        cyrus_world::animation::ActorAnimation::from_asset(&request_asset(), "ACTOR", 1).unwrap();
-    assert_eq!(state.request(10, 2, 1).unwrap(), Some(0));
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &request_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(10), 2, 1).unwrap(),
+        Some(0)
+    );
     assert_eq!(
         state.advance(1).unwrap(),
         Some(1),
         "255 plus modifier 2 wraps to countdown 1"
     );
     assert_eq!(state.advance(1).unwrap(), Some(0));
-    assert_eq!(state.current_group(), Some(1));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(1)));
     assert_eq!(
         state.advance(1).unwrap(),
         Some(1),
@@ -179,16 +236,33 @@ fn end_restarts_existing_default_using_the_same_ticks_and_byte_modifier_wraps() 
 
 #[test]
 fn forced_current_request_cancels_pending_without_restarting_and_other_force_replaces() {
-    let mut state =
-        cyrus_world::animation::ActorAnimation::from_asset(&request_asset(), "ACTOR", 9).unwrap();
-    assert_eq!(state.request(1, 0, 1).unwrap(), Some(0));
-    state.request(20, 0, 0).unwrap();
-    assert_eq!(state.force_request(1, 99, 1).unwrap(), None);
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &request_asset(),
+        "ACTOR",
+        AnimationGroup::from_index(9),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(1), 0, 1).unwrap(),
+        Some(0)
+    );
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
+    assert_eq!(
+        state
+            .force_request(AnimationGroup::from_index(1), 99, 1)
+            .unwrap(),
+        None
+    );
     assert_eq!(state.pending_group(), None);
     assert_eq!(state.advance(1).unwrap(), Some(1));
-    state.request(20, 0, 0).unwrap();
-    assert_eq!(state.force_request(7, 0, 1).unwrap(), Some(1));
-    assert_eq!(state.current_group(), Some(7));
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
+    assert_eq!(
+        state
+            .force_request(AnimationGroup::from_index(7), 0, 1)
+            .unwrap(),
+        Some(1)
+    );
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(state.pending_group(), None);
 }
 
@@ -196,20 +270,33 @@ fn forced_current_request_cancels_pending_without_restarting_and_other_force_rep
 fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
     let mut data = request_asset();
     data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 3.into();
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    state.request(7, 0, 1).unwrap();
-    state.request(20, 0, 0).unwrap();
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    state.request(AnimationGroup::from_index(7), 0, 1).unwrap();
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
     let message = state.advance(1).unwrap_err().to_string();
     assert_eq!(
         message,
         "world 17 actor ACTOR group 20: group type unsupported"
     );
     assert_eq!(
-        state.force_request(1, 0, 1).unwrap_err().to_string(),
+        state
+            .force_request(AnimationGroup::from_index(1), 0, 1)
+            .unwrap_err()
+            .to_string(),
         message
     );
     let data = sequence_asset(1, serde_json::json!([{"opcode":1}]));
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
     assert_eq!(
         state.advance(0).unwrap_err().to_string(),
         "world 17 actor ACTOR group 7: replacement cycle has no displayed frame"
@@ -221,17 +308,26 @@ fn only_the_low_group_type_byte_is_interpreted() {
     let mut data = request_asset();
     data.metadata["actors"][0]["animation_groups"][0]["anim_type"] = 256.into();
     assert_eq!(
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 1, 0)
-            .unwrap()
-            .advance(0, false)
-            .unwrap(),
+        cyrus_world::animation::FrameSequence::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(1),
+            0
+        )
+        .unwrap()
+        .advance(0, false)
+        .unwrap(),
         Some(0)
     );
     assert_eq!(
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1)
-            .unwrap()
-            .request(1, 0, 0)
-            .unwrap(),
+        cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(1)
+        )
+        .unwrap()
+        .request(AnimationGroup::from_index(1), 0, 0)
+        .unwrap(),
         Some(0)
     );
 }
@@ -245,14 +341,22 @@ fn returning_to_the_same_default_keeps_group_identity_for_waiting_tasks() {
             {"opcode":3,"value":4}, {"opcode":2,"value":0}, {"opcode":1}
         ]),
     );
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(0));
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
     state.set_loop_count(2).unwrap();
     let frames = [1, 1, 1, 1].map(|ticks| state.advance(ticks).unwrap());
     assert_eq!(frames, [Some(1), Some(0), Some(1), Some(0)]);
     assert_eq!(
         state.current_group(),
-        Some(7),
+        Some(AnimationGroup::from_index(7)),
         "finite loops alone do not complete a task waiting for the group to change"
     );
     assert_eq!(state.pending_group(), None);
@@ -265,12 +369,25 @@ fn force_after_an_exit_restarts_the_matching_group() {
         {"opcode":0,"frame_reference":0}, {"opcode":3,"value":2},
         {"opcode":0,"frame_reference":1}, {"opcode":1}
     ]);
-    let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    assert_eq!(state.request(7, 0, 1).unwrap(), Some(0));
-    state.request(20, 0, 0).unwrap();
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(1),
+    )
+    .unwrap();
+    assert_eq!(
+        state.request(AnimationGroup::from_index(7), 0, 1).unwrap(),
+        Some(0)
+    );
+    state.request(AnimationGroup::from_index(20), 0, 0).unwrap();
     assert_eq!(state.advance(1).unwrap(), Some(1));
-    assert_eq!(state.current_group(), Some(7));
-    assert_eq!(state.force_request(7, 0, 1).unwrap(), Some(0));
+    assert_eq!(state.current_group(), Some(AnimationGroup::from_index(7)));
+    assert_eq!(
+        state
+            .force_request(AnimationGroup::from_index(7), 0, 1)
+            .unwrap(),
+        Some(0)
+    );
     assert_eq!(state.pending_group(), None);
 }
 
@@ -279,19 +396,27 @@ fn malformed_and_old_request_assets_report_the_source_context() {
     let mut data = request_asset();
     data.version = 1;
     assert_eq!(
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1)
-            .err()
-            .unwrap()
-            .to_string(),
+        cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(1)
+        )
+        .err()
+        .unwrap()
+        .to_string(),
         "world 17: animation schema 1 unsupported; re-export the world"
     );
     let mut data = request_asset();
     data.metadata["actors"][0]["animation_groups"][1]["group_index"] = 1.into();
     assert_eq!(
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1)
-            .err()
-            .unwrap()
-            .to_string(),
+        cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(1)
+        )
+        .err()
+        .unwrap()
+        .to_string(),
         "world 17 actor ACTOR group 1: duplicate group"
     );
 }
@@ -305,16 +430,26 @@ fn finite_loop_count_and_multi_tick_skip_follow_command_stream() {
             {"opcode":3,"value":4}, {"opcode":2,"value":0}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 2).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        2,
+    )
+    .unwrap();
     let mut selected = Vec::new();
     for _ in 0..5 {
         selected.push(sequence.advance(1, false).unwrap());
     }
     assert_eq!(selected, [Some(0), Some(1), Some(0), Some(1), None]);
     assert_eq!(sequence.advance(0, false).unwrap(), None);
-    let mut skipped =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 2).unwrap();
+    let mut skipped = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        2,
+    )
+    .unwrap();
     assert_eq!(skipped.advance(1, false).unwrap(), Some(0));
     assert_eq!(skipped.advance(3, false).unwrap(), Some(1));
     assert_eq!(skipped.advance(1, false).unwrap(), None);
@@ -329,8 +464,13 @@ fn frame_countdown_and_zero_tick_updates_do_not_become_render_frame_playback() {
             {"opcode":0,"frame_reference":2}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 1).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        1,
+    )
+    .unwrap();
     let observed = [1, 5, 0, 1, 2].map(|ticks| sequence.advance(ticks, false).unwrap());
     assert_eq!(observed, [Some(0), Some(0), Some(0), Some(0), Some(2)]);
 }
@@ -344,8 +484,13 @@ fn unsupported_sound_cue_is_reported_without_skipping_to_a_later_frame() {
             {"opcode":0,"frame_reference":1}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 1).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        1,
+    )
+    .unwrap();
     assert_eq!(sequence.advance(1, false).unwrap(), Some(0));
     assert_eq!(
         sequence.advance(1, false).unwrap_err().to_string(),
@@ -409,7 +554,7 @@ fn activated_group_uses_supplied_ticks_and_stops_at_end() {
             .get(&handle)
             .unwrap(),
         "ACTOR",
-        7,
+        AnimationGroup::from_index(7),
         1,
     )
     .unwrap();
@@ -457,7 +602,7 @@ fn changing_world_clears_playback_and_pose_without_a_simulation_tick() {
             .get(&handle)
             .unwrap(),
         "ACTOR",
-        7,
+        AnimationGroup::from_index(7),
         0,
     )
     .unwrap();
@@ -478,8 +623,13 @@ fn changing_world_clears_playback_and_pose_without_a_simulation_tick() {
 #[test]
 fn a_control_cycle_fails_instead_of_hanging_the_update() {
     let data = sequence_asset(1, serde_json::json!([{"opcode":2,"value":0}]));
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        0,
+    )
+    .unwrap();
     assert_eq!(
         sequence.advance(0, false).unwrap_err().to_string(),
         "world 17 actor ACTOR group 7 command 0: control cycle has no displayed frame"
@@ -496,8 +646,13 @@ fn breakpoint_blocks_walking_until_the_frame_cursor_advances() {
             {"opcode":0,"frame_reference":1}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 1).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        1,
+    )
+    .unwrap();
     assert!(!sequence.translation_suppressed());
     for (ticks, frame, suppressed) in [
         (0, 0, true),
@@ -516,8 +671,13 @@ fn breakpoint_blocks_walking_until_the_frame_cursor_advances() {
             {"opcode":0,"frame_reference":1}, {"opcode":2,"value":0}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 2).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        2,
+    )
+    .unwrap();
     for (frame, suppressed) in [(0, false), (1, true), (0, false)] {
         assert_eq!(sequence.advance(1, false).unwrap(), Some(frame));
         assert_eq!(sequence.translation_suppressed(), suppressed);
@@ -534,8 +694,13 @@ fn finite_delay_holds_the_pose_and_resumes_with_the_expiry_calls_full_ticks() {
             {"opcode":0,"frame_reference":1}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        0,
+    )
+    .unwrap();
     for ticks in [0, 1, 1, 1] {
         assert_eq!(sequence.advance(ticks, false).unwrap(), Some(0));
     }
@@ -555,8 +720,13 @@ fn finite_delay_holds_the_pose_and_resumes_with_the_expiry_calls_full_ticks() {
             {"opcode":0,"frame_reference":1}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        0,
+    )
+    .unwrap();
     assert_eq!(sequence.advance(1, false).unwrap(), None);
     assert_eq!(sequence.advance(2, false).unwrap(), None);
     assert!(
@@ -574,8 +744,13 @@ fn delay_operands_narrow_to_bytes_and_255_waits_until_group_replacement() {
                 {"opcode":12,"value":value}, {"opcode":0,"frame_reference":0}, {"opcode":1}
             ]),
         );
-        let mut sequence =
-            cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0).unwrap();
+        let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(7),
+            0,
+        )
+        .unwrap();
         for ticks in [0, 1, 254, 255, 256] {
             assert_eq!(sequence.advance(ticks, false).unwrap(), None);
             assert!(!sequence.is_finished());
@@ -589,10 +764,15 @@ fn delay_operands_narrow_to_bytes_and_255_waits_until_group_replacement() {
             ]),
         );
         assert_eq!(
-            cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0)
-                .unwrap()
-                .advance(0, false)
-                .unwrap(),
+            cyrus_world::animation::FrameSequence::from_asset(
+                &data,
+                "ACTOR",
+                AnimationGroup::from_index(7),
+                0
+            )
+            .unwrap()
+            .advance(0, false)
+            .unwrap(),
             Some(0)
         );
     }
@@ -602,8 +782,13 @@ fn delay_operands_narrow_to_bytes_and_255_waits_until_group_replacement() {
             {"opcode":12,"value":2}, {"opcode":0,"frame_reference":0}, {"opcode":1}
         ]),
     );
-    let mut sequence =
-        cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0).unwrap();
+    let mut sequence = cyrus_world::animation::FrameSequence::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+        0,
+    )
+    .unwrap();
     assert_eq!(sequence.advance(0, false).unwrap(), None);
     assert_eq!(sequence.advance(u32::MAX, false).unwrap(), None);
     assert!(!sequence.is_finished());
@@ -626,13 +811,23 @@ fn delay_operands_narrow_to_bytes_and_255_waits_until_group_replacement() {
             serde_json::json!({"group_index":8,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":1}]}),
         );
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
     assert_eq!(actor.advance(0).unwrap(), None);
-    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
     assert_eq!(actor.advance(255).unwrap(), None);
-    assert_eq!(actor.current_group(), Some(7));
-    assert_eq!(actor.force_request(8, 0, 0).unwrap(), Some(1));
-    assert_eq!(actor.current_group(), Some(8));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
+    assert_eq!(
+        actor
+            .force_request(AnimationGroup::from_index(8), 0, 0)
+            .unwrap(),
+        Some(1)
+    );
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(8)));
 }
 
 #[test]
@@ -643,10 +838,15 @@ fn invalid_delay_operands_report_the_world_actor_and_command() {
         serde_json::json!(2147483648i64),
     ] {
         let data = sequence_asset(1, serde_json::json!([{"opcode":12,"value":value}]));
-        let error = cyrus_world::animation::FrameSequence::from_asset(&data, "ACTOR", 7, 0)
-            .err()
-            .unwrap()
-            .to_string();
+        let error = cyrus_world::animation::FrameSequence::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(7),
+            0,
+        )
+        .err()
+        .unwrap()
+        .to_string();
         assert!(
             error.starts_with("world 17 actor ACTOR group 7 command 0: delay operand"),
             "{error}"
@@ -681,7 +881,7 @@ fn rendered_playback_survives_a_delay_before_its_first_pose() {
             .get(&handle)
             .unwrap(),
         "ACTOR",
-        7,
+        AnimationGroup::from_index(7),
         0,
     )
     .unwrap();

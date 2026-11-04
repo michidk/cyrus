@@ -10,6 +10,7 @@ use cyrus_collision::{
     ground::{SupportHistory, TerrainGround},
 };
 use cyrus_game::player::{definition::PlayerDefinition, walk::WalkingStartup};
+use cyrus_script::AnimationGroup;
 
 fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
     let metadata = serde_json::json!({
@@ -42,7 +43,7 @@ fn player_entry_preserves_selected_frame_and_does_not_start_the_ordinary_idle_de
     for (ticks, next_frame) in [(0, 10), (1, 11), (2, 11)] {
         let (mut animation, frame) = initial_animation(&data, ticks, &mut |_| Ok(())).unwrap();
         assert_eq!(frame, Some(10));
-        assert_eq!(animation.current_group(), Some(0));
+        assert_eq!(animation.current_group(), Some(AnimationGroup::PANIC));
         assert_eq!(animation.pending_group(), None);
         assert_eq!(animation.advance(1).unwrap(), Some(next_frame));
     }
@@ -59,7 +60,8 @@ fn ordinary_default_replacement_retains_its_frame_when_the_next_stage_delays() {
             {"opcode":0,"frame_reference":31},{"opcode":2,"value":0}]}
     ]));
     let mut animation =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
     animation.advance(1).unwrap();
     let mut history = SupportHistory::new(0, 0);
     assert_eq!(
@@ -73,8 +75,8 @@ fn ordinary_default_replacement_retains_its_frame_when_the_next_stage_delays() {
         .unwrap(),
         Some(30)
     );
-    assert_eq!(animation.default_group(), 3);
-    assert_eq!(animation.current_group(), Some(3));
+    assert_eq!(animation.default_group(), AnimationGroup::IDLE3);
+    assert_eq!(animation.current_group(), Some(AnimationGroup::IDLE3));
     assert_eq!(animation.pending_group(), None);
     assert_eq!(animation.advance(1).unwrap(), None);
 }
@@ -109,7 +111,7 @@ fn installed_player_entry_matches_original_initial_group_and_frame() {
         unsupported: Default::default(),
     };
     let (animation, frame) = initial_animation(&data, 1, &mut |_| Ok(())).unwrap();
-    assert_eq!(animation.current_group(), Some(0));
+    assert_eq!(animation.current_group(), Some(AnimationGroup::PANIC));
     assert_eq!(animation.pending_group(), None);
     // Installed RAAN reference 396 selects CYRSA004 frame 1, matching the entry capture.
     assert_eq!(frame, Some(396));
@@ -124,7 +126,8 @@ fn walking_request_reads_the_marker_after_immediate_animation_advance() {
         ]
     }]));
     let mut animation =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
     let mut walk = WalkingStartup::new(1).unwrap();
     let mut cues = Vec::new();
     let mut sounds = |cue| {
@@ -163,17 +166,18 @@ fn pending_walking_group_does_not_advance_startup() {
         ]}
     ]));
     let mut animation =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
-    animation.request(1, 0, 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
+    animation.request(AnimationGroup::IDLE1, 0, 0).unwrap();
     let mut walk = WalkingStartup::new(1).unwrap();
     assert!(
         walk.request(&mut animation, &definition, 256, 0, &mut |_| Ok(()))
             .unwrap()
             .is_none()
     );
-    assert_eq!(animation.current_group(), Some(1));
-    assert_eq!(animation.pending_group(), Some(20));
-    animation.force_request(20, 0, 0).unwrap();
+    assert_eq!(animation.current_group(), Some(AnimationGroup::IDLE1));
+    assert_eq!(animation.pending_group(), Some(AnimationGroup::WALK));
+    animation.force_request(AnimationGroup::WALK, 0, 0).unwrap();
     let step = walk
         .request(&mut animation, &definition, 256, 0, &mut |_| Ok(()))
         .unwrap()
@@ -185,7 +189,8 @@ fn pending_walking_group_does_not_advance_startup() {
 fn missing_walk_group_preserves_startup_and_zero_speed_uses_runtime_fallback() {
     let (definition, data) = data(serde_json::json!([]));
     let mut animation =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
     let mut walk = WalkingStartup::new(1).unwrap();
     assert!(
         walk.request(&mut animation, &definition, 256, 1, &mut |_| Ok(()))
@@ -391,8 +396,12 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
                 {"opcode":0,"frame_reference":0},{"opcode":1}
             ]
         }]));
-        let mut animation =
-            cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        let mut animation = cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "CYRUS",
+            AnimationGroup::PANIC,
+        )
+        .unwrap();
         let initial = [512 * 256, -64 * 256, 512 * 256];
         let mut walk = GroundedWalk {
             position: initial,
@@ -618,7 +627,8 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         {"group_index":20,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":20},{"opcode":1}]}
     ]));
     let mut animation =
-        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", AnimationGroup::PANIC)
+            .unwrap();
     let start = [512 * 256, -64 * 256, 512 * 256];
     let mut walk = GroundedWalk {
         position: start,
@@ -671,10 +681,12 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         &mut |_, _, _| Ok(()),
     )
     .unwrap();
-    assert_eq!(animation.pending_group(), Some(3));
-    assert_eq!(animation.current_group(), Some(20));
+    assert_eq!(animation.pending_group(), Some(AnimationGroup::IDLE3));
+    assert_eq!(animation.current_group(), Some(AnimationGroup::WALK));
     assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
-    animation.force_request(3, 0, 0).unwrap();
+    animation
+        .force_request(AnimationGroup::IDLE3, 0, 0)
+        .unwrap();
     cyrus_game::player::grounded::advance_animation(
         &scene,
         input.motion.nominal_ticks,
@@ -725,9 +737,13 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
                 {"opcode":0,"frame_reference":21},{"opcode":1}
             ]}
         ]));
-        let mut animation =
-            cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 3).unwrap();
-        animation.request(20, 0, 0).unwrap();
+        let mut animation = cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "CYRUS",
+            AnimationGroup::IDLE3,
+        )
+        .unwrap();
+        animation.request(AnimationGroup::WALK, 0, 0).unwrap();
         let start = [512 * 256, -64 * 256, 512 * 256];
         let mut walk = GroundedWalk {
             position: start,
@@ -763,7 +779,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
             .unwrap();
         assert_eq!(frame.or(ordinary_frame), Some(20));
         assert_eq!(walk.position, start);
-        assert_eq!(animation.pending_group(), Some(3));
+        assert_eq!(animation.pending_group(), Some(AnimationGroup::IDLE3));
         assert!(animation.translation_suppressed());
         assert_eq!(walk.startup.advance(8, 24, 256, true), expected_next);
     }
@@ -853,7 +869,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         );
     }
     let mut scene = ground_scene(6);
-    scene.definition.as_mut().unwrap().ordinary_default_group = 0;
+    scene.definition.as_mut().unwrap().ordinary_default_group = AnimationGroup::PANIC;
     // IDLE has no radius: selecting candidates before animation advances must fail.
     scene.model_radii.insert("WALK".into(), 100.0);
     scene.model_radii.insert("SCRIPT".into(), 100.0);

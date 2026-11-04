@@ -7,6 +7,7 @@ use cyrus_game::player::Player;
 use cyrus_game::player::PlayerPlugin;
 use cyrus_game::player::input::PlayerBindings;
 use cyrus_game::player::input::PlayerInput;
+use cyrus_script::AnimationGroup;
 
 #[test]
 fn keyboard_input_preserves_opposing_actions_and_releases() {
@@ -1722,7 +1723,7 @@ fn a_barred_turn_animation_still_turns_the_heading() {
     };
     let free = ground_turn(100, 0, input(false));
     let barred = ground_turn(100, 0, input(true));
-    assert_eq!(free.group, Some(14));
+    assert_eq!(free.group, Some(AnimationGroup::TURN_LEFT));
     assert_eq!(barred.group, None);
     assert_eq!((barred.heading, barred.roll), (free.heading, free.roll));
     assert_eq!(barred.heading, 148);
@@ -1732,17 +1733,32 @@ fn a_barred_turn_animation_still_turns_the_heading() {
 fn the_fight_turn_attributes_apply_to_a_weapon_holder_outside_the_running_groups_or_a_hand_item_51()
 {
     use cyrus_game::player::turn::fight_values_selected as fight;
-    assert!(!fight(false, Some(8), None), "sheathed, empty hand");
-    assert!(fight(true, Some(8), None), "weapon held, standing");
+    assert!(
+        !fight(false, Some(AnimationGroup::FIGHT_PANIC), None),
+        "sheathed, empty hand"
+    );
+    assert!(
+        fight(true, Some(AnimationGroup::FIGHT_PANIC), None),
+        "weapon held, standing"
+    );
     assert!(
         fight(true, None, Some(0)),
         "weapon held, no animation group"
     );
-    assert!(!fight(true, Some(18), None), "weapon held, group 18");
-    assert!(!fight(true, Some(31), Some(3)), "weapon held, group 31");
-    assert!(fight(false, Some(8), Some(51)), "hand item 51");
     assert!(
-        fight(true, Some(18), Some(51)),
+        !fight(true, Some(AnimationGroup::RUN), None),
+        "weapon held, `anim_run`"
+    );
+    assert!(
+        !fight(true, Some(AnimationGroup::FIGHT_RUN), Some(3)),
+        "weapon held, `anim_fight_run`"
+    );
+    assert!(
+        fight(false, Some(AnimationGroup::FIGHT_PANIC), Some(51)),
+        "hand item 51"
+    );
+    assert!(
+        fight(true, Some(AnimationGroup::RUN), Some(51)),
         "hand item 51 overrides the running groups"
     );
 }

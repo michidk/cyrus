@@ -5,7 +5,8 @@ use crate::script::tasks::{
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
 };
 use cyrus_script::{
-    Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
+    AnimationGroup, Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread,
+    program::*,
 };
 use cyrus_world::transform::Matrix;
 use serde_json::json;
@@ -667,8 +668,8 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
 
     // rtxAnim(label, 13, 11, 12): the operands are used third, fourth, second = 11, 12, 13. An
     // unrelated group is current, so each request stays pending and the ascending order replaces it.
-    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    animation.request(5, 0, 1).unwrap();
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
+    animation.request(AnimationGroup::IDLE_TORCH, 0, 1).unwrap();
     let mut frame = None;
     let mut tasks = NativeTasks::default();
     let mut records = dialogue();
@@ -703,7 +704,13 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
         Some(CallResult::Pending(1))
     );
     // The first request (11) is followed in the same invocation by the cycle step (12).
-    assert_eq!(state(&input), (Some(5), Some(12)));
+    assert_eq!(
+        state(&input),
+        (
+            Some(AnimationGroup::from_index(5)),
+            Some(AnimationGroup::from_index(12))
+        )
+    );
     assert!(records.line_active(Some(1)));
     // While the line is active and the requested group is not current, the next operand is requested;
     // the wrap back to 11 cannot replace the higher pending 13.
@@ -720,7 +727,13 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
                 )
                 .unwrap()
         );
-        assert_eq!(state(&input), (Some(5), Some(pending)));
+        assert_eq!(
+            state(&input),
+            (
+                Some(AnimationGroup::from_index(5)),
+                Some(AnimationGroup::from_index(pending))
+            )
+        );
     }
     // Once the line is over and the last requested group (11, after the wrap) is not current, it completes.
     records.clear_line(Some(1));
@@ -822,7 +835,7 @@ fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
         Argument::Integer(11),
         Argument::Integer(12),
     ];
-    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
     let mut frame = None;
     let mut records = dialogue();
     let mut tasks = NativeTasks::default();
@@ -849,7 +862,7 @@ fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
         )
         .unwrap();
     assert_eq!(result, Some(CallResult::Pending(1)));
-    assert_eq!(animation.current_group(), Some(11));
+    assert_eq!(animation.current_group(), Some(AnimationGroup::MISC2));
     let snapshot = serde_json::to_value(&records).unwrap();
     assert_eq!(
         snapshot["records"][1]["owner"],
@@ -1474,7 +1487,7 @@ fn control_animation_turns_the_receiver_only_while_its_group_plays() {
         models: Default::default(),
         unsupported: Default::default(),
     };
-    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
     let mut frame = None;
     let mut tasks = NativeTasks::default();
     let args = [Argument::Integer(7), Argument::Integer(2)];
@@ -1566,7 +1579,7 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
         models: Default::default(),
         unsupported: Default::default(),
     };
-    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
     let mut frame = None;
     let mut sounds = vec![];
     let mut tasks = NativeTasks::default();
@@ -1693,8 +1706,9 @@ fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
         }]}),
         ..data
     };
-    let mut replacement = ActorAnimation::from_asset(&replacement_data, "ACTOR", 0).unwrap();
-    assert!(!replacement.has_group(7));
+    let mut replacement =
+        ActorAnimation::from_asset(&replacement_data, "ACTOR", AnimationGroup::PANIC).unwrap();
+    assert!(!replacement.has_group(AnimationGroup::IDLE_LEDGE));
     let before = serde_json::to_value(replacement.snapshot()).unwrap();
     let mut rebound = NativeTasks::from_snapshot(
         tasks.snapshot(),
@@ -1884,7 +1898,7 @@ fn frame_wait_restore_preserves_variant_and_reevaluates_operands() {
         models: Default::default(),
         unsupported: Default::default(),
     };
-    let animation = ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let animation = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::IDLE_LEDGE).unwrap();
     for (name, player) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
         let (vm, host, sources) = begin(name, &[7, 10]);
         let saved = vm.snapshot(&sources).unwrap();
@@ -1978,8 +1992,16 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
             models: Default::default(),
             unsupported: Default::default(),
         };
-        let mut animation =
-            ActorAnimation::from_asset(&data, "ACTOR", if available { group } else { 0 }).unwrap();
+        let mut animation = ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            if available {
+                AnimationGroup::from_index(group)
+            } else {
+                AnimationGroup::PANIC
+            },
+        )
+        .unwrap();
         let mut task = Task::WalkForward;
         let mut position = [0; 3];
         let mut angles = [0; 3];
@@ -2060,7 +2082,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
             );
             assert_eq!(
                 animation.current_group(),
-                if available { Some(group) } else { None }
+                available.then_some(AnimationGroup::from_index(group))
             );
         }
     }
@@ -4064,7 +4086,8 @@ fn walk_backward_matches_the_original_routine() {
                scale: i64,
                state: BackwardState,
                admission: LocomotionAdmission| {
-        let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 22).unwrap();
+        let mut animation =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::WALK_BACKWARD).unwrap();
         let mut task = Task::WalkBackward;
         let mut position = [0; 3];
         let mut angles = [0, heading as u16, 0];
@@ -4684,7 +4707,7 @@ fn installed_play_animation_restores_its_pending_slot_only_with_an_animation_bin
     let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
     let mut runtime = Runtime::from_shared(program, CodeOrigin(10), vec![], "BAT".into()).unwrap();
     let mut host = NativeHost {
-        animation: Some(ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap()),
+        animation: Some(ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap()),
         ..Default::default()
     };
     runtime
@@ -4741,6 +4764,9 @@ fn installed_play_animation_restores_its_pending_slot_only_with_an_animation_bin
                 .collect::<Vec<_>>(),
             [100]
         );
-        assert_eq!(host.animation.as_ref().unwrap().current_group(), Some(10));
+        assert_eq!(
+            host.animation.as_ref().unwrap().current_group(),
+            Some(AnimationGroup::MISC1)
+        );
     }
 }
