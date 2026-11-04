@@ -5653,10 +5653,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/commit/a11396a"
       ],
-      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified independent installed function parms4/exact native binding/full119-byte native/full663-byte hand-model helper/full117-byte item lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three differing four-argument tuples/two lookup enable states/six finite lists/two hand-model pointers/two patterns. Ordered unsigned lookup; missing item reaches diagnostic before helper. Match forwards receiver/model/all three offsets; helper clears temporary pointer then null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack args/canary/stack/preserved regs checked; no fabricated service return or downstream effects. Complete DisplayHandModel named wrapper independently differs from shared helper; no family equivalence inferred. Installed declaration and native consume4; historical encoded1 VM admission remains Unknown. Unknown allocator/geometry/drawing/diagnostic effects/continuation/malformed pointers/list producer/lifecycle/full joint domain/VM/native/browser/pixel/gameplay parity. Production remains missing; no inventory/render implementation edits.",
+      "reviewed_revision": "4b24e3af1f76a7880c65c62ef4232fa935c0b7fc"
     },
     {
       "native": "DisplayHandModel",
