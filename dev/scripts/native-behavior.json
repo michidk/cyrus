@@ -4016,10 +4016,11 @@
       "caller": "GameHost::call/delegated native services -> unsupported fallback",
       "tests": [],
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
+        "https://github.com/michidk/redguard-preservation/commit/ce3da9d"
       ],
-      "limits": "Verified source inspection: no named handler or matching generic path. ResetPosition/ResetRotation, attachment opcodes and PlayerOffset do not implement these distinct names. No dedicated public rejection assertion or named production acceptance located. Unknown original parameter semantics/side effects/return beyond declaration metadata. Missing means named handler, not all transform services. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified: independent installed three-argument multitask/exact binding/full717 native and original eligibility/effective-position/linked/bearing/metric/sqrt/angular-difference/magnitude helpers CPU execution.6480 target-specific contexts/14 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS.1152 actual result1 returns/864 diagnostic-copy entry stops/4464 orientation-refresh entry stops. Associated target angle is bearing+angle without receiver heading; unscaled pitch retained and roll negated before fixed-point strength scaling. Paired heading-only state changes tested. Original distance/step/divisor/minimum/shared-update arithmetic executes, no family behavior inferred. Full arena/error/player/multiplier/entryargs/canary/x87 CW/TOP; result/three preserved registers/stack on actual returns. No arbitrary helper returns or fabricated diagnostic/refresh effects/continuation. Original-produced bearing table hash verified under flag0/fninit only. Unknown zero-limit arithmetic/overflow domain/malformed pointers/unmasked exceptions/nonempty FPU stack/natural table initialization/software path/full domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
+      "reviewed_revision": "d58d1dc1865fa1f9d4bd66994c40af850248ae0a"
     },
     {
       "native": "Rotate",
