@@ -2,6 +2,34 @@
 //! current animation group and movement this update.
 use cyrus_script::{AnimationGroup, Attribute};
 
+/// `PlayerStatus` return codes, named after the `ps_*` list of the installed `SOUP386.DEF`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum PlayerStatus {
+    Idle,
+    Jump,
+    JumpForward,
+    JumpRunForward,
+    JumpBackward,
+    FallForward,
+    FallRunForward,
+    FallBackward,
+    Sliding,
+    StartPullUp,
+    PullUp,
+    DrawSword,
+    SheathSword,
+    LedgeStartPullUp,
+    LedgePullUp,
+    RunForward,
+    RunBackward,
+    StepLeft,
+    StepRight,
+    WalkForward,
+    WalkBackward,
+    Moving,
+}
+
 /// The selected player's state as `PlayerStatus` reads it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PlayerStatusInput {
@@ -14,8 +42,8 @@ pub struct PlayerStatusInput {
     pub moved: bool,
 }
 
-/// Status class 0 through 21; the first matching rule wins and zero means none matched.
-pub fn player_status(input: PlayerStatusInput) -> i32 {
+/// The first matching rule wins; `Idle` means none matched.
+pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
     let PlayerStatusInput {
         queued_motion,
         falling_state,
@@ -25,57 +53,70 @@ pub fn player_status(input: PlayerStatusInput) -> i32 {
         moved,
     } = input;
     let by_motion = [
-        (queued_motion, 1, 1),
-        (queued_motion, 2, 2),
-        (queued_motion, 8, 3),
-        (queued_motion, 3, 4),
-        (falling_state, 2, 5),
-        (falling_state, 8, 6),
-        (falling_state, 3, 7),
+        (queued_motion, 1, PlayerStatus::Jump),
+        (queued_motion, 2, PlayerStatus::JumpForward),
+        (queued_motion, 8, PlayerStatus::JumpRunForward),
+        (queued_motion, 3, PlayerStatus::JumpBackward),
+        (falling_state, 2, PlayerStatus::FallForward),
+        (falling_state, 8, PlayerStatus::FallRunForward),
+        (falling_state, 3, PlayerStatus::FallBackward),
     ];
     if let Some((_, _, class)) = by_motion.into_iter().find(|(byte, value, _)| byte == value) {
         return class;
     }
     if sliding_state != 0 {
-        return 8;
+        return PlayerStatus::Sliding;
     }
-    // The living-state classes 13 and 14 repeat the tests of 9 and 10 and are never reached.
-    for (value, class) in [(0x0a, 9), (0x0b, 10), (0x14, 11), (0x15, 12)] {
+    // `LedgeStartPullUp` and `LedgePullUp` repeat the tests of `StartPullUp` and `PullUp` and are
+    // never returned.
+    for (value, class) in [
+        (0x0a, PlayerStatus::StartPullUp),
+        (0x0b, PlayerStatus::PullUp),
+        (0x14, PlayerStatus::DrawSword),
+        (0x15, PlayerStatus::SheathSword),
+    ] {
         if living_state == value {
             return class;
         }
     }
     for (groups, class) in [
-        ([AnimationGroup::RUN, AnimationGroup::RUN_TORCH], 15),
+        (
+            [AnimationGroup::RUN, AnimationGroup::RUN_TORCH],
+            PlayerStatus::RunForward,
+        ),
         (
             [
                 AnimationGroup::RUN_BACKWARD,
                 AnimationGroup::WALK_BACKWARD_TORCH,
             ],
-            16,
+            PlayerStatus::RunBackward,
         ),
         (
             [AnimationGroup::STEP_LEFT, AnimationGroup::STEP_LEFT_TORCH],
-            17,
+            PlayerStatus::StepLeft,
         ),
         (
             [AnimationGroup::STEP_RIGHT, AnimationGroup::STEP_RIGHT_TORCH],
-            18,
+            PlayerStatus::StepRight,
         ),
         (
             [AnimationGroup::WALK, AnimationGroup::WALK_FORWARD_TORCH],
-            19,
+            PlayerStatus::WalkForward,
         ),
         (
             [AnimationGroup::WALK_BACKWARD, AnimationGroup::WALK_BACKWARD],
-            20,
+            PlayerStatus::WalkBackward,
         ),
     ] {
         if group.is_some_and(|group| groups.contains(&group)) {
             return class;
         }
     }
-    if moved { 21 } else { 0 }
+    if moved {
+        PlayerStatus::Moving
+    } else {
+        PlayerStatus::Idle
+    }
 }
 
 /// `PlayerTurned`: whether any of the selected player's angles differs from the angles saved at
@@ -128,7 +169,7 @@ pub fn player_arctan(displacement: [i32; 2]) -> i32 {
 mod tests {
     use super::*;
 
-    fn status(edit: impl FnOnce(&mut PlayerStatusInput)) -> i32 {
+    fn status(edit: impl FnOnce(&mut PlayerStatusInput)) -> PlayerStatus {
         let mut input = PlayerStatusInput::default();
         edit(&mut input);
         player_status(input)
@@ -136,30 +177,44 @@ mod tests {
 
     #[test]
     fn the_first_matching_rule_wins() {
-        assert_eq!(status(|_| {}), 0);
-        assert_eq!(status(|i| i.moved = true), 21);
-        for (value, class) in [(1, 1), (2, 2), (8, 3), (3, 4)] {
+        assert_eq!(status(|_| {}), PlayerStatus::Idle);
+        assert_eq!(status(|i| i.moved = true), PlayerStatus::Moving);
+        for (value, class) in [
+            (1, PlayerStatus::Jump),
+            (2, PlayerStatus::JumpForward),
+            (8, PlayerStatus::JumpRunForward),
+            (3, PlayerStatus::JumpBackward),
+        ] {
             assert_eq!(status(|i| i.queued_motion = value), class);
         }
-        for (value, class) in [(2, 5), (8, 6), (3, 7)] {
+        for (value, class) in [
+            (2, PlayerStatus::FallForward),
+            (8, PlayerStatus::FallRunForward),
+            (3, PlayerStatus::FallBackward),
+        ] {
             assert_eq!(status(|i| i.falling_state = value), class);
         }
-        assert_eq!(status(|i| i.sliding_state = 1), 8);
-        for (value, class) in [(0x0a, 9), (0x0b, 10), (0x14, 11), (0x15, 12)] {
+        assert_eq!(status(|i| i.sliding_state = 1), PlayerStatus::Sliding);
+        for (value, class) in [
+            (0x0a, PlayerStatus::StartPullUp),
+            (0x0b, PlayerStatus::PullUp),
+            (0x14, PlayerStatus::DrawSword),
+            (0x15, PlayerStatus::SheathSword),
+        ] {
             assert_eq!(status(|i| i.living_state = value), class);
         }
         for (group, class) in [
-            (0x12, 15),
-            (0x1e, 15),
-            (0x13, 16),
-            (0x17, 16),
-            (0x18, 17),
-            (0x19, 17),
-            (0x1a, 18),
-            (0x1b, 18),
-            (0x14, 19),
-            (0x15, 19),
-            (0x16, 20),
+            (0x12, PlayerStatus::RunForward),
+            (0x1e, PlayerStatus::RunForward),
+            (0x13, PlayerStatus::RunBackward),
+            (0x17, PlayerStatus::RunBackward),
+            (0x18, PlayerStatus::StepLeft),
+            (0x19, PlayerStatus::StepLeft),
+            (0x1a, PlayerStatus::StepRight),
+            (0x1b, PlayerStatus::StepRight),
+            (0x14, PlayerStatus::WalkForward),
+            (0x15, PlayerStatus::WalkForward),
+            (0x16, PlayerStatus::WalkBackward),
         ] {
             assert_eq!(
                 status(|i| i.group = Some(AnimationGroup::from_index(group))),
@@ -173,7 +228,7 @@ mod tests {
                 i.falling_state = 2;
                 i.moved = true;
             }),
-            4
+            PlayerStatus::JumpBackward
         );
         assert_eq!(
             status(|i| {
@@ -181,14 +236,14 @@ mod tests {
                 i.group = Some(AnimationGroup::RUN);
                 i.moved = true;
             }),
-            9
+            PlayerStatus::StartPullUp
         );
         assert_eq!(
             status(|i| {
                 i.group = Some(AnimationGroup::RUN);
                 i.moved = true;
             }),
-            15
+            PlayerStatus::RunForward
         );
     }
 

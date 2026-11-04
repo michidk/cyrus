@@ -6062,7 +6062,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     group: animation.playback.current_group(),
                     moved: spatial.local.position != spatial.previous_local_position,
                 },
-            )));
+            ) as i32));
         }
         // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
         // owner is not yet identified; that write is not modelled.
