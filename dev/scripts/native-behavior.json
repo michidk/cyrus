@@ -6147,10 +6147,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
-        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895"
+        "https://github.com/michidk/cyrus/issues/10#issuecomment-6521520895",
+        "https://github.com/michidk/redguard-preservation/blob/210276e7f1b1884a53d7a730f85140e45693bb53/docs/engine/SOUP.md#call-encoding"
       ],
-      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert one initial Wait, continuation after completion, discard of valueless effects only as statements and call provenance. Verified bounded installed BAT/NGASTA call-form acceptance under9. Unknown: unused catalogue forms and all opcode/result/operand combinations. Call-form census is not execution proof. Status is an inferred scoped assessment, not completion from source presence.",
-      "reviewed_revision": "69704da56df6e9d5fc1045101e9fc07b47df100f"
+      "limits": "Verified by source/assertion inspection; gameplay tests were not rerun. Fixtures assert one initial Wait, continuation after completion, discard of valueless effects only as statements and call provenance. Verified bounded installed BAT/NGASTA call-form acceptance under9. Unknown: unused catalogue forms and all opcode/result/operand combinations. Call-form census is not execution proof. Status is an inferred scoped assessment, not completion from source presence. Verified bounded original non-null dispatch:36 Python instruction-interpreter contexts across encoded counts0..8/four numeric seeds and2 effective handler-entry semantic controls; actual numeric reader and original jump tables execute until controlled handler boundary. Encoded count selects right-to-left evaluation/register-stack transfer without declaration arity comparison; zero count does not synthesize zero arguments. No handler return/cleanup, MAIN cursor/admission or HIDEOUT mismatch validity established. Typed decoder/VM strict arity unchanged; no blanket extra-argument dropping or missing-argument default justified. No compiler/game runtime.",
+      "reviewed_revision": "ab3157851c496f4e161e0c478224d31e6fb582e4"
     },
     {
       "instruction": "object_call",
