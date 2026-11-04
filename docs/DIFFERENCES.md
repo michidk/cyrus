@@ -145,5 +145,5 @@ buttons from the port. Each action reads its keyboard code or its joystick code,
 codes 136 to 139 and the South, East, West and North face buttons for buttons 1 to 4. **Inferred:** the loop
 count depends on the stick's resistance, which a modern gamepad does not have, so cyrus converts
 `joy_tolerance` to a fraction of the stick's range using the nominal 100 kOhm centre count of 574, a dead
-zone of about 10 %. Menus and the book do not read the gamepad. **Unknown:** the dead zone a particular original joystick
+zone of about 10 %. The Controls page capture accepts a gamepad face button as joystick button 1 to 4, as the original's capture accepts joystick buttons; menus and the book do not otherwise read the gamepad. **Unknown:** the dead zone a particular original joystick
 showed, and whether the original's menus read the joystick.

@@ -54,6 +54,11 @@ pub struct JoystickState {
 }
 
 impl JoystickState {
+    /// Input code of the first held button (132 to 135), for Controls capture.
+    pub fn button_code(&self) -> Option<u8> {
+        (132..=135).find(|code| self.buttons[usize::from(code - 132)])
+    }
+
     fn pressed(&self, code: u8) -> bool {
         match code {
             132..=135 => self.buttons[usize::from(code - 132)],
@@ -383,6 +388,15 @@ mod tests {
             *app.world().resource::<JoystickState>(),
             JoystickState::default()
         );
+    }
+
+    #[test]
+    fn controls_capture_reads_the_first_held_joystick_button() {
+        let mut state = JoystickState::default();
+        assert_eq!(state.button_code(), None);
+        state.buttons[2] = true;
+        state.buttons[1] = true;
+        assert_eq!(state.button_code(), Some(133));
     }
 
     #[test]

@@ -451,6 +451,7 @@ type Inputs<'w> = (
     Res<'w, ButtonInput<KeyCode>>,
     Res<'w, Time<Real>>,
     Option<Res<'w, ButtonInput<MouseButton>>>,
+    Option<Res<'w, cyrus_game::player::input::JoystickState>>,
 );
 
 type MenuRuntime<'w, 's> = (
@@ -749,7 +750,8 @@ pub(super) fn drive(
                             .3
                             .as_deref()
                             .and_then(cyrus_game::player::input::mouse_release_code)
-                    });
+                    })
+                    .or_else(|| input.4.as_deref().and_then(|state| state.button_code()));
                 if let Some(code) = captured {
                     if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
                         menu.unavailable = Some("That key is reserved.".into());
