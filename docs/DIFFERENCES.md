@@ -150,6 +150,8 @@ rebindable actions (next and previous item, inventory, log, quick sword, quick h
 same way, so a mouse or joystick code bound on the Controls page works for them. **Verified:** the original
 reads every action through one shared input table (keyboard scancodes, mouse releases 128 and 129, joystick
 codes 132 to 139). **Inferred:** cyrus treats a mouse release as a one-update press and a joystick code as
-held, with its press edge taken from the previous poll. **Unknown:** the dead zone a particular original
+held, with its press edge taken from the previous poll. **Verified:** the inventory screen polls input once
+per update before waiting for the next BIOS tick, so a mouse binding there reads the release between two
+successive updates; cyrus does the same. **Unknown:** the dead zone a particular original
 joystick showed, and whether the original's menus read the joystick; no joystick read was found in the menu
 code, so menu navigation by gamepad is not provided in Faithful mode.

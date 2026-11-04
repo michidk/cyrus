@@ -10,7 +10,6 @@ pub struct HudPresentationSnapshot {
     source_identity: String,
     state: HudState,
     elapsed_bits: u32,
-    bindings: [u8; 15],
     text: Vec<(String, [i32; 2])>,
     dialogue_text: Option<(usize, String)>,
 }
@@ -33,7 +32,6 @@ impl HudState {
             source_identity: source_identity(asset)?,
             state,
             elapsed_bits: self.elapsed.to_bits(),
-            bindings: self.bindings,
             text: self.text.clone(),
             dialogue_text: self.dialogue_text.clone(),
         })
@@ -63,7 +61,6 @@ impl HudState {
         );
         let mut state = snapshot.state;
         state.elapsed = f32::from_bits(snapshot.elapsed_bits);
-        state.bindings = snapshot.bindings;
         state.text = snapshot.text;
         state.dialogue_text = snapshot.dialogue_text;
         state.frames = prepared.clone();

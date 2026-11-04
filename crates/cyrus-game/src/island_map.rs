@@ -6,9 +6,6 @@
 //! arrives while the map key is up. Presentation draws [`IslandMapScreen`].
 use anyhow::Context;
 
-/// Binding slot of the map action among the 15 installed control codes (actions 718 to 724 are
-/// inventory, sword, health, map, log, next, previous).
-const MAP_SLOT: usize = 11;
 /// The island map item, which the screen requires.
 pub const MAP_ITEM: u16 = 83;
 /// One cross frame lasts this long.
@@ -142,7 +139,7 @@ fn artwork(
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
-    codes: crate::player::input::InputCodes,
+    inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<IslandMapScreen>,
     (hud, mut actors, logbook, inventory, console): (
@@ -152,10 +149,7 @@ fn drive(
         Option<bevy::prelude::Res<crate::inventory_screen::InventoryScreen>>,
         Option<bevy::prelude::Res<cyrus_console::Console>>,
     ),
-    (preferences, assets): (
-        bevy::prelude::Res<crate::preferences::Preferences>,
-        Option<bevy::prelude::Res<bevy::prelude::Assets<cyrus_assets::hud::HudAsset>>>,
-    ),
+    assets: Option<bevy::prelude::Res<bevy::prelude::Assets<cyrus_assets::hud::HudAsset>>>,
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
 ) {
@@ -187,21 +181,11 @@ fn drive(
         resume(&mut screen, &mut virtual_time, &mut None);
         return;
     }
-    let Some(bindings) = preferences
-        .menu()
-        .as_ref()
-        .ok()
-        .and_then(|p| p.as_ref())
-        .map(|p| p.bindings)
-        .or_else(|| logbook.as_ref().map(|screen| screen.bindings))
-    else {
-        return;
-    };
-    let map_code = bindings[MAP_SLOT];
-    let map_held = codes.pressed(map_code);
+    use crate::player::input::Action;
+    let map_held = inputs.pressed(Action::Map);
     match screen.phase {
         Phase::Closed => {
-            let pressed = codes.just_pressed(map_code);
+            let pressed = inputs.just_pressed(Action::Map);
             if !(pressed || requested)
                 || console.is_some_and(|console| console.open)
                 || logbook.is_some_and(|screen| screen.suspended())

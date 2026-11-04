@@ -148,9 +148,6 @@ pub struct HudState {
     pub count: Option<u32>,
     #[serde(skip)]
     elapsed: f32,
-    /// Edited bindings when present, else the installed ones; read on entering a world.
-    #[serde(skip)]
-    bindings: [u8; 15],
     /// Every frame of the fixed atlases, held so swapping frames never reloads an image.
     #[serde(skip)]
     frames: HudPresentationAssets,
@@ -232,7 +229,6 @@ impl HudState {
             selected: hud.selected.or_else(|| hud.items.first().map(|i| i.id)),
             count: None,
             elapsed: 0.0,
-            bindings: hud.bindings,
             frames,
             text: Vec::new(),
             dialogue_text: None,
@@ -912,7 +908,7 @@ fn update(
     mut images: ResMut<Assets<Image>>,
     (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
     compass: CompassInputs,
-    codes: cyrus_game::player::input::InputCodes,
+    controls: cyrus_game::player::input::Inputs,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -935,9 +931,6 @@ fn update(
                 walk_mode: state.walk_mode,
                 auto_defend: state.auto_defend,
             });
-        }
-        if let Ok(Some(menu)) = preferences_store.menu() {
-            state.bindings = menu.bindings;
         }
         commands.insert_resource(state);
         commands.entity(viewport).with_children(|viewport| {
@@ -1146,9 +1139,8 @@ fn update(
     );
 
     // Select the overlay path before cycling; timer zero crossings keep their entry path.
-    let bindings = state.bindings;
-    let pressed = |action: usize| codes.just_pressed(bindings[action]);
-    let held = |action: usize| codes.pressed(bindings[action]);
+    use cyrus_game::player::input::Action;
+    let cycling = controls.pressed(Action::NextItem) || controls.pressed(Action::PreviousItem);
     let fallback_overlay = if state.player_type == 1 {
         ActivationOverlay::Hidden
     } else {
@@ -1159,8 +1151,7 @@ fn update(
     };
     let overlay = match (world, activation) {
         (Some(world), Some(inputs)) => {
-            match world.activation_overlay(inputs, ticks, held(13) || held(14), hud.override_ticks)
-            {
+            match world.activation_overlay(inputs, ticks, cycling, hud.override_ticks) {
                 Ok(overlay) => {
                     let attributes = world.actors()[inputs.player.index].attributes();
                     state.player_type = attributes[Attribute::PlayerType];
@@ -1182,12 +1173,7 @@ fn update(
         (Some(world), None) => {
             let pending = world.activation().prompt().is_some();
             world
-                .ordinary_activation_overlay(
-                    &script_hud,
-                    ticks,
-                    held(13) || held(14),
-                    hud.override_ticks,
-                )
+                .ordinary_activation_overlay(&script_hud, ticks, cycling, hud.override_ticks)
                 .unwrap_or_else(|error| {
                     if pending {
                         warn_once!("HUD ordinary activation: {error:#}");
@@ -1206,7 +1192,10 @@ fn update(
             ..
         }
     ) {
-        match (pressed(14), pressed(13)) {
+        match (
+            controls.just_pressed(Action::PreviousItem),
+            controls.just_pressed(Action::NextItem),
+        ) {
             (true, false) => Some(false),
             (false, true) => Some(true),
             _ => None,
@@ -1264,7 +1253,7 @@ fn update(
     } else {
         cyrus_game::script::CompassUse::Rejected
     };
-    state.compass_on = script_hud.compass_input(held(7), attempt);
+    state.compass_on = script_hud.compass_input(controls.pressed(Action::Use), attempt);
 
     // Compass inputs: the placed player's heading and the loaded world's WORLD.INI ID.
     state.heading = compass.player.single().map_or(0, |pose| pose.heading);
@@ -1393,8 +1382,15 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cyrus_game::player::input::{Action, Input, PlayerBindings};
     use cyrus_script::{AnimationGroup, Native};
     use std::collections::BTreeMap;
+
+    fn bound(action: Action, key: KeyCode) -> PlayerBindings {
+        [(action, Input::try_from(key).unwrap())]
+            .into_iter()
+            .collect()
+    }
 
     fn frames(candle: &mut Candle, health: u8, n: usize) -> Vec<u16> {
         (0..n).map(|_| candle.advance(health)).collect()
@@ -1986,7 +1982,7 @@ mod tests {
         ));
         app.update();
         prepare_script(&mut app, &[]);
-        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        app.insert_resource(bound(Action::Use, KeyCode::KeyE));
         app
     }
 
@@ -2238,7 +2234,7 @@ mod tests {
             app.world().resource::<HudState>().compass_on,
             "world/HUD recreation retains the flag"
         );
-        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        app.insert_resource(bound(Action::Use, KeyCode::KeyE));
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
         assert_eq!(app.world().resource::<HudState>().compass_frame, None);
@@ -2307,7 +2303,7 @@ mod tests {
             state.compass_on,
             "world and HUD replacement retain live inventory"
         );
-        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        app.insert_resource(bound(Action::Use, KeyCode::KeyE));
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
     }
@@ -2356,7 +2352,7 @@ mod tests {
             .unwrap()
             .items[0]
             .count = 0;
-        app.world_mut().resource_mut::<HudState>().bindings[7] = 0x21; // F
+        app.insert_resource(bound(Action::Use, KeyCode::KeyF));
         use_key(&mut app, true);
         assert!(
             !app.world().resource::<HudState>().compass_on,
@@ -2551,8 +2547,6 @@ mod tests {
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
             .add_systems(Update, (configure_scripts, update).chain());
-        let mut bindings = [0; 15];
-        bindings[13] = 0x34;
         let item = |id| HudItem {
             id,
             bitmap: id,
@@ -2568,13 +2562,12 @@ mod tests {
                 inventory: inventory_items(&[(1, 1), (2, 1)]),
                 items: vec![item(1), item(2)],
                 selected: Some(1),
-                bindings,
                 ..asset(0)
             });
         app.world_mut().insert_resource(HudHandle(hud));
         app.world_mut().spawn(HudViewport);
         app.update();
-        app.world_mut().resource_mut::<HudState>().bindings = bindings;
+        app.insert_resource(bound(Action::NextItem, KeyCode::Period));
         app.update();
         prepare_script(&mut app, &[]);
         let inputs = app
@@ -2660,7 +2653,6 @@ mod tests {
         }
         live.elapsed = 0.01;
         live.notices = [7, 13];
-        live.bindings[0] = 72;
         live.text = vec![("retained prompt".into(), [17, 20])];
         live.dialogue_text = Some((3, "retained dialogue".into()));
         let saved = serde_json::to_value(live.snapshot(&asset)?)?;

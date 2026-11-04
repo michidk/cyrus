@@ -1,12 +1,6 @@
 //! The quick sword and quick health keys, sampled from the installed key bindings.
 use bevy::prelude::*;
 
-/// Binding slots of the quick sword and quick health keys among the 15 menu control codes.
-const SWORD_SLOT: usize = 9;
-const HEALTH_SLOT: usize = 10;
-/// Binding slot of the activate/attack key (`key_d`).
-const ACTION_SLOT: usize = 7;
-
 /// Quick keys for the ordinary update's key handler. The sword key reads as held; the health key
 /// and the action key read once per press, so a held key heals or uses an item once.
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -88,12 +82,11 @@ const LETTERS: [KeyCode; 26] = [
 #[allow(clippy::too_many_arguments)] // Bevy supplies each independent input lock as a parameter.
 pub(super) fn sample(
     keys: Option<Res<ButtonInput<KeyCode>>>,
-    codes: crate::player::input::InputCodes,
+    inputs: crate::player::input::Inputs,
     suppressed: Option<Res<crate::player::input::InputSuppressed>>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
-    preferences: Option<Res<crate::preferences::Preferences>>,
     mut quick: ResMut<QuickKeys>,
     mut script_keys: ResMut<ScriptKeys>,
 ) {
@@ -121,24 +114,12 @@ pub(super) fn sample(
         control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
         alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
     };
-    let bindings = preferences
-        .as_ref()
-        .and_then(|preferences| {
-            preferences
-                .menu()
-                .as_ref()
-                .ok()?
-                .as_ref()
-                .map(|menu| menu.bindings)
-        })
-        .or_else(|| logbook.as_ref().map(|screen| screen.bindings));
-    let Some(bindings) = bindings else {
-        *quick = QuickKeys::default();
-        return;
+    use crate::player::input::Action;
+    *quick = QuickKeys {
+        sword: inputs.pressed(Action::QuickSword),
+        health: inputs.just_pressed(Action::QuickHealth),
+        use_selected: inputs.just_pressed(Action::Use),
     };
-    quick.sword = codes.pressed(bindings[SWORD_SLOT]);
-    quick.health = codes.just_pressed(bindings[HEALTH_SLOT]);
-    quick.use_selected = codes.just_pressed(bindings[ACTION_SLOT]);
 }
 
 #[cfg(test)]

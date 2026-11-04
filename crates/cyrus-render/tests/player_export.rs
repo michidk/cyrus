@@ -27,7 +27,7 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         &std::fs::read_to_string(install.root.join("KEYS.INI")).unwrap(),
     )
     .unwrap();
-    assert_eq!(scene.keyboard_codes, Some(keys.keyboard_codes()));
+    assert_eq!(scene.control_codes, Some(keys.control_codes()));
     assert_eq!(scene.settings.standing_height, -2);
     let mut pose = cyrus_game::player::placement::PlayerPose {
         position: [10_448_896, -178_944, 10_502_144],

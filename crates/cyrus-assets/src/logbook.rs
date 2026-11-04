@@ -23,7 +23,6 @@ pub struct LogbookArtwork {
     /// Absent in caches written before the table existed, which `validate` rejects.
     #[serde(default)]
     pub styles: Vec<Option<ReaderStyle>>,
-    pub bindings: [u8; 15],
     /// `CREDITS.TXT` records; `None` when the install has no such file, which skips the credits.
     pub credits: Option<Vec<CreditLine>>,
     /// Set by caches written after the credits were added; `validate` rejects older ones.
@@ -355,10 +354,6 @@ pub(crate) fn prepare(
         style(3, [used[0], 50]),
         style(1, [sel[0], 255]),
     ];
-    let bindings =
-        rgpre::import::keys_ini::KeysIni::parse(&crate::preparation::text(source, "KEYS.INI")?)
-            .map_err(anyhow::Error::msg)?
-            .control_codes();
     let (scroll_normals, scroll_brightness) = scroll_shading(&model);
     let artwork = LogbookArtwork {
         paper: MenuPicture {
@@ -373,7 +368,6 @@ pub(crate) fn prepare(
         palette: palette.colors.to_vec(),
         fonts,
         styles,
-        bindings,
         credits: source
             .manifest()
             .find("CREDITS.TXT")

@@ -13,6 +13,7 @@ pub use cyrus_assets::menu::MenuItem;
 use cyrus_assets::preferences::MenuPreferences;
 use cyrus_game::AppState;
 use cyrus_game::clock::{ClockCheckpoint, SimulationClock, bios_tick};
+use cyrus_game::player::input::{Action, Devices, Input};
 use cyrus_world::sound::SoundCue;
 use serde::Serialize;
 use std::{collections::BTreeMap, hash::BuildHasher};
@@ -741,24 +742,19 @@ pub(super) fn drive(
             if keys.just_pressed(KeyCode::Escape) {
                 menu.capturing = None;
             } else {
-                let captured = keys
-                    .get_just_pressed()
-                    .filter_map(|key| cyrus_game::player::input::scan_code(*key))
-                    .min()
-                    .or_else(|| {
-                        input
-                            .3
-                            .as_deref()
-                            .and_then(cyrus_game::player::input::mouse_release_code)
-                    })
-                    .or_else(|| input.4.as_deref().and_then(|state| state.button_code()));
-                if let Some(code) = captured {
-                    if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
+                let captured = Input::captured(Devices {
+                    keys: Some(keys),
+                    mouse: input.3.as_deref(),
+                    joystick: input.4.as_deref(),
+                });
+                if let Some(captured) = captured {
+                    if captured.reserved() {
                         menu.unavailable = Some("That key is reserved.".into());
                         output.2.write(flat_sound(18));
                     } else {
                         let mut preferences = menu.preferences.clone().unwrap();
-                        preferences.rebind((menu.capturing.unwrap() - 710) as usize, code);
+                        preferences
+                            .rebind((menu.capturing.unwrap() - 710) as usize, captured.into());
                         if persist(&mut menu, preferences, &mut preferences_state) {
                             menu.capturing = None;
                             apply_bindings(&menu, &mut bindings);
@@ -808,12 +804,11 @@ pub(super) fn drive(
                     }
                 }
             }
-            let activation = menu
-                .preferences
-                .as_ref()
-                .and_then(|p| cyrus_game::player::input::scan_key(p.bindings[5]));
-            if (keys.just_pressed(KeyCode::Enter)
-                || activation.is_some_and(|key| keys.just_pressed(key)))
+            // The book activates on Enter or the keyboard-slot jump key only.
+            let activation = bindings.keyboard(Action::Jump).is_some_and(
+                |input| matches!(input, Input::Key(scan) if keys.just_pressed(scan.key())),
+            );
+            if (keys.just_pressed(KeyCode::Enter) || activation)
                 && let Some(index) = menu.selected
             {
                 let entry = menu.entries[index].clone();
@@ -1430,7 +1425,10 @@ mod tests {
             .as_ref()
             .unwrap()
             .bindings[1];
-        let down = cyrus_game::player::input::scan_key(down).unwrap();
+        let Ok(Input::Key(down)) = Input::try_from(down) else {
+            panic!("installed back binding {down} is not a key");
+        };
+        let down = down.key();
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();

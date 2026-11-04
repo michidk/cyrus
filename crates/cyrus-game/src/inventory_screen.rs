@@ -145,15 +145,6 @@ pub fn name_lines(text: &str) -> Vec<&str> {
     lines
 }
 
-/// Binding slots among the 15 installed control codes.
-const LEFT: usize = 2;
-const RIGHT: usize = 3;
-const UP: usize = 0;
-const DOWN: usize = 1;
-const WALK: usize = 4;
-const ACTIVATE: usize = 7;
-const INVENTORY: usize = 8;
-
 /// Shared inventory-screen lifecycle. Presentation draws [`InventoryScreen::layout`].
 /// Opening waits for the inventory key's release; closing keeps input suspended until
 /// every exit control is released.
@@ -173,6 +164,9 @@ pub struct InventoryScreen {
     last_tick: Option<u32>,
     #[serde(skip)]
     paused_virtual_time: bool,
+    /// Mouse buttons held at the previous update's input poll.
+    #[serde(skip)]
+    mouse_held: [bool; 2],
 }
 impl InventoryScreen {
     /// Includes exit-key release, during which gameplay still must not consume input.
@@ -211,7 +205,7 @@ fn publish_lock(
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
-    codes: crate::player::input::InputCodes,
+    inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<InventoryScreen>,
     (hud, actors, logbook, console): (
@@ -220,7 +214,6 @@ fn drive(
         Option<bevy::prelude::Res<crate::logbook::LogbookScreen>>,
         Option<bevy::prelude::Res<cyrus_console::Console>>,
     ),
-    preferences: bevy::prelude::Res<crate::preferences::Preferences>,
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
     mut sounds: Option<bevy::prelude::MessageWriter<cyrus_world::sound::SoundCue>>,
@@ -252,21 +245,14 @@ fn drive(
         screen.last_tick = None;
         return;
     }
-    let Some(bindings) = preferences
-        .menu()
-        .as_ref()
-        .ok()
-        .and_then(|p| p.as_ref())
-        .map(|p| p.bindings)
-        .or_else(|| logbook.as_ref().map(|screen| screen.bindings))
-    else {
-        return;
-    };
-    let held = |slot: usize| codes.pressed(bindings[slot]);
+    use crate::player::input::{Action, Input, Mouse};
+    let devices = inputs.devices();
+    let held = |action| inputs.pressed(action);
     let escape = keys.pressed(KeyCode::Escape);
     let enter = keys.pressed(KeyCode::Enter);
     if screen.waiting_for_release {
-        if !(held(INVENTORY) || escape || held(WALK) || held(ACTIVATE) || enter) {
+        if !(held(Action::Inventory) || escape || held(Action::Walk) || held(Action::Use) || enter)
+        {
             screen.waiting_for_release = false;
             if let Some(hud) = hud.as_ref() {
                 hud.set_inventory_candle(false);
@@ -276,7 +262,7 @@ fn drive(
         return;
     }
     if !screen.open {
-        let opening = codes.just_pressed(bindings[INVENTORY]);
+        let opening = inputs.just_pressed(Action::Inventory);
         if !opening
             || console.is_some_and(|c| c.open)
             || logbook.is_some_and(|screen| screen.suspended())
@@ -334,18 +320,28 @@ fn drive(
         return;
     }
     if screen.opening {
-        screen.opening = held(INVENTORY);
+        screen.opening = held(Action::Inventory);
+        screen.mouse_held = Mouse::ALL.map(|mouse| devices.mouse_held(mouse));
         return;
     }
     if screen.last_tick == Some(tick) {
         return;
     }
     screen.last_tick = Some(tick);
+    // Each update polls input once, so a mouse binding reads the release since the last update.
+    let mouse = Mouse::ALL.map(|mouse| devices.mouse_held(mouse));
+    let previous = std::mem::replace(&mut screen.mouse_held, mouse);
+    let held = |action| {
+        inputs.bindings().inputs(action).any(|input| match input {
+            Input::Mouse(button) => crate::player::input::polled_release(previous, mouse, button),
+            input => devices.pressed(input),
+        })
+    };
     let directions = Directions {
-        left: held(LEFT),
-        right: held(RIGHT),
-        up: held(UP),
-        down: held(DOWN),
+        left: held(Action::Left),
+        right: held(Action::Right),
+        up: held(Action::Forward),
+        down: held(Action::Back),
     };
     if screen.grid.update(directions)
         && let Some(sounds) = sounds.as_mut()
@@ -357,8 +353,8 @@ fn drive(
         });
     }
     screen.layout = screen.grid.layout();
-    if held(INVENTORY) || held(ACTIVATE) || held(WALK) || escape || enter {
-        if (held(ACTIVATE) || enter)
+    if held(Action::Inventory) || held(Action::Use) || held(Action::Walk) || escape || enter {
+        if (held(Action::Use) || enter)
             && let (Some(id), Some(hud)) = (screen.grid.selection(), hud.as_ref())
             && let Err(error) = hud.select_item(id)
         {

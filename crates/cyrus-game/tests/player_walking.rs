@@ -220,7 +220,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
         actor_collision: None,
         model_radii: Default::default(),
         world: 1,
-        keyboard_codes: None,
+        control_codes: None,
         settings: MovementSettings {
             standing_height: -2,
             post_collide_height: 50,

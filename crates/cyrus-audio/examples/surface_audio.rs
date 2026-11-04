@@ -652,7 +652,7 @@ mod tests {
             source_identity: None,
             world: 1,
             model_radii: std::collections::BTreeMap::from([("TEST".into(), 1.0)]),
-            keyboard_codes: None,
+            control_codes: None,
             actor_collision: None,
             unavailable: None,
             settings: MovementSettings {

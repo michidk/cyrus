@@ -83,7 +83,7 @@ pub struct SceneData {
     /// Player model header radii in map units, keyed by uppercase filename stem.
     #[serde(default)]
     pub model_radii: std::collections::BTreeMap<String, f32>,
-    pub keyboard_codes: Option<[u8; 8]>,
+    pub control_codes: Option<[u8; 15]>,
     pub settings: MovementSettings,
     pub definition: serde_json::Value,
     pub heights: Option<Vec<i16>>,

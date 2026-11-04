@@ -95,10 +95,10 @@ pub(crate) fn prepare(
     } else {
         (None, None, None)
     };
-    let keyboard_codes = rgpre::import::keys_ini::KeysIni::parse(&keys_text)
+    let control_codes = rgpre::import::keys_ini::KeysIni::parse(&keys_text)
         .map_err(anyhow::Error::msg)
         .with_context(|| format!("world {world}: parse KEYS.INI"))?
-        .keyboard_codes();
+        .control_codes();
     let surfaces = rgpre::import::surface_ini::SurfaceAssignments::parse(
         &crate::preparation::text(source, "SURFACE.INI")?,
     )
@@ -117,7 +117,7 @@ pub(crate) fn prepare(
     let data = SceneData {
         version: 2,
         model_radii: model_radii.clone(),
-        keyboard_codes: Some(keyboard_codes),
+        control_codes: Some(control_codes),
         world,
         settings,
         definition,

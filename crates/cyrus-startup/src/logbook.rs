@@ -128,7 +128,6 @@ fn draw(
         return;
     };
     if !screen.ready {
-        screen.bindings = artwork_data.bindings;
         screen.ready = true;
     }
     let Ok(mut panel) = panels.single_mut() else {
@@ -792,7 +791,6 @@ mod tests {
         let artwork: LogbookArtwork =
             serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
         artwork.validate().unwrap();
-        assert_eq!(artwork.bindings[12], 38);
         // Preservation's reader style table: 5 uninitialised; 1 and 2 use gui_low_font; 7 and 9 use the small fonts.
         let styles: Vec<_> = artwork
             .styles

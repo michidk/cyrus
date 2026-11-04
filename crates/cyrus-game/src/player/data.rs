@@ -16,8 +16,9 @@ pub struct PlayerScene {
     pub world: u32,
     /// Authored model radii in map units; absent entries require re-export.
     pub model_radii: std::collections::BTreeMap<String, f32>,
-    /// Installed keyboard defaults, independent of per-user menu preferences.
-    pub keyboard_codes: Option<[u8; 8]>,
+    /// Installed keyboard-slot defaults of the fifteen actions, independent of per-user menu
+    /// preferences. Absent in caches written before all fifteen were exported.
+    pub control_codes: Option<[u8; 15]>,
     pub settings: MovementSettings,
     pub definition: Option<PlayerDefinition>,
     pub terrain: Option<TerrainGround>,
@@ -180,7 +181,7 @@ impl PlayerScene {
             source_identity: Some(source_identity),
             model_radii: data.model_radii,
             world: data.world,
-            keyboard_codes: data.keyboard_codes,
+            control_codes: data.control_codes,
             settings: data.settings,
             definition,
             terrain,

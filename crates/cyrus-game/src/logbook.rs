@@ -170,8 +170,6 @@ pub struct LogbookScreen {
     #[serde(skip)]
     pub book: Option<Logbook>,
     #[serde(skip)]
-    pub bindings: [u8; 15],
-    #[serde(skip)]
     manual_entry: Option<String>,
     #[serde(skip)]
     manual_cursor_visible: bool,
@@ -232,12 +230,11 @@ pub(crate) fn register(app: &mut bevy::prelude::App) {
 fn drive(
     state: bevy::prelude::Res<bevy::prelude::State<crate::AppState>>,
     keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
-    codes: crate::player::input::InputCodes,
+    inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut keyboard: bevy::prelude::MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut screen: bevy::prelude::ResMut<LogbookScreen>,
     hud: Option<bevy::prelude::Res<crate::script::ScriptHud>>,
-    preferences: bevy::prelude::Res<crate::preferences::Preferences>,
     console: Option<bevy::prelude::Res<cyrus_console::Console>>,
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
@@ -261,14 +258,9 @@ fn drive(
         screen.last_tick = None;
         return;
     }
-    let bindings = preferences
-        .menu()
-        .as_ref()
-        .ok()
-        .and_then(|p| p.as_ref())
-        .map_or(screen.bindings, |p| p.bindings);
-    let held = |index: usize| codes.pressed(bindings[index]);
-    let closing = held(12) || held(7) || keys.pressed(KeyCode::Escape);
+    use crate::player::input::Action;
+    let held = |action| inputs.pressed(action);
+    let closing = held(Action::Log) || held(Action::Use) || keys.pressed(KeyCode::Escape);
     if screen.waiting_for_release {
         if !closing {
             screen.waiting_for_release = false;
@@ -285,7 +277,7 @@ fn drive(
         return;
     }
     if !screen.open {
-        let opening = codes.just_pressed(bindings[12]);
+        let opening = inputs.just_pressed(Action::Log);
         if !opening || !screen.ready || screen.inventory_open || console.is_some_and(|c| c.open) {
             return;
         }
@@ -402,7 +394,7 @@ fn drive(
         }
         return;
     }
-    if codes.just_pressed(bindings[6]) {
+    if inputs.just_pressed(Action::View) {
         screen.manual_entry = Some(String::new());
         screen.manual_cursor_visible = false;
         screen.manual_waiting_for_release = keys.any_pressed([KeyCode::Enter, KeyCode::Escape]);
@@ -410,10 +402,13 @@ fn drive(
         screen.error = None;
         return;
     }
-    if !held(12) {
+    if !held(Action::Log) {
         screen.log_released = true;
     }
-    if (held(12) && screen.log_released) || held(7) || keys.pressed(KeyCode::Escape) {
+    if (held(Action::Log) && screen.log_released)
+        || held(Action::Use)
+        || keys.pressed(KeyCode::Escape)
+    {
         screen.open = false;
         screen.waiting_for_release = true;
         return;
@@ -422,12 +417,12 @@ fn drive(
         return;
     }
     screen.last_tick = Some(tick);
-    let fast = held(4) || keys.any_pressed([KeyCode::PageUp, KeyCode::PageDown]);
+    let fast = held(Action::Walk) || keys.any_pressed([KeyCode::PageUp, KeyCode::PageDown]);
     let input = LogbookInput {
         home: keys.pressed(KeyCode::Home),
         end: keys.pressed(KeyCode::End),
-        up: held(0),
-        down: held(1),
+        up: held(Action::Forward),
+        down: held(Action::Back),
         page_up: keys.pressed(KeyCode::PageUp),
         page_down: keys.pressed(KeyCode::PageDown),
         ..Default::default()
@@ -525,6 +520,11 @@ fn edit_manual(
 #[cfg(test)]
 mod screen_tests {
     use super::*;
+    use crate::player::input::{Action, Input, PlayerBindings};
+
+    fn key(key: KeyCode) -> Input {
+        Input::try_from(key).unwrap()
+    }
     use bevy::prelude::*;
 
     fn event(key_code: KeyCode, text: Option<&str>) -> bevy::input::keyboard::KeyboardInput {
@@ -577,12 +577,14 @@ mod screen_tests {
             .add_message::<bevy::input::keyboard::KeyboardInput>()
             .init_resource::<crate::preferences::Preferences>()
             .add_systems(Update, drive);
-        let mut bindings = [0; 15];
-        bindings[6] = 56;
+        app.insert_resource(
+            [(Action::View, key(KeyCode::AltLeft))]
+                .into_iter()
+                .collect::<PlayerBindings>(),
+        );
         app.insert_resource(LogbookScreen {
             open: true,
             ready: true,
-            bindings,
             book: Some(Logbook::new(&["7,Existing".into()]).unwrap()),
             ..Default::default()
         });
@@ -644,12 +646,14 @@ mod screen_tests {
             .add_message::<bevy::input::keyboard::KeyboardInput>()
             .init_resource::<crate::preferences::Preferences>()
             .add_systems(Update, drive);
-        let mut bindings = [0; 15];
-        bindings[6] = 56;
+        app.insert_resource(
+            [(Action::View, key(KeyCode::AltLeft))]
+                .into_iter()
+                .collect::<PlayerBindings>(),
+        );
         app.insert_resource(LogbookScreen {
             open: true,
             ready: true,
-            bindings,
             book: Some(Logbook::new(&["7,Existing".into()]).unwrap()),
             ..Default::default()
         });
@@ -701,15 +705,19 @@ mod screen_tests {
         let checkpoint = clock.checkpoint();
         let mut expected = clock.clone();
         app.insert_resource(clock);
-        let mut bindings = [0; 15];
-        bindings[12] = 38;
-        bindings[7] = 57;
+        app.insert_resource(
+            [
+                (Action::Log, key(KeyCode::KeyL)),
+                (Action::Use, key(KeyCode::Space)),
+            ]
+            .into_iter()
+            .collect::<PlayerBindings>(),
+        );
         app.insert_resource(LogbookScreen {
             open: true,
             ready: true,
             book: Some(Logbook::new(&vec!["entry".into(); 20]).unwrap()),
             checkpoint: Some(checkpoint),
-            bindings,
             ..Default::default()
         });
         app.world_mut()

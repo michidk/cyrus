@@ -22,9 +22,9 @@ pub(crate) fn load_scene_bindings(
     let result = (|| {
         let local = preferences.menu().clone().map_err(|e| e.to_string())?;
         let codes = match local {
-            Some(preferences) => std::array::from_fn(|i| preferences.bindings[i]),
+            Some(preferences) => preferences.bindings,
             None => scene
-                .keyboard_codes
+                .control_codes
                 .ok_or("missing keyboard defaults; re-export world")?,
         };
         let bindings = PlayerBindings::from_codes(codes)?;
@@ -66,7 +66,7 @@ mod tests {
             actor_collision: None,
             model_radii: Default::default(),
             world: 17,
-            keyboard_codes: Some([72, 80, 75, 77, 42, 57, 56, 29]),
+            control_codes: Some([72, 80, 75, 77, 42, 57, 56, 29, 23, 31, 35, 50, 38, 52, 51]),
             settings: MovementSettings {
                 standing_height: -2,
                 post_collide_height: 50,

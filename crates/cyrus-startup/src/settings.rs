@@ -30,13 +30,10 @@ pub(super) fn apply_bindings(
     menu: &MenuState,
     bindings: &mut cyrus_game::player::input::PlayerBindings,
 ) {
-    if let Some(preferences) = &menu.preferences {
-        match cyrus_game::player::input::PlayerBindings::from_codes(std::array::from_fn(|i| {
-            preferences.bindings[i]
-        })) {
-            Ok(updated) => *bindings = updated,
-            Err(error) => warn!("{error}; unsupported device bindings remain unavailable"),
-        }
+    if let Some(preferences) = &menu.preferences
+        && let Err(error) = bindings.set_keyboard(preferences.bindings)
+    {
+        warn!("{error}; unsupported device bindings remain unavailable");
     }
 }
 

@@ -49,7 +49,8 @@ pub struct HudAsset {
     pub items: Vec<HudItem>,
     /// ITEM.INI `start_item_select`; live selection belongs to the game session.
     pub selected: Option<u16>,
-    /// Installed KEYS.INI scan codes for menu actions 710 through 724.
+    /// Installed KEYS.INI scan codes for menu actions 710 through 724. Gameplay reads the
+    /// player's bindings instead; this stays because HUD save snapshots hash the asset.
     pub bindings: [u8; 15],
     /// `fonts/REDSEL.FNT`; HUD text is drawn like an NPC subtitle line.
     pub font: cyrus_text::Font,

@@ -139,13 +139,13 @@ impl GameInstall {
         self.root.join("fxart")
     }
 }
-/// Installed physical keyboard codes in the original up/down/left/right/a/b/c/d order.
-pub fn keyboard_codes(install: &GameInstall) -> Result<[u8; 8], String> {
+/// Installed `KEYS.INI` keyboard-slot codes of the fifteen actions, in `[input]` order.
+pub fn control_codes(install: &GameInstall) -> Result<[u8; 15], String> {
     let path = install.root.join("KEYS.INI");
     std::fs::read_to_string(path)
         .map_err(|e| e.to_string())
         .and_then(|text| rgpre::import::keys_ini::KeysIni::parse(&text))
-        .map(|ini| ini.keyboard_codes())
+        .map(|ini| ini.control_codes())
 }
 /// Installed joystick bindings and dead zone; `None` when SYSTEM.INI has no `joy_tolerance`.
 pub fn joystick(install: &GameInstall) -> Result<Option<crate::player::JoystickSettings>, String> {

@@ -52,7 +52,7 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         serde_json::from_value(animations.metadata["markers"][0]["map_position"].clone())?;
     let view = marker.map(|value| value * 256);
     let codes = scene
-        .keyboard_codes
+        .control_codes
         .context("installed keyboard bindings unavailable")?;
     let world = scene.world;
     let mut app = App::new();
@@ -173,7 +173,10 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         "idle player moved before input"
     );
     let initial = position(&mut app)?;
-    let key = cyrus_game::player::input::scan_key(codes[0]).context("forward key unavailable")?;
+    let key = match cyrus_game::player::input::Input::try_from(codes[0]) {
+        Ok(cyrus_game::player::input::Input::Key(scan)) => scan.key(),
+        other => anyhow::bail!("installed forward binding is not a key: {other:?}"),
+    };
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(key);

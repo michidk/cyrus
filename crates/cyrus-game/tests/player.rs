@@ -71,13 +71,19 @@ fn mouse_bindings_read_the_release_edge_not_the_held_button() {
     assert!(!action(&mouse));
     // Without a mouse resource the binding stays inactive.
     assert!(!bindings.sample(&keys).action);
-    assert_eq!(cyrus_game::player::input::mouse_release_code(&mouse), None);
+    use cyrus_game::player::input::{Devices, Input, Mouse};
+    let captured = |mouse: &ButtonInput<MouseButton>| {
+        Input::captured(Devices {
+            keys: Some(&keys),
+            mouse: Some(mouse),
+            joystick: None,
+        })
+    };
+    assert_eq!(captured(&mouse), None);
     mouse.press(MouseButton::Right);
     mouse.release(MouseButton::Right);
-    assert_eq!(
-        cyrus_game::player::input::mouse_release_code(&mouse),
-        Some(129)
-    );
+    assert_eq!(captured(&mouse), Some(Input::Mouse(Mouse::Right)));
+    assert_eq!(u8::from(Input::Mouse(Mouse::Right)), 129);
 }
 
 #[test]

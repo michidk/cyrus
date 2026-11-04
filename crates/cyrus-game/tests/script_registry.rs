@@ -6149,7 +6149,7 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
         source_identity: None,
         world: 7,
         model_radii: Default::default(),
-        keyboard_codes: None,
+        control_codes: None,
         settings: MovementSettings {
             standing_height: -2,
             post_collide_height: 1,
@@ -6690,7 +6690,7 @@ fn ordinary_collision_scene(
         source_identity: None,
         world,
         model_radii: Default::default(),
-        keyboard_codes: None,
+        control_codes: None,
         settings: MovementSettings {
             standing_height: -2,
             post_collide_height: 1,
@@ -7527,7 +7527,7 @@ fn ordinary_collision_loader_distinguishes_authored_static_and_model_less_shapes
             source_identity: None,
             world: world.world,
             model_radii: Default::default(),
-            keyboard_codes: None,
+            control_codes: None,
             settings: MovementSettings {
                 standing_height: -2,
                 post_collide_height: 50,
