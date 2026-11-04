@@ -6094,6 +6094,7 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,
+            joystick: None,
         },
         definition: None,
         terrain: None,
@@ -6634,6 +6635,7 @@ fn ordinary_collision_scene(
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,
+            joystick: None,
         },
         definition: None,
         terrain: None,
@@ -7223,6 +7225,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             turn_speed: 12,
             turn_max_speed: 48,
             poly_push_units: 16,
+            joystick: None,
         };
         let mut transitions = 0;
         world
@@ -7364,6 +7367,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             turn_speed: 12,
             turn_max_speed: 48,
             poly_push_units: 16,
+            joystick: None,
         };
         world
             .resolve_ordinary_primary_contacts(id, &contacts, &settings, &mut |_| {
@@ -7468,6 +7472,7 @@ fn ordinary_collision_loader_distinguishes_authored_static_and_model_less_shapes
                 turn_speed: 1,
                 turn_max_speed: 1,
                 poly_push_units: 1,
+                joystick: None,
             },
             definition: None,
             terrain: None,

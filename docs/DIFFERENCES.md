@@ -135,3 +135,15 @@ opening ship duel in both builds.
 **Inferred:** the original plays a gameplay script's movie directly from the main loop. cyrus enters the
 in-game book context, plays the movie over it and resumes the world when it ends, so the book can show
 for the moment before the first frame and effect sounds stop as they do for any book entry.
+
+## Gamepad dead zone
+
+**Verified:** the original polls a PC game port, reduces each axis to a loop count, compares it against the
+centre read once at startup plus or minus the installed `joy_tolerance` (60 counts), and reads the four
+buttons from the port. Each action reads its keyboard code or its joystick code, the latter from the second
+`KEYS.INI` slot. cyrus maps a connected gamepad onto the same digital codes: the left stick or D-pad for
+codes 136 to 139 and the South, East, West and North face buttons for buttons 1 to 4. **Inferred:** the loop
+count depends on the stick's resistance, which a modern gamepad does not have, so cyrus converts
+`joy_tolerance` to a fraction of the stick's range using the nominal 100 kOhm centre count of 574, a dead
+zone of about 10 %. Menus and the book do not read the gamepad. **Unknown:** the dead zone a particular original joystick
+showed, and whether the original's menus read the joystick.

@@ -30,6 +30,7 @@ impl Plugin for PlayerPlugin {
         }
         app.init_resource::<input::PlayerBindings>()
             .init_resource::<input::PlayerInput>()
+            .init_resource::<input::JoystickState>()
             .init_resource::<input::DialogueSkip>()
             .init_resource::<input::InputSuppressed>()
             .init_resource::<placement::MarkerEntry>()
@@ -41,7 +42,12 @@ impl Plugin for PlayerPlugin {
                     .after(placement::enter_marker)
                     .before(cyrus_world::animation::AnimationSystems),
             )
-            .add_systems(Update, input::sample.in_set(input::InputSample))
+            .add_systems(
+                Update,
+                (input::poll_gamepads, input::sample)
+                    .chain()
+                    .in_set(input::InputSample),
+            )
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(OnExit(AppState::InGame), despawn)
             .add_systems(

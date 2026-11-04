@@ -425,7 +425,7 @@ change. Timing uses the startup presentation cadence rather than original update
 performance. Book/page
 motion and navigation feedback play installed effects through the shared sound
 path on native and browser builds. **Verified:** the original default book menu has no pointer
-hover/click selection. Joystick support and remaining mouse-bound actions are incomplete. Lighting,
+hover/click selection. Gamepad movement and buttons follow the installed joystick bindings (see `docs/DIFFERENCES.md`); remaining mouse-bound actions are incomplete. Lighting,
 camera-plane clipping remain unsupported. Entering the book from gameplay, or by a fatal death, captures a 256x192 centre-cropped
 view that the book shows and slot saves store; a save made from live gameplay (quick save) stores no thumbnail.
 

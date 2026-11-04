@@ -1,6 +1,7 @@
 //! Keyboard and mouse-button input. Binding semantics, scan codes and the input state
 //! table are documented in redguard-preservation's `docs/config/keys-ini.md`.
-//! Joystick codes (132 and up) remain unavailable until a device adapter exists.
+//! Joystick codes 132 to 139 read a [`JoystickState`] that the gamepad adapter fills in the
+//! original's digital terms; the analog axes are reduced to the original's dead-zone test.
 
 use crate::fidelity::{Fidelity, Mode};
 use bevy::input::mouse::MouseButton;
@@ -36,11 +37,50 @@ pub struct PlayerToggles {
 enum Binding {
     Key(KeyCode),
     MouseRelease(MouseButton),
+    /// Joystick input code 132 to 139: buttons 1 to 4, then left, right, up, down.
+    Joystick(u8),
 }
 
-/// Bindings in up/down/left/right/a/b/c/d order. Empty until loaded.
+/// Digital joystick input table entries, written by the gamepad adapter before sampling.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JoystickState {
+    /// Buttons 1 to 4, codes 132 to 135.
+    pub buttons: [bool; 4],
+    /// Stick beyond the dead zone: left 136, right 137, up 138, down 139.
+    pub left: bool,
+    pub right: bool,
+    pub up: bool,
+    pub down: bool,
+}
+
+impl JoystickState {
+    fn pressed(&self, code: u8) -> bool {
+        match code {
+            132..=135 => self.buttons[usize::from(code - 132)],
+            136 => self.left,
+            137 => self.right,
+            138 => self.up,
+            139 => self.down,
+            _ => false,
+        }
+    }
+}
+
+/// Bindings in up/down/left/right/a/b/c/d order. Empty until loaded. An action reads its
+/// keyboard-slot binding OR its joystick-slot binding.
 #[derive(Resource, Default)]
-pub struct PlayerBindings([Option<Binding>; 8]);
+pub struct PlayerBindings {
+    keyboard: [Option<Binding>; 8],
+    joystick: [Option<Binding>; 8],
+    /// Installed `joy_tolerance` in gameport loop counts; `None` when no joystick is configured.
+    tolerance: Option<i32>,
+}
+
+/// Loop count of the original gameport poll at a centered stick, from the nominal 100 kOhm
+/// potentiometer (24.2 us + 0.011 us/Ohm at 50 kOhm = 574 us) and one microsecond per port read.
+/// Inferred: the executable only compares loop counts, so this converts the installed dead zone
+/// to a fraction of a modern stick's half range.
+const NOMINAL_CENTER_COUNT: f32 = 574.0;
 
 /// Configured keyboard key_a before Modern movement interpretation.
 #[derive(Resource, Default)]
@@ -51,27 +91,50 @@ impl PlayerBindings {
     /// (128 left, 129 right). Zero is unbound. Unsupported device/unknown codes
     /// return an error, rather than silently substituting a different control scheme.
     pub fn from_codes(codes: [u8; 8]) -> Result<Self, String> {
-        let mut keys = [None; 8];
+        let mut keyboard = [None; 8];
         for (i, code) in codes.into_iter().enumerate() {
-            keys[i] = match code {
-                0 => None,
-                128 => Some(Binding::MouseRelease(MouseButton::Left)),
-                129 => Some(Binding::MouseRelease(MouseButton::Right)),
-                _ => Some(Binding::Key(scan_key(code).ok_or_else(|| {
-                    format!(
-                        "KEYS.INI [input] key_{}[0]: unsupported input code {code}",
-                        ["up", "down", "left", "right", "a", "b", "c", "d"][i]
-                    )
-                })?)),
-            };
+            keyboard[i] = Self::binding(code, i, 0)?;
         }
-        Ok(Self(keys))
+        Ok(Self {
+            keyboard,
+            ..Self::default()
+        })
+    }
+
+    /// Adds the installed joystick slot (`key_*[1]`) and dead zone to these bindings.
+    pub fn with_joystick(mut self, codes: [u8; 8], tolerance: i32) -> Result<Self, String> {
+        for (i, code) in codes.into_iter().enumerate() {
+            self.joystick[i] = Self::binding(code, i, 1)?;
+        }
+        self.tolerance = Some(tolerance);
+        Ok(self)
+    }
+
+    fn binding(code: u8, action: usize, slot: u8) -> Result<Option<Binding>, String> {
+        Ok(match code {
+            0 => None,
+            128 => Some(Binding::MouseRelease(MouseButton::Left)),
+            129 => Some(Binding::MouseRelease(MouseButton::Right)),
+            132..=139 => Some(Binding::Joystick(code)),
+            _ => Some(Binding::Key(scan_key(code).ok_or_else(|| {
+                format!(
+                    "KEYS.INI [input] key_{}[{slot}]: unsupported input code {code}",
+                    ["up", "down", "left", "right", "a", "b", "c", "d"][action]
+                )
+            })?)),
+        })
+    }
+
+    /// Stick fraction of full deflection beyond which the original's dead-zone test succeeds.
+    pub fn stick_threshold(&self) -> Option<f32> {
+        self.tolerance
+            .map(|tolerance| (tolerance as f32 / NOMINAL_CENTER_COUNT).clamp(0.0, 1.0))
     }
 
     /// Sample held keys without imposing movement priorities or cancelling
     /// opposing inputs; those belong to the original controller state machine.
     pub fn sample(&self, keys: &ButtonInput<KeyCode>) -> PlayerInput {
-        self.sample_with_mouse(keys, None)
+        self.sample_with_devices(keys, None, None)
     }
 
     /// As [`Self::sample`], also reading mouse-button bindings from `mouse` when supplied.
@@ -80,14 +143,26 @@ impl PlayerBindings {
         keys: &ButtonInput<KeyCode>,
         mouse: Option<&ButtonInput<MouseButton>>,
     ) -> PlayerInput {
+        self.sample_with_devices(keys, mouse, None)
+    }
+
+    /// As [`Self::sample_with_mouse`], also reading joystick codes from `joystick` when supplied.
+    pub fn sample_with_devices(
+        &self,
+        keys: &ButtonInput<KeyCode>,
+        mouse: Option<&ButtonInput<MouseButton>>,
+        joystick: Option<&JoystickState>,
+    ) -> PlayerInput {
+        let held = |binding: Option<Binding>| match binding {
+            Some(Binding::Key(key)) => keys.pressed(key),
+            Some(Binding::MouseRelease(button)) => {
+                mouse.is_some_and(|mouse| mouse.just_released(button))
+            }
+            Some(Binding::Joystick(code)) => joystick.is_some_and(|state| state.pressed(code)),
+            None => false,
+        };
         let [forward, backward, left, right, walk, jump, look, action] =
-            self.0.map(|binding| match binding {
-                Some(Binding::Key(key)) => keys.pressed(key),
-                Some(Binding::MouseRelease(button)) => {
-                    mouse.is_some_and(|mouse| mouse.just_released(button))
-                }
-                None => false,
-            });
+            std::array::from_fn(|i| held(self.keyboard[i]) || held(self.joystick[i]));
         PlayerInput {
             forward,
             backward,
@@ -174,6 +249,7 @@ pub fn mouse_release_code(mouse: &ButtonInput<MouseButton>) -> Option<u8> {
 pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Option<Res<ButtonInput<MouseButton>>>,
+    joystick: Res<JoystickState>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
@@ -192,7 +268,7 @@ pub(super) fn sample(
         dialogue_skip.0 = false;
         return;
     }
-    *input = bindings.sample_with_mouse(&keys, mouse.as_deref());
+    *input = bindings.sample_with_devices(&keys, mouse.as_deref(), Some(&joystick));
     dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
         input.forward = keys.pressed(KeyCode::KeyW);
@@ -204,8 +280,140 @@ pub(super) fn sample(
     }
 }
 
+/// Reduces connected gamepads to the original's digital joystick table: the left stick or
+/// D-pad against the installed dead zone, and the four face buttons as buttons 1 to 4.
+/// With no gamepad every entry reads zero, as with the original's disabled joystick.
+pub(super) fn poll_gamepads(
+    gamepads: Query<&Gamepad>,
+    bindings: Res<PlayerBindings>,
+    mut state: ResMut<JoystickState>,
+) {
+    let threshold = bindings.stick_threshold().unwrap_or(1.0);
+    let mut next = JoystickState::default();
+    for pad in &gamepads {
+        let stick = pad.left_stick();
+        next.left |= stick.x < -threshold || pad.pressed(GamepadButton::DPadLeft);
+        next.right |= stick.x > threshold || pad.pressed(GamepadButton::DPadRight);
+        // Bevy's stick Y is positive upward; the original's up is the reading below center.
+        next.up |= stick.y > threshold || pad.pressed(GamepadButton::DPadUp);
+        next.down |= stick.y < -threshold || pad.pressed(GamepadButton::DPadDown);
+        for (held, button) in next.buttons.iter_mut().zip([
+            GamepadButton::South,
+            GamepadButton::East,
+            GamepadButton::West,
+            GamepadButton::North,
+        ]) {
+            *held |= pad.pressed(button);
+        }
+    }
+    if *state != next {
+        *state = next;
+    }
+}
+
 /// Explicit inspection/UI input lock, sampled before gameplay input.
 #[derive(Resource, Default)]
 pub struct InputSuppressed(pub bool);
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputSample;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEYBOARD: [u8; 8] = [72, 80, 75, 77, 42, 57, 56, 29];
+    // The installed joystick slot: up, down, left, right, then buttons 4, 2, 3, 1.
+    const JOYSTICK: [u8; 8] = [138, 139, 136, 137, 135, 133, 134, 132];
+
+    fn bindings() -> PlayerBindings {
+        PlayerBindings::from_codes(KEYBOARD)
+            .unwrap()
+            .with_joystick(JOYSTICK, 60)
+            .unwrap()
+    }
+
+    fn poll(setup: impl FnOnce(&mut Gamepad)) -> JoystickState {
+        let mut app = App::new();
+        app.insert_resource(bindings())
+            .init_resource::<JoystickState>()
+            .add_systems(Update, poll_gamepads);
+        let mut pad = Gamepad::default();
+        setup(&mut pad);
+        app.world_mut().spawn(pad);
+        app.update();
+        *app.world().resource::<JoystickState>()
+    }
+
+    #[test]
+    fn stick_beyond_the_dead_zone_reads_as_the_original_digital_codes() {
+        let threshold = bindings().stick_threshold().unwrap();
+        assert!((threshold - 60.0 / 574.0).abs() < 1e-6);
+        let stick = |x: f32, y: f32| {
+            poll(|pad| {
+                pad.analog_mut().set(GamepadAxis::LeftStickX, x);
+                pad.analog_mut().set(GamepadAxis::LeftStickY, y);
+            })
+        };
+        assert_eq!(
+            stick(threshold - 0.01, -(threshold - 0.01)),
+            JoystickState::default()
+        );
+        let left_up = stick(-(threshold + 0.01), threshold + 0.01);
+        assert!(left_up.left && left_up.up && !left_up.right && !left_up.down);
+        let right_down = stick(threshold + 0.01, -(threshold + 0.01));
+        assert!(right_down.right && right_down.down && !right_down.left && !right_down.up);
+    }
+
+    #[test]
+    fn face_buttons_and_disconnection_follow_the_input_table() {
+        let state = poll(|pad| {
+            pad.digital_mut().press(GamepadButton::South);
+            pad.digital_mut().press(GamepadButton::North);
+        });
+        assert_eq!(state.buttons, [true, false, false, true]);
+        let mut app = App::new();
+        app.insert_resource(bindings())
+            .insert_resource(JoystickState {
+                left: true,
+                ..default()
+            })
+            .add_systems(Update, poll_gamepads);
+        app.update();
+        assert_eq!(
+            *app.world().resource::<JoystickState>(),
+            JoystickState::default()
+        );
+    }
+
+    #[test]
+    fn an_action_reads_its_keyboard_or_joystick_binding() {
+        let bindings = bindings();
+        let keys = ButtonInput::<KeyCode>::default();
+        let held = JoystickState {
+            up: true,
+            buttons: [true, false, false, false],
+            ..default()
+        };
+        let input = bindings.sample_with_devices(&keys, None, Some(&held));
+        assert!(input.forward && input.action && !input.backward && !input.jump);
+        assert_eq!(bindings.sample(&keys), PlayerInput::default());
+        let mut pressed = ButtonInput::<KeyCode>::default();
+        pressed.press(KeyCode::ArrowDown);
+        assert!(
+            bindings
+                .sample_with_devices(&pressed, None, Some(&held))
+                .backward
+        );
+    }
+
+    #[test]
+    fn joystick_slot_rejects_unknown_codes_with_the_slot_named() {
+        let mut codes = JOYSTICK;
+        codes[2] = 76;
+        let error = PlayerBindings::default()
+            .with_joystick(codes, 60)
+            .err()
+            .unwrap();
+        assert!(error.contains("key_left[1]"), "{error}");
+    }
+}

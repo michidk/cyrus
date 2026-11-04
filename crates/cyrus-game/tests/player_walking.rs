@@ -234,6 +234,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
             turn_speed: 12,
             turn_max_speed: 48,
             poly_push_units: 16,
+            joystick: None,
         },
         definition: Some(definition),
         terrain: Some(

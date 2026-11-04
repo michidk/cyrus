@@ -31,6 +31,49 @@ pub struct MovementSettings {
     pub turn_speed: u32,
     pub turn_max_speed: u32,
     pub poly_push_units: u32,
+    /// Installed joystick bindings and dead zone; absent in old caches.
+    #[serde(default)]
+    pub joystick: Option<JoystickSettings>,
+}
+
+/// KEYS.INI joystick slot and SYSTEM.INI `[cyrus] joy_tolerance`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoystickSettings {
+    /// `key_*[1]` input codes in up, down, left, right, a, b, c, d order; zero is unbound.
+    pub codes: [u8; 8],
+    /// Axis dead zone in the original's gameport loop counts.
+    pub tolerance: i32,
+}
+
+impl JoystickSettings {
+    /// Reads the `key_*[1]` slot of KEYS.INI `[input]`.
+    // shortcut: parsed here until redguard-preservation releases `KeysIni::joystick_codes`
+    // (d8ee1cc6, unreleased after 0.10.4); then use it and delete this parser.
+    pub fn parse(keys_ini: &str, tolerance: i32) -> Result<Self, String> {
+        let mut codes = [0; 8];
+        let mut section = String::new();
+        for line in keys_ini.lines() {
+            let line = line.split(';').next().unwrap_or_default().trim();
+            if line.starts_with('[') {
+                section = line.to_ascii_lowercase();
+            } else if let (true, Some((key, value))) = (section == "[input]", line.split_once('='))
+            {
+                let key = key.trim().to_ascii_lowercase();
+                if let Some(index) = ["up", "down", "left", "right", "a", "b", "c", "d"]
+                    .iter()
+                    .position(|name| key == format!("key_{name}[1]"))
+                {
+                    codes[index] = value
+                        .trim()
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|code| *code <= 139)
+                        .ok_or_else(|| format!("KEYS.INI [input] {key}: expected code 0..139"))?;
+                }
+            }
+        }
+        Ok(Self { codes, tolerance })
+    }
 }
 
 #[derive(Serialize, Deserialize)]

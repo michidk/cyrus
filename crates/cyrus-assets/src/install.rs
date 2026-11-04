@@ -147,6 +147,18 @@ pub fn keyboard_codes(install: &GameInstall) -> Result<[u8; 8], String> {
         .and_then(|text| rgpre::import::keys_ini::KeysIni::parse(&text))
         .map(|ini| ini.keyboard_codes())
 }
+/// Installed joystick bindings and dead zone; `None` when SYSTEM.INI has no `joy_tolerance`.
+pub fn joystick(install: &GameInstall) -> Result<Option<crate::player::JoystickSettings>, String> {
+    let keys = std::fs::read_to_string(install.root.join("KEYS.INI")).map_err(|e| e.to_string())?;
+    let system = system_ini(install).map_err(|e| e.to_string())?;
+    let tolerance = rgpre::import::system_ini::SystemIni::parse(&system)
+        .map_err(|e| e.to_string())?
+        .cyrus
+        .joy_tolerance;
+    tolerance
+        .map(|tolerance| crate::player::JoystickSettings::parse(&keys, tolerance))
+        .transpose()
+}
 /// Decodes the selected installed bitmap font without retaining parser types.
 pub fn font(path: &std::path::Path) -> Result<cyrus_text::Font, String> {
     std::fs::read(path)

@@ -23,6 +23,7 @@ pub(crate) fn prepare(
         .with_context(|| format!("world {world}: parse SYSTEM.INI slope settings"))?;
     let config = PlayerConfig::parse(&system_text)
         .with_context(|| format!("world {world}: parse SYSTEM.INI"))?;
+    let keys_text = crate::preparation::text(source, "KEYS.INI")?;
     let settings = MovementSettings {
         standing_height: config.standing_height,
         post_collide_height: config.post_collide_height,
@@ -53,6 +54,13 @@ pub(crate) fn prepare(
             .map(|depth| if depth == 0 { 40 } else { depth }),
         turn_speed: config.turn_speed,
         turn_max_speed: config.turn_max_speed,
+        joystick: system
+            .cyrus
+            .joy_tolerance
+            .map(|tolerance| crate::player::JoystickSettings::parse(&keys_text, tolerance))
+            .transpose()
+            .map_err(anyhow::Error::msg)
+            .with_context(|| format!("world {world}: parse KEYS.INI joystick slot"))?,
         poly_push_units: config.poly_push_units,
     };
     let names = crate::preparation::soup(source).ok();
@@ -87,11 +95,10 @@ pub(crate) fn prepare(
     } else {
         (None, None, None)
     };
-    let keyboard_codes =
-        rgpre::import::keys_ini::KeysIni::parse(&crate::preparation::text(source, "KEYS.INI")?)
-            .map_err(anyhow::Error::msg)
-            .with_context(|| format!("world {world}: parse KEYS.INI"))?
-            .keyboard_codes();
+    let keyboard_codes = rgpre::import::keys_ini::KeysIni::parse(&keys_text)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("world {world}: parse KEYS.INI"))?
+        .keyboard_codes();
     let surfaces = rgpre::import::surface_ini::SurfaceAssignments::parse(
         &crate::preparation::text(source, "SURFACE.INI")?,
     )

@@ -27,7 +27,11 @@ pub(crate) fn load_scene_bindings(
                 .keyboard_codes
                 .ok_or("missing keyboard defaults; re-export world")?,
         };
-        PlayerBindings::from_codes(codes)
+        let bindings = PlayerBindings::from_codes(codes)?;
+        match scene.settings.joystick {
+            Some(joystick) => bindings.with_joystick(joystick.codes, joystick.tolerance),
+            None => Ok(bindings),
+        }
     })();
     match result {
         Ok(loaded) => *bindings = loaded,
@@ -76,6 +80,7 @@ mod tests {
                 turn_speed: 12,
                 turn_max_speed: 48,
                 poly_push_units: 16,
+                joystick: None,
             },
             definition: None,
             terrain: None,

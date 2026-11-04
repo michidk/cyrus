@@ -668,6 +668,7 @@ mod tests {
                 turn_speed: 12,
                 turn_max_speed: 48,
                 poly_push_units: 16,
+                joystick: None,
             },
             definition: Some(
                 cyrus_game::player::definition::PlayerDefinition::from_metadata(&data.metadata)

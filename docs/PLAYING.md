@@ -114,7 +114,7 @@ documents the unsupported original-save scope.
   playthrough remain unaccepted. Working startup, combat or save checks do not
   establish that the game can be finished.
 - Movement, collision, follow camera, climbing and swimming still have open
-  fidelity work. Gamepad support and remaining mouse-bound actions are incomplete.
+  fidelity work. Remaining mouse-bound actions are incomplete; a gamepad drives the in-game controls, not the menus.
 - Rendering, lighting, HUD, logbook, audio and movie synchronization still have
   open comparisons and defects. Faithful is the default; optional Modern settings
   do not imply that every proposed Modern control is implemented.
