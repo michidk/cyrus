@@ -5274,10 +5274,11 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
-        "https://github.com/michidk/cyrus/issues/31#issuecomment-6602797154"
+        "https://github.com/michidk/cyrus/issues/31#issuecomment-6602797154",
+        "https://github.com/michidk/redguard-preservation/blob/8fed705/docs/engine/SOUP.md#selected-player-health-query"
       ],
-      "limits": "Verified source reads selected actor health with zero-argument guard and contextual missing-player error. Inspected Health/ReplenishHealth fixtures target different names; no dedicated successful public PlayerHealth assertion located. Actual health/death receipts do not establish the named query ran. Unknown: selected-versus-caller identity, replacement and installed original/native/browser query acceptance. Rust assertions inspected, not rerun. Original/native/browser NOT RUN for this catalogue review. Static counts in historical schema-27 exports cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "d439d1cdb6e3f8de6d5da4acde50ff61f58af507"
+      "limits": "Verified installed named declaration/exact binding/full 48-byte call-free original handler: zero arguments, selected-player control attribute3 unsigned byte returned zero-extended, receiver unused, no null validation or actor/control mutation. 36,864 original CPU contexts and four effective instruction controls passed, varying null/two receivers, selected identity, all256 health bytes, three unused EDX values and constructed surrounding patterns. Six non-result registers/stack/canary and full constructed actor/control arenas checked. Unknown malformed selected/control pointers, producer/replacement/lifetime, VM admission and natural original/native/browser gameplay acceptance. Existing contextual missing-player error is rebuild behavior; no dedicated successful public PlayerHealth assertion located. Production remains partial. No Rust rerun.",
+      "reviewed_revision": "9ba6ca9b243c6569b42d7bb6ca841c489824d9b3"
     },
     {
       "native": "armor",
