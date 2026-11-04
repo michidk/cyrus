@@ -298,11 +298,25 @@ impl ScriptWorld {
             Some(point[2].wrapping_add(dz)),
         )?;
         if self.updates.animation_system {
+            let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let surface = self.actors[index].surface;
             let animation = self.actors[id.index]
                 .animation
                 .as_mut()
                 .context("ledge climb animation unavailable")?;
-            let frame = animation.playback.request_skipping_frames(86, 0, 2)?;
+            let frame =
+                animation
+                    .playback
+                    .request_skipping_frames_with_sounds(86, 0, 2, &mut |sound| {
+                        sounds(
+                            id,
+                            super::super::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    })?;
             animation.frame = frame.or(animation.frame);
         }
         self.set_living(index, 11);

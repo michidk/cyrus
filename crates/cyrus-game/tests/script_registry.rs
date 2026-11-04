@@ -38488,6 +38488,16 @@ fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
                 "commands":[{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":0},{"opcode":1}]
             }));
         }
+        let idle = definition["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|group| group["group_index"] == 0)
+            .unwrap();
+        idle["commands"].as_array_mut().unwrap().insert(
+            0,
+            serde_json::json!({"opcode":4,"sound_param":1,"volume_shift":0}),
+        );
         let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
         let player = world.id(index).unwrap();
         world
@@ -38499,7 +38509,7 @@ fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
                     frame_scale: Some(256),
                     ..Default::default()
                 },
-                None,
+                Some(&mut |_, _| Ok(())),
                 None,
                 100,
             )

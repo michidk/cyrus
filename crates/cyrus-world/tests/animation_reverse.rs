@@ -432,3 +432,50 @@ fn a_skipping_request_starts_the_group_at_once_two_frames_in() {
     assert_eq!(actor.request_skipping_frames(7, 0, 2).unwrap(), None);
     assert_eq!(actor.frame_wait_state().unwrap().2, 2);
 }
+
+#[test]
+fn skipping_request_releases_the_previous_sound_once() {
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][0]["commands"] = json!([
+        {"opcode":4,"sound_param":1,"volume_shift":0},
+        {"opcode":0,"frame_reference":900},
+        {"opcode":2,"value":1}
+    ]);
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut started = Vec::new();
+    actor
+        .request_with_sounds(0, 0, 0, &mut |event| {
+            started.push(event);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        started,
+        [AnimationSound::Play {
+            effect: 1,
+            rate_offset_hz: 0
+        }]
+    );
+    let mut events = Vec::new();
+    assert_eq!(
+        actor
+            .request_skipping_frames_with_sounds(7, 0, 2, &mut |event| {
+                events.push(event);
+                Ok(())
+            })
+            .unwrap(),
+        Some(72)
+    );
+    assert_eq!(events, [AnimationSound::Forget]);
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.frame_wait_state().unwrap().2, 2);
+    assert_eq!(
+        actor
+            .request_skipping_frames_with_sounds(7, 0, 2, &mut |_| {
+                anyhow::bail!("retained playback must not dispatch sound")
+            })
+            .unwrap(),
+        None
+    );
+    assert_eq!(actor.current_command_cursor().unwrap(), Some(2));
+}

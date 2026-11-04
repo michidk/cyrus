@@ -321,6 +321,36 @@ impl ActorAnimation {
         modifier: u8,
         frames: u8,
     ) -> anyhow::Result<Option<u32>> {
+        self.request_skipping_frames_inner(group, modifier, frames, &mut None)
+    }
+
+    /// Start a skipped-frame request, releasing the preceding group's sound through `sounds`.
+    /// Skipped commands do not dispatch events. Retaining the current group keeps its sound.
+    pub fn request_skipping_frames_with_sounds(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        frames: u8,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.request_skipping_frames_inner(
+            group,
+            modifier,
+            frames,
+            &mut Some(&mut |event| {
+                sounds(event)?;
+                Ok(TransitionDecision::Continue)
+            }),
+        )
+    }
+
+    fn request_skipping_frames_inner(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        frames: u8,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
         if self.current.as_ref().is_some_and(|(current, sequence)| {
             *current == group && !sequence.exit_reached() && self.frame_progress >= frames
@@ -338,7 +368,7 @@ impl ActorAnimation {
             0,
             modifier,
         )?;
-        self.clear_current(&mut None)?;
+        self.clear_current(sounds)?;
         self.pending = None;
         self.frame_progress = 0;
         self.reverse = false;
