@@ -5669,10 +5669,11 @@
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
+        "https://github.com/michidk/redguard-preservation/commit/8ddfc34"
       ],
-      "limits": "Verified installed definition: function with 4 arguments. No exact named handler, matching generic delegate or dedicated public assertion located. Existing inventory selection/count/snapshot and weapon rendering/attachment are distinct services; they do not implement this named native. Unknown: original semantics beyond published facts/declaration metadata; no stack, count or render behavior inferred from the name. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified installed function parms4/exact79-byte named wrapper/full100 resolver/full171 ordered resource lookup and original name/string/memory dependency execution.756 original CPU cases PASS:504 exact error-service entry stops/252 exact accepted shared-hand-helper entry stops.13 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS. Six ASCII name/path forms/three receivers including null/three XYZ tuples/seven two-list/type profiles/two patterns. Original basename8/ASCII uppercase/copy/compare/split-path and instrumented fill/copy execute under explicit single-byte locale0/debug0/locking0; no arbitrary service returns. First matching first-list then second-list resource, stored-name case retained; missing error33/type2 error34 with original name pointer. Success clears temporary pointer and forwards receiver/resolved embedded model/XYZ to independently identity-verified663 helper without repeating accepted helper matrix. Full actor/name/node/scratch/namebuf/debug-locale-lock/head/temp/error memory, entry arguments/stack/canary checked. Unknown other locale/debug/locking states/natural initialization/name edge/full joint domain/error effects/return/continuation/resource producer/heap/geometry/render/VM admission/native/browser/pixels/gameplay parity. Production remains missing; no implementation acceptance.",
+      "reviewed_revision": "3352e0df405720b883bf642b94532e63fb9d0acd"
     },
     {
       "native": "DisplayHiltItem",
