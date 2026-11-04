@@ -101,8 +101,9 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
 impl super::ScriptWorld {
     /// Begin an admitted ordinary jump through the original state writer.
     /// `native_task_active` comes from the motion-task owner; it is not inferred
-    /// from script continuations. Selected-player and state-15 services remain
-    /// unsupported. Returns whether ordinary queued state was initialized.
+    /// from script continuations. This entry accepts nonselected actors outside
+    /// state 15; selected-player admission runs through `begin_player_jump`.
+    /// Returns whether ordinary queued state was initialized.
     pub fn begin_ordinary_jump(
         &mut self,
         id: super::ScriptActorId,
@@ -702,8 +703,9 @@ impl super::ScriptWorld {
 
     /// Run the ordinary queued handler against the actor's retained candidate list.
     /// Returns whether it handled the response, including clearance cancellation.
-    /// Selected-player edge services remain unsupported; fine timing is supplied
-    /// by its clock owner. Requests share actor playback and captured audio state.
+    /// Selected-player edge handling precedes queued vertical continuation.
+    /// Fine timing is supplied by its clock owner. Requests share actor playback
+    /// and captured audio state.
     pub fn resolve_ordinary_queued_motion(
         &mut self,
         id: super::ScriptActorId,
