@@ -488,3 +488,258 @@ fn missing_public_stage_clock_refuses_before_script_writes_and_allows_retry() {
     assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 4);
     assert_eq!(world.flags(), [12]);
 }
+
+fn move_pos_fixture(
+    target: [i32; 3],
+    named: bool,
+    selector: u8,
+    spatial: bool,
+    attached: bool,
+) -> ScriptWorld {
+    use cyrus_script::{AnimationGroup, Native, Property};
+    let mut scripts = cache();
+    scripts.definition.references = vec![Property::AiType];
+    scripts.definition.functions.push(Function {
+        name: Native::MovePos,
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    scripts.instances[1].map_position = [2, 0, 0];
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.attributes[Attribute::ForwardSpeed] = 1;
+    actor.attributes[Attribute::Collide] = 129;
+    let object = if named {
+        Object::Named { string: 0 }
+    } else {
+        Object::Me
+    };
+    let call = Box::new(Call {
+        function_id: 1,
+        function: Native::MovePos,
+        target: object.clone(),
+        kind: CallKind::Function,
+        arguments: target
+            .into_iter()
+            .map(|value| Value::Integer { value })
+            .collect(),
+    });
+    let value = if named {
+        Value::ObjectCall { call }
+    } else {
+        Value::Call { call }
+    };
+    actor.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object,
+                        reference: 0,
+                    },
+                    formula: Formula {
+                        first: Value::Integer {
+                            value: i32::from(selector),
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Assign {
+                    destination: Place::Flag { index: 0 },
+                    formula: Formula {
+                        first: value,
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Integer { value: 73 },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            3,
+            Step {
+                next: 4,
+                operation: Operation::End { target: 3 },
+            },
+        ),
+    ]);
+    if attached {
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Slave] = 1;
+    }
+    if named || attached {
+        let mut other = scripts.actors["LOGIC"].clone();
+        other.attributes[Attribute::Slave] = 0;
+        other.attributes[Attribute::Master] = u8::from(attached);
+        other.header_index = 1;
+        other.instances = 1;
+        other.namespace = Some("other".into());
+        other.instance_variables = vec![vec![9]];
+        other.program.strings = vec!["other".into()];
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.instances = 1;
+        actor.instance_variables.truncate(1);
+        actor.program.strings = vec!["other".into()];
+        scripts.instances[1].actor = "OTHER".into();
+        scripts.actors.insert("OTHER".into(), other);
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    if spatial {
+        world.prepare_spatial().unwrap();
+    }
+    let mut data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: 7,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+          "actors":[{"script_name":"LOGIC", "model_load_path":"animation_table", "mpsz_bounds_primary":0,
+          "raex":{"unknown_12":256}, "animation_groups":[{"group_index":18, "anim_id":1, "anim_type":0,
+          "commands":[{"opcode":0,"frame_reference":18},{"opcode":2,"value":0}]}]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    if named || attached {
+        let mut metadata = data.metadata["actors"][0].clone();
+        metadata["script_name"] = serde_json::json!("OTHER");
+        data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .push(metadata);
+    }
+    for index in 0..2 {
+        let id = world.id(index).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::RUN)
+            .unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                20,
+            )
+            .unwrap();
+    }
+    world
+}
+
+#[test]
+fn move_pos_uses_literal_horizontal_boundaries_and_continues_without_moving() {
+    for (target, expected) in [
+        ([511, i32::MAX, 0], 0),
+        ([512, i32::MIN, 0], 1),
+        ([0, 99, -511], 0),
+        ([0, -99, -512], 1),
+    ] {
+        let mut world = move_pos_fixture(target, false, 4, true, false);
+        let id = world.id(0).unwrap();
+        let before = serde_json::to_value(world.spatial(id).unwrap()).unwrap();
+        advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+        assert_eq!(world.flags(), [expected]);
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 129);
+        assert_eq!(world.actors()[0].control_state().unwrap().ai_type.byte(), 4);
+        assert_eq!(
+            serde_json::to_value(world.spatial(id).unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn move_pos_routes_named_receiver_and_retains_navigation_early_refusal() {
+    for (named, selector, expected) in [(false, 4, 1), (true, 4, 0), (true, 7, 1)] {
+        let mut world = move_pos_fixture([513, 0, 0], named, selector, true, false);
+        advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+        assert_eq!(world.flags(), [expected]);
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn move_pos_missing_position_fails_before_result_and_continuation_and_stays_failed() {
+    let mut world = move_pos_fixture([0; 3], false, 7, false, false);
+    let error = advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap_err();
+    assert!(format!("{error:#}").contains("MovePos receiver position unavailable"));
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
+    assert!(advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).is_err());
+    assert_eq!(world.flags(), [12]);
+}
+
+#[test]
+fn move_pos_nonpositive_and_wrapped_thresholds_return_without_moving() {
+    for scale in [0, 0x0080_0000] {
+        let mut world = move_pos_fixture([0; 3], false, 4, true, false);
+        let id = world.id(0).unwrap();
+        let before = serde_json::to_value(world.spatial(id).unwrap()).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(scale),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.flags(), [1]);
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+        assert_eq!(
+            serde_json::to_value(world.spatial(id).unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn move_pos_requires_attached_query_position_before_navigation_refusal() {
+    let mut world = move_pos_fixture([0; 3], false, 7, true, true);
+    let error = advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap_err();
+    assert!(format!("{error:#}").contains("query attached position unavailable"));
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
+    assert!(advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).is_err());
+}
+
+#[test]
+fn move_pos_reads_the_publicly_composed_family_position() {
+    let mut world = move_pos_fixture([511, 0, 0], false, 4, true, true);
+    world.refresh_families().unwrap();
+    advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.position,
+        [-512, 0, 0]
+    );
+}

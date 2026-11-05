@@ -60,6 +60,12 @@ Its explicit refresh does not enable autonomous selector-four movement or add
 an ordinary AI timer stage. Automatic caller placement and steering remain
 unsupported until their complete contracts are established.
 
+`MovePos` reads receiver position and playback speed through the public native
+caller and returns the horizontal proximity predicate without moving the actor.
+Verified: refusal ordering and wrapping time-scaled thresholds follow preservation's
+[MovePos contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#movepos).
+This predicate alone does not admit automatic selector-four progress.
+
 Verified: the ordinary ground probe follows preservation's
 [terrain sink recovery](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-sink-recovery)
 order: terrain recovery, actor bounce, then queued motion before support sampling.
