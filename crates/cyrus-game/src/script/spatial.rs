@@ -530,6 +530,26 @@ impl ActorSpatial {
         }))
     }
 
+    /// `SetStartPosition(x, y, z)`: every axis whose flag is set takes the saved start position (the
+    /// first stored location). Only the selected local-position components change: the
+    /// previous-position history, matrices and the saved start stay as they were, and an
+    /// all-clear selection does not read the coordinates.
+    pub fn restore_start_position(&mut self, axes: [bool; 3]) -> Result<()> {
+        if !axes.contains(&true) {
+            return Ok(());
+        }
+        let home = *self
+            .locations
+            .first()
+            .context("SetStartPosition: saved start position unavailable")?;
+        for (axis, selected) in axes.into_iter().enumerate() {
+            if selected {
+                self.local.position[axis] = home[axis];
+            }
+        }
+        Ok(())
+    }
+
     /// Teleport to `position` facing `yaw`: the previous-position snapshot follows at once and the
     /// yaw change turns the matrix on the next transform refresh, the caller's.
     pub fn relocate(&mut self, position: [i32; 3], yaw: u16) {

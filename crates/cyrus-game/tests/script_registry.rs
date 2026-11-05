@@ -3687,6 +3687,45 @@ fn is_shell_script_returns_the_execution_context_only_while_a_shell_exists() {
 }
 
 #[test]
+fn set_start_position_restores_only_the_flagged_axes_and_the_position_only() {
+    let world = run_native_world_with(&[], true).unwrap();
+    let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+    let home = spatial.local.position;
+    let history = spatial.previous_local_position;
+    let mut moved = spatial.clone();
+    for (axis, start) in home.into_iter().enumerate() {
+        moved.local.position[axis] = start.wrapping_add(1000 + axis as i32);
+    }
+    let shifted = moved.local.position;
+    moved.restore_start_position([false; 3]).unwrap();
+    assert_eq!(moved.local.position, shifted, "no flag changes nothing");
+    moved.restore_start_position([true, false, true]).unwrap();
+    assert_eq!(moved.local.position, [home[0], shifted[1], home[2]]);
+    assert_eq!(moved.previous_local_position, history, "history untouched");
+    // A second restore of an already restored axis is a no-op, so the saved start is unchanged.
+    moved.restore_start_position([true, true, true]).unwrap();
+    assert_eq!(moved.local.position, home);
+}
+
+#[test]
+fn set_start_position_dispatch_needs_three_flags_and_spatial_state_only_when_flagged() {
+    let call = |arguments: &[i32], spatial: bool| {
+        run_native_world_with(&[(Native::SetStartPosition, arguments)], spatial)
+    };
+    for flags in [[0, 0, 0], [1, 0, 0], [0, 7, 0], [-1, 1, 1]] {
+        let world = call(&flags, true).unwrap();
+        assert!(world.actors()[0].failure().is_none(), "{flags:?}");
+    }
+    assert!(call(&[0, 0, 0], false).is_ok(), "all-clear reads nothing");
+    let error = call(&[1, 0, 0], false).err().unwrap();
+    assert!(
+        format!("{error:#}").contains("SetStartPosition: spatial state not prepared"),
+        "{error:#}"
+    );
+    assert!(call(&[1, 1], true).is_err());
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {

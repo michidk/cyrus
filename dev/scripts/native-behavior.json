@@ -3811,17 +3811,20 @@
     },
     {
       "native": "SetStartPosition",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed saved-start restore of flagged local-position axes",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_start_position_restores_only_the_flagged_axes_and_the_position_only",
+        "crates/cyrus-game/tests/script_registry.rs::set_start_position_dispatch_needs_three_flags_and_spatial_state_only_when_flagged"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/245"
       ],
-      "limits": "Verified installed three-argument native/full111-byte handler: independent nonzero X/Y/Z flags restore selected current local coordinate components from saved start unchanged; zero leaves component unchanged. Arguments are flags, not coordinates. Returns0/no helper calls; only selected current-position words written.3002 original instruction contexts/11 effective mutations cover selected flag/coordinate/receiver/state domains; all-zero flags avoid receiver access. Nonzero malformed receiver admission, coordinate producers, attachments/effective-position resolution, exhaustive state, VM and natural original/native/browser Unknown. Current named implementation remains missing; related movement/location helpers do not implement this native. No Rust tests/game runtime run.",
-      "reviewed_revision": "9491d7c095ea64d4cb2296065e175fdb57fc764e"
+      "limits": "Verified installed three-argument native/full111-byte handler: independent nonzero X/Y/Z flags restore selected current local coordinate components from saved start unchanged; zero leaves component unchanged. Arguments are flags, not coordinates. Returns0/no helper calls; only selected current-position words written.3002 original instruction contexts/11 effective mutations cover selected flag/coordinate/receiver/state domains; all-zero flags avoid receiver access. Nonzero malformed receiver admission, coordinate producers, attachments/effective-position resolution, exhaustive state, VM and natural original/native/browser Unknown. Current named implementation remains missing; related movement/location helpers do not implement this native. No Rust tests/game runtime run. Verified public routed dispatch: each nonzero flag copies the saved start coordinate (original home) into the local position on that axis; only those components change (position history, matrices and the saved start stay), an all-clear selection reads nothing and zero is returned. Unknown: installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "26243f110ecc753134565e88e86dc4322ee28f00"
     },
     {
       "native": "Move",

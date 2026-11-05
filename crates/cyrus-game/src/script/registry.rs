@@ -5958,6 +5958,28 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation(axes)?;
             return Ok(CallResult::Complete(0));
         }
+        // SetStartPosition(x, y, z) restores the flagged local-position axes from the saved start and
+        // returns zero; unlike ResetPosition it leaves the position history, view origin and
+        // transform alone.
+        if function == Native::SetStartPosition {
+            anyhow::ensure!(
+                arguments.len() == 3,
+                "SetStartPosition requires three arguments"
+            );
+            let mut axes = [false; 3];
+            for (axis, argument) in arguments.iter().enumerate() {
+                axes[axis] = argument.integer()? != 0;
+            }
+            if axes.contains(&true) {
+                self.registry
+                    .spatial
+                    .as_mut()
+                    .context("SetStartPosition: spatial state not prepared")?
+                    .actor_mut(self.index)?
+                    .restore_start_position(axes)?;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::ResetPosition {
             anyhow::ensure!(
                 arguments.len() == 3,
