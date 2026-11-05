@@ -697,6 +697,8 @@ fn handle(
                     hud: script_hud.as_deref(),
                     activation: activation.as_deref(),
                     death_suppressed: cheats.death_suppressed().ok(),
+                    torch_retained: cheats.torch_retained().ok(),
+                    actor_update_skipped: cheats.actor_update_skipped().ok(),
                     ground_bypass: cheats.ground_bypass().ok(),
                     magic_carpet: cheats.magic_carpet().ok(),
                     nominal_ticks, frame_scale,

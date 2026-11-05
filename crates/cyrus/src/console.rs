@@ -2,6 +2,7 @@
 use anyhow::{Context, Result};
 use cyrus_assets::install::GameInstall;
 use cyrus_console::{Console, Preferences, Store};
+use cyrus_game::console::markers::{MarkerStorage, MarkerStore};
 use std::path::PathBuf;
 
 struct LocalConsole {
@@ -48,6 +49,35 @@ pub(crate) fn initial(install: &GameInstall) -> Console {
         install: install.clone(),
         directory: cyrus_config::config_dir().into(),
     })
+}
+
+/// The user marker file of `setmarker` and `getmarker`, kept in local state outside the install.
+struct LocalMarkers {
+    install: GameInstall,
+    directory: PathBuf,
+}
+impl LocalMarkers {
+    fn path(&self) -> Result<PathBuf> {
+        Ok(self
+            .install
+            .cache_path(&self.directory)?
+            .join("REDGUARD.MRK"))
+    }
+}
+impl MarkerStore for LocalMarkers {
+    fn load(&self) -> Result<Option<Vec<u8>>> {
+        cyrus_config::read(&self.path()?)
+    }
+    fn save(&self, bytes: &[u8]) -> Result<()> {
+        cyrus_config::write(&self.path()?, bytes)
+    }
+}
+
+pub(crate) fn markers(install: &GameInstall) -> MarkerStorage {
+    MarkerStorage(Box::new(LocalMarkers {
+        install: install.clone(),
+        directory: cyrus_config::config_dir().into(),
+    }))
 }
 
 #[cfg(test)]
@@ -106,6 +136,31 @@ mod tests {
             .is_err()
         );
         assert_eq!(std::fs::read(path).unwrap(), b"bad");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_marker_file_lives_in_local_state_and_leaves_the_install_unchanged() {
+        let root = std::env::temp_dir().join(format!("cyrus-markers-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("install")).unwrap();
+        let store = LocalMarkers {
+            install: GameInstall {
+                root: root.join("install").canonicalize().unwrap(),
+            },
+            directory: root.join("local"),
+        };
+        assert_eq!(store.load().unwrap(), None);
+        store.save(b"first").unwrap();
+        store.save(b"second").unwrap();
+        assert_eq!(store.load().unwrap().unwrap(), b"second");
+        assert!(store.path().unwrap().ends_with("REDGUARD.MRK"));
+        assert!(!store.install.root.join("REDGUARD.MRK").exists());
+        assert!(
+            std::fs::read_dir(&store.install.root)
+                .unwrap()
+                .next()
+                .is_none()
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

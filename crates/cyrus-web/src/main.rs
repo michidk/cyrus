@@ -43,6 +43,7 @@ fn main() {
 
     app.insert_resource(cheats::initial());
     app.insert_resource(console::initial());
+    app.insert_resource(console::markers());
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))

@@ -46,6 +46,7 @@ pub(crate) fn load(install: Option<Res<GameInstall>>, mut commands: Commands) {
         error!("console artwork unavailable: {error:#}");
     }
     commands.insert_resource(crate::console::initial(&install));
+    commands.insert_resource(crate::console::markers(&install));
     let cheats = Cheats::new(LocalCheats {
         install: install.clone(),
         directory: cyrus_config::config_dir().into(),

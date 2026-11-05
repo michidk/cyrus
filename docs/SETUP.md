@@ -702,8 +702,9 @@ position and orientation and the published camera pose under the current world a
 cyrus's local state, and `getmarker number` moves the player to the first saved marker of that world and number,
 position, orientation and camera pose (**Verified** from preservation `engine/console.md`). The camera values are
 written at the command boundary; the next ordinary camera update retains its normal ownership. The file
-never lives in the install. Native and browser marker storage is not connected yet; hosts without marker
-storage report `setmarker` and `getmarker` unavailable. `delay [number]` makes every main-loop pass wait that many milliseconds in the native
+never lives in the install: the native game keeps it as `REDGUARD.MRK` in its local state directory, the browser
+keeps it in local storage under `cyrus-markers`, and a host without marker storage reports `setmarker` and
+`getmarker` unavailable. `delay [number]` makes every main-loop pass wait that many milliseconds in the native
 game (**Verified** from preservation `engine/console.md`); none, zero or a non-number clears it, a negative number
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
