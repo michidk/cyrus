@@ -697,6 +697,8 @@ fn handle(
                     hud: script_hud.as_deref(),
                     activation: activation.as_deref(),
                     death_suppressed: cheats.death_suppressed().ok(),
+                    ground_bypass: cheats.ground_bypass().ok(),
+                    magic_carpet: cheats.magic_carpet().ok(),
                     nominal_ticks, frame_scale,
                     player_query: Some(cyrus_game::script::QueryInputs {
                         player, distance_override: distance_override.or_else(|| cheats.distance_override().ok()), fallback_position, linked_position: None,
