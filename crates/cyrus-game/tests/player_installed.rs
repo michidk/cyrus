@@ -30,24 +30,20 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         eprintln!("skipped: no install (installed keyboard walking)");
         return Ok(());
     };
-    let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../game-config/tests/player-installed");
-    std::fs::create_dir_all(&cache)?;
-    let path = cache.join("ISLAND.glb");
-    cyrus_assets::scene::export_scene(&install, "ISLAND", &path)?;
-    cyrus_assets::hud_export::export_hud(&install, &cache)?;
+    let files = cyrus_assets::native::Files::open(&install)?;
+    let prepared = cyrus_assets::game::prepare(&files, "ISLAND.player")?;
+    let hud_assets = cyrus_assets::game::prepare(&files, "hud/overlay.hud")?;
     let hud_data: cyrus_assets::hud::HudAsset =
-        serde_json::from_slice(&std::fs::read(cache.join("hud/overlay.hud"))?)?;
+        serde_json::from_slice(&hud_assets["hud/overlay.hud"])?;
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(
         &hud_data,
         &cyrus_game::preferences::Preferences::new(EmptyPreferences),
     );
     ensure!(hud.ready(), "installed HUD inventory did not initialize");
-    let animations: Animations =
-        serde_json::from_slice(&std::fs::read(path.with_extension("animations"))?)?;
-    let scripts: Scripts = serde_json::from_slice(&std::fs::read(path.with_extension("scripts"))?)?;
-    let scene = PlayerScene::decode(&std::fs::read(path.with_extension("player"))?)?;
+    let animations: Animations = serde_json::from_slice(&prepared["ISLAND.animations"])?;
+    let scripts: Scripts = serde_json::from_slice(&prepared["ISLAND.scripts"])?;
+    let scene = PlayerScene::decode(&prepared["ISLAND.player"])?;
     let marker: [i32; 3] =
         serde_json::from_value(animations.metadata["markers"][0]["map_position"].clone())?;
     let view = marker.map(|value| value * 256);
@@ -108,9 +104,7 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
                 .environment_path
                 .clone(),
         );
-    let environment_data =
-        serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
-            .unwrap();
+    let environment_data = serde_json::from_slice(&prepared["ISLAND.environment"])?;
     app.world_mut()
         .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
         .insert(environment.id(), environment_data)

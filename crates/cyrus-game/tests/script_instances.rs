@@ -22,19 +22,11 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         return;
     }
     let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
-    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../game-config")
-        .join(format!("script-ordinary-island-{}", std::process::id()));
-    let path = directory.join("ISLAND.glb");
-    cyrus_assets::scene::export_scene(&install, "ISLAND", &path).unwrap();
-    let scripts: Scripts =
-        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
-    let data: Animations =
-        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
-    let scene = cyrus_game::player::data::PlayerScene::decode(
-        &std::fs::read(path.with_extension("player")).unwrap(),
-    )
-    .unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let prepared = cyrus_assets::game::prepare(&files, "ISLAND.scripts").unwrap();
+    let scripts: Scripts = serde_json::from_slice(&prepared["ISLAND.scripts"]).unwrap();
+    let data: Animations = serde_json::from_slice(&prepared["ISLAND.animations"]).unwrap();
+    let scene = cyrus_game::player::data::PlayerScene::decode(&prepared["ISLAND.player"]).unwrap();
     let world_id = scripts.world;
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_markers(&data).unwrap();
@@ -100,9 +92,7 @@ fn installed_island_flags_advance_through_ordinary_updates() {
             .environment_path
             .clone(),
     );
-    let environment_data =
-        serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
-            .unwrap();
+    let environment_data = serde_json::from_slice(&prepared["ISLAND.environment"]).unwrap();
     app.world_mut()
         .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
         .insert(environment.id(), environment_data)
@@ -146,7 +136,6 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         frames.windows(2).any(|frames| frames[0] != frames[1]),
         "installed FLAG2 remained frozen: {frames:?}"
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -462,21 +451,12 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
         return;
     }
     let install = cyrus_assets::install::GameInstall::locate(Some(&root)).unwrap();
-    let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../game-config/soup-lever-test-{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&output).unwrap();
-    let scene = output.join("PALACE.glb");
-    cyrus_assets::scene::export_scene(&install, "PALACE", &scene).unwrap();
-    cyrus_assets::hud_export::export_hud(&install, &output).unwrap();
-    let scripts: Scripts =
-        serde_json::from_slice(&std::fs::read(scene.with_extension("scripts")).unwrap()).unwrap();
-    let animations: Animations =
-        serde_json::from_slice(&std::fs::read(scene.with_extension("animations")).unwrap())
-            .unwrap();
-    let hud: HudAsset =
-        serde_json::from_slice(&std::fs::read(output.join("hud/overlay.hud")).unwrap()).unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let prepared = cyrus_assets::game::prepare(&files, "PALACE.scripts").unwrap();
+    let hud_assets = cyrus_assets::game::prepare(&files, "hud/overlay.hud").unwrap();
+    let scripts: Scripts = serde_json::from_slice(&prepared["PALACE.scripts"]).unwrap();
+    let animations: Animations = serde_json::from_slice(&prepared["PALACE.animations"]).unwrap();
+    let hud: HudAsset = serde_json::from_slice(&hud_assets["hud/overlay.hud"]).unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let actor_id = |name| {
         world
@@ -611,7 +591,6 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
             }
         )]
     );
-    std::fs::remove_dir_all(output).unwrap();
 }
 
 #[test]
@@ -1129,15 +1108,12 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
         eprintln!("skipped: no install (START combat constructor spacing)");
         return;
     };
-    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../game-config/tests")
-        .join(format!("start-combat-spacing-{}", std::process::id()));
-    let path = directory.join("START.glb");
-    cyrus_assets::scene::export_scene(&install, "START", &path).unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let prepared = cyrus_assets::game::prepare(&files, "START.scripts").unwrap();
     let scripts: cyrus_assets::script::Scripts =
-        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
+        serde_json::from_slice(&prepared["START.scripts"]).unwrap();
     let data: cyrus_assets::animation::Animations =
-        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+        serde_json::from_slice(&prepared["START.animations"]).unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_spatial().unwrap();
     let mut names = Vec::new();
@@ -1204,7 +1180,6 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
             "SPIRATE5", "SVANDAR"
         ]
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -1217,19 +1192,11 @@ fn installed_world_collision_shapes_prepare_for_every_ordinary_actor() {
         return;
     }
     let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
-    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../game-config")
-        .join(format!("script-collision-shapes-{}", std::process::id()));
-    let path = directory.join("SILVER2.glb");
-    cyrus_assets::scene::export_scene(&install, "SILVER2", &path).unwrap();
-    let scripts: Scripts =
-        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
-    let data: Animations =
-        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
-    let scene = cyrus_game::player::data::PlayerScene::decode(
-        &std::fs::read(path.with_extension("player")).unwrap(),
-    )
-    .unwrap();
+    let files = cyrus_assets::native::Files::open(&install).unwrap();
+    let prepared = cyrus_assets::game::prepare(&files, "SILVER2.scripts").unwrap();
+    let scripts: Scripts = serde_json::from_slice(&prepared["SILVER2.scripts"]).unwrap();
+    let data: Animations = serde_json::from_slice(&prepared["SILVER2.animations"]).unwrap();
+    let scene = cyrus_game::player::data::PlayerScene::decode(&prepared["SILVER2.player"]).unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let mut failures = Vec::new();
     for index in 0..world.actors().len() {
@@ -1246,6 +1213,5 @@ fn installed_world_collision_shapes_prepare_for_every_ordinary_actor() {
             failures.push(format!("{index} {name}: {error:#}"));
         }
     }
-    std::fs::remove_dir_all(&directory).ok();
     assert!(failures.is_empty(), "{failures:#?}");
 }
