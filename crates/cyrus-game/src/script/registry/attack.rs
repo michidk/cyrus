@@ -1,5 +1,7 @@
 //! Receiver-owned attack execution through the four defense slots and shared animation owner.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatFlags;
+use crate::script::CombatMessageCode;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
@@ -38,7 +40,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.flags & 4 != 0);
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             if !holding && !stance {
                 return Ok(());
             }
@@ -115,7 +117,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.flags & 4 != 0);
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             let odd = self.globals.world_loop_frame & 1 != 0;
             if holding || stance {
                 if odd {
@@ -244,7 +246,11 @@ impl ScriptWorld {
             && !self.query_is_dead(receiver, selected_player)?
         {
             if let Some(coordinator) = self.ordinary_waiting_coordinator(sender)? {
-                self.send_combat_message(receiver, coordinator, 0xd003)?;
+                self.send_combat_message(
+                    receiver,
+                    coordinator,
+                    CombatMessageCode::SENDER_COORDINATES,
+                )?;
             } else {
                 self.set_combat_coordination(receiver, 1)?;
             }
@@ -281,7 +287,7 @@ impl ScriptWorld {
         hud.remove_item(FLAMING_SABRE)?;
         hud.select_item(SABRE)
     }
-    /// The direct-damage response (`0xd005`): displace the receiver 3000 units away from the
+    /// The direct-damage response (`DIRECT_DAMAGE`): displace the receiver 3000 units away from the
     /// sender, then (for the selected player) return at once while a death-animation override is
     /// set. A nonplayer starts hit-reaction `anim_fight_hurt_1`; the selected player starts `anim_fight_hurt_1` or `anim_fight_hurt_2` by
     /// world-loop parity while holding a weapon or in combat stance (the drawn-weapon bit of its
@@ -337,7 +343,7 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .and_then(|control| control.combat.as_ref())
-                    .is_some_and(|combat| combat.flags & 4 != 0);
+                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             let odd = self.globals.world_loop_frame & 1 != 0;
             Some(match (stance, odd) {
                 (true, false) => AnimationGroup::FIGHT_HURT_1,
@@ -424,7 +430,8 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .context("receiver animation unavailable")?;
-            if animation.playback.is_reversed() || combat.flags & 1 == 0 {
+            if animation.playback.is_reversed() || !combat.flags.contains(CombatFlags::MOVE_INTENT)
+            {
                 return Ok(false);
             }
             let cursor = animation
@@ -438,7 +445,9 @@ impl ScriptWorld {
             if start <= cursor && cursor < end {
                 return Ok(true);
             }
-            Ok(duration != 0 && cursor >= end && combat.flags & 0x20 == 0)
+            Ok(duration != 0
+                && cursor >= end
+                && !combat.flags.contains(CombatFlags::CONTACT_TESTED))
         })();
         result.with_context(|| format!("world {} instance {} attack window", self.world, id.index))
     }
@@ -548,7 +557,8 @@ impl ScriptWorld {
                     .as_mut()
                     .and_then(|control| control.combat.as_mut())
                     .context("attacker combat unavailable")?
-                    .flags &= !3;
+                    .flags
+                    .remove(CombatFlags::INTENT);
                 return Ok(());
             }
             self.actors[id.index]
@@ -558,8 +568,9 @@ impl ScriptWorld {
                 .combat
                 .as_mut()
                 .expect("admitted combat")
-                .flags &= !3;
-            self.send_combat_message(id, defender, 0xd001)?;
+                .flags
+                .remove(CombatFlags::INTENT);
+            self.send_combat_message(id, defender, CombatMessageCode::HIT)?;
             let clock = inputs
                 .combat_clock_sample
                 .context("combat clock sample unavailable")? as i32;
@@ -686,7 +697,7 @@ impl ScriptWorld {
             && control
                 .combat
                 .as_ref()
-                .is_none_or(|combat| combat.flags & 4 == 0))
+                .is_none_or(|combat| !combat.flags.contains(CombatFlags::STANCE)))
     }
 
     /// The attacker's impact effect, then damage and death dispatch for a target with health.
@@ -780,7 +791,7 @@ impl ScriptWorld {
             && control
                 .combat
                 .as_ref()
-                .is_none_or(|combat| combat.flags & 4 == 0)
+                .is_none_or(|combat| !combat.flags.contains(CombatFlags::STANCE))
         {
             return Ok(());
         }
@@ -881,13 +892,13 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Combat death service for the damage responses (`0xd005` direct damage and the scaled hit
+    /// Combat death service for the damage responses (`DIRECT_DAMAGE` direct damage and the scaled hit
     /// response); the weapon-contact caller uses [`Self::dispatch_contact_death`] instead.
     /// Selector zero prefers `anim_death_fight_hard` when present, otherwise `anim_death_fight_stab`; the selected player
     /// does not consult its weapon (unarmed idle deaths end in either group). With `attr_death_type`
     /// clear, the selected player stores the group as the death override when none is set (its
     /// death controller starts the animation); a nonplayer force-starts it, stores death default
-    /// 124/123 (releasing its walk nodes), sends `0xd002` to the first coordinator sharing its
+    /// 124/123 (releasing its walk nodes), sends `RECEIVER_COORDINATES` to the first coordinator sharing its
     /// target and clears its close-distance and coordination state. Every receiver then resets its
     /// action selector to -1 and runs the combat reset (selector eight only releases walk nodes),
     /// takes selector eight and clears combat flag 0x04 and the coordination state. The selected
@@ -964,7 +975,11 @@ impl ScriptWorld {
                     .transpose()?
                     .unwrap_or(id);
                 if let Some(candidate) = self.ordinary_active_coordinator(id, player, inputs)? {
-                    self.send_combat_message(id, candidate, 0xd002)?;
+                    self.send_combat_message(
+                        id,
+                        candidate,
+                        CombatMessageCode::RECEIVER_COORDINATES,
+                    )?;
                 }
                 let combat = self.actors[index]
                     .control
@@ -1005,7 +1020,7 @@ impl ScriptWorld {
         }
         control.death_selector = 8;
         let combat = control.combat.as_mut().expect("validated combat record");
-        combat.flags &= !4;
+        combat.flags.remove(CombatFlags::STANCE);
         combat.close_distance_passes = 0;
         combat.attacker_selection_state = 0;
         if selected {

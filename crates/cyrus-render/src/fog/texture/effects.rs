@@ -8,6 +8,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::effects::Effects;
+use cyrus_game::script::EnvironmentalEffect;
 use std::collections::BTreeMap;
 
 pub(super) struct PreparedEffects {
@@ -27,9 +28,9 @@ struct DrawMetadata {
 
 impl DrawMetadata {
     fn shape(&self, descriptor: u32) -> (Vec2, f32) {
-        let geometry = if descriptor & 0x20000 != 0 {
+        let geometry = if descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0 {
             0.5
-        } else if descriptor & 0x10000 != 0 {
+        } else if descriptor & EnvironmentalEffect::REDUCED_SCALE != 0 {
             90.0 / 256.0
         } else {
             1.0
@@ -56,7 +57,7 @@ impl PreparedEffects {
             "effect texture {id}: retained frame {frame} outside prepared range"
         );
         let metadata = &self.metadata[&id];
-        let alternate = descriptor & 0x20000 != 0;
+        let alternate = descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0;
         ensure!(
             alternate || metadata.flags & 0x80 == 0,
             "effect texture {id}: special environmental-pool color inputs unsupported"
@@ -258,7 +259,7 @@ impl TextureAnimations {
             .get(&id)
             .ok_or_else(|| anyhow::anyhow!("effect texture {id}: prepared image absent"))?;
         let metadata = &prepared.metadata[&id];
-        let alternate = descriptor & 0x20000 != 0;
+        let alternate = descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0;
         let radius = metadata.shape(descriptor).1;
         let [x, y, z] = view.center;
         if super::admission::classify(

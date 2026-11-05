@@ -89,8 +89,8 @@ pub mod camera;
 mod combat;
 pub mod decision;
 pub use combat::{
-    CombatControlState, CombatDecision, CombatMessage, CombatMessages, CombatTauntPlayback,
-    CombatTauntSource, select_timed_combat_taunt,
+    CombatControlState, CombatDecision, CombatFlags, CombatMessage, CombatMessageCode,
+    CombatMessages, CombatTauntPlayback, CombatTauntSource, select_timed_combat_taunt,
 };
 mod dialogue;
 pub use dialogue::{
@@ -173,6 +173,7 @@ pub mod alignment;
 /// `BounceObject`'s launch state machine.
 pub mod bounce;
 mod collision_flags;
+mod heading;
 mod jump_motion;
 mod living_state;
 pub use collision_flags::CollisionFlags;

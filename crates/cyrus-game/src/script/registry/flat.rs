@@ -188,11 +188,11 @@ pub(super) fn call(
 /// One actor flat record ready for the shared effect-image drawing path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActorFlatDraw {
-    /// Lower sixteen bits select the image; `0x20000` selects the explicit frame below.
+    /// Lower sixteen bits select the image; [`EnvironmentalEffect::ALTERNATE_DRAW`](super::EnvironmentalEffect::ALTERNATE_DRAW) selects the explicit frame below.
     pub descriptor: u32,
     /// Whole original map units, Y downward, like an environmental effect's position.
     pub position: [i32; 3],
-    /// Explicit frame, meaningful when `descriptor & 0x20000` is set.
+    /// Explicit frame, meaningful when `descriptor` has [`EnvironmentalEffect::ALTERNATE_DRAW`](super::EnvironmentalEffect::ALTERNATE_DRAW).
     pub frame: i32,
 }
 
@@ -230,7 +230,12 @@ impl super::ScriptWorld {
                 std::array::from_fn(|axis| rotated[axis].wrapping_add(pose.position[axis]) >> 8);
             let explicit = flat.frame != 0xffff;
             draws.push(ActorFlatDraw {
-                descriptor: u32::from(flat.texture) | if explicit { 0x20000 } else { 0 },
+                descriptor: u32::from(flat.texture)
+                    | if explicit {
+                        super::EnvironmentalEffect::ALTERNATE_DRAW
+                    } else {
+                        0
+                    },
                 position,
                 frame: i32::from(flat.frame),
             });

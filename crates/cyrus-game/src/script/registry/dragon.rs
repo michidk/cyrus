@@ -1,6 +1,7 @@
 //! `DragonBreath` and `DragonBreathTask`: the dragon's smoke while it speaks, its fireball and the
 //! item swap when it dies. The task form runs the same update every frame until it returns zero.
 use super::GameHost;
+use crate::script::CombatFlags;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use crate::script::spatial::query_bearing;
 use anyhow::{Context, Result, ensure};
@@ -10,10 +11,9 @@ use cyrus_script::Native;
 
 /// Death selector that marks a killed receiver.
 const KILLED_SELECTOR: u8 = 8;
-/// Combat flag that lets the dragon pick a target.
-const COMBAT_FLAG_TARGETING: u8 = 4;
-/// Smoke effect descriptor.
-const SMOKE_EFFECT: u32 = 0x32480;
+/// Smoke effect descriptor: texture 0x2480 on the alternate, reduced-scale path.
+const SMOKE_EFFECT: u32 =
+    super::EnvironmentalEffect::ALTERNATE_DRAW | super::EnvironmentalEffect::REDUCED_SCALE | 0x2480;
 /// Installed script of the fireball.
 const FIREBALL: &str = "DRAGBALL";
 /// Distance under which the dragon does not breathe, in Q8 units.
@@ -110,7 +110,7 @@ impl GameHost<'_, '_, '_, '_> {
             .context("DragonBreath: receiver combat state unavailable")?;
         let Some(target) = combat
             .target
-            .filter(|_| combat.flags & COMBAT_FLAG_TARGETING != 0)
+            .filter(|_| combat.flags.contains(CombatFlags::STANCE))
         else {
             return Ok(true);
         };

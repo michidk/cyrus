@@ -8,6 +8,7 @@ use crate::player::{
     turn,
     walk::WalkingStartup,
 };
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
@@ -216,7 +217,7 @@ impl ScriptWorld {
                 || control
                     .combat
                     .as_ref()
-                    .is_some_and(|combat| combat.flags & 4 != 0);
+                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             ensure!(
                 world.actors[id.index].attributes[Attribute::HoldingWeapon] == 0,
                 "player controller swimmer actor unsupported"

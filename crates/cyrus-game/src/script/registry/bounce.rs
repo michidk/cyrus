@@ -1,6 +1,7 @@
 //! The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 //! `script::bounce`'s; a missing input fails the native instead of continuing on a guess.
 use super::{GameHost, ScriptActorId};
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::bounce::BouncePort;
@@ -110,7 +111,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
         self.control()
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0)
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE))
     }
     fn torch_burning(&self) -> bool {
         self.control().torch_burning != 0

@@ -4,6 +4,7 @@
 //! whose admission input is absent) answers conservatively and records its error; the native then
 //! fails with it rather than continuing on a guess.
 use super::{GameHost, ScriptActorId};
+use crate::script::CombatFlags;
 use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use anyhow::{Context, Result};
@@ -120,7 +121,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
         let combat_mode = control
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0);
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         let rate = actor.attributes[if holding_weapon || combat_mode {
             Attribute::FightTurnSpeed
         } else {
@@ -359,7 +360,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
             let combat_mode = control
                 .combat
                 .as_ref()
-                .is_some_and(|combat| combat.flags & 4 != 0);
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             let facing = alignment::face(alignment::FacingInput {
                 position,
                 heading: angles[1],

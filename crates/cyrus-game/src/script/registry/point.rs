@@ -11,6 +11,7 @@
 //! outside phase zero, the shared held-target exclusion switch (always off in play) and the
 //! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -1016,7 +1017,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.flags & 4 != 0),
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
             frame_scale: inputs
                 .frame_scale
                 .context("point facing requires frame_scale")?,

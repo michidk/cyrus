@@ -1,6 +1,8 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
 use cyrus_game::script::CollisionFlags;
+use cyrus_game::script::CombatFlags;
+use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
@@ -7453,7 +7455,9 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
         let scene = ordinary_collision_scene(world.world, models);
         let receiver = world.id(0).unwrap();
         let sender = world.id(1).unwrap();
-        world.send_combat_message(sender, receiver, 0xd001).unwrap();
+        world
+            .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+            .unwrap();
         world
             .update_ordinary(
                 &data,
@@ -7485,7 +7489,7 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
                     .unwrap()
                     .unwrap()
                     .code,
-                0xd001
+                CombatMessageCode::HIT
             );
         } else {
             assert_eq!(
@@ -12156,7 +12160,12 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (combat.target, combat.flags, combat.action, combat.cooldown),
+            (
+                combat.target,
+                combat.flags.bits(),
+                combat.action,
+                combat.cooldown
+            ),
             (None, 0, -1, 0)
         );
         assert_eq!(combat.attacker_selection_state, 0);
@@ -12234,7 +12243,9 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 7);
-        world.send_combat_message(second, first, 0xd001).unwrap();
+        world
+            .send_combat_message(second, first, CombatMessageCode::HIT)
+            .unwrap();
         let error = world
             .maintain_map_combat(
                 first,
@@ -12251,8 +12262,14 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             generation: 2,
             index: 0,
         };
-        assert!(world.send_combat_message(second, stale, 1).is_err());
-        world.send_combat_message(stale, stale, 0).unwrap();
+        assert!(
+            world
+                .send_combat_message(second, stale, CombatMessageCode::from(1))
+                .is_err()
+        );
+        world
+            .send_combat_message(stale, stale, CombatMessageCode::NONE)
+            .unwrap();
     }
 }
 
@@ -13695,7 +13712,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                     )
                 );
                 assert_eq!(control.script_control, if selected { 0 } else { 2 });
-                assert_eq!(control.combat.as_ref().unwrap().flags, 4);
+                assert_eq!(control.combat.as_ref().unwrap().flags.bits(), 4);
                 assert_eq!(
                     world.animation_frame(id).unwrap(),
                     Some(if drawing { 91 } else { 10 })
@@ -13734,7 +13751,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                     (6, LivingState::ORDINARY, 0, false)
                 );
                 assert_eq!(
-                    control.combat.as_ref().unwrap().flags,
+                    control.combat.as_ref().unwrap().flags.bits(),
                     if drawing { 4 } else { 0 },
                     "already-clear drawn flag preserves combat flag"
                 );
@@ -13890,7 +13907,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
                 ),
                 (0, 0, false)
             );
-            assert_eq!(control.combat.as_ref().unwrap().flags, 0);
+            assert_eq!(control.combat.as_ref().unwrap().flags.bits(), 0);
             assert_ne!(world.flags(), [42]);
             assert!(
                 world
@@ -13908,7 +13925,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             (6, 2, true),
             "derived={derived} expression={expression} result={result:?}"
         );
-        assert_eq!(control.combat.as_ref().unwrap().flags, 4);
+        assert_eq!(control.combat.as_ref().unwrap().flags.bits(), 4);
         assert_eq!(world.actors()[1].control_state().unwrap().death_selector, 0);
         if expression {
             let error = format!("{:#}", result.unwrap_err());
@@ -14063,7 +14080,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
                 (
                     control.death_selector,
                     control.living_state,
-                    control.combat.as_ref().unwrap().flags
+                    control.combat.as_ref().unwrap().flags.bits()
                 ),
                 (6, LivingState::DRAWING_SWORD, 4)
             );
@@ -20450,11 +20467,11 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             .unwrap();
         if fail {
             assert!(format!("{:#}", result.unwrap_err()).contains("injected preparation failure"));
-            assert_eq!(combat.flags & 0x40, 0);
+            assert_eq!(combat.flags.bits() & 0x40, 0);
             assert_eq!(source.0.borrow().events, ["prepare"]);
         } else {
             result.unwrap();
-            assert_eq!(combat.flags & 0x40, 0x40);
+            assert_eq!(combat.flags.bits() & 0x40, 0x40);
             assert_eq!(
                 source.0.borrow().events,
                 ["prepare", "release", "load", "present"]
@@ -20685,7 +20702,10 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             (combat.decision.move_selector, combat.decision.aggression),
             (expected_motion, expected_aggression)
         );
-        assert_eq!(combat.flags, if fail || !expected_active { 48 } else { 1 });
+        assert_eq!(
+            combat.flags.bits(),
+            if fail || !expected_active { 48 } else { 1 }
+        );
         assert_eq!(cues, if motion == 1 { 0 } else { 1 });
         if !fail && expected_active {
             let snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
@@ -20957,7 +20977,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         .as_ref()
         .unwrap();
     assert_eq!(combat.decision.defence_counter, 100);
-    assert_eq!(combat.flags, 49);
+    assert_eq!(combat.flags.bits(), 49);
     assert_eq!(combat.action, -1);
     assert_eq!(random.state(), 3397979675);
     // Best starts synchronously before paced selection consumes the next shared draw.
@@ -21038,7 +21058,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
     assert_eq!(combat.decision.attack_state, 1);
     assert_eq!(combat.decision.aggression, 40);
     assert_eq!(combat.decision.defence_counter, 100);
-    assert_eq!(combat.flags, 1);
+    assert_eq!(combat.flags.bits(), 1);
     assert_eq!(cues, 1);
     assert_eq!(random.state(), 238077914);
 }
@@ -22283,7 +22303,7 @@ fn forward_amount_uses_live_combat_action_surface_torch_and_suppression() {
                 control["movement_flags"] = 0xF3.into();
                 control["torch_burning"] = torch.into();
                 let state = CombatControlState {
-                    flags: if combat { 4 } else { 0 },
+                    flags: CombatFlags::from_bits(if combat { 4 } else { 0 }),
                     action,
                     ..Default::default()
                 };
@@ -22533,7 +22553,7 @@ fn synchronous_backward_and_combat_strafes_use_existing_real_movement() {
         let mut world = forward_amount_world(group, false, true, |actor| {
             if matches!(movement, OrdinaryMovement::Left | OrdinaryMovement::Right) {
                 actor["control"]["combat"] = serde_json::to_value(CombatControlState {
-                    flags: 4,
+                    flags: CombatFlags::from_bits(4),
                     ..Default::default()
                 })
                 .unwrap();
@@ -22777,7 +22797,7 @@ fn spacing_fixture_group(
                 saved["actors"][index]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
                         action: -1,
-                        flags: 4,
+                        flags: CombatFlags::from_bits(4),
                         attacker_selection_state: 1,
                         spacing_period: 5,
                         ..Default::default()
@@ -23893,7 +23913,7 @@ fn combat_coordination_reuses_attacker_state_and_preserves_the_entry_branch() {
             OrdinaryCombatBranch::Waiting,
             0,
             11,
-            Some(0xd003),
+            Some(CombatMessageCode::SENDER_COORDINATES),
         ),
         (
             true,
@@ -23917,7 +23937,7 @@ fn combat_coordination_reuses_attacker_state_and_preserves_the_entry_branch() {
             OrdinaryCombatBranch::Active,
             0,
             0,
-            Some(0xd002),
+            Some(CombatMessageCode::RECEIVER_COORDINATES),
         ),
         (
             true,
@@ -23941,7 +23961,7 @@ fn combat_coordination_reuses_attacker_state_and_preserves_the_entry_branch() {
             OrdinaryCombatBranch::Disengaged,
             0,
             0,
-            Some(0xd002),
+            Some(CombatMessageCode::RECEIVER_COORDINATES),
         ),
         (
             false,
@@ -24107,7 +24127,7 @@ fn coordination_keeps_queued_message_and_prior_state_when_taunt_service_fails() 
             for index in [0, 2] {
                 saved["actors"][index]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
-                        flags: 4,
+                        flags: CombatFlags::from_bits(4),
                         attacker_selection_state: 1,
                         close_distance_passes: 11,
                         taunt_period: 1,
@@ -24144,7 +24164,7 @@ fn coordination_keeps_queued_message_and_prior_state_when_taunt_service_fails() 
     );
     assert_eq!(
         world.consume_combat_message(other).unwrap().unwrap().code,
-        0xd002
+        CombatMessageCode::RECEIVER_COORDINATES
     );
     let combat = world.actors()[0]
         .control_state()
@@ -24221,7 +24241,7 @@ fn counter_fixture_timing(
                 saved["actors"][index]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
                         action: if index == 0 { -1 } else { 2 },
-                        flags: if index == 0 { 0xa1 } else { 0 },
+                        flags: CombatFlags::from_bits(if index == 0 { 0xa1 } else { 0 }),
                         attack_indices: [Some(0); 9],
                         defense_indices: [Some(0); 4],
                         retained_action_indices: [-1, 0],
@@ -24355,7 +24375,7 @@ fn live_counter_starts_receiver_animation_then_marks_target_without_a_task() {
         .unwrap();
     assert_eq!(
         (
-            own.flags,
+            own.flags.bits(),
             own.action,
             own.retained_action_indices[0],
             own.decision.attack_state,
@@ -24363,7 +24383,7 @@ fn live_counter_starts_receiver_animation_then_marks_target_without_a_task() {
         ),
         (0xa3, 9, 0, 2, 40)
     );
-    assert_eq!(target.flags, 0x10);
+    assert_eq!(target.flags.bits(), 0x10);
     assert_eq!(
         world.inspect(0, 2)["actors"][0]["animation"]["current_group"],
         AnimationGroup::RUN_BACKWARD.index()
@@ -24405,7 +24425,7 @@ fn live_counter_preserves_intent_pending_and_action_before_executor_failure() {
         .unwrap();
     assert_eq!(
         (
-            own.flags,
+            own.flags.bits(),
             own.retained_action_indices[0],
             own.action,
             own.decision.attack_state,
@@ -24420,7 +24440,8 @@ fn live_counter_preserves_intent_pending_and_action_before_executor_failure() {
             .combat
             .as_ref()
             .unwrap()
-            .flags,
+            .flags
+            .bits(),
         0
     );
 }
@@ -24532,7 +24553,8 @@ fn live_counter_uses_shared_rng_lazily_for_random_fit() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             if draws == 2 { 16 } else { 0 }
         );
     }
@@ -24592,7 +24614,7 @@ fn live_counter_reads_command_cursor_and_runs_direct_sidestep_primitives() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (own.flags, own.action, own.retained_action_indices[0]),
+            (own.flags.bits(), own.action, own.retained_action_indices[0]),
             (if slot == 0 { 0xa1 } else { 0xa5 }, -1, -1)
         );
         assert_eq!(
@@ -24602,7 +24624,8 @@ fn live_counter_reads_command_cursor_and_runs_direct_sidestep_primitives() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             0
         );
     }
@@ -24661,7 +24684,7 @@ fn live_counter_sound_failure_retains_start_action_but_does_not_mark_target() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (own.flags, own.action, own.retained_action_indices[0]),
+            (own.flags.bits(), own.action, own.retained_action_indices[0]),
             (0xa3, 9, 0)
         );
         assert_eq!(
@@ -24675,7 +24698,8 @@ fn live_counter_sound_failure_retains_start_action_but_does_not_mark_target() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             if fail { 0 } else { 16 }
         );
         assert_eq!(
@@ -24728,7 +24752,10 @@ fn coordination_message_fixture(
 
 #[test]
 fn coordination_messages_reset_only_living_exact_active_attackers_then_assign_budget() {
-    for code in [0xd002, 0xd003] {
+    for code in [
+        CombatMessageCode::RECEIVER_COORDINATES,
+        CombatMessageCode::SENDER_COORDINATES,
+    ] {
         let (mut world, scripts, data) = coordination_message_fixture(|saved| {
             saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 0.into();
             saved["actors"][1]["control"]["combat"]["attacker_selection_state"] = 2.into();
@@ -24754,7 +24781,7 @@ fn coordination_messages_reset_only_living_exact_active_attackers_then_assign_bu
             .collect();
         assert_eq!(
             states,
-            if code == 0xd002 {
+            if code == CombatMessageCode::RECEIVER_COORDINATES {
                 vec![
                     (1, 0, 50),
                     (2, 11, 7),
@@ -24792,10 +24819,16 @@ fn coordination_messages_reset_only_living_exact_active_attackers_then_assign_bu
 
 #[test]
 fn coordination_messages_use_receiver_or_sender_target_and_skip_null_target_traversal() {
-    for code in [0xd002, 0xd003] {
+    for code in [
+        CombatMessageCode::RECEIVER_COORDINATES,
+        CombatMessageCode::SENDER_COORDINATES,
+    ] {
         let (mut world, _, _) = coordination_message_fixture(|saved| {
-            saved["actors"][if code == 0xd002 { 0 } else { 1 }]["control"]["combat"]["target"] =
-                serde_json::Value::Null;
+            saved["actors"][if code == CombatMessageCode::RECEIVER_COORDINATES {
+                0
+            } else {
+                1
+            }]["control"]["combat"]["target"] = serde_json::Value::Null;
         });
         let receiver = world.id(0).unwrap();
         let sender = world.id(1).unwrap();
@@ -24815,7 +24848,13 @@ fn coordination_messages_use_receiver_or_sender_target_and_skip_null_target_trav
                     c.close_distance_passes,
                     c.decision.aggression
                 ),
-                if index == if code == 0xd002 { 0 } else { 1 } {
+                if index
+                    == if code == CombatMessageCode::RECEIVER_COORDINATES {
+                        0
+                    } else {
+                        1
+                    }
+                {
                     (1, 0, 50)
                 } else {
                     (1, 11, 7)
@@ -24830,7 +24869,11 @@ fn coordination_messages_use_receiver_or_sender_target_and_skip_null_target_trav
     world.ordinary_actors([0, 0]).unwrap();
     let receiver = world.id(0).unwrap();
     world
-        .send_combat_message(world.id(1).unwrap(), receiver, 0xd003)
+        .send_combat_message(
+            world.id(1).unwrap(),
+            receiver,
+            CombatMessageCode::SENDER_COORDINATES,
+        )
         .unwrap();
     world.process_combat_message(receiver, None).unwrap();
     assert_eq!(
@@ -24860,7 +24903,9 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
     let (mut world, _, _) = coordination_message_fixture(|_| {});
     let receiver = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
-    world.send_combat_message(sender, receiver, 0xd002).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::RECEIVER_COORDINATES)
+        .unwrap();
     let error = format!(
         "{:#}",
         world.process_combat_message(receiver, None).unwrap_err()
@@ -24882,8 +24927,12 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
             .aggression,
         7
     );
-    world.send_combat_message(sender, receiver, 0xd004).unwrap();
-    world.send_combat_message(sender, receiver, 0xd003).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::from(0xd004))
+        .unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::SENDER_COORDINATES)
+        .unwrap();
     world.process_combat_message(receiver, None).unwrap();
     assert_eq!(
         world
@@ -24891,9 +24940,9 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
             .unwrap()
             .unwrap()
             .code,
-        0xd003
+        CombatMessageCode::SENDER_COORDINATES
     );
-    for code in [0xd001, 0xd005] {
+    for code in [CombatMessageCode::HIT, CombatMessageCode::DIRECT_DAMAGE] {
         let before_flags = [receiver, sender].map(|actor| {
             world.actors()[actor.index]
                 .control_state()
@@ -24902,6 +24951,7 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
                 .as_ref()
                 .unwrap()
                 .flags
+                .bits()
         });
         world.send_combat_message(sender, receiver, code).unwrap();
         let error = format!(
@@ -24918,10 +24968,11 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
                 .as_ref()
                 .unwrap()
                 .flags
+                .bits()
         });
         assert_eq!(
             flags,
-            if code == 0xd001 {
+            if code == CombatMessageCode::HIT {
                 before_flags.map(|flags| flags & !3)
             } else {
                 before_flags
@@ -24958,7 +25009,7 @@ fn deflected_attack_fixture(
                 saved["actors"][index]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
                         attacker_selection_state: 1,
-                        flags: 7,
+                        flags: CombatFlags::from_bits(7),
                         ..Default::default()
                     })
                     .unwrap();
@@ -24980,6 +25031,7 @@ fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
             .as_ref()
             .unwrap()
             .flags
+            .bits()
     };
     let state = |world: &ScriptWorld, index: usize| {
         world.actors()[index]
@@ -24998,7 +25050,9 @@ fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
     world.ordinary_actors([0, 0]).unwrap();
     let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
     let before = world.spatial(sender).unwrap().local.position;
-    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+        .unwrap();
     world.process_combat_message(receiver, None).unwrap();
     assert_eq!((flags(&world, 0), flags(&world, 1)), (4, 4));
     let after = world.spatial(sender).unwrap().local.position;
@@ -25015,7 +25069,10 @@ fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
         .consume_combat_message(world.id(5).unwrap())
         .unwrap()
         .unwrap();
-    assert_eq!((message.code, message.sender), (0xd003, receiver));
+    assert_eq!(
+        (message.code, message.sender),
+        (CombatMessageCode::SENDER_COORDINATES, receiver)
+    );
     assert_eq!(state(&world, 0), 0, "the receiver waits for the transfer");
 
     // No other waiting coordinator: the receiver becomes the active one itself.
@@ -25027,7 +25084,9 @@ fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
     });
     world.ordinary_actors([0, 0]).unwrap();
     let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
-    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+        .unwrap();
     world.process_combat_message(receiver, None).unwrap();
     assert_eq!(state(&world, 0), 1);
     assert_eq!(
@@ -25041,7 +25100,9 @@ fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
     world.ordinary_actors([0, 0]).unwrap();
     let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
     let before = world.spatial(sender).unwrap().local.position;
-    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+        .unwrap();
     world.process_combat_message(receiver, None).unwrap();
     assert_eq!(state(&world, 0), 1);
     assert_eq!((flags(&world, 0), flags(&world, 1)), (4, 4));
@@ -25063,7 +25124,11 @@ fn coordination_message_keeps_prior_resets_when_selected_death_state_is_unknown(
     let receiver = world.id(0).unwrap();
     let selected_player = world.id(2).unwrap();
     world
-        .send_combat_message(world.id(1).unwrap(), receiver, 0xd002)
+        .send_combat_message(
+            world.id(1).unwrap(),
+            receiver,
+            CombatMessageCode::RECEIVER_COORDINATES,
+        )
         .unwrap();
     let error = format!(
         "{:#}",
@@ -25849,7 +25914,9 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
     let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
     let id = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
-    world.send_combat_message(sender, id, 0xd001).unwrap();
+    world
+        .send_combat_message(sender, id, CombatMessageCode::HIT)
+        .unwrap();
     assert!(world.peek_combat_message(id).unwrap().is_some());
     world
         .advance(
@@ -26010,7 +26077,7 @@ fn perception_case(
     };
     let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     let combat = CombatControlState {
-        flags: 4,
+        flags: CombatFlags::from_bits(4),
         lost_sight_ticks: timer,
         lost_sight_routing: lost,
         spacing_ranges: [0, 123, 0],
@@ -27401,7 +27468,7 @@ fn point_node_facing_turns_then_selects_walk_or_shared_random_delay() {
             saved["actors"][0]["attributes"][110] = u8::from(weapon).into();
             saved["actors"][0]["animation"] = serde_json::Value::Null;
             saved["actors"][0]["control"]["combat"] = serde_json::to_value(CombatControlState {
-                flags,
+                flags: CombatFlags::from_bits(flags),
                 ..Default::default()
             })
             .unwrap();
@@ -28909,7 +28976,11 @@ fn ordinary_defence_pacing_and_open_branches_skip_active_target_metadata() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (combat.action, combat.flags, combat.decision.defence_counter),
+            (
+                combat.action,
+                combat.flags.bits(),
+                combat.decision.defence_counter
+            ),
             (-1, 0xa0, 3)
         );
         assert_eq!(random.state(), 42);
@@ -28946,7 +29017,11 @@ fn ordinary_defence_retains_counter_before_pacing_or_target_motion_error() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (combat.action, combat.flags, combat.decision.defence_counter),
+            (
+                combat.action,
+                combat.flags.bits(),
+                combat.decision.defence_counter
+            ),
             (-1, 0xa0, 3)
         );
         assert_eq!(random.state(), 42);
@@ -28968,7 +29043,11 @@ fn ordinary_defence_reads_retained_motion_and_command_cursor_without_displayed_f
         .as_ref()
         .unwrap();
     assert_eq!(
-        (combat.action, combat.flags, combat.decision.defence_counter),
+        (
+            combat.action,
+            combat.flags.bits(),
+            combat.decision.defence_counter
+        ),
         (-1, 0xa0, 3)
     );
     assert_eq!(random.state(), 42);
@@ -29001,7 +29080,11 @@ fn ordinary_defence_collision_timing_raises_intent_before_live_reach_error() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (combat.action, combat.flags, combat.decision.defence_counter),
+            (
+                combat.action,
+                combat.flags.bits(),
+                combat.decision.defence_counter
+            ),
             (-1, 0xa1, 3)
         );
         assert_eq!(random.state(), 42);
@@ -29679,7 +29762,7 @@ fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
                         action: 0,
-                        flags,
+                        flags: CombatFlags::from_bits(flags),
                         attack_indices: [Some(0); 9],
                         retained_action_indices: [-1, 0],
                         ..Default::default()
@@ -29713,7 +29796,7 @@ fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (combat.action, combat.flags),
+            (combat.action, combat.flags.bits()),
             (0, if expected { flags | 0x20 } else { flags })
         );
     }
@@ -29731,7 +29814,7 @@ fn reverse_attack_admission_returns_before_motion_metadata() {
             saved["actors"][0]["control"]["combat"] =
                 serde_json::to_value(cyrus_game::script::CombatControlState {
                     action: 0,
-                    flags: 1,
+                    flags: CombatFlags::from_bits(1),
                     ..Default::default()
                 })
                 .unwrap();
@@ -29749,7 +29832,7 @@ fn reverse_attack_admission_returns_before_motion_metadata() {
         .combat
         .as_ref()
         .unwrap();
-    assert_eq!((combat.action, combat.flags), (0, 1));
+    assert_eq!((combat.action, combat.flags.bits()), (0, 1));
 }
 
 #[test]
@@ -29791,7 +29874,7 @@ fn defence_windows_use_current_motion_signed_boundaries_and_required_metadata() 
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(cyrus_game::script::CombatControlState {
                         action: 0,
-                        flags,
+                        flags: CombatFlags::from_bits(flags),
                         attack_indices: [Some(0); 9],
                         retained_action_indices: [-1, 0],
                         ..Default::default()
@@ -29908,7 +29991,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
                         action: 0,
-                        flags: 0xff,
+                        flags: CombatFlags::from_bits(0xff),
                         attack_indices: [Some(0); 9],
                         retained_action_indices: [-1, 0],
                         ..Default::default()
@@ -29916,7 +29999,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
                     .unwrap();
                 saved["actors"][1]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
-                        flags,
+                        flags: CombatFlags::from_bits(flags),
                         retained_action_indices: [selector, -1],
                         ..Default::default()
                     })
@@ -29973,7 +30056,8 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             if complete { 0xfc } else { 0xff }
         );
         let missed = distance == 100 && flags & 2 != 0 && selector == 0;
@@ -29984,7 +30068,8 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             if complete {
                 (flags & !3) ^ 8
             } else if missed {
@@ -30007,7 +30092,7 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
             let message = message.unwrap();
             assert_eq!(
                 (message.sender, message.receiver, message.code),
-                (defender, Some(attacker), 0xd000)
+                (defender, Some(attacker), CombatMessageCode::BLOCK)
             );
         } else {
             assert!(message.is_none());
@@ -30181,7 +30266,7 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
                         action: 0,
-                        flags: 1,
+                        flags: CombatFlags::from_bits(1),
                         attack_indices: [Some(0); 9],
                         retained_action_indices: [-1, 0],
                         ..Default::default()
@@ -30289,7 +30374,8 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             0x21
         );
     }
@@ -30319,7 +30405,7 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
                 saved["actors"][0]["control"]["death_selector"] = 0.into();
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
-                        flags,
+                        flags: CombatFlags::from_bits(flags),
                         ..Default::default()
                     })
                     .unwrap();
@@ -31089,7 +31175,7 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
                 saved["actors"][0]["control"]["combat"] =
                     serde_json::to_value(CombatControlState {
                         action: 0,
-                        flags: 1,
+                        flags: CombatFlags::from_bits(1),
                         attack_indices: [Some(0); 9],
                         retained_action_indices: [-1, 0],
                         ..Default::default()
@@ -31200,7 +31286,8 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             0x21
         );
     }
@@ -32887,7 +32974,9 @@ fn block_message_displaces_sender_and_hands_off_without_changing_budget() {
             let receiver = world.id(0).unwrap();
             let sender = world.id(1).unwrap();
             let before = movement_snapshot(&world, &scripts, &data);
-            world.send_combat_message(sender, receiver, 0xd000).unwrap();
+            world
+                .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+                .unwrap();
             world.process_combat_message(receiver, None).unwrap();
             assert_eq!(world.spatial(sender).unwrap().local.position, expected);
             assert_eq!(world.spatial(receiver).unwrap().local.position, [0, 5, 0]);
@@ -32908,7 +32997,8 @@ fn block_message_displaces_sender_and_hands_off_without_changing_budget() {
                         .combat
                         .as_ref()
                         .unwrap()
-                        .flags,
+                        .flags
+                        .bits(),
                     0xfc
                 );
             }
@@ -32931,7 +33021,11 @@ fn block_message_displaces_sender_and_hands_off_without_changing_budget() {
                     .unwrap();
                 assert_eq!(
                     (message.sender, message.receiver, message.code),
-                    (receiver, Some(world.id(5).unwrap()), 0xd003)
+                    (
+                        receiver,
+                        Some(world.id(5).unwrap()),
+                        CombatMessageCode::SENDER_COORDINATES
+                    )
                 );
             }
             assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
@@ -32950,7 +33044,9 @@ fn block_message_keeps_displacement_and_intent_clears_before_handoff_error() {
     });
     let receiver = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
-    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+        .unwrap();
     let error = format!(
         "{:#}",
         world.process_combat_message(receiver, None).unwrap_err()
@@ -32965,7 +33061,8 @@ fn block_message_keeps_displacement_and_intent_clears_before_handoff_error() {
                 .combat
                 .as_ref()
                 .unwrap()
-                .flags,
+                .flags
+                .bits(),
             0xfc
         );
     }
@@ -32987,7 +33084,9 @@ fn block_message_handoff_gates_skip_unavailable_traversal_and_selected_death_que
         });
         let receiver = world.id(0).unwrap();
         let sender = world.id(1).unwrap();
-        world.send_combat_message(sender, receiver, 0xd000).unwrap();
+        world
+            .send_combat_message(sender, receiver, CombatMessageCode::BLOCK)
+            .unwrap();
         world
             .process_combat_message(receiver, selected.then_some(receiver))
             .unwrap();
@@ -33751,7 +33850,7 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
             LivingState::DRAWING_SWORD,
             "item use: {item_use}"
         );
-        assert_eq!(control.combat.as_ref().unwrap().flags & 4, 4);
+        assert_eq!(control.combat.as_ref().unwrap().flags.bits() & 4, 4);
         if item_use {
             assert_eq!(
                 actor.attributes()[Attribute::Weapon],
@@ -33844,7 +33943,7 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
         if function == Native::EndCombat {
             assert_eq!(control.death_selector, 1);
             assert_eq!(control.death_response, 0);
-            assert_eq!(control.combat.as_ref().unwrap().flags & 4, 0);
+            assert_eq!(control.combat.as_ref().unwrap().flags.bits() & 4, 0);
         } else {
             assert_eq!(
                 control.death_selector, before,
@@ -35263,7 +35362,9 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
     world.ordinary_actors([0, 0]).unwrap();
     world.set_attribute_for_test(sender, Attribute::Damage, 12);
     let before = world.spatial(receiver).unwrap().local.position;
-    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+        .unwrap();
     let hud = ScriptHud::default();
     world
         .process_combat_message_with_services(
@@ -35310,7 +35411,9 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
     world.set_attribute_for_test(sender, Attribute::Damage, 255);
-    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+        .unwrap();
     let hud = ScriptHud::default();
     world
         .process_combat_message_with_services(
@@ -35354,7 +35457,9 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
     let receiver = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
     let before = world.spatial(receiver).unwrap().local.position;
-    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+        .unwrap();
     let mut sounds = Vec::new();
     world
         .process_combat_message_with_services(
@@ -35394,7 +35499,8 @@ fn a_direct_damage_message_displaces_hurts_and_hands_coordination_off_without_cl
             .combat
             .as_ref()
             .unwrap()
-            .flags;
+            .flags
+            .bits();
         assert_eq!(flags, 3, "intent bits are not cleared");
     }
     assert!(sounds.iter().any(|(_, text)| text.contains("Positional")));
@@ -35414,7 +35520,9 @@ fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer()
     world.ordinary_actors([0, 0]).unwrap();
     let receiver = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
-    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+        .unwrap();
     let hud = cyrus_game::script::ScriptHud::default();
     world
         .process_combat_message_with_services(
@@ -35438,7 +35546,7 @@ fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer()
     );
     assert_eq!(control.death_selector, 8);
     assert_eq!(combat.action, -1);
-    assert_eq!(combat.flags & 4, 0, "combat flag 0x04 cleared");
+    assert_eq!(combat.flags.bits() & 4, 0, "combat flag 0x04 cleared");
     assert_eq!(
         (
             combat.close_distance_passes,
@@ -35463,7 +35571,9 @@ fn direct_damage_uses_generic_nonplayer_health_admission_gates() {
         world.ordinary_actors([0, 0]).unwrap();
         let receiver = world.id(0).unwrap();
         let sender = world.id(1).unwrap();
-        world.send_combat_message(sender, receiver, 0xd005).unwrap();
+        world
+            .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+            .unwrap();
         world
             .process_combat_message_with_services(
                 receiver,
@@ -35545,7 +35655,9 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
         &inventory_asset(&[(1, 0), (75, 1)]),
         &cyrus_game::preferences::Preferences::default(),
     );
-    world.send_combat_message(sender, receiver, 0xd001).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
     world
         .process_combat_message_with_services(
             receiver,
@@ -35633,7 +35745,9 @@ fn combat_hit_from_a_sender_without_an_attack_slot_deals_no_damage() {
         &inventory_asset(&[(1, 0)]),
         &cyrus_game::preferences::Preferences::default(),
     );
-    world.send_combat_message(sender, receiver, 0xd001).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
     world
         .process_combat_message_with_services(
             receiver,
@@ -35715,7 +35829,9 @@ fn direct_damage_restores_a_charged_sender_weapon_after_damage() {
         &inventory_asset(&[(1, 0), (75, 1)]),
         &cyrus_game::preferences::Preferences::default(),
     );
-    world.send_combat_message(sender, receiver, 0xd005).unwrap();
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
+        .unwrap();
     world
         .process_combat_message_with_services(
             receiver,

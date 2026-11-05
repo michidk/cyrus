@@ -1,5 +1,6 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
 use cyrus_assets::{animation::Animations, script::*};
+use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::ScriptSound;
@@ -2149,7 +2150,9 @@ fn new_game_applies_lockout_cleanup_before_replacing_the_registry() {
     let mut world = lockout_world(1, false);
     let id = world.id(0).unwrap();
     let sender = world.id(1).unwrap();
-    world.send_combat_message(sender, id, 0xd001).unwrap();
+    world
+        .send_combat_message(sender, id, CombatMessageCode::HIT)
+        .unwrap();
     stage(&mut world, id, BODY);
     world
         .globals_mut()

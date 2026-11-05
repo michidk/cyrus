@@ -7,6 +7,8 @@
 //! collision-response state.
 
 use super::alignment::{CloseStep, close_step, keeps_step, relative_bearing};
+use super::decision::heading_difference;
+use super::heading::{opposite, wrap};
 
 /// The leaf helpers the movers call, each answering as the original helper does.
 pub trait LineupPort {
@@ -113,7 +115,7 @@ fn rotated_target(
     offsets: [i32; 2],
     reference: Reference,
 ) -> anyhow::Result<(u16, [i32; 2])> {
-    let heading = ((i32::from(reference.heading) + angle) & 0x7ff) as u16;
+    let heading = wrap(i32::from(reference.heading) + angle) as u16;
     let [x, z] = cyrus_world::transform::rotate_offset(offsets, heading)?;
     Ok((
         heading,
@@ -127,7 +129,7 @@ fn rotated_target(
 /// Complete the turn to the final heading: still turning keeps the alignment going; finished, the
 /// default animation request ends it, clearing the alignment flag.
 fn finish_turn<P: LineupPort + ?Sized>(port: &mut P, heading: u16) -> i32 {
-    if port.turn_to((heading + 0x400) & 0x7ff) {
+    if port.turn_to(opposite(heading)) {
         return 1;
     }
     if port.default_animation() {
@@ -199,9 +201,9 @@ pub fn close_mover<P: LineupPort + ?Sized>(
     offsets: [i32; 2],
     reference: Reference,
 ) -> anyhow::Result<i32> {
-    let final_heading = ((i32::from(reference.heading) + angle) & 0x7ff) as u16;
+    let final_heading = wrap(i32::from(reference.heading) + angle) as u16;
     if state.fallback {
-        if port.turn_to((final_heading + 0x400) & 0x7ff) {
+        if port.turn_to(opposite(final_heading)) {
             return Ok(1);
         }
         if !port.default_animation() {
@@ -216,7 +218,7 @@ pub fn close_mover<P: LineupPort + ?Sized>(
     if port.arrival(x, z) {
         return Ok(finish_turn(port, heading));
     }
-    if port.turn_to((heading + 0x400) & 0x7ff) {
+    if port.turn_to(opposite(heading)) {
         return Ok(1);
     }
     let bearing = port.relative_bearing(x, z);
@@ -291,15 +293,11 @@ pub fn plain_mover<P: LineupPort + ?Sized>(port: &mut P, angle: i32, target: [i3
         return 0;
     }
     port.level_roll();
-    let heading = (angle & 0x7ff) as u16;
-    let final_heading = (heading + 0x400) & 0x7ff;
-    let difference = {
-        let delta =
-            (i32::from(port.heading()) - i32::from(final_heading) + 1024).rem_euclid(2048) - 1024;
-        delta.abs()
-    };
+    let heading = wrap(angle) as u16;
+    let final_heading = opposite(heading);
+    let difference = heading_difference(i32::from(port.heading()), i32::from(final_heading)).abs();
     if difference > 0x300 {
-        port.turn_to((final_heading + 0x400) & 0x7ff);
+        port.turn_to(opposite(final_heading));
         if port.permitted(x, z) && !port.step(CloseStep::Backward, x, z) {
             if !port.turn_to(final_heading) {
                 port.set_called_flags(true);
@@ -816,7 +814,9 @@ mod tests {
                 called: 7,
                 state: 0,
                 hook: row.flag & 2 != 0,
-                masked: row.mask & 0x1e2 != 0,
+                masked: crate::script::alignment::fallback_response(
+                    crate::script::CollisionFlags::from_bits(row.mask),
+                ),
                 age_over: row.age > 8,
             };
             let reference = Reference {

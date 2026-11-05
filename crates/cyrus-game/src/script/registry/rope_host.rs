@@ -9,6 +9,8 @@ use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::decision::heading_difference;
+use crate::script::heading::{HALF_TURN, wrap};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -40,21 +42,10 @@ pub(super) struct PlayerRope {
     previous_node: Option<[f64; 3]>,
 }
 
-fn angle_difference(a: i32, b: i32) -> i32 {
-    let d = (a & 0x7ff) - (b & 0x7ff);
-    if d > 0x400 {
-        d - 0x800
-    } else if d < -0x400 {
-        d + 0x800
-    } else {
-        d
-    }
-}
-
-/// The shorter heading difference of an actor to a rope heading or to that heading plus 0x400.
+/// The shorter heading difference of an actor to a rope heading or to its opposite.
 fn rope_heading_difference(rope_heading: i32, actor_heading: i32) -> i32 {
-    let first = angle_difference(rope_heading, actor_heading);
-    let second = angle_difference((rope_heading + 0x400) & 0x7ff, actor_heading);
+    let first = heading_difference(rope_heading, actor_heading);
+    let second = heading_difference(wrap(rope_heading + HALF_TURN), actor_heading);
     if first.abs() < second.abs() {
         first
     } else {
@@ -329,7 +320,7 @@ impl ScriptWorld {
         if rope.kind & 1 == 0 {
             rope.heading = heading;
         } else {
-            let shifted = (heading + rope_heading_difference(rope.heading, heading)) & 0x7ff;
+            let shifted = wrap(heading + rope_heading_difference(rope.heading, heading));
             self.spatial
                 .as_mut()
                 .context("rope attach spatial state unavailable")?
@@ -425,7 +416,7 @@ impl ScriptWorld {
         if self.player_rope.turn_rate != 0 {
             let rate = self.player_rope.turn_rate;
             let step = ((rate >> 4) * frame_scale) >> 8;
-            turned = (heading + step) & 0x7ff;
+            turned = wrap(heading + step);
             self.player_rope.turn_total += step;
             if self.player_rope.turn_total.abs() > rate.abs() {
                 self.player_rope.turn_rate = 0;
@@ -444,11 +435,11 @@ impl ScriptWorld {
                 } else {
                     let step = ((i32::from(right) * frame_scale) >> 8)
                         - ((i32::from(left) * frame_scale) >> 8);
-                    turned = (heading + step) & 0x7ff;
+                    turned = wrap(heading + step);
                 }
             }
         } else if !look {
-            let difference = angle_difference(self.ropes[rope_index].heading, heading).abs();
+            let difference = heading_difference(self.ropes[rope_index].heading, heading).abs();
             self.ropes[rope_index].pump(PumpKeys { left, right }, difference);
         }
         if turned != heading {
@@ -692,7 +683,7 @@ impl ScriptWorld {
             }
         } else {
             let mut direction = rope.direction;
-            if rope.kind & 1 != 0 && angle_difference(heading, rope.heading).abs() > 0x10 {
+            if rope.kind & 1 != 0 && heading_difference(heading, rope.heading).abs() > 0x10 {
                 direction = (direction + 1) & 1;
             }
             let extra = i32::try_from((motion.abs() << 8) / scale).unwrap_or(i32::MAX);
@@ -812,11 +803,11 @@ impl ScriptWorld {
         }
         let accumulated = rope.step * (node - 1).max(0);
         let heading = i32::from(self.spatial(id)?.local.angles[1]);
-        let close = angle_difference(heading, self.ropes[rope_index].heading).abs() < 0x10;
+        let close = heading_difference(heading, self.ropes[rope_index].heading).abs() < 0x10;
         let pitch = if close {
-            (accumulated >> 8) & 0x7ff
+            wrap(accumulated >> 8)
         } else {
-            (-(accumulated >> 8)) & 0x7ff
+            wrap(-(accumulated >> 8))
         };
         let mut position = engine.map(|value| (value * 256.0).round() as i32);
         // The hand sits on the node: the player moves by the grip vertex of the `anim_rope_panic` pose,
@@ -935,17 +926,9 @@ mod tests {
     }
 
     #[test]
-    fn angle_differences_take_the_short_way_round() {
-        assert_eq!(angle_difference(10, 2040), 18);
-        assert_eq!(angle_difference(2040, 10), -18);
-        assert_eq!(angle_difference(0x400, 0), 0x400);
-        assert_eq!(angle_difference(0x401, 0), -0x3ff);
-    }
-
-    #[test]
     fn a_rope_heading_matches_either_end_of_its_line() {
         assert_eq!(rope_heading_difference(0, 5), -5);
-        assert_eq!(rope_heading_difference(0, 0x400 + 5), -5);
+        assert_eq!(rope_heading_difference(0, HALF_TURN + 5), -5);
         assert!(rope_heading_difference(0, 0x200).abs() == 0x200);
     }
 

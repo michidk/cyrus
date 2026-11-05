@@ -71,7 +71,7 @@ impl BouncePort for BouncingActor<'_, '_> {
         self.control()
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0)
+            .is_some_and(|combat| combat.flags.contains(crate::script::CombatFlags::STANCE))
     }
     fn torch_burning(&self) -> bool {
         self.control().torch_burning != 0

@@ -1,5 +1,6 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
@@ -202,7 +203,7 @@ impl ScriptWorld {
             let mut period = combat.spacing_period;
             let allocation = combat.allocation_index;
             let stance = combat.attacker_selection_state != 0;
-            let active = combat.flags & 4 != 0;
+            let active = combat.flags.contains(CombatFlags::STANCE);
             let frame_scale = inputs
                 .frame_scale
                 .context("fight spacing frame_scale unavailable")?;
@@ -602,25 +603,26 @@ impl ScriptWorld {
             }
             let deep = matches!(actor.surface, Some(2 | 4));
             let combat = control.combat.as_ref();
-            let (group, attribute) =
-                if inputs.holding_weapon || combat.is_some_and(|combat| combat.flags & 4 != 0) {
-                    if combat.is_some_and(|combat| combat.action == 4) {
-                        (AnimationGroup::ATTACK_LUNGE, Attribute::FightLungeSpeed)
-                    } else {
-                        (AnimationGroup::FIGHT_FORW, Attribute::FightForwardSpeed)
-                    }
+            let (group, attribute) = if inputs.holding_weapon
+                || combat.is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE))
+            {
+                if combat.is_some_and(|combat| combat.action == 4) {
+                    (AnimationGroup::ATTACK_LUNGE, Attribute::FightLungeSpeed)
                 } else {
-                    (
-                        if deep {
-                            AnimationGroup::SWIM_FORWARD
-                        } else if control.torch_burning != 0 {
-                            AnimationGroup::RUN_TORCH
-                        } else {
-                            AnimationGroup::RUN
-                        },
-                        Attribute::ForwardSpeed,
-                    )
-                };
+                    (AnimationGroup::FIGHT_FORW, Attribute::FightForwardSpeed)
+                }
+            } else {
+                (
+                    if deep {
+                        AnimationGroup::SWIM_FORWARD
+                    } else if control.torch_burning != 0 {
+                        AnimationGroup::RUN_TORCH
+                    } else {
+                        AnimationGroup::RUN
+                    },
+                    Attribute::ForwardSpeed,
+                )
+            };
             let step = actor.attributes[attribute];
             let adjustment = actor.attributes[Attribute::StepType];
             ensure!(
@@ -804,7 +806,7 @@ impl ScriptWorld {
             let combat_stance = control
                 .combat
                 .as_ref()
-                .is_some_and(|combat| combat.flags & 4 != 0);
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             let adjustment = actor.attributes[Attribute::StepType];
             let counters = control.movement_flags;
             let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;

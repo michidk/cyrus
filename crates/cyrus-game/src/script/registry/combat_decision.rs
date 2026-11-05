@@ -59,8 +59,7 @@ impl ScriptWorld {
                     .and_then(|control| control.combat.as_ref())
                     .context("receiver combat unavailable")?
                     .flags
-                    & 4
-                    != 0;
+                    .contains(crate::script::CombatFlags::STANCE);
                 return self.move_disengaged_combat(
                     id,
                     sample.distance,

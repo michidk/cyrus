@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::Native;
@@ -847,9 +848,9 @@ impl ScriptWorld {
         &mut self,
         sender: ScriptActorId,
         receiver: ScriptActorId,
-        code: i32,
+        code: super::CombatMessageCode,
     ) -> Result<()> {
-        if code == 0 {
+        if code == super::CombatMessageCode::NONE {
             return Ok(());
         }
         self.resolve(sender)?;
@@ -943,10 +944,9 @@ impl ScriptWorld {
         }
         if !selected
             && actor.attributes[Attribute::NoNodeCombat] == 0
-            && control
-                .combat
-                .as_ref()
-                .is_some_and(|combat| combat.flags & 4 != 0 && combat.target.is_some())
+            && control.combat.as_ref().is_some_and(|combat| {
+                combat.flags.contains(CombatFlags::STANCE) && combat.target.is_some()
+            })
         {
             let player = self
                 .selected_player_index()
@@ -1041,7 +1041,8 @@ impl ScriptWorld {
                             .combat
                             .as_mut()
                             .expect("admitted combat")
-                            .flags |= 0x20;
+                            .flags
+                            .insert(CombatFlags::CONTACT_TESTED);
                         self.process_combat_attack_candidates(
                             id,
                             inputs,
@@ -3849,7 +3850,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let combat_mode = control
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0);
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         Ok(super::tasks::PlayerFaceState {
             position: pose.position,
             angles: pose.angles,
@@ -3992,7 +3993,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             combat_mode: control
                 .combat
                 .as_ref()
-                .is_some_and(|combat| combat.flags & 4 != 0),
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
             surface: actor.surface.unwrap_or(0),
             torch_burning: control.torch_burning != 0,
             step_adjustment: actor.attributes[Attribute::StepType],
@@ -6029,7 +6030,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .control
                     .as_ref()
                     .and_then(|control| control.combat.as_ref())
-                    .is_none_or(|combat| combat.flags & 4 == 0)
+                    .is_none_or(|combat| !combat.flags.contains(CombatFlags::STANCE))
             {
                 return Ok(CallResult::Complete(0));
             }

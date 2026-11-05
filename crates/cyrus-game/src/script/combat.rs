@@ -86,7 +86,7 @@ pub struct CombatControlState {
     pub lost_sight_ticks: i32,
     /// Nonzero after routed pursuit begins, cleared on reacquisition.
     pub lost_sight_routing: i32,
-    pub flags: u8,
+    pub flags: CombatFlags,
     pub action: i32,
     pub cooldown: u32,
     /// World object-pool allocation index, retained across combat reinitialization.
@@ -122,7 +122,7 @@ impl Default for CombatControlState {
             close_distance_passes: 0,
             lost_sight_ticks: 0,
             lost_sight_routing: 0,
-            flags: 0,
+            flags: CombatFlags::default(),
             action: -1,
             cooldown: 0,
             allocation_index: 0,
@@ -320,12 +320,108 @@ pub trait CombatTauntSource: std::fmt::Debug {
     ) -> Result<()>;
 }
 
+/// An actor's combat flag byte. The engine leaves the bits unnamed; the names describe each bit's
+/// documented use (preservation `docs/engine/SOUP.md`, combat sections).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct CombatFlags(u8);
+
+impl CombatFlags {
+    /// Raised when a defence move is picked or started; attack contact admission requires it.
+    pub const MOVE_INTENT: Self = Self(0x01);
+    /// Set by an accepted counter or player attack input; the hit-defence query requires it on the defender.
+    pub const COUNTER_INTENT: Self = Self(0x02);
+    /// Both intent bits, which messages and contact clear together.
+    pub const INTENT: Self = Self(0x03);
+    /// Combat stance: an actor is in combat stance when armed or when this bit is set.
+    pub const STANCE: Self = Self(0x04);
+    /// Toggled by each defended contact hit, cleared by a defended miss and at combat start.
+    pub const DEFENDED_HIT_PARITY: Self = Self(0x08);
+    /// Set on a counter's target. It blocks further counters, and the defence executor ends rather
+    /// than step into an attack-end group.
+    pub const ATTACKED: Self = Self(0x10);
+    /// Set once an attack's collision window has admitted a contact test.
+    pub const CONTACT_TESTED: Self = Self(0x20);
+    /// Set when a type-9 taunt is presented; further type-9 requests are ignored.
+    pub const TAUNT_NINE_PRESENTED: Self = Self(0x40);
+
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    pub fn remove(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+
+    pub fn toggle(&mut self, other: Self) {
+        self.0 ^= other.0;
+    }
+}
+
+impl std::ops::BitOr for CombatFlags {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
 /// Logical identities retain sender and addressed receiver across queue operations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct CombatMessage {
     pub sender: ScriptActorId,
     pub receiver: Option<ScriptActorId>,
-    pub code: i32,
+    pub code: CombatMessageCode,
+}
+
+/// Combat message code. Zero marks an empty queue slot and is never sent; other codes outside
+/// the named set are consumed without effect. The names describe each code's documented response.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct CombatMessageCode(i32);
+
+impl CombatMessageCode {
+    /// Empty queue slot.
+    pub const NONE: Self = Self(0);
+    /// Defender to attacker after a defended contact: displaces the sender and hands off coordination.
+    pub const BLOCK: Self = Self(0xd000);
+    /// Attacker to defender on contact: clears both actors' intent bits and runs the hit reaction.
+    pub const HIT: Self = Self(0xd001);
+    /// The receiver takes coordination state one and aggression 50.
+    pub const RECEIVER_COORDINATES: Self = Self(0xd002);
+    /// The sender takes coordination state one and aggression 50.
+    pub const SENDER_COORDINATES: Self = Self(0xd003);
+    /// Projectile parent to the hit actor: displaces the receiver and applies direct damage.
+    pub const DIRECT_DAMAGE: Self = Self(0xd005);
+}
+
+impl From<i32> for CombatMessageCode {
+    fn from(code: i32) -> Self {
+        Self(code)
+    }
+}
+
+impl From<CombatMessageCode> for i32 {
+    fn from(code: CombatMessageCode) -> Self {
+        code.0
+    }
+}
+
+impl std::fmt::Display for CombatMessageCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
 }
 
 /// Generation no live actor carries; saved references to replaced worlds' actors restore under it.
@@ -354,7 +450,7 @@ impl CombatMessages {
     /// Send a nonzero message and clear the next slot's code. Zero does nothing.
     /// The caller validates receiver identity and supplies its authored class.
     pub fn send(&mut self, class: u8, message: CombatMessage) {
-        if message.code == 0 {
+        if message.code == CombatMessageCode::NONE {
             return;
         }
         let queue = &mut self.classes[usize::from(class)];
@@ -449,7 +545,7 @@ impl CombatMessages {
                             entry.map(|message| SavedMessage {
                                 sender: (message.sender.generation, message.sender.index),
                                 receiver: message.receiver.map(|id| (id.generation, id.index)),
-                                code: message.code,
+                                code: message.code.into(),
                             })
                         })
                         .collect(),
@@ -498,7 +594,7 @@ impl CombatMessages {
                         receiver: message
                             .receiver
                             .map(|(generation, index)| rebind(generation, index)),
-                        code: message.code,
+                        code: message.code.into(),
                     });
                 }
             }
@@ -543,7 +639,7 @@ pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) 
         .combat
         .as_mut()
         .expect("eligible actor has combat state");
-    combat.flags &= !4;
+    combat.flags.remove(CombatFlags::STANCE);
     combat.cooldown = 24;
 }
 
@@ -554,7 +650,7 @@ pub(super) fn end_combat_reset(control: &mut super::registry::ActorControlState)
     let Some(combat) = control.combat.as_mut() else {
         return false;
     };
-    combat.flags &= !4;
+    combat.flags.remove(CombatFlags::STANCE);
     combat.close_distance_passes = 0;
     combat.attacker_selection_state = 0;
     control.death_selector = 1;
@@ -604,7 +700,7 @@ mod sheath_tests {
     fn armed() -> ActorControlState {
         ActorControlState {
             combat: Some(CombatControlState {
-                flags: 0x07,
+                flags: CombatFlags::from_bits(0x07),
                 ..Default::default()
             }),
             ..Default::default()
@@ -639,7 +735,7 @@ mod sheath_tests {
             death_response: 3,
             script_control: 0b1011,
             combat: Some(CombatControlState {
-                flags: 0x07,
+                flags: CombatFlags::from_bits(0x07),
                 close_distance_passes: 12,
                 attacker_selection_state: 5,
                 cooldown: 9,
@@ -649,7 +745,7 @@ mod sheath_tests {
         };
         assert!(end_combat_reset(&mut control));
         let combat = control.combat.as_ref().unwrap();
-        assert_eq!(combat.flags, 0x03);
+        assert_eq!(combat.flags.bits(), 0x03);
         assert_eq!(combat.close_distance_passes, 0);
         assert_eq!(combat.attacker_selection_state, 0);
         // The cooldown belongs to sheathing, not to the reset.
@@ -674,7 +770,7 @@ mod sheath_tests {
             (control.living_state, control.motion_companion),
             (LivingState::SHEATHING_SWORD, 0)
         );
-        assert_eq!((combat.flags, combat.cooldown), (0x03, 24));
+        assert_eq!((combat.flags.bits(), combat.cooldown), (0x03, 24));
     }
 }
 
@@ -1029,7 +1125,7 @@ mod message_queue_tests {
             CombatMessage {
                 sender: id(2),
                 receiver: Some(id(3)),
-                code: 0xd001,
+                code: CombatMessageCode::HIT,
             },
         );
         queue.send(
@@ -1037,11 +1133,11 @@ mod message_queue_tests {
             CombatMessage {
                 sender: id(2),
                 receiver: Some(id(4)),
-                code: 0xd005,
+                code: CombatMessageCode::DIRECT_DAMAGE,
             },
         );
         let first = queue.peek(7, id(4), 0).unwrap().unwrap();
-        assert_eq!(first.code, 0xd005);
+        assert_eq!(first.code, CombatMessageCode::DIRECT_DAMAGE);
         assert_eq!(queue.peek(7, id(4), 0).unwrap(), Some(first));
         assert_eq!(queue.consume(7, id(4), &mut 0).unwrap(), Some(first));
     }
@@ -1059,7 +1155,7 @@ mod message_queue_tests {
                 CombatMessage {
                     sender: id(2),
                     receiver: Some(receiver),
-                    code: 0xd001,
+                    code: CombatMessageCode::HIT,
                 },
             );
         }

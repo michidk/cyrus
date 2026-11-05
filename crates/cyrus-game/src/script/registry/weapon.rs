@@ -1,5 +1,6 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
@@ -306,7 +307,8 @@ impl<'a> CombatReceiver<'a> {
                 .combat
                 .as_mut()
                 .expect("validated drawn weapon combat")
-                .flags &= !4;
+                .flags
+                .remove(CombatFlags::STANCE);
         }
         Ok(())
     }
@@ -370,7 +372,8 @@ impl<'a> CombatReceiver<'a> {
                 .combat
                 .as_mut()
                 .expect("admitted assigned weapon")
-                .flags |= 4;
+                .flags
+                .insert(CombatFlags::STANCE);
         }
         Ok(())
     }
@@ -466,7 +469,8 @@ impl<'a> CombatReceiver<'a> {
             .combat
             .as_mut()
             .context("combat entry assigned state unavailable")?
-            .flags |= 4;
+            .flags
+            .insert(CombatFlags::STANCE);
         if !(self.id == inputs.weapon.selected_player && inputs.selected_player_death_override)
             && self
                 .actor

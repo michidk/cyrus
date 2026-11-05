@@ -2,6 +2,7 @@
 //! Rules follow preservation's engine/player.md "Armed attack input".
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::player::input::PlayerInput;
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, bail};
@@ -197,7 +198,8 @@ impl ScriptWorld {
                     .as_mut()
                     .and_then(|control| control.combat.as_mut())
                     .context("player stance combat unavailable")?;
-                combat.flags = (combat.flags & !3) | 2;
+                combat.flags.remove(CombatFlags::MOVE_INTENT);
+                combat.flags.insert(CombatFlags::COUNTER_INTENT);
                 actor
                     .player_movement
                     .as_mut()
@@ -333,7 +335,7 @@ impl ScriptWorld {
                 own.position,
                 other.position,
                 i32::from(own.angles[1]),
-            ) || combat.flags & 1 == 0
+            ) || !combat.flags.contains(CombatFlags::MOVE_INTENT)
                 || combat.decision.attack_state != 1
             {
                 continue;

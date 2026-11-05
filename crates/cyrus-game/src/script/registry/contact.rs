@@ -1,5 +1,7 @@
 //! Combat contact queries follow preservation's SOUP motion-contact rules.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::CombatFlags;
+use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::{actor_models::ActorModelCollision, distance::rounded_distance};
@@ -80,7 +82,7 @@ impl ScriptWorld {
                 .combat
                 .as_mut()
                 .unwrap();
-            if combat.flags & 2 == 0 {
+            if !combat.flags.contains(CombatFlags::COUNTER_INTENT) {
                 return Ok(false);
             }
             if !self.combat_motion_contact(attacker, defender, data, statics)? {
@@ -91,7 +93,8 @@ impl ScriptWorld {
                     .combat
                     .as_mut()
                     .unwrap()
-                    .flags &= !8;
+                    .flags
+                    .remove(CombatFlags::DEFENDED_HIT_PARITY);
                 return Ok(false);
             }
             self.actors[attacker_index]
@@ -115,7 +118,7 @@ impl ScriptWorld {
                     start_index: None,
                 },
             )?;
-            self.send_combat_message(defender, attacker, 0xd000)?;
+            self.send_combat_message(defender, attacker, CombatMessageCode::BLOCK)?;
             let clock = inputs
                 .combat_clock_sample
                 .context("combat clock sample unavailable")? as i32;
@@ -128,7 +131,8 @@ impl ScriptWorld {
                     .combat
                     .as_mut()
                     .unwrap()
-                    .flags &= !3;
+                    .flags
+                    .remove(CombatFlags::INTENT);
             }
             self.actors[defender_index]
                 .control
@@ -137,7 +141,8 @@ impl ScriptWorld {
                 .combat
                 .as_mut()
                 .unwrap()
-                .flags ^= 8;
+                .flags
+                .toggle(CombatFlags::DEFENDED_HIT_PARITY);
             Ok(true)
         })();
         result.with_context(|| {

@@ -1,4 +1,5 @@
 //! Queued motion admission precedes its request and vertical writer.
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -411,7 +412,7 @@ impl super::ScriptWorld {
         let combat_stance = control
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0);
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         let (_, holding_weapon) = self.spacing_weapon(id, inputs)?;
         let stance = holding_weapon || combat_stance;
         if stance
@@ -661,10 +662,9 @@ impl super::ScriptWorld {
                         JumpMotion::STANDING,
                         if script_native
                             && (holding
-                                || control
-                                    .combat
-                                    .as_ref()
-                                    .is_some_and(|combat| combat.flags & 4 != 0))
+                                || control.combat.as_ref().is_some_and(|combat| {
+                                    combat.flags.contains(CombatFlags::STANCE)
+                                }))
                         {
                             AnimationGroup::FIGHT_JUMP_START
                         } else if control.torch_burning == 0 {

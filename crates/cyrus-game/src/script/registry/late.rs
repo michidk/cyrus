@@ -1,5 +1,6 @@
 //! Automatic late collision composes retained candidates and logical actor response.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
@@ -296,7 +297,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .and_then(|control| control.combat.as_ref())
-            .is_some_and(|combat| combat.flags & 4 != 0);
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         let selected_holding = weapon
             .and_then(|input| self.resolve(input.selected_player).ok().map(|i| (i, input)))
             .and_then(|(index, input)| {
@@ -618,7 +619,7 @@ impl ScriptWorld {
         let combat_active = control
             .combat
             .as_ref()
-            .is_some_and(|combat| combat.flags & 4 != 0);
+            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         Ok((holding, combat_active))
     }
 

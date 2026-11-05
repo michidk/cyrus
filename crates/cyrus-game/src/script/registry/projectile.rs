@@ -1,6 +1,7 @@
 //! `projectileAI`: one flight step of a created projectile, following preservation's
 //! engine/SOUP.md "projectileAI". Returns whether the projectile keeps flying.
 use super::GameHost;
+use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
@@ -8,8 +9,6 @@ use cyrus_script::Attribute;
 
 /// Distance from the parent, in Q8, at which the flight ends.
 const MAXIMUM_RANGE: i32 = 0xbb800;
-/// Combat message a hit actor receives from the projectile's parent.
-const DIRECT_DAMAGE: i32 = 0xd005;
 /// Rank a wall contact must undercut to be kept.
 const NO_CONTACT_RANK: u32 = 0x7fff;
 /// Spheres an actor contributes to the hit test at most.
@@ -136,8 +135,11 @@ impl GameHost<'_, '_, '_, '_> {
                 .is_some_and(|control| control.combat.is_some());
             if has_combat && let Some(parent) = parent {
                 let sender = self.registry.id(parent)?;
-                self.registry
-                    .send_combat_message(sender, target, DIRECT_DAMAGE)?;
+                self.registry.send_combat_message(
+                    sender,
+                    target,
+                    CombatMessageCode::DIRECT_DAMAGE,
+                )?;
             }
             self.set_projectile_position(previous)?;
             return Ok(false);

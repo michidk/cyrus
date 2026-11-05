@@ -1,17 +1,20 @@
 //! Nonplayer decision-stage executors. The pure state machines follow the original's attack
 //! executor; callers own the animation request and the combat record fields they pass in.
-use super::combat::CombatDecision;
+use super::combat::{CombatDecision, CombatFlags};
 use anyhow::{Context, Result, ensure};
+use cyrus_script::AnimationGroup;
 
 /// Signed difference of two headings, each masked to 0..2047 and wrapped into -1024..=1024.
 pub fn heading_difference(first: i32, second: i32) -> i32 {
-    let mut difference = (first & 0x7ff) - (second & 0x7ff);
-    if difference > 0x400 {
-        difference -= 0x800;
-    } else if difference < -0x400 {
-        difference += 0x800;
+    use super::heading::{FULL_TURN, HALF_TURN, wrap};
+    let difference = wrap(first) - wrap(second);
+    if difference > HALF_TURN {
+        difference - FULL_TURN
+    } else if difference < -HALF_TURN {
+        difference + FULL_TURN
+    } else {
+        difference
     }
-    difference
 }
 
 /// The facing test of the counter-attack selection: the target's heading minus the actor's is
@@ -564,11 +567,6 @@ pub struct DefenceStep {
     pub effect: DefenceEffect,
 }
 
-/// Sets the two-bit intent field of the combat flag byte to its current value or one.
-fn raise_intent(flags: &mut u8) {
-    *flags = (*flags & 0xfc) | ((*flags & 3) | 1);
-}
-
 /// Ends a defence: state 0, the defence selector -1 and a selected index other than 9 reset.
 fn end_defence(decision: &mut CombatDecision, selected: &mut i32, defence_selector: &mut i32) {
     decision.attack_state = 0;
@@ -587,7 +585,7 @@ fn end_defence(decision: &mut CombatDecision, selected: &mut i32, defence_select
 /// moves, ending the defence when the actor leaves the expected group.
 pub fn defence_step(
     decision: &mut CombatDecision,
-    flags: &mut u8,
+    flags: &mut CombatFlags,
     selected: &mut i32,
     defence_selector: &mut i32,
     requested: i32,
@@ -608,7 +606,7 @@ pub fn defence_step(
 /// on failure. The caller dispatches the returned taunt after these writes are visible.
 pub(crate) fn defence_step_with_animation(
     decision: &mut CombatDecision,
-    flags: &mut u8,
+    flags: &mut CombatFlags,
     selected: &mut i32,
     defence_selector: &mut i32,
     requested: i32,
@@ -620,14 +618,14 @@ pub(crate) fn defence_step_with_animation(
         (view.defence_group)(selector)
             .ok_or_else(|| anyhow::anyhow!("defence executor: no group for move {selector}"))
     };
-    let mut start = |decision: &mut CombatDecision, flags: &mut u8, group: i32| {
+    let mut start = |decision: &mut CombatDecision, flags: &mut CombatFlags, group: i32| {
         effect = DefenceEffect {
             request_group: Some(group),
             mark_animation: true,
             taunt_kind_one: false,
         };
-        *flags &= !0x30;
-        raise_intent(flags);
+        flags.remove(CombatFlags::ATTACKED | CombatFlags::CONTACT_TESTED);
+        flags.insert(CombatFlags::MOVE_INTENT);
         decision.aggression = decision.aggression.wrapping_sub(10);
     };
     if decision.attack_state == 0 {
@@ -649,7 +647,10 @@ pub(crate) fn defence_step_with_animation(
             {
                 decision.move_selector += 1;
                 let next = group_for(decision.move_selector)?;
-                if *flags & 0x10 != 0 && matches!(next, 0x6b | 0x6c) {
+                let attack_end = [AnimationGroup::ATTACK_1_END, AnimationGroup::ATTACK_2_END]
+                    .iter()
+                    .any(|group| i32::from(group.index()) == next);
+                if flags.contains(CombatFlags::ATTACKED) && attack_end {
                     end_defence(decision, selected, defence_selector);
                 } else {
                     request_animation(next)?;
@@ -828,15 +829,20 @@ pub struct DefenceSelectionInput {
 /// while retaining those writes and any changes made by the failing service.
 pub trait DefenceSelectionServices {
     /// Best usable defence from the receiver's nine attack slots.
-    fn best(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    fn best(&mut self, decision: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>>;
     /// Best usable defence excluding the current counter-attack index.
-    fn open(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    fn open(&mut self, decision: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>>;
     /// Paced selection may update the receiver's defence counter.
-    fn paced(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    fn paced(&mut self, decision: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>>;
     /// Elevation admission for the selected kind.
     fn in_reach(&mut self, kind: i32) -> Result<bool>;
     /// Complete the starter and executor before another service runs.
-    fn start(&mut self, decision: &mut CombatDecision, flags: &mut u8, kind: i32) -> Result<()>;
+    fn start(
+        &mut self,
+        decision: &mut CombatDecision,
+        flags: &mut CombatFlags,
+        kind: i32,
+    ) -> Result<()>;
 }
 
 /// Select and synchronously start defences using preservation's
@@ -854,7 +860,7 @@ pub trait DefenceSelectionServices {
 /// counter remainder starts kind one while the current motion selector is zero and kind two while it is one.
 pub fn defence_selection(
     decision: &mut CombatDecision,
-    flags: &mut u8,
+    flags: &mut CombatFlags,
     input: &DefenceSelectionInput,
     services: &mut impl DefenceSelectionServices,
 ) -> Result<()> {
@@ -878,7 +884,7 @@ pub fn defence_selection(
         {
             if !matches!(i.target_selected, -1 | 9) {
                 if i.target_frame > i.target_near.wrapping_add(i.target_third) {
-                    raise_intent(flags);
+                    flags.insert(CombatFlags::MOVE_INTENT);
                     if let Some(kind) = services.best(decision, *flags)?
                         && services.in_reach(kind)?
                     {
@@ -897,7 +903,7 @@ pub fn defence_selection(
             .context("defence selection: invalid defence counter")?
             == 0
         {
-            raise_intent(flags);
+            flags.insert(CombatFlags::MOVE_INTENT);
             if let Some(kind) = services.paced(decision, *flags)?
                 && services.in_reach(kind)?
             {
@@ -912,11 +918,11 @@ pub fn defence_selection(
         {
             match i.own_selector {
                 0 => {
-                    raise_intent(flags);
+                    flags.insert(CombatFlags::MOVE_INTENT);
                     services.start(decision, flags, 1)?;
                 }
                 1 => {
-                    raise_intent(flags);
+                    flags.insert(CombatFlags::MOVE_INTENT);
                     services.start(decision, flags, 2)?;
                 }
                 _ => {}
@@ -929,8 +935,8 @@ pub fn defence_selection(
 #[cfg(test)]
 mod tests {
 
-    type DefencePicker<'a> = &'a mut dyn FnMut(&mut CombatDecision, u8) -> Option<i32>;
-    type DefenceStarter<'a> = &'a mut dyn FnMut(&mut CombatDecision, &mut u8, i32);
+    type DefencePicker<'a> = &'a mut dyn FnMut(&mut CombatDecision, CombatFlags) -> Option<i32>;
+    type DefenceStarter<'a> = &'a mut dyn FnMut(&mut CombatDecision, &mut CombatFlags, i32);
     struct DefencePickers<'a> {
         best: DefencePicker<'a>,
         open: DefencePicker<'a>,
@@ -939,19 +945,19 @@ mod tests {
         start: DefenceStarter<'a>,
     }
     impl DefenceSelectionServices for DefencePickers<'_> {
-        fn best(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+        fn best(&mut self, d: &mut CombatDecision, f: CombatFlags) -> Result<Option<i32>> {
             Ok((self.best)(d, f))
         }
-        fn open(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+        fn open(&mut self, d: &mut CombatDecision, f: CombatFlags) -> Result<Option<i32>> {
             Ok((self.open)(d, f))
         }
-        fn paced(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+        fn paced(&mut self, d: &mut CombatDecision, f: CombatFlags) -> Result<Option<i32>> {
             Ok((self.paced)(d, f))
         }
         fn in_reach(&mut self, kind: i32) -> Result<bool> {
             Ok((self.in_reach)(kind))
         }
-        fn start(&mut self, d: &mut CombatDecision, f: &mut u8, kind: i32) -> Result<()> {
+        fn start(&mut self, d: &mut CombatDecision, f: &mut CombatFlags, kind: i32) -> Result<()> {
             (self.start)(d, f, kind);
             Ok(())
         }
@@ -991,7 +997,7 @@ mod tests {
     #[test]
     fn defence_start_runs_the_executor_before_returning() {
         let mut decision = CombatDecision::default();
-        let (mut selected, mut selector, mut flags) = (-1, -1, 0x30);
+        let (mut selected, mut selector, mut flags) = (-1, -1, CombatFlags::from_bits(0x30));
         let input = super::DefenceStartInput {
             slot_present: true,
             selected_player: false,
@@ -1032,7 +1038,7 @@ mod tests {
                 selector,
                 decision.attack_state,
                 decision.aggression,
-                flags
+                flags.bits()
             ),
             (3, 3, 1, 40, 1)
         );
@@ -1684,7 +1690,7 @@ mod tests {
             move_selector: 2,
             ..Default::default()
         };
-        let (mut flags, mut selected, mut selector) = (0x13u8, 0, 0);
+        let (mut flags, mut selected, mut selector) = (CombatFlags::from_bits(0x13), 0, 0);
         let groups = |_: i32| Some(130);
         let chain = |_: i32| false;
         let step = defence_step(
@@ -1702,7 +1708,7 @@ mod tests {
         assert_eq!(decision.move_selector, 0);
         assert_eq!(decision.aggression, 40);
         // The target mark clears and the intent field gains bit one: 0x13 -> 0x03.
-        assert_eq!(flags, 0x03);
+        assert_eq!(flags.bits(), 0x03);
         // The starters set the defence selector before calling, so the defence is active.
         assert!(step.active);
     }
@@ -1713,7 +1719,7 @@ mod tests {
             move_selector: 2,
             ..Default::default()
         };
-        let (mut flags, mut selected, mut selector) = (0u8, 0, 0);
+        let (mut flags, mut selected, mut selector) = (CombatFlags::from_bits(0), 0, 0);
         let groups = |_: i32| Some(130);
         let chain = |_: i32| false;
         let step = defence_step(
@@ -1736,7 +1742,7 @@ mod tests {
             move_selector: 0,
             ..Default::default()
         };
-        let (mut flags, mut selected, mut selector) = (0u8, 0, 0);
+        let (mut flags, mut selected, mut selector) = (CombatFlags::from_bits(0), 0, 0);
         let groups = |selector: i32| Some(130 + selector);
         let chain = |_: i32| true;
         let step = defence_step(
@@ -1751,7 +1757,7 @@ mod tests {
         assert_eq!(decision.move_selector, 1);
         assert_eq!(step.effect.request_group, Some(131));
         assert!(!step.effect.taunt_kind_one);
-        assert_eq!(flags, 0x01);
+        assert_eq!(flags.bits(), 0x01);
         assert!(step.active);
     }
 
@@ -1762,7 +1768,7 @@ mod tests {
             move_selector: 0,
             ..Default::default()
         };
-        let (mut flags, mut selected, mut selector) = (0x10u8, 4, 2);
+        let (mut flags, mut selected, mut selector) = (CombatFlags::from_bits(0x10), 4, 2);
         let groups = |selector: i32| Some(if selector == 0 { 130 } else { 0x6b });
         let chain = |_: i32| true;
         let step = defence_step(
@@ -1787,7 +1793,7 @@ mod tests {
                 move_selector: 2,
                 ..Default::default()
             };
-            let (mut flags, mut selected, mut selector) = (0u8, 9, 3);
+            let (mut flags, mut selected, mut selector) = (CombatFlags::from_bits(0), 9, 3);
             let groups = |_: i32| Some(130);
             let chain = |_: i32| true;
             let step = defence_step(
@@ -2042,7 +2048,7 @@ mod tests {
 
     fn pick(
         decision: &mut CombatDecision,
-        flags: &mut u8,
+        flags: &mut CombatFlags,
         input: &DefenceSelectionInput,
         best: Option<i32>,
         open: Option<i32>,
@@ -2088,7 +2094,7 @@ mod tests {
             },
         ] {
             let mut decision = CombatDecision::default();
-            let mut flags = 0;
+            let mut flags = CombatFlags::from_bits(0);
             let started = pick(
                 &mut decision,
                 &mut flags,
@@ -2099,14 +2105,14 @@ mod tests {
                 true,
             );
             assert!(started.is_empty());
-            assert_eq!((flags, decision.defence_counter), (0, 0));
+            assert_eq!((flags.bits(), decision.defence_counter), (0, 0));
         }
     }
 
     #[test]
     fn a_swing_past_the_ranges_starts_the_best_defence_and_the_counter_follows_the_facing() {
         let mut decision = CombatDecision::default();
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         // Pacing 10 % 5 == 0 and frame 20 > 6 + 8; the counter is 129 - 29 = 100 (10 % 100 != 0).
         let started = pick(
             &mut decision,
@@ -2119,10 +2125,10 @@ mod tests {
         );
         assert_eq!(started, vec![3]);
         assert_eq!(decision.defence_counter, 100);
-        assert_eq!(flags, 1);
+        assert_eq!(flags.bits(), 1);
         // Facing alike sets the counter to one, so the paced pick also starts.
         let mut decision = CombatDecision::default();
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         let alike = DefenceSelectionInput {
             facing_alike: true,
             ..defence_input()
@@ -2139,7 +2145,7 @@ mod tests {
         assert_eq!((started, decision.defence_counter), (vec![3, 4], 1));
         // A pick out of reach starts nothing but the intent still rises.
         let mut decision = CombatDecision::default();
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         let started = pick(
             &mut decision,
             &mut flags,
@@ -2150,7 +2156,7 @@ mod tests {
             false,
         );
         assert!(started.is_empty());
-        assert_eq!(flags, 1);
+        assert_eq!(flags.bits(), 1);
     }
 
     #[test]
@@ -2160,7 +2166,7 @@ mod tests {
             ..defence_input()
         };
         let mut decision = CombatDecision::default();
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         assert_eq!(
             pick(
                 &mut decision,
@@ -2178,7 +2184,7 @@ mod tests {
             ..defence_input()
         };
         let mut decision = CombatDecision::default();
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         assert!(
             pick(
                 &mut decision,
@@ -2200,7 +2206,7 @@ mod tests {
                 defence_counter: 5,
                 ..Default::default()
             };
-            let mut flags = 0;
+            let mut flags = CombatFlags::from_bits(0);
             let input = DefenceSelectionInput {
                 own_selected: 0,
                 own_selector: selector,
@@ -2208,14 +2214,14 @@ mod tests {
             };
             let started = pick(&mut decision, &mut flags, &input, None, None, None, true);
             assert_eq!(started, expected);
-            assert_eq!(flags, u8::from(!expected.is_empty()));
+            assert_eq!(flags.bits(), u8::from(!expected.is_empty()));
         }
         // A nonzero counter remainder does nothing.
         let mut decision = CombatDecision {
             defence_counter: 3,
             ..Default::default()
         };
-        let mut flags = 0;
+        let mut flags = CombatFlags::from_bits(0);
         let input = DefenceSelectionInput {
             own_selected: 0,
             ..defence_input()
@@ -2237,10 +2243,10 @@ mod tests {
                 ..defence_input()
             };
             let mut decision = CombatDecision::default();
-            let mut flags = 0xa2;
+            let mut flags = CombatFlags::from_bits(0xa2);
             pick(&mut decision, &mut flags, &input, None, None, None, true);
             assert_eq!(decision.defence_counter, counter);
-            assert_eq!(flags, 0xa3);
+            assert_eq!(flags.bits(), 0xa3);
         }
     }
 
@@ -2251,7 +2257,7 @@ mod tests {
             ..defence_input()
         };
         let mut decision = CombatDecision::default();
-        let mut flags = 0xa0;
+        let mut flags = CombatFlags::from_bits(0xa0);
         let mut starts = Vec::new();
         defence_selection(
             &mut decision,
@@ -2259,25 +2265,25 @@ mod tests {
             &input,
             &mut DefencePickers {
                 best: &mut |_, flags| {
-                    assert_eq!(flags, 0xa1);
+                    assert_eq!(flags.bits(), 0xa1);
                     Some(3)
                 },
                 open: &mut |_, _| panic!("open pick is not admitted"),
                 paced: &mut |decision, flags| {
-                    assert_eq!((decision.attack_state, flags), (1, 0xb1));
+                    assert_eq!((decision.attack_state, flags.bits()), (1, 0xb1));
                     Some(4)
                 },
                 in_reach: &mut |_| true,
                 start: &mut |decision, flags, kind| {
                     decision.attack_state = 1;
-                    *flags |= 0x10;
+                    flags.insert(CombatFlags::ATTACKED);
                     starts.push(kind);
                 },
             },
         )
         .unwrap();
         assert_eq!(starts, [3, 4]);
-        assert_eq!(flags, 0xb1);
+        assert_eq!(flags.bits(), 0xb1);
     }
 
     #[test]
@@ -2304,7 +2310,7 @@ mod tests {
                 defence_counter: 5,
                 ..Default::default()
             };
-            let mut flags = 0;
+            let mut flags = CombatFlags::from_bits(0);
             let starts = pick(&mut decision, &mut flags, &input, None, None, None, true);
             assert_eq!(
                 starts,
@@ -2331,7 +2337,7 @@ mod tests {
                 defence_counter: counter,
                 ..Default::default()
             };
-            let mut flags = 0;
+            let mut flags = CombatFlags::from_bits(0);
             let result = defence_selection(
                 &mut decision,
                 &mut flags,
@@ -2367,7 +2373,7 @@ mod tests {
                 ..defence_input()
             };
             let mut decision = CombatDecision::default();
-            let mut actual_flags = 0xa0;
+            let mut actual_flags = CombatFlags::from_bits(0xa0);
             assert_eq!(
                 pick(
                     &mut decision,
@@ -2380,7 +2386,7 @@ mod tests {
                 ),
                 expected
             );
-            assert_eq!(actual_flags, flags);
+            assert_eq!(actual_flags.bits(), flags);
         }
     }
     #[derive(Default)]
@@ -2396,17 +2402,17 @@ mod tests {
         }
     }
     impl DefenceSelectionServices for FallibleSelectionServices {
-        fn best(&mut self, d: &mut CombatDecision, flags: u8) -> Result<Option<i32>> {
-            assert_eq!(flags, 0xa1);
+        fn best(&mut self, d: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>> {
+            assert_eq!(flags.bits(), 0xa1);
             d.aggression = 11;
             self.visit("best".into())?;
             Ok(Some(3))
         }
-        fn open(&mut self, _: &mut CombatDecision, _: u8) -> Result<Option<i32>> {
+        fn open(&mut self, _: &mut CombatDecision, _: CombatFlags) -> Result<Option<i32>> {
             anyhow::bail!("unadmitted open")
         }
-        fn paced(&mut self, d: &mut CombatDecision, flags: u8) -> Result<Option<i32>> {
-            assert_eq!((d.attack_state, flags), (3, 0xb1));
+        fn paced(&mut self, d: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>> {
+            assert_eq!((d.attack_state, flags.bits()), (3, 0xb1));
             d.defence_counter = 7;
             self.visit("paced".into())?;
             Ok(Some(4))
@@ -2415,12 +2421,17 @@ mod tests {
             self.visit(format!("reach{kind}"))?;
             Ok(true)
         }
-        fn start(&mut self, d: &mut CombatDecision, flags: &mut u8, kind: i32) -> Result<()> {
+        fn start(
+            &mut self,
+            d: &mut CombatDecision,
+            flags: &mut CombatFlags,
+            kind: i32,
+        ) -> Result<()> {
             if kind == 4 {
                 assert_eq!(d.defence_counter, 7);
             }
             d.attack_state = kind;
-            *flags |= 0x10;
+            flags.insert(CombatFlags::ATTACKED);
             self.visit(format!("start{kind}"))
         }
     }
@@ -2448,7 +2459,7 @@ mod tests {
     fn synchronous_starts_and_paced_mutations_are_visible() {
         let (mut d, mut flags, mut owner) = (
             CombatDecision::default(),
-            0xa0,
+            CombatFlags::from_bits(0xa0),
             FallibleSelectionServices::default(),
         );
         defence_selection(&mut d, &mut flags, &fallible_selection_input(), &mut owner).unwrap();
@@ -2457,7 +2468,12 @@ mod tests {
             ["best", "reach3", "start3", "paced", "reach4", "start4"]
         );
         assert_eq!(
-            (d.attack_state, d.defence_counter, d.aggression, flags),
+            (
+                d.attack_state,
+                d.defence_counter,
+                d.aggression,
+                flags.bits()
+            ),
             (4, 7, 11, 0xb1)
         );
     }
@@ -2465,7 +2481,7 @@ mod tests {
     fn each_service_error_stops_later_work_without_rollback() {
         let all = ["best", "reach3", "start3", "paced", "reach4", "start4"];
         for (index, fail) in all.iter().enumerate() {
-            let (mut d, mut flags) = (CombatDecision::default(), 0xa0);
+            let (mut d, mut flags) = (CombatDecision::default(), CombatFlags::from_bits(0xa0));
             let mut owner = FallibleSelectionServices {
                 fail,
                 ..Default::default()
@@ -2479,7 +2495,7 @@ mod tests {
             assert_eq!(owner.events, all[..=index]);
             assert_eq!(d.aggression, 11);
             assert_eq!(d.defence_counter, if index >= 3 { 7 } else { 1 });
-            assert_eq!(flags, if index >= 2 { 0xb1 } else { 0xa1 });
+            assert_eq!(flags.bits(), if index >= 2 { 0xb1 } else { 0xa1 });
             assert_eq!(
                 d.attack_state,
                 if index >= 5 {
@@ -2499,7 +2515,7 @@ mod tests {
                 defence_counter: 5,
                 ..Default::default()
             },
-            0xa0,
+            CombatFlags::from_bits(0xa0),
         );
         let mut owner = FallibleSelectionServices {
             fail: "start2",
@@ -2519,6 +2535,6 @@ mod tests {
             .is_err()
         );
         assert_eq!(owner.events, ["start2"]);
-        assert_eq!((d.attack_state, flags), (2, 0xb1));
+        assert_eq!((d.attack_state, flags.bits()), (2, 0xb1));
     }
 }

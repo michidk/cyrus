@@ -1,5 +1,6 @@
 //! Dialogue and combat-taunt presentation share authoritative logical actors.
 use super::{ScriptActor, ScriptActorId, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -143,7 +144,7 @@ impl ScriptWorld {
                 .combat
                 .as_ref()
                 .context("receiver combat unavailable")?;
-            if trigger == 9 && combat.flags & 0x40 != 0 {
+            if trigger == 9 && combat.flags.contains(CombatFlags::TAUNT_NINE_PRESENTED) {
                 return Ok(());
             }
             let selected = inputs.activation.map(|input| input.player).or_else(|| {
@@ -226,7 +227,8 @@ impl ScriptWorld {
                     .combat
                     .as_mut()
                     .expect("admitted combat")
-                    .flags |= 0x40;
+                    .flags
+                    .insert(CombatFlags::TAUNT_NINE_PRESENTED);
             }
             Ok(())
         };

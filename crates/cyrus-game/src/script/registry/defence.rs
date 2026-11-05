@@ -1,5 +1,6 @@
 //! Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -197,7 +198,7 @@ impl ScriptWorld {
                             .control
                             .as_ref()
                             .and_then(|control| control.combat.as_ref())
-                            .is_some_and(|combat| combat.flags & 4 != 0);
+                            .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
                     }
                     if selection.target_in_combat_stance {
                         selection.aggression = self.actors[index].attributes[Attribute::Aggression];
@@ -721,7 +722,7 @@ struct LiveDefenceSelection<'a, 'inputs> {
 }
 
 impl LiveDefenceSelection<'_, '_> {
-    fn store(&mut self, decision: crate::script::combat::CombatDecision, flags: u8) {
+    fn store(&mut self, decision: crate::script::combat::CombatDecision, flags: CombatFlags) {
         let combat = self.world.actors[self.id.index]
             .control
             .as_mut()
@@ -732,7 +733,7 @@ impl LiveDefenceSelection<'_, '_> {
         combat.decision = decision;
         combat.flags = flags;
     }
-    fn read(&self) -> (crate::script::combat::CombatDecision, u8) {
+    fn read(&self) -> (crate::script::combat::CombatDecision, CombatFlags) {
         let combat = self.world.actors[self.id.index]
             .control
             .as_ref()
@@ -748,7 +749,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
     fn best(
         &mut self,
         decision: &mut crate::script::combat::CombatDecision,
-        flags: u8,
+        flags: CombatFlags,
     ) -> Result<Option<i32>> {
         self.store(*decision, flags);
         self.world.pick_combat_defence(
@@ -761,7 +762,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
     fn open(
         &mut self,
         decision: &mut crate::script::combat::CombatDecision,
-        flags: u8,
+        flags: CombatFlags,
     ) -> Result<Option<i32>> {
         self.store(*decision, flags);
         self.world.pick_combat_defence(
@@ -774,7 +775,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
     fn paced(
         &mut self,
         decision: &mut crate::script::combat::CombatDecision,
-        flags: u8,
+        flags: CombatFlags,
     ) -> Result<Option<i32>> {
         self.store(*decision, flags);
         let result = self.world.pick_combat_paced_defence(
@@ -806,7 +807,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
     fn start(
         &mut self,
         decision: &mut crate::script::combat::CombatDecision,
-        flags: &mut u8,
+        flags: &mut CombatFlags,
         kind: i32,
     ) -> Result<()> {
         self.store(*decision, *flags);

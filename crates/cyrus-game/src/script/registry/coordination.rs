@@ -1,5 +1,7 @@
 //! Combat coordination shares attacker eligibility, close counters and addressed class queues.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatFlags;
+use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 
@@ -40,10 +42,10 @@ impl ScriptWorld {
         let Some(message) = self.peek_combat_message(id)? else {
             return Ok(());
         };
-        if message.code == 0xd005 {
+        if message.code == CombatMessageCode::DIRECT_DAMAGE {
             return self.process_direct_damage_message(id, inputs, random, sounds);
         }
-        if message.code != 0xd001 {
+        if message.code != CombatMessageCode::HIT {
             return self.process_combat_message(id, selected_player);
         }
         let message = self
@@ -56,7 +58,8 @@ impl ScriptWorld {
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .with_context(|| format!("hit message actor {index} combat unavailable"))?
-                .flags &= !3;
+                .flags
+                .remove(CombatFlags::INTENT);
         }
         let random = random.context("hit response random stream unavailable")?;
         self.process_hit_response_core(id, message.sender, inputs, random, sounds)
@@ -65,7 +68,7 @@ impl ScriptWorld {
     /// Consume a direct-damage message and respond: positional `attr_hit_sound` effect at volume
     /// zero with a drawn pitch offset, receiver taunt category two, the direct-damage response,
     /// then the coordinator tail without a death query: a nonselected receiver in coordination
-    /// state zero sends `0xd003` to the first waiting coordinator, or takes coordination one when
+    /// state zero sends `SENDER_COORDINATES` to the first waiting coordinator, or takes coordination one when
     /// none matches. Neither actor's intent bits are cleared.
     fn process_direct_damage_message(
         &mut self,
@@ -104,7 +107,7 @@ impl ScriptWorld {
         let receiver_is_selected = self.selected_player_index() == Some(index);
         if combat.attacker_selection_state == 0 && !receiver_is_selected {
             if let Some(coordinator) = self.ordinary_waiting_coordinator(message.sender)? {
-                self.send_combat_message(id, coordinator, 0xd003)?;
+                self.send_combat_message(id, coordinator, CombatMessageCode::SENDER_COORDINATES)?;
             } else {
                 self.set_combat_coordination(id, 1)?;
             }
@@ -131,10 +134,12 @@ impl ScriptWorld {
                 return Ok(());
             };
             let selected = match message.code {
-                0xd002 => id,
-                0xd003 => message.sender,
-                0xd000 => return self.process_block_message(id, message.sender, selected_player),
-                0xd001 => {
+                CombatMessageCode::RECEIVER_COORDINATES => id,
+                CombatMessageCode::SENDER_COORDINATES => message.sender,
+                CombatMessageCode::BLOCK => {
+                    return self.process_block_message(id, message.sender, selected_player);
+                }
+                CombatMessageCode::HIT => {
                     // Original order clears receiver intent, then sender intent, before
                     // hit-reaction services. Those services remain unsupported here.
                     for actor in [id, message.sender] {
@@ -146,14 +151,15 @@ impl ScriptWorld {
                             .with_context(|| {
                                 format!("hit message actor {index} combat unavailable")
                             })?
-                            .flags &= !3;
+                            .flags
+                            .remove(CombatFlags::INTENT);
                     }
                     anyhow::bail!(
                         "ordinary combat message {} response services unsupported",
                         message.code
                     )
                 }
-                0xd005 => anyhow::bail!(
+                CombatMessageCode::DIRECT_DAMAGE => anyhow::bail!(
                     "ordinary combat message {} response services unsupported",
                     message.code
                 ),
@@ -220,7 +226,8 @@ impl ScriptWorld {
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .with_context(|| format!("block message actor {index} combat unavailable"))?
-                .flags &= !3;
+                .flags
+                .remove(CombatFlags::INTENT);
         }
         let origin = self.spatial(sender)?.local.position;
         let other = self.spatial(receiver)?.local.position;
@@ -247,7 +254,7 @@ impl ScriptWorld {
             return Ok(());
         }
         if let Some(coordinator) = self.ordinary_waiting_coordinator(sender)? {
-            self.send_combat_message(receiver, coordinator, 0xd003)?;
+            self.send_combat_message(receiver, coordinator, CombatMessageCode::SENDER_COORDINATES)?;
         } else {
             self.set_combat_coordination(receiver, 1)?;
         }
@@ -354,7 +361,7 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("admitted combat")
                 .flags;
-            if (armed || flags & 4 != 0) && candidate != selected_player {
+            if (armed || flags.contains(CombatFlags::STANCE)) && candidate != selected_player {
                 return Ok(Some(candidate));
             }
         }
@@ -390,7 +397,11 @@ impl ScriptWorld {
                     if let Some(candidate) =
                         self.ordinary_active_coordinator(id, sample.selected_player, inputs)?
                     {
-                        self.send_combat_message(id, candidate, 0xd002)?;
+                        self.send_combat_message(
+                            id,
+                            candidate,
+                            CombatMessageCode::RECEIVER_COORDINATES,
+                        )?;
                     }
                     self.set_combat_coordination(id, 0)?;
                 }
@@ -417,7 +428,11 @@ impl ScriptWorld {
                             player[axis].wrapping_sub(from[axis])
                         }))?;
                     if distance < far {
-                        self.send_combat_message(id, candidate, 0xd002)?;
+                        self.send_combat_message(
+                            id,
+                            candidate,
+                            CombatMessageCode::RECEIVER_COORDINATES,
+                        )?;
                         self.request_timed_combat_taunt(
                             id,
                             9,
@@ -434,7 +449,11 @@ impl ScriptWorld {
                 let target = target.context("waiting coordination target unavailable")?;
                 if let Some(candidate) = self.ordinary_waiting_coordinator(target)? {
                     if close > 10 {
-                        self.send_combat_message(id, candidate, 0xd003)?;
+                        self.send_combat_message(
+                            id,
+                            candidate,
+                            CombatMessageCode::SENDER_COORDINATES,
+                        )?;
                         self.request_timed_combat_taunt(
                             id,
                             8,

@@ -7,7 +7,11 @@ use super::{EffectDraw, EffectDrawView, SceneMaterial, TextureAnimations};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use bevy::{camera::visibility::NoFrustumCulling, prelude::*};
 use cyrus_assets::environment::Environment;
-use cyrus_game::{AppState, fidelity::Fidelity, script::ScriptActors};
+use cyrus_game::{
+    AppState,
+    fidelity::Fidelity,
+    script::{EnvironmentalEffect, ScriptActors},
+};
 use cyrus_world::lifecycle::PreparedWorld;
 
 #[derive(Component)]
@@ -399,7 +403,7 @@ fn draw(
                     projection_scale: scale,
                     clipping,
                 };
-                let explicit = if flat.descriptor & 0x20000 != 0 {
+                let explicit = if flat.descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0 {
                     Some(usize::try_from(flat.frame).map_err(|_| {
                         anyhow::anyhow!(
                             "actor flat texture {texture}: negative frame {}",

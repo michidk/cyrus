@@ -1,5 +1,5 @@
 //! Public combat transport preserves class, receiver and independent cursor ownership.
-use cyrus_game::script::{CombatMessage, CombatMessages, ScriptActorId};
+use cyrus_game::script::{CombatMessage, CombatMessageCode, CombatMessages, ScriptActorId};
 
 fn actor(index: usize) -> ScriptActorId {
     ScriptActorId {
@@ -11,7 +11,7 @@ fn message(receiver: Option<ScriptActorId>, code: i32) -> CombatMessage {
     CombatMessage {
         sender: actor(0),
         receiver,
-        code,
+        code: code.into(),
     }
 }
 
@@ -63,7 +63,7 @@ fn eight_entry_wrap_zero_send_and_reset_follow_original_cursor_rules() {
                 .unwrap()
                 .unwrap()
                 .code,
-            code
+            code.into()
         );
     }
     assert_eq!(read, 7);
@@ -76,7 +76,7 @@ fn eight_entry_wrap_zero_send_and_reset_follow_original_cursor_rules() {
             .unwrap()
             .unwrap()
             .code,
-        8
+        CombatMessageCode::from(8)
     );
     assert_eq!(read, 0);
     for code in 9..=16 {
@@ -91,7 +91,7 @@ fn eight_entry_wrap_zero_send_and_reset_follow_original_cursor_rules() {
             .unwrap()
             .unwrap()
             .code,
-        17
+        CombatMessageCode::from(17)
     );
     let mut invalid = 8;
     assert!(

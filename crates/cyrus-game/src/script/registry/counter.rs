@@ -1,5 +1,6 @@
 //! Live nonplayer counter timing, synchronous attack start and primitive sidesteps.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatFlags;
 use crate::script::decision::{CounterAttack, CounterAttackInput, Sidestep, counter_attack};
 use anyhow::{Context, Result, ensure};
 
@@ -141,7 +142,7 @@ impl ScriptWorld {
             ) || matches!(target_combat.action, -1 | 9)
                 || combat.action != -1
                 || !combat.defense_indices.iter().any(Option::is_some)
-                || target_combat.flags & 0x10 != 0
+                || target_combat.flags.contains(CombatFlags::ATTACKED)
             {
                 return Ok(CounterAttack::Idle);
             }
@@ -213,7 +214,7 @@ impl ScriptWorld {
                         .combat
                         .as_mut()
                         .expect("admitted combat");
-                    combat.flags |= 2;
+                    combat.flags.insert(CombatFlags::COUNTER_INTENT);
                     combat.retained_action_indices[0] = counter;
                     self.start_ordinary_combat_attack(id, inputs, sounds)?;
                     self.actors[target_index]
@@ -223,7 +224,8 @@ impl ScriptWorld {
                         .combat
                         .as_mut()
                         .expect("admitted target combat")
-                        .flags |= 0x10;
+                        .flags
+                        .insert(CombatFlags::ATTACKED);
                 }
                 CounterAttack::Sidestep(direction) => {
                     let movement = match direction {

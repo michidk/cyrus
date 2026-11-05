@@ -1,6 +1,8 @@
 //! Line of sight between two actors follows preservation's combat decision "In sight" rules.
 use super::super::combat::{Engagement, combat_target_valid, engagement};
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::CombatFlags;
+use crate::script::CombatMessageCode;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::{distance::rounded_distance, ground::SupportSource};
 
@@ -105,7 +107,10 @@ impl ScriptWorld {
             let Some(combat) = control.combat.as_ref() else {
                 return Ok(());
             };
-            if id == selected_player || control.death_selector == 8 || combat.flags & 4 == 0 {
+            if id == selected_player
+                || control.death_selector == 8
+                || !combat.flags.contains(CombatFlags::STANCE)
+            {
                 return Ok(());
             }
             let Some(target) = combat.target else {
@@ -172,7 +177,7 @@ impl ScriptWorld {
             if combat.lost_sight_routing == 0
                 && let Some(peer) = self.ordinary_active_coordinator(id, selected_player, inputs)?
             {
-                self.send_combat_message(id, peer, 0xd002)?;
+                self.send_combat_message(id, peer, CombatMessageCode::RECEIVER_COORDINATES)?;
                 self.set_combat_coordination(id, 0)?;
             }
             self.actors[index]

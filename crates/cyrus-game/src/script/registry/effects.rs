@@ -30,6 +30,14 @@ pub struct EnvironmentalEffect {
     active: bool,
 }
 
+impl EnvironmentalEffect {
+    /// Descriptor bit selecting the alternate drawing path: the retained frame is drawn
+    /// explicitly at half geometry scale, and the record rises by `nominal_ticks + 2` per draw pass.
+    pub const ALTERNATE_DRAW: u32 = 0x20000;
+    /// Descriptor bit selecting caller scale 90 instead of 256 on the ordinary path.
+    pub const REDUCED_SCALE: u32 = 0x10000;
+}
+
 /// Slot continuation only; metadata and capacity come from the exact installed source.
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct EffectsSnapshot {
@@ -218,7 +226,7 @@ impl EnvironmentalEffects {
             return;
         }
         for effect in self.slots.iter_mut().flatten() {
-            if effect.descriptor & 0x20000 != 0 {
+            if effect.descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0 {
                 effect.position[1] = effect.position[1]
                     .wrapping_sub(ticks.wrapping_add(draws.wrapping_mul(2)) as i32);
             }
@@ -668,7 +676,7 @@ mod tests {
         let mut source = source(4);
         let image = source.images.remove(&0x2500).unwrap();
         source.images.insert(0, image);
-        for descriptor in [0, 0x20000] {
+        for descriptor in [0, EnvironmentalEffect::ALTERNATE_DRAW] {
             let mut effects = EnvironmentalEffects::prepare(&source)?;
             effects.spawn_with_speed(descriptor, [0; 3], 3)?;
             effects.advance(2);
