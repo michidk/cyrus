@@ -471,6 +471,7 @@ impl std::fmt::Display for TauntType {
     }
 }
 
+#[cfg(feature = "parsers")]
 impl TryFrom<rgpre::import::combat_ini::TauntTrigger> for TauntType {
     type Error = std::num::TryFromIntError;
 
