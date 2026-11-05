@@ -9,6 +9,7 @@ use cyrus_assets::{
     menu::{ConfirmationArtwork, MenuAsset, MenuFace},
 };
 use cyrus_game::{AppState, logbook::LogbookScreen};
+use cyrus_world::heading::wrap;
 use image::RgbaImage;
 
 #[derive(Default, TypePath)]
@@ -428,7 +429,7 @@ fn paint(
         }
     }
     #[allow(clippy::approx_constant)] // Original table's decimal period.
-    let sample = |angle: i32| (f64::from(angle & 2047) * 6.2831852 / 2048.).sin() as f32;
+    let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.).sin() as f32;
     let (sin, cos) = (sample(rotation), sample(rotation + 512));
     let mut faces = Vec::new();
     for y in [-212., 200.] {

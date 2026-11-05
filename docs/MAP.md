@@ -164,7 +164,6 @@ module where it is defined and regenerate.
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/group_sync.rs` — Group synchronization channels: a rendezvous between actors that share an `attr_group` channel.
-- `src/script/heading.rs` — Heading arithmetic. Engine headings use 2048 units per turn and wrap by masking
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
@@ -389,6 +388,7 @@ module where it is defined and regenerate.
 - `src/animation/class.rs` — Animation group classes follow preservation's `engine/animation.md#animation-group-classes`.
 - `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
 - `src/animation/sequence.rs` — Current-group playback and reverse rules from preservation's engine/animation.md.
+- `src/heading.rs` — Heading arithmetic. Engine headings use 2048 units per turn and wrap by masking
 - `src/lifecycle.rs` — Shared world identity and prepared cache references.
 - `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
 - `src/transform.rs` — Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.

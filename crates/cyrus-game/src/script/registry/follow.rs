@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::collision_mesh::BodyProbe;
 use cyrus_script::Attribute;
+use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 
 /// Inputs of the selected player's destination admission: the world's collision scene and the
@@ -128,7 +129,7 @@ impl ScriptWorld {
             }))
         };
         let turn = current_angles[1].wrapping_sub(previous_angles[1]);
-        let heading = rider.angles[1].wrapping_add(turn) & 2047;
+        let heading = wrap(rider.angles[1].wrapping_add(turn));
         let translated: [i32; 3] = std::array::from_fn(|axis| {
             rider.position[axis]
                 .wrapping_add(current_position[axis].wrapping_sub(previous_position[axis]))
@@ -149,7 +150,7 @@ impl ScriptWorld {
         }
         if special && let Some((point, ledge_heading)) = self.globals.selected_ledge_anchor {
             self.globals.selected_ledge_anchor =
-                Some((carry(point)?, ledge_heading.wrapping_add(turn) & 2047));
+                Some((carry(point)?, wrap(ledge_heading.wrapping_add(turn))));
         }
         let spatial = self
             .spatial

@@ -3,6 +3,7 @@
 //! `PlayerFaceObj` runs on them as a native task; the `PlayerLineUp` native that owns the mode,
 //! fallback flag and reference, and the player's movement, is not implemented.
 use cyrus_script::{AnimationGroup, Attribute, Attributes};
+use cyrus_world::heading::wrap;
 
 /// Attribute holding the speed byte for the player's current animation group, or `None` when
 /// the group selects no speed (the speed is then zero).
@@ -77,7 +78,7 @@ pub fn relative_bearing(displacement: [i32; 2], heading: u16) -> u16 {
         displacement[0],
         displacement[1],
     ));
-    ((i32::from(heading) - target) & 0x7ff) as u16
+    wrap(i32::from(heading) - target) as u16
 }
 
 /// Close alignment's directional movement helper.
@@ -132,13 +133,13 @@ pub fn level_roll(roll: u16, ticks: u32) -> u16 {
         if roll + 0x800 < ticks {
             0
         } else {
-            ((roll + ticks) & 0x7ff) as u16
+            wrap(roll + ticks) as u16
         }
     } else if roll > 0 {
         if roll < ticks {
             0
         } else {
-            ((roll - ticks) & 0x7ff) as u16
+            wrap(roll - ticks) as u16
         }
     } else {
         0
@@ -224,7 +225,7 @@ pub fn face(input: FacingInput) -> anyhow::Result<Facing> {
     );
     let turn = super::ordinary_slope_turn(
         heading,
-        bearing & 0x7ff,
+        wrap(bearing),
         input.rate_attribute,
         input.frame_scale,
         input.holding_weapon,

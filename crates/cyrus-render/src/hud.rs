@@ -18,6 +18,7 @@ use cyrus_game::{
     script::{ActivationInputs, ActivationOverlay, ScriptActors},
 };
 use cyrus_script::Attribute;
+use cyrus_world::heading::wrap;
 pub use persistence::HudPresentationSnapshot;
 use serde::{Deserialize, Serialize};
 
@@ -78,7 +79,7 @@ impl Candle {
 
 /// COMPASS2.GXA frame for a heading in 2048-unit turns and the world's `world_compass`.
 fn compass_frame(heading: u16, world_compass: i32) -> u8 {
-    ((-(i32::from(heading) + world_compass)).rem_euclid(2048) >> 6) as u8
+    (wrap(-(i32::from(heading) + world_compass)) >> 6) as u8
 }
 
 /// Player-facing toggles kept outside the install: native `hud.json` in the config directory,

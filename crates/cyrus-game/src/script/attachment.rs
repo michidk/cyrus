@@ -1,5 +1,6 @@
 //! Equipped-model geometry follows preservation's engine/attachment.md transform rules.
 use anyhow::Result;
+use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 use rustc_apfloat::{
     Float, FloatConvert, Round, Status,
@@ -51,13 +52,9 @@ pub fn prepare_weapon_attachment(
     let horizontal = super::spatial::rounded_distance([delta[0], 0, delta[2]])?;
     // The shared query bearing uses the opposite X sign from attachment direction.
     let bearing = |x: i32, z: i32| i32::from(super::spatial::query_bearing(x, z)).wrapping_neg();
-    let pitch = (bearing(horizontal, delta[1]) - 512) & 2047;
-    let heading = (1024 - bearing(delta[0], delta[2])) & 2047;
-    let matrix = Matrix::orientation([
-        ((pitch - 512) & 2047) as u16,
-        heading as u16,
-        actor_roll & 2047,
-    ]);
+    let pitch = wrap(bearing(horizontal, delta[1]) - 512);
+    let heading = wrap(1024 - bearing(delta[0], delta[2]));
+    let matrix = Matrix::orientation([wrap(pitch - 512) as u16, heading as u16, wrap(actor_roll)]);
     let retained_point = std::array::from_fn(|axis| {
         let origin = (extended(actor_position[axis]) * integer(256)).value;
         truncate((integer(points[0][axis]) + origin).value)
@@ -78,11 +75,7 @@ pub fn prepare_weapon_attachment(
         position,
         matrix,
         retained_point,
-        retained_angles: [
-            ((pitch + 512) & 2047) as u16,
-            heading as u16,
-            actor_roll & 2047,
-        ],
+        retained_angles: [wrap(pitch + 512) as u16, heading as u16, wrap(actor_roll)],
     })
 }
 

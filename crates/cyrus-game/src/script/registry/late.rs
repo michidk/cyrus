@@ -7,6 +7,7 @@ use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// Prevalidation, selected support and the surface updater's (previous, returned) surfaces when it ran.
 type PointSupport = (
@@ -165,7 +166,7 @@ impl ScriptWorld {
             position[0].wrapping_sub(camera.current.position[0]),
             position[2].wrapping_sub(camera.current.position[2]),
         );
-        let heading = ((1024 + i32::from(bearing)) & 2047) as u16;
+        let heading = wrap(1024 + i32::from(bearing)) as u16;
         let [x, _, z] = cyrus_world::transform::translate_forward(position, heading, 0x800)?;
         self.spawn_environment_effect(descriptor, [x, height, z])
     }

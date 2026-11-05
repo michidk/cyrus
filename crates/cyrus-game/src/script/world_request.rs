@@ -2,6 +2,7 @@
 use super::{ScriptActors, WorldLoopOutcome};
 use crate::player::placement::MarkerEntry;
 use bevy::prelude::*;
+use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
 
 /// End-of-frame exit arbitration precedes any replacement-session publication.
@@ -99,7 +100,7 @@ fn destination(request: [i32; 3]) -> anyhow::Result<(SceneRequest, MarkerEntry)>
         MarkerEntry {
             marker: usize::try_from(marker)
                 .map_err(|_| anyhow::anyhow!("LoadWorld: negative marker {marker}"))?,
-            heading: heading & 2047,
+            heading: wrap(heading),
         },
     ))
 }

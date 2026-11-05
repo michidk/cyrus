@@ -1,6 +1,7 @@
 //! Authored book turns and camera requests from preservation's engine/menu.md.
 //! Forward turns target each model's frame count, one past its last authored frame
 //! (redguard-preservation PR #81).
+use cyrus_world::heading::wrap;
 use std::collections::VecDeque;
 
 #[derive(Clone, Default)]
@@ -107,7 +108,7 @@ impl BookMotion {
             .camera
             .back()
             .map_or((self.pose.camera, self.pose.pitch), |previous| {
-                (previous.target, (previous.pitch + previous.change) & 2047)
+                (previous.target, wrap(previous.pitch + previous.change))
             });
         self.camera.push_back(CameraMove {
             start,
@@ -204,14 +205,14 @@ impl BookMotion {
                     + f64::from(camera.target[i] - camera.start[i]) * f64::from(camera.fraction))
                     as i32 as f32
             });
-            self.pose.pitch = (f64::from(camera.pitch)
-                + f64::from(camera.change) * f64::from(camera.fraction))
-                as i32
-                & 2047;
+            self.pose.pitch = wrap(
+                (f64::from(camera.pitch) + f64::from(camera.change) * f64::from(camera.fraction))
+                    as i32,
+            );
             camera.fraction += camera.step;
             if camera.fraction > 1.0 {
                 self.pose.camera = camera.target;
-                self.pose.pitch = (camera.pitch + camera.change) & 2047;
+                self.pose.pitch = wrap(camera.pitch + camera.change);
                 self.camera.pop_front();
             }
         }

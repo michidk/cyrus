@@ -9,6 +9,7 @@ use anyhow::{Context, Result, ensure};
 use cyrus_collision::distance::rounded_distance;
 use cyrus_script::Attribute;
 use cyrus_script::Native;
+use cyrus_world::heading::wrap;
 
 /// Smoke effect descriptor: texture 0x2480 on the alternate, reduced-scale path.
 const SMOKE_EFFECT: u32 =
@@ -27,11 +28,11 @@ const FIREBALL_PITCH_OFFSET: i32 = 0x78;
 /// aims (the original's table bearings are the negation of the shared query bearing), with the yaw
 /// turned a quarter circle and the pitch lowered by [`FIREBALL_PITCH_OFFSET`].
 fn fireball_angles(delta: [i32; 3]) -> Result<[u16; 3]> {
-    let yaw = (i32::from(query_bearing(delta[0], delta[2])) + 0x400) & 0x7ff;
+    let yaw = wrap(i32::from(query_bearing(delta[0], delta[2])) + 0x400);
     let horizontal = rounded_distance([delta[0], 0, delta[2]])?;
-    let elevation = i32::from(query_bearing(horizontal, delta[1])).wrapping_neg() & 0x7ff;
-    let pitch = (elevation - 0x200) & 0x7ff;
-    let pitch = (FIREBALL_PITCH_OFFSET - pitch) & 0x7ff;
+    let elevation = wrap(i32::from(query_bearing(horizontal, delta[1])).wrapping_neg());
+    let pitch = wrap(elevation - 0x200);
+    let pitch = wrap(FIREBALL_PITCH_OFFSET - pitch);
     Ok([pitch as u16, yaw as u16, 0])
 }
 

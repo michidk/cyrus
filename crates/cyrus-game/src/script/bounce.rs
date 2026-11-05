@@ -8,6 +8,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::AnimationGroup;
+use cyrus_world::heading::wrap;
 
 /// The animation groups the entry request waits for: weapon, torch, plain.
 const ENTRY_GROUPS: [AnimationGroup; 3] = [
@@ -151,7 +152,7 @@ fn glide<P: BouncePort + ?Sized>(
 ) -> Result<Option<bool>> {
     if port.is_selected_player() && steer {
         let heading = i64::from(port.heading()) - port.turn_delta(scale);
-        port.set_heading(heading.rem_euclid(2048) as u16);
+        port.set_heading(wrap(heading) as u16);
     }
     let mut position = port.position();
     position = cyrus_world::transform::translate_forward(

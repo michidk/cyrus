@@ -3,10 +3,10 @@
 use super::combat::{CombatDecision, CombatFlags};
 use anyhow::{Context, Result, ensure};
 use cyrus_script::AnimationGroup;
+use cyrus_world::heading::{FULL_TURN, HALF_TURN, wrap};
 
 /// Signed difference of two headings, each masked to 0..2047 and wrapped into -1024..=1024.
 pub fn heading_difference(first: i32, second: i32) -> i32 {
-    use super::heading::{FULL_TURN, HALF_TURN, wrap};
     let difference = wrap(first) - wrap(second);
     if difference > HALF_TURN {
         difference - FULL_TURN
@@ -370,7 +370,7 @@ pub fn defence_arc_from_positions_scaled(
     let delta: [i32; 3] =
         std::array::from_fn(|axis| target_position[axis].wrapping_sub(own_position[axis]) >> 8);
     let [x, _, z] = super::spatial::normalized_direction([delta[2], delta[1], delta[0]]);
-    let bearing = (1024 - i32::from(super::spatial::query_bearing(x, z))) & 2047;
+    let bearing = wrap(1024 - i32::from(super::spatial::query_bearing(x, z)));
     if scale == 1.0 {
         defence_arc(own_heading, bearing, arc, arc_center)
     } else {

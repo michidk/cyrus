@@ -8,6 +8,7 @@ use cyrus_assets::menu::MenuAsset;
 use cyrus_assets::menu::MenuFace;
 use cyrus_assets::menu::MenuPicture;
 use cyrus_assets::menu::PageTexture;
+use cyrus_world::heading::wrap;
 use image::{Rgba, RgbaImage};
 
 const WIDTH: usize = 640;
@@ -116,7 +117,7 @@ fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {
 
 fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
     #[allow(clippy::approx_constant)] // Decimal period from the original rotation table.
-    let sample = |angle: i32| (f64::from(angle & 2047) * 6.2831852 / 2048.0).sin() as f32;
+    let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.0).sin() as f32;
     let sin = sample(pose.pitch);
     let cos = sample(pose.pitch + 512);
     let mut faces = Vec::new();

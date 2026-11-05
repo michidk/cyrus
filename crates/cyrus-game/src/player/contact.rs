@@ -1,4 +1,5 @@
 //! Ordinary grounded body response from preservation's engine/player.md.
+use cyrus_world::heading::wrap;
 
 /// Result of a facing wall contact. Other actor states must use their own response.
 #[derive(Debug, PartialEq, Eq)]
@@ -39,8 +40,7 @@ pub fn resolve_grounded_contacts(
             WallResponse::Projected(position) => {
                 current = position;
                 if current != previous {
-                    *heading =
-                        wall_heading(*heading, movement, contact.normal).rem_euclid(2048) as u16;
+                    *heading = wrap(wall_heading(*heading, movement, contact.normal)) as u16;
                 }
             }
         }
@@ -129,12 +129,13 @@ pub fn separate_residual(
 }
 
 pub(crate) fn facing_difference(movement: u16, normal: [i32; 3]) -> i32 {
-    let facing = (i32::from(super::motion::displacement_heading(
-        i64::from(normal[0]),
-        i64::from(normal[2]),
-    )) + 1024)
-        & 2047;
-    let movement = i32::from(movement & 2047);
+    let facing = wrap(
+        i32::from(super::motion::displacement_heading(
+            i64::from(normal[0]),
+            i64::from(normal[2]),
+        )) + 1024,
+    );
+    let movement = i32::from(wrap(movement));
     let mut difference = facing - movement;
     if difference < -1024 {
         difference += 2047;
@@ -147,16 +148,16 @@ pub(crate) fn facing_difference(movement: u16, normal: [i32; 3]) -> i32 {
 /// Facing adjustment after a projected ordinary grounded contact, in heading units.
 pub fn wall_heading(actor: u16, movement: u16, normal: [i32; 3]) -> i32 {
     let difference = facing_difference(movement, normal);
-    let movement = i32::from(movement & 2047);
+    let movement = i32::from(wrap(movement));
     let result = movement - difference.clamp(-32, 32);
-    let mut backward = i32::from(actor & 2047) - movement;
+    let mut backward = i32::from(wrap(actor)) - movement;
     if backward < -1024 {
         backward += 2048;
     } else if backward > 1024 {
         backward -= 2048;
     }
     if backward.abs() > 512 {
-        (result + 1024) & 2047
+        wrap(result + 1024)
     } else {
         result
     }

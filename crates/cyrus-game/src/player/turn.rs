@@ -1,6 +1,7 @@
 //! Ordinary ground-turn arithmetic from redguard-preservation's
 //! `docs/engine/player.md`. Eligibility and the simulation clock are separate.
 use cyrus_script::AnimationGroup;
+use cyrus_world::heading::wrap;
 
 /// Independent held-direction acceleration for ordinary ground turning.
 /// Combat and other player states must select their own movement rules.
@@ -62,7 +63,7 @@ pub fn fight_values_selected(
 
 /// Heading after subtracting a signed turn amount, wrapped to 2048.
 pub fn turned(heading: u16, delta: i64) -> u16 {
-    (i64::from(heading) - delta).rem_euclid(2048) as u16
+    wrap(i64::from(heading) - delta) as u16
 }
 
 /// Roll after one ordinary turn update, in 1/2048 turns.
@@ -72,18 +73,18 @@ pub fn turned(heading: u16, delta: i64) -> u16 {
 /// on the far side. Otherwise roll relaxes toward zero by 8. `delta` is the signed
 /// amount from [`GroundTurn::delta`]; zero relaxes. Eligibility is the caller's.
 pub fn lean(roll: u16, delta: i64, running: bool) -> u16 {
-    let wrap = |value: i32| (value & 0x7ff) as u16;
+    let wrap_roll = |value: i32| wrap(value) as u16;
     let roll = i32::from(roll);
     if running && delta < 0 && !(0x20..=0x400).contains(&roll) {
-        return wrap(roll + if roll > 0x400 { 8 } else { 4 });
+        return wrap_roll(roll + if roll > 0x400 { 8 } else { 4 });
     }
     if running && delta > 0 && !(0x400..=0x7e0).contains(&roll) {
-        return wrap(roll - if roll < 0x400 { 8 } else { 4 });
+        return wrap_roll(roll - if roll < 0x400 { 8 } else { 4 });
     }
     if running && delta != 0 {
-        return wrap(roll);
+        return wrap_roll(roll);
     }
-    relax(wrap(roll))
+    relax(wrap_roll(roll))
 }
 
 /// Roll relaxing toward zero by 8 per update, snapping to zero inside one step.
@@ -93,7 +94,7 @@ pub fn relax(roll: u16) -> u16 {
         if roll > 0x7f8 {
             0
         } else {
-            ((roll + 8) & 0x7ff) as u16
+            wrap(roll + 8) as u16
         }
     } else if roll > 0 {
         if roll < 8 { 0 } else { (roll - 8) as u16 }

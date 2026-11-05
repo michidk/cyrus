@@ -7,6 +7,7 @@ use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute, Native};
+use cyrus_world::heading::wrap;
 
 /// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -463,7 +464,9 @@ impl ScriptWorld {
                 let displacement =
                     std::array::from_fn(|axis| position[axis].wrapping_sub(target[axis]) >> 8);
                 let [x, _, z] = super::super::spatial::normalized_direction(displacement);
-                Ok((-i32::from(super::super::spatial::query_bearing(x, z)) - 1024) & 2047)
+                Ok(wrap(
+                    -i32::from(super::super::spatial::query_bearing(x, z)) - 1024,
+                ))
             };
             let difference = angle(id)? - angle(neighbor)?;
             Ok(if difference > 1024 {

@@ -6,6 +6,7 @@ use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 impl ScriptWorld {
     /// Query two logical actors' current selected overlap shapes. Self never
@@ -327,7 +328,7 @@ impl ScriptWorld {
                 if actor != 0 {
                     actor_position = cyrus_world::transform::translate_forward(
                         actor_position,
-                        heading.wrapping_add(1024) & 2047,
+                        wrap(heading.wrapping_add(1024)),
                         actor,
                     )?;
                 }
@@ -511,7 +512,7 @@ impl ScriptWorld {
                 );
                 cyrus_world::transform::translate_forward(
                     position,
-                    heading.wrapping_add(1024) & 2047,
+                    wrap(heading.wrapping_add(1024)),
                     actor,
                 )?
             }

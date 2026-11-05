@@ -12,6 +12,7 @@ use bevy::shader::ShaderRef;
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
+use cyrus_world::heading::wrap;
 use std::hash::{BuildHasher, RandomState};
 
 /// One-shot synchronization with a captured original sky, independent of scene identity.
@@ -61,7 +62,7 @@ impl Sky {
     }
 
     pub(crate) fn new(speed: u8) -> Self {
-        let direction = (RandomState::new().hash_one(0_u8) & 2047) as u16;
+        let direction = wrap(RandomState::new().hash_one(0_u8)) as u16;
         Self {
             velocity: scroll_velocity(direction, f32::from(speed)),
             speed: f32::from(speed),

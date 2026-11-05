@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 use cyrus_world::{
     animation::ActorAnimationCheckpoint,
     sound::{AnimationSoundState, ScriptSound},
@@ -173,8 +174,7 @@ impl ScriptWorld {
             .context("ordinary stable recovery spatial state unavailable")?
             .actor_mut(index)?;
         spatial.local.position = position;
-        spatial.local.angles[1] =
-            ((i32::from(spatial.local.angles[1]) + heading_delta) & 2047) as u16;
+        spatial.local.angles[1] = wrap(i32::from(spatial.local.angles[1]) + heading_delta) as u16;
         if age > 16 {
             self.resolve_ordinary_bounds_obstacle(
                 id,

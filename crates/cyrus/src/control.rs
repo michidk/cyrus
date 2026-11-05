@@ -12,6 +12,7 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use cyrus_game::player::Player;
+use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::CurrentScene;
 use cyrus_world::lifecycle::SceneRequest;
 use serde_json::json;
@@ -356,7 +357,7 @@ fn handle(
                     [x, y, z].map(|value| value.wrapping_mul(256)),
                     heading,
                 )?;
-                Ok(json!({"position": [x, y, z], "heading": heading & 2047}))
+                Ok(json!({"position": [x, y, z], "heading": wrap(heading)}))
             })()
             .map_err(|error| format!("{error:#}")),
             Command::Flycam {

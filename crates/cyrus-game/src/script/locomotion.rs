@@ -3,6 +3,7 @@
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::AnimationGroup;
+use cyrus_world::heading::wrap;
 
 /// Receiver state read by `MoveBackward`'s admission and animation choice.
 #[derive(Clone, Copy, Debug, Default)]
@@ -282,7 +283,7 @@ pub fn strafe_motion(
         Strafe::Left => -delta,
         Strafe::Right => delta,
     };
-    let angle = (i32::from(angle_y).wrapping_add(signed) & 2047) as u16;
+    let angle = wrap(i32::from(angle_y).wrapping_add(signed)) as u16;
     let movement = strafe_translation(strafe, angle, distance, frame_scale, translation_suppressed);
     (angle, movement)
 }
@@ -305,7 +306,7 @@ pub fn strafe_translation(
         Strafe::Left => 512,
         Strafe::Right => -512,
     };
-    let heading = (i32::from(angle_y).wrapping_add(offset) & 2047) as u16;
+    let heading = wrap(i32::from(angle_y).wrapping_add(offset)) as u16;
     let distance = distance.wrapping_mul(frame_scale) >> 8;
     (distance > 0).then_some((heading, distance))
 }
@@ -369,7 +370,7 @@ pub fn forward_translation(
         return None;
     }
     let distance = distance.wrapping_mul(frame_scale) >> 8;
-    (distance > 0).then_some((angle_y & 2047, distance))
+    (distance > 0).then_some((wrap(angle_y), distance))
 }
 
 /// One backward step: the heading (local Y angle plus 1024, wrapped) and the distance, or `None`
@@ -384,7 +385,7 @@ pub fn backward_translation(
     if translation_suppressed {
         return None;
     }
-    let heading = angle_y.wrapping_add(1024) & 2047;
+    let heading = wrap(angle_y.wrapping_add(1024));
     let distance = distance.wrapping_mul(frame_scale) >> 8;
     (distance > 0).then_some((heading, distance))
 }

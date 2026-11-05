@@ -1,5 +1,6 @@
 //! Marker-based entry from preservation's player and RGM documentation.
 use cyrus_script::AnimationGroup;
+use cyrus_world::heading::wrap;
 mod persistence;
 use super::Player;
 use anyhow::Context;
@@ -200,7 +201,7 @@ pub(crate) fn placement(
     Ok((
         PlayerPose {
             position: marker.map_position.map(|value| i64::from(value) * 256),
-            heading: entry.heading.rem_euclid(2048) as u16,
+            heading: wrap(entry.heading) as u16,
         },
         Vec3::from_array(marker.position),
     ))

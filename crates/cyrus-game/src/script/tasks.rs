@@ -5,6 +5,7 @@ use cyrus_script::Native;
 use cyrus_script::program::CallKind;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
+use cyrus_world::heading::wrap;
 use std::collections::BTreeMap;
 mod persistence;
 pub use persistence::{NativeTaskBindings, NativeTasksSnapshot};
@@ -1199,7 +1200,7 @@ impl Task {
                 }] = step;
                 let [pitch, yaw, roll] = *input.angles;
                 let rotated =
-                    cyrus_world::transform::Matrix::euler([pitch, yaw.wrapping_neg() & 2047, roll])
+                    cyrus_world::transform::Matrix::euler([pitch, wrap(yaw.wrapping_neg()), roll])
                         .inverse_transform(offset)?;
                 for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
                     *coordinate = coordinate.wrapping_add(amount);
@@ -1242,7 +1243,7 @@ impl Task {
                             >> 8;
                         let step = if operand < 0 { -step } else { step };
                         input.angles[axis] =
-                            (i32::from(input.angles[axis]).wrapping_add(step) & 2047) as u16;
+                            wrap(i32::from(input.angles[axis]).wrapping_add(step)) as u16;
                     }
                 }
                 duration.wrapping_sub(1) <= elapsed
@@ -1351,7 +1352,7 @@ impl Task {
                 let heading = i32::from(input.angles[1]);
                 // The query bearing is the negation of the routine's angle, which the routine
                 // subtracts from the negated heading.
-                let mut delta = bearing.wrapping_sub(heading) & 0x7ff;
+                let mut delta = wrap(bearing.wrapping_sub(heading));
                 if delta == 0 {
                     return Ok(true);
                 }
@@ -1377,7 +1378,7 @@ impl Task {
                 } else {
                     heading + step
                 };
-                input.angles[1] = (heading & 0x7ff) as u16;
+                input.angles[1] = wrap(heading) as u16;
                 elapsed >= duration.wrapping_sub(1)
             }
             Self::Bounce(state) => {
@@ -1412,7 +1413,7 @@ impl Task {
                     .lineup
                     .context("lineup selected-player state unavailable")?;
                 let (_, reference) = port.reference(None)?;
-                let angle = (i32::from(reference.heading) + angle.integer()?) & 0x7ff;
+                let angle = wrap(i32::from(reference.heading) + angle.integer()?);
                 let target = [
                     reference.position[0].wrapping_add(x_offset.integer()?),
                     reference.position[1],
@@ -2297,7 +2298,7 @@ impl Task {
                     .checked_div(duration)
                     .context("RotateByAxis fixed-point division overflow")?;
                 if *target == 0 && elapsed == 0 {
-                    *target = (current.wrapping_add(delta) & 2047) << 8;
+                    *target = wrap(current.wrapping_add(delta)) << 8;
                     *accumulator = current << 8;
                 }
                 let mut step = quotient.wrapping_mul(input.frame_scale as i32) >> 8;
@@ -2307,13 +2308,13 @@ impl Task {
                         step = step.wrapping_neg();
                     }
                 }
-                let difference = ((current - (*target >> 8) + 1024) & 2047) - 1024;
+                let difference = wrap(current - (*target >> 8) + 1024) - 1024;
                 if difference.abs() <= (step >> 8).abs() {
                     input.angles[axis] = (*target >> 8) as u16;
                     true
                 } else {
                     *accumulator = accumulator.wrapping_add(step);
-                    input.angles[axis] = ((*accumulator >> 8) & 2047) as u16;
+                    input.angles[axis] = wrap(*accumulator >> 8) as u16;
                     false
                 }
             }
@@ -2328,7 +2329,7 @@ impl Task {
                 if duration == 0 {
                     return Ok(true);
                 }
-                let target = target.integer()? & 2047;
+                let target = wrap(target.integer()?);
                 let axis = match axis.integer()? {
                     0 => 0,
                     1 => 1,
@@ -2338,9 +2339,9 @@ impl Task {
                     .as_mut()
                     .context("RotateToAxis requires spatial state")?;
                 let current = i32::from(input.angles[axis]);
-                let difference = (current & 2047) - target;
+                let difference = wrap(current) - target;
                 let remaining = if difference < -1024 {
-                    -(difference & 2047)
+                    -wrap(difference)
                 } else if difference > 1024 {
                     2048 - difference
                 } else {
@@ -2369,7 +2370,7 @@ impl Task {
                     true
                 } else {
                     *accumulator = accumulator.wrapping_add(step);
-                    input.angles[axis] = ((*accumulator >> 8) & 2047) as u16;
+                    input.angles[axis] = wrap(*accumulator >> 8) as u16;
                     false
                 }
             }
@@ -2390,7 +2391,7 @@ impl Task {
                 }
                 let difference = target.wrapping_sub(*origin);
                 let movement = if difference < -1024 {
-                    difference & 2047
+                    wrap(difference)
                 } else if difference > 1024 {
                     -(difference & 1023)
                 } else {
@@ -2406,9 +2407,9 @@ impl Task {
                 let complete = elapsed >= end;
                 if (0..=2).contains(&axis) {
                     input.angles[axis as usize] = if complete {
-                        (target & 2047) as u16
+                        wrap(target) as u16
                     } else {
-                        (origin.wrapping_add(offset) & 2047) as u16
+                        wrap(origin.wrapping_add(offset)) as u16
                     };
                 }
                 complete
@@ -2443,7 +2444,7 @@ impl Task {
                 let complete = elapsed >= duration.wrapping_sub(1);
                 if (0..=2).contains(&axis) {
                     input.angles[axis as usize] =
-                        (origin.wrapping_add(if complete { delta } else { offset }) & 2047) as u16;
+                        wrap(origin.wrapping_add(if complete { delta } else { offset })) as u16;
                 }
                 complete
             }

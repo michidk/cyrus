@@ -1,5 +1,6 @@
 //! Explicit logbook text layout and scrolling, independent of screen presentation.
 use anyhow::{Context, Result};
+use cyrus_world::heading::wrap;
 
 /// One laid-out line, in original 640×480 screen coordinates before scrolling.
 #[derive(Debug, PartialEq, Eq)]
@@ -123,11 +124,11 @@ impl Logbook {
         let step = if fast { 50 } else { 10 };
         if (input.up || input.page_up) && self.offset > 0 {
             self.offset = self.offset.saturating_sub(step);
-            self.rotation = (self.rotation - if fast { 100 } else { 20 }) & 2047;
+            self.rotation = wrap(self.rotation - if fast { 100 } else { 20 });
         }
         if (input.down || input.page_down) && self.offset < self.maximum {
             self.offset = self.offset.saturating_add(step).min(self.maximum);
-            self.rotation = (self.rotation + if fast { 100 } else { 20 }) & 2047;
+            self.rotation = wrap(self.rotation + if fast { 100 } else { 20 });
         }
         if input.close {
             self.open = false;

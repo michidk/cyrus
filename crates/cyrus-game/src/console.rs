@@ -9,6 +9,7 @@ use bevy::prelude::{
 };
 use cyrus_assets::script::Scripts;
 use cyrus_console::{Command, Console, ConsoleApp, ConsoleInput, Invocation, Source};
+use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::PreparedWorld;
 
 pub struct GameConsolePlugin;
@@ -171,7 +172,7 @@ fn load(
         "load: world {}, marker {}, angle {}",
         request[0],
         request[1],
-        request[2] & 2047
+        wrap(request[2])
     )])
 }
 

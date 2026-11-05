@@ -1,4 +1,5 @@
 //! Original heading projection, per preservation's player and water engine specs.
+use cyrus_world::heading::wrap;
 use std::sync::LazyLock;
 
 use cyrus_world::transform::rotation_sample;
@@ -7,7 +8,7 @@ use cyrus_world::transform::rotation_sample;
 /// Retains table residuals per preservation player.md's upright orientation rules.
 pub fn upright_rotation(heading: u16) -> bevy::math::Mat3 {
     use bevy::math::{Mat3, Vec3};
-    let index = usize::from(heading.wrapping_neg() & 2047);
+    let index = usize::from(wrap(heading.wrapping_neg()));
     let (sine, cosine) = (rotation_sample(index), rotation_sample(index + 512));
     Mat3::from_cols(
         Vec3::new(cosine, 0.0, -sine),
@@ -27,7 +28,7 @@ pub fn refresh_upright_rotation(
     if heading == previous_heading {
         return;
     }
-    let index = usize::from(previous_heading.wrapping_sub(heading) & 2047);
+    let index = usize::from(wrap(previous_heading.wrapping_sub(heading)));
     let (sine, cosine) = (
         f64::from(rotation_sample(index)),
         f64::from(rotation_sample(index + 512)),
@@ -42,7 +43,7 @@ pub fn refresh_upright_rotation(
 /// Positions and distance have eight fractional bits; heading uses 1/2048 turns.
 /// Single-precision coordinate addition is part of the original movement rule.
 pub fn translate(position: [i64; 3], heading: u16, distance: i64) -> [i64; 3] {
-    let sine = usize::from(heading.wrapping_neg() & 2047);
+    let sine = usize::from(wrap(heading.wrapping_neg()));
     let mut result = position;
     result[0] = ((f64::from(position[0] as f32)
         + distance as f64 * f64::from(rotation_sample(sine))) as f32) as i64;
@@ -81,5 +82,5 @@ pub fn displacement_heading(x: i64, z: i64) -> u16 {
         (false, true) => 1024 - angle,
         (true, true) => 1024 + angle,
     };
-    (-angle).rem_euclid(2048) as u16
+    wrap(-angle) as u16
 }

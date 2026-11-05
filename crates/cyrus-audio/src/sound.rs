@@ -34,6 +34,7 @@ use cyrus_assets::audio::load_speech;
 #[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::install::GameInstall;
 use cyrus_world::animation::AnimationSound;
+use cyrus_world::heading::wrap;
 use cyrus_world::sound::ScriptSound;
 pub use cyrus_world::sound::SoundCue;
 pub use cyrus_world::sound::SoundSurface;
@@ -970,14 +971,14 @@ pub fn heading(dx: i64, dz: i64) -> i32 {
         (true, true) => base + 1024,
         (false, false) => base,
     };
-    angle & 2047
+    wrap(angle)
 }
 
 /// Pan 1..=127 of an emitter at heading `angle` for a listener facing `yaw`:
 /// a triangle wave, centred ahead and behind, fully to one side at a quarter
 /// turn, and centred again at exactly a quarter turn (the original's quirk).
 pub fn pan(angle: i32, yaw: i32) -> u8 {
-    let u = (angle - yaw) & 2047;
+    let u = wrap(angle - yaw);
     let p = match u {
         0..512 => u >> 3,
         512..1024 => ((1024 - u) & 511) >> 3,

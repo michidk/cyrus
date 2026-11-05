@@ -8,6 +8,7 @@ use cyrus_collision::{
     collision_mesh::BodyProbe,
     collision_world::{PrimaryBodyQuery, RuntimeBodyContact},
 };
+use cyrus_world::heading::wrap;
 
 /// Caller-admitted primary body inputs. Exclusion and terrain admission belong
 /// to the response stage; this query supplies neither movement nor rollback.
@@ -249,8 +250,8 @@ impl ScriptWorld {
                 contact::WallResponse::Projected(position) => {
                     current = position;
                     if grounded && current != previous {
-                        heading = contact::wall_heading(heading, movement, body.normal)
-                            .rem_euclid(2048) as u16;
+                        heading =
+                            wrap(contact::wall_heading(heading, movement, body.normal)) as u16;
                         flags |= crate::script::CollisionFlags::SLIDE_OFF_WALL;
                     } else {
                         flags |= crate::script::CollisionFlags::HIT_WALL;

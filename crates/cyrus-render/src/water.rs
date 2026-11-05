@@ -15,6 +15,7 @@ use cyrus_assets::environment::Water;
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
+use cyrus_world::heading::wrap;
 
 // Preservation's exporter uses 20 engine units per unit and 256 per grid cell.
 const CELL_SIZE: f32 = 256.0 / 20.0;
@@ -97,7 +98,7 @@ fn wave_height(water: &Water, vertex: usize, ticks: u64, base: f32) -> f32 {
     let row = (vertex / water.side) as i64 - (water.side / 2) as i64;
     let [amplitude, speed, frequency] = water.parameters;
     let spatial = (x * x + row * row) * frequency as i64;
-    let phase = (spatial as u64).wrapping_add(ticks.wrapping_mul((speed as i64) as u64)) & 2047;
+    let phase = wrap((spatial as u64).wrapping_add(ticks.wrapping_mul((speed as i64) as u64)));
     let sample = cyrus_world::transform::rotation_sample((phase + 512) as usize);
     let bias = amplitude * 0.5;
     (f64::from(sample) * f64::from(amplitude) + f64::from(base) - f64::from(bias)) as f32

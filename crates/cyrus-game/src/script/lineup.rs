@@ -8,7 +8,7 @@
 
 use super::alignment::{CloseStep, close_step, keeps_step, relative_bearing};
 use super::decision::heading_difference;
-use super::heading::{opposite, wrap};
+use cyrus_world::heading::{opposite, wrap};
 
 /// The leaf helpers the movers call, each answering as the original helper does.
 pub trait LineupPort {

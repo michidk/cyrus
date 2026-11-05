@@ -11,6 +11,7 @@ use cyrus_collision::{
     ground::SupportSource,
 };
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// Forward offsets of the scan's two passes, in local Q8.
 const LEDGE_SCAN_PASSES: [i32; 2] = [0, 6144];
@@ -567,7 +568,7 @@ fn settle(class: u8, body_fits: bool, head_fits: bool) -> (u8, u8) {
 
 /// X/Z offset of a Q8 distance at a heading, nearest rounding through the shared sine table.
 pub(super) fn heading_offset(distance: i32, heading: u16) -> [i32; 2] {
-    let index = usize::from(heading.wrapping_neg() & 2047);
+    let index = usize::from(wrap(heading.wrapping_neg()));
     let offset = |sample: f32| (f64::from(distance) * f64::from(sample)).round_ties_even() as i32;
     [
         offset(cyrus_world::transform::rotation_sample(index)),
@@ -577,9 +578,10 @@ pub(super) fn heading_offset(distance: i32, heading: u16) -> [i32; 2] {
 
 /// A wall normal's facing heading: its displacement heading plus 1024.
 fn wall_heading(normal: [i32; 3]) -> u16 {
-    crate::player::motion::displacement_heading(i64::from(normal[0]), i64::from(normal[2]))
-        .wrapping_add(1024)
-        & 2047
+    wrap(
+        crate::player::motion::displacement_heading(i64::from(normal[0]), i64::from(normal[2]))
+            .wrapping_add(1024),
+    )
 }
 
 /// Hand vertex lookup of an animation group, shared with the later ledge states and the rope grab.
@@ -624,13 +626,15 @@ impl ScriptWorld {
 /// Whether a wall normal faces the actor heading: its facing heading lies within 256 of the
 /// heading, differences wrapped to 2048.
 fn facing(heading: u16, normal: [i32; 3]) -> bool {
-    let difference = (i32::from(wall_heading(normal)) - i32::from(heading)) & 2047;
+    let difference = wrap(i32::from(wall_heading(normal)) - i32::from(heading));
     difference.min(2048 - difference) <= 256
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{LedgeRecord, LedgeScan, Stance, facing, heading_offset, ledge_class, settle};
+    use super::{
+        LedgeRecord, LedgeScan, Stance, facing, heading_offset, ledge_class, settle, wrap,
+    };
 
     fn record(top: i32, class: u8) -> LedgeRecord {
         LedgeRecord {
@@ -716,11 +720,11 @@ mod tests {
     #[test]
     fn a_wall_faces_the_actor_within_256_of_its_heading() {
         let normal = [0, 0, -256];
-        let wall = (crate::player::motion::displacement_heading(0, -256) + 1024) & 2047;
+        let wall = wrap(crate::player::motion::displacement_heading(0, -256) + 1024);
         assert!(facing(wall, normal));
-        assert!(facing((wall + 256) & 2047, normal));
-        assert!(facing(wall.wrapping_sub(256) & 2047, normal));
-        assert!(!facing((wall + 257) & 2047, normal));
-        assert!(!facing((wall + 1024) & 2047, normal));
+        assert!(facing(wrap(wall + 256), normal));
+        assert!(facing(wrap(wall.wrapping_sub(256)), normal));
+        assert!(!facing(wrap(wall + 257), normal));
+        assert!(!facing(wrap(wall + 1024), normal));
     }
 }

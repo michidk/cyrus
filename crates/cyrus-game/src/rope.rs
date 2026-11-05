@@ -6,6 +6,7 @@
 //! units. The engine frame maps to the world frame by negating X and Y and keeping Z (the importer's
 //! position decode), so link deltas are computed with the engine's matrices and mapped, and a
 //! link's world rotation is the engine matrix conjugated by that mapping.
+use cyrus_world::heading::wrap;
 use serde_json::Value;
 
 /// Engine angle units per full turn.
@@ -253,7 +254,7 @@ impl Rope {
                 self.step = 0;
             } else {
                 self.phase += (self.speed * 0x40 * frame_scale) >> 8;
-                self.step = (sine((self.phase >> 8) & 0x7ff) * self.amplitude) >> 9;
+                self.step = (sine(wrap(self.phase >> 8)) * self.amplitude) >> 9;
             }
         } else {
             // The swinging types hold the maximum amplitude; their step angle is the table's zero
@@ -530,7 +531,7 @@ mod tests {
         // Engine yaw minus the heading, mapped to the world frame, is the importer's positive yaw.
         let pose = LinkPose {
             position: [0.0; 3],
-            yaw: (-512i32).rem_euclid(2048),
+            yaw: wrap(-512i32),
             pitch: 0,
         };
         let r = pose.world_rotation();

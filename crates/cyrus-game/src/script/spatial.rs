@@ -3,6 +3,7 @@ use super::ScriptActor;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::Native;
 use cyrus_script::{Attribute, Attributes};
+use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -103,7 +104,7 @@ impl SpatialWorld {
                 let angles = if matches!(placement.object_type, 2 | 6) {
                     [0; 3]
                 } else {
-                    placement.angles.map(|angle| (angle & 2047) as u16)
+                    placement.angles.map(|angle| wrap(angle) as u16)
                 };
                 Ok(Pose { position, angles, matrix: Matrix::orientation(angles) })
             }).transpose()?;
@@ -165,7 +166,7 @@ impl SpatialWorld {
                         }))?;
                 if actors[parent].attributes()[Attribute::NoSlaveRot] == 0 {
                     local.angles = std::array::from_fn(|axis| {
-                        original.angles[axis].wrapping_sub(parent_pose.angles[axis]) & 2047
+                        wrap(original.angles[axis].wrapping_sub(parent_pose.angles[axis]))
                     });
                 }
             }
@@ -392,7 +393,7 @@ impl SpatialWorld {
                 parent.angle_history
             } else {
                 std::array::from_fn(|axis| {
-                    parent.local.angles[axis].wrapping_sub(parent.angle_history[axis]) & 2047
+                    wrap(parent.local.angles[axis].wrapping_sub(parent.angle_history[axis]))
                 })
             };
             let state = self.actors[index].as_mut().unwrap();
@@ -403,7 +404,7 @@ impl SpatialWorld {
             let matrix;
             if state.no_slave_rotation {
                 let delta = std::array::from_fn(|axis| {
-                    state.local.angles[axis].wrapping_sub(state.angle_history[axis]) & 2047
+                    wrap(state.local.angles[axis].wrapping_sub(state.angle_history[axis]))
                 });
                 state.local.matrix.rotate(delta);
                 matrix = state.local.matrix;
@@ -413,13 +414,14 @@ impl SpatialWorld {
                 composed.rotate(state.local.angles);
                 matrix = composed;
                 angles = std::array::from_fn(|axis| {
-                    parent_pose.angles[axis].wrapping_add(state.local.angles[axis]) & 2047
+                    wrap(parent_pose.angles[axis].wrapping_add(state.local.angles[axis]))
                 });
                 state.angle_history = std::array::from_fn(|axis| {
-                    state.local.angles[axis]
-                        .wrapping_sub(state.angle_history[axis])
-                        .wrapping_add(parent_delta[axis])
-                        & 2047
+                    wrap(
+                        state.local.angles[axis]
+                            .wrapping_sub(state.angle_history[axis])
+                            .wrapping_add(parent_delta[axis]),
+                    )
                 });
             }
             state.previous_effective_position = Some(
@@ -533,7 +535,7 @@ impl ActorSpatial {
     pub fn relocate(&mut self, position: [i32; 3], yaw: u16) {
         self.local.position = position;
         self.previous_local_position = position;
-        self.local.angles[1] = yaw & 2047;
+        self.local.angles[1] = wrap(yaw);
     }
 
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
@@ -586,7 +588,7 @@ impl ActorSpatial {
                 .local
                 .matrix
                 .rotate_unattached(std::array::from_fn(|axis| {
-                    self.local.angles[axis].wrapping_sub(matrix_angles[axis]) & 2047
+                    wrap(self.local.angles[axis].wrapping_sub(matrix_angles[axis]))
                 })),
             2 => self.local.matrix = Matrix::orientation(self.local.angles),
             mode => anyhow::bail!("actor rotation mode {mode} unsupported"),
@@ -691,8 +693,8 @@ impl ActorSpatial {
             let x = receiver[0].wrapping_sub(player.position[0]);
             let z = receiver[2].wrapping_sub(player.position[2]);
             let target = i32::from(query_bearing(x, z));
-            let heading = i32::from(pose.angles[1]).wrapping_sub(offset.integer()?) & 2047;
-            let difference = (heading - target + 1024).rem_euclid(2048) - 1024;
+            let heading = wrap(i32::from(pose.angles[1]).wrapping_sub(offset.integer()?));
+            let difference = wrap(heading - target + 1024) - 1024;
             return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
         if looking {
@@ -713,8 +715,8 @@ impl ActorSpatial {
             let x = player.position[0].wrapping_sub(receiver[0]);
             let z = player.position[2].wrapping_sub(receiver[2]);
             let bearing = query_bearing(x, z);
-            let target = (i32::from(player.heading) + 1024) & 2047;
-            let difference = (target - i32::from(bearing) + 1024).rem_euclid(2048) - 1024;
+            let target = wrap(i32::from(player.heading) + 1024);
+            let difference = wrap(target - i32::from(bearing) + 1024) - 1024;
             return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
         if distance {
@@ -747,8 +749,8 @@ impl ActorSpatial {
             let [offset, tolerance] = arguments else {
                 anyhow::bail!("PlayerFacing requires two arguments");
             };
-            let target = i32::from(pose.angles[1]).wrapping_add(offset.integer()?) & 2047;
-            let difference = (i32::from(player.heading) - target + 1024).rem_euclid(2048) - 1024;
+            let target = wrap(i32::from(pose.angles[1]).wrapping_add(offset.integer()?));
+            let difference = wrap(i32::from(player.heading) - target + 1024) - 1024;
             Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)))
         }
     }
@@ -1043,7 +1045,7 @@ pub(super) fn query_bearing(x: i32, z: i32) -> u16 {
         (false, true) => 1024 - angle,
         (false, false) => angle,
     };
-    ((-angle) & 2047) as u16
+    wrap(-angle) as u16
 }
 
 #[cfg(test)]

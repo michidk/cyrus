@@ -4,6 +4,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 use serde::Serialize;
 
 /// Result of preservation's world-loop exit arbitration. Dispatch is host-owned.
@@ -219,7 +220,7 @@ impl ScriptWorld {
             selected.index == to,
             "player swap selected an unexpected role"
         );
-        let angles = placement.angles.map(|angle| angle & 2047);
+        let angles = placement.angles.map(wrap);
         // Only the selected role's pose is initialized at world entry; the other role's first
         // pose is the one it takes here.
         if !self
@@ -238,7 +239,7 @@ impl ScriptWorld {
         spatial.relocate(placement.position, placement.angles[1]);
         // The orientation setter stores the angles, the previous-angle history and the triple the
         // actor was created with (which `ResetRotation` restores from).
-        spatial.local.angles = placement.angles.map(|angle| angle & 2047);
+        spatial.local.angles = placement.angles.map(wrap);
         spatial.angle_history = spatial.local.angles;
         spatial.initial_angles = spatial.local.angles;
         self.actors[to].player_movement = movement;

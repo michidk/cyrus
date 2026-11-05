@@ -175,7 +175,6 @@ pub mod alignment;
 /// `BounceObject`'s launch state machine.
 pub mod bounce;
 mod collision_flags;
-mod heading;
 mod jump_motion;
 mod living_state;
 pub use ai_type::AiType;

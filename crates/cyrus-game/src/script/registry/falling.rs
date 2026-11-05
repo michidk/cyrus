@@ -5,6 +5,7 @@ use crate::script::JumpMotion;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// What the selected player's landing needs beyond the nonplayer response: the health services
 /// publish through the HUD and draw random numbers, and a steep support changes the fatal path.
@@ -111,7 +112,7 @@ pub fn ordinary_directional_motion(
     Some(OrdinaryDirectionalMotion {
         direction,
         step,
-        heading: heading.wrapping_add(offset) & 2047,
+        heading: wrap(heading.wrapping_add(offset)),
         distance: (!model_controls_motion && distance > 0).then_some(distance),
     })
 }

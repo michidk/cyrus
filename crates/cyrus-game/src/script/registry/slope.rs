@@ -4,6 +4,7 @@ use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// A class-two slide decision in Q8 distance and 1/2048-turn headings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub struct OrdinarySlide {
 }
 
 fn difference(first: u16, second: u16) -> i32 {
-    let delta = i32::from(first & 2047) - i32::from(second & 2047);
+    let delta = i32::from(wrap(first)) - i32::from(wrap(second));
     if delta > 1024 {
         delta - 2048
     } else if delta < -1024 {
@@ -41,7 +42,7 @@ pub fn ordinary_slide(
     let forward = difference(movement_heading, effective_heading).abs() < 512;
     OrdinarySlide {
         movement_heading,
-        target_heading: (movement_heading + if forward { 0 } else { 1024 }) & 2047,
+        target_heading: wrap(movement_heading + if forward { 0 } else { 1024 }),
         group: match (forward, torch) {
             (true, false) => AnimationGroup::SLIDE,
             (true, true) => AnimationGroup::SLIDE_FORWARD_TORCH,
@@ -82,7 +83,7 @@ pub fn ordinary_slope_turn(
     let rate = (i32::from(rate_attribute).wrapping_mul(frame_scale as i32) >> 8).max(8);
     if delta.abs() <= rate {
         return OrdinarySlopeTurn {
-            heading: target & 2047,
+            heading: wrap(target),
             group: None,
         };
     }
@@ -96,7 +97,7 @@ pub fn ordinary_slope_turn(
         (false, false, true) => AnimationGroup::TURN_RIGHT_TORCH,
     };
     OrdinarySlopeTurn {
-        heading: (i32::from(local_heading).wrapping_add(if positive { rate } else { -rate }) & 2047)
+        heading: wrap(i32::from(local_heading).wrapping_add(if positive { rate } else { -rate }))
             as u16,
         group: Some(group),
     }

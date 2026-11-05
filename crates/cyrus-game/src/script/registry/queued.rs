@@ -5,6 +5,7 @@ use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// Current receiver state and established edge-service outcome.
 #[derive(Clone, Copy, Debug)]
@@ -380,7 +381,7 @@ impl super::ScriptWorld {
             let pose = self.spatial(id)?.local;
             let position = cyrus_world::transform::translate_forward(
                 pose.position,
-                pose.angles[1] & 2047,
+                wrap(pose.angles[1]),
                 distance,
             )?;
             self.spatial
@@ -523,7 +524,7 @@ impl super::ScriptWorld {
             return Ok(());
         }
         let pose = self.spatial(id)?.local;
-        let heading = (pose.angles[1] + if backward { 1024 } else { 0 }) & 2047;
+        let heading = wrap(pose.angles[1] + if backward { 1024 } else { 0 });
         let position = cyrus_world::transform::translate_forward(
             pose.position,
             heading,

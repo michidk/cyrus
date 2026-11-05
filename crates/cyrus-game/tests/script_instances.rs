@@ -2,6 +2,7 @@
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
 use cyrus_script::{AnimationGroup, Attribute, Native};
+use cyrus_world::heading::wrap;
 
 #[test]
 fn installed_island_flags_advance_through_ordinary_updates() {
@@ -257,7 +258,7 @@ fn installed_caverns_fish_starts_rotation_multitask_and_retains_concurrent_movem
             actor.name() == "CV_FISH"
                 && actor
                     .placement()
-                    .is_some_and(|placement| placement.angles[1] & 2047 == 1026)
+                    .is_some_and(|placement| wrap(placement.angles[1]) == 1026)
         })
         .unwrap();
     let id = world.id(index).unwrap();
@@ -430,7 +431,7 @@ fn installed_palace_nested_family_reconstructs_authored_poses() {
         );
         assert_eq!(
             pose.angles,
-            placement.angles.map(|value| (value & 2047) as u16)
+            placement.angles.map(|value| wrap(value) as u16)
         );
     }
 }
@@ -575,7 +576,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     assert_eq!(world.flags()[flag], 1);
     assert_eq!(
         world.spatial(lever).unwrap().local.angles[0],
-        initial_pitch.wrapping_sub(256) & 2047
+        wrap(initial_pitch.wrapping_sub(256))
     );
     assert_eq!(
         sounds

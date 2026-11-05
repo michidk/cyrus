@@ -12,6 +12,7 @@ use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_script::{Attribute, Attributes};
 use cyrus_script::{Native, Property};
+use cyrus_world::heading::wrap;
 use std::collections::BTreeMap;
 
 struct NoServices;
@@ -41257,7 +41258,7 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
             let heading = if queued == 3 {
                 1536
             } else {
-                before.angles[1].wrapping_add(1024) & 2047
+                wrap(before.angles[1].wrapping_add(1024))
             };
             cyrus_world::transform::translate_forward(before.position, heading, 384).unwrap()
         };

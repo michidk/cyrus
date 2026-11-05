@@ -6,6 +6,7 @@ use bevy::prelude::{
     With, World,
 };
 use cyrus_console::{Command, ConsoleApp, Invocation};
+use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::CurrentScene;
 use std::collections::BTreeMap;
 
@@ -178,11 +179,12 @@ fn speed(In(command): In<Invocation>, world: &mut World) -> Result<Vec<String>> 
         skies.iter(world).count() == 1,
         "world {id}: sky is still loading"
     );
-    let direction = (world
-        .get_resource_mut::<cyrus_game::random::EngineRandom>()
-        .context("fxskyspeed requires the shared engine random stream")?
-        .draw()
-        & 2047) as u16;
+    let direction = wrap(
+        world
+            .get_resource_mut::<cyrus_game::random::EngineRandom>()
+            .context("fxskyspeed requires the shared engine random stream")?
+            .draw(),
+    ) as u16;
     skies.single_mut(world)?.set_speed(direction, value);
     world
         .resource_mut::<Edits>()

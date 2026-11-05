@@ -17,6 +17,7 @@ use crate::script::JumpMotion;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 impl ScriptWorld {
     /// Walk toward a local Q8 horizontal destination with a Q8 arrival tolerance.
@@ -75,7 +76,7 @@ impl ScriptWorld {
                     destination[2].wrapping_sub(origin[2]),
                 );
                 let heading = self.spatial(id)?.local.angles[1];
-                let difference = heading.wrapping_sub(bearing) & 2047;
+                let difference = wrap(heading.wrapping_sub(bearing));
                 if !(256..=1792).contains(&difference) {
                     return Ok(1);
                 }

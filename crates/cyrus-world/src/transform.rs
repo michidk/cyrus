@@ -1,4 +1,5 @@
 //! Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.
+use crate::heading::wrap;
 use anyhow::{Result, ensure};
 use rustc_apfloat::{
     Float, FloatConvert, Round, Status,
@@ -41,7 +42,7 @@ impl Matrix {
     /// following preservation's per-update collision shape preparation.
     pub fn collision_orientation(angles: [u16; 3]) -> Self {
         let samples = angles.map(|angle| {
-            let index = usize::from(angle.wrapping_neg() & 2047);
+            let index = usize::from(wrap(angle.wrapping_neg()));
             (
                 extended(rotation_sample(index)),
                 extended(rotation_sample(index + 512)),
@@ -76,7 +77,7 @@ impl Matrix {
     /// rotates its step by the transpose of `euler([pitch, -yaw, roll])`.
     pub fn euler(angles: [u16; 3]) -> Self {
         let [(s0, c0), (s1, c1), (s2, c2)] = angles.map(|angle| {
-            let index = usize::from(angle & 2047);
+            let index = usize::from(wrap(angle));
             (
                 extended(rotation_sample(index)),
                 extended(rotation_sample(index + 512)),
@@ -100,7 +101,7 @@ impl Matrix {
             ],
             [
                 stored(product(c0, s1)),
-                rotation_sample(usize::from(angles[0] & 2047)),
+                rotation_sample(usize::from(wrap(angles[0]))),
                 stored(product(c0, c1)),
             ],
         ])
@@ -125,7 +126,7 @@ impl Matrix {
         product: impl Fn(X87DoubleExtended, X87DoubleExtended) -> X87DoubleExtended,
     ) {
         for (axis, angle) in [(1, yaw), (0, pitch), (2, roll)] {
-            let index = usize::from(angle.wrapping_neg() & 2047);
+            let index = usize::from(wrap(angle.wrapping_neg()));
             let sine = extended(rotation_sample(index));
             let cosine = extended(rotation_sample(index + 512));
             for row in &mut self.0 {
@@ -267,7 +268,7 @@ pub fn animation_vertex_q8(position: [f32; 3]) -> Result<[i32; 3]> {
 /// The coordinate is stored as f32 before addition, the sum as f32 before truncation.
 /// Per preservation's player heading-based translation and SOUP MoveObjectAxis rules.
 pub fn translate_forward(position: [i32; 3], heading: u16, distance: i32) -> Result<[i32; 3]> {
-    let index = usize::from(heading.wrapping_neg() & 2047);
+    let index = usize::from(wrap(heading.wrapping_neg()));
     let mut result = position;
     for (axis, sample) in [(0, index), (2, index + 512)] {
         let coordinate: Single = Single::from_i128(i128::from(position[axis])).value;
@@ -290,7 +291,7 @@ pub fn translate_forward(position: [i32; 3], heading: u16, distance: i32) -> Res
 /// inputs and each result are stored as f32 around extended products, the result rounds to nearest
 /// even, and the heading is negated and wrapped to the table.
 pub fn rotate_offset(offset: [i32; 2], heading: u16) -> Result<[i32; 2]> {
-    let index = usize::from(heading.wrapping_neg() & 2047);
+    let index = usize::from(wrap(heading.wrapping_neg()));
     let [x, z]: [X87DoubleExtended; 2] = offset.map(|value| {
         let single = Single::from_i128(i128::from(value)).value;
         single.convert(&mut false).value

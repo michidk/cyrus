@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// Shared results retained until the first ground prevalidation of the next wrapper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -40,7 +41,7 @@ pub fn ordinary_ground_prevalidation(
     let heading = crate::player::motion::displacement_heading;
     let movement = heading(i64::from(displacement[0]), i64::from(displacement[2]));
     let normal = heading(i64::from(current.normal[0]), i64::from(current.normal[2]));
-    let difference = normal.wrapping_sub(1024).wrapping_sub(movement) & 2047;
+    let difference = wrap(normal.wrapping_sub(1024).wrapping_sub(movement));
     let rollback =
         !(512..=1535).contains(&difference) || stick_to_surface != 0 || default_motion_animation;
     Ok(OrdinaryGroundPrevalidation {

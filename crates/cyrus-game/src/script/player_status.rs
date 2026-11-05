@@ -3,6 +3,7 @@
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
 
 /// `PlayerStatus` return codes, named after the `ps_*` list of the installed `SOUP386.DEF`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,14 +152,14 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
 /// `PlayerTurned`: whether any of the selected player's angles differs from the angles saved at
 /// the ordinary update's entry.
 pub fn player_turned(angles: [u16; 3], history: [u16; 3]) -> i32 {
-    i32::from(angles.map(|angle| angle & 2047) != history.map(|angle| angle & 2047))
+    i32::from(angles.map(wrap) != history.map(wrap))
 }
 
 /// `PlayerTurnedDirection`: 1, 0 or -1 for the sign of the change of the negated yaw since the saved
 /// one, taking the shorter way round the circle (a change of more than 1024 inverts the sign).
 pub fn player_turned_direction(heading: u16, history: u16) -> i32 {
-    let now = (2048 - i32::from(heading)) & 2047;
-    let before = (2048 - i32::from(history)) & 2047;
+    let now = wrap(2048 - i32::from(heading));
+    let before = wrap(2048 - i32::from(history));
     let sign = (now - before).signum();
     if (before - now).abs() > 1024 {
         -sign
@@ -188,10 +189,10 @@ pub fn movement_speed_attribute(group: AnimationGroup) -> Option<Attribute> {
 /// `PlayerArctan`: the arctangent angle of the displacement from the player to the receiver, the
 /// negation of the query bearing.
 pub fn player_arctan(displacement: [i32; 2]) -> i32 {
-    (-i32::from(super::spatial::query_bearing(
+    wrap(-i32::from(super::spatial::query_bearing(
         displacement[0],
         displacement[1],
-    ))) & 2047
+    )))
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
+use cyrus_world::heading::wrap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -280,7 +281,7 @@ pub(super) fn death_effect_point(point: [i32; 3], camera: [i32; 3]) -> [i32; 3] 
     );
     displaced(
         point,
-        usize::from(bearing.wrapping_neg().wrapping_sub(1024) & 2047),
+        usize::from(wrap(bearing.wrapping_neg().wrapping_sub(1024))),
         2048.0,
     )
 }

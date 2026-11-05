@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
 use cyrus_script::Attribute;
+use cyrus_world::heading::wrap;
 
 /// Distance from the parent, in Q8, at which the flight ends.
 const MAXIMUM_RANGE: i32 = 0xbb800;
@@ -32,9 +33,9 @@ impl GameHost<'_, '_, '_, '_> {
         let previous = local.position;
         // The step is the shoot offset rotation with the yaw masked to the turn range.
         let step = cyrus_world::transform::Matrix::orientation([
-            local.angles[0].wrapping_neg() & 2047,
-            local.angles[1] & 2047,
-            local.angles[2].wrapping_neg() & 2047,
+            wrap(local.angles[0].wrapping_neg()),
+            wrap(local.angles[1]),
+            wrap(local.angles[2].wrapping_neg()),
         ])
         .transform([0, 0, speed])?;
         let position = std::array::from_fn(|axis| previous[axis].wrapping_add(step[axis]));

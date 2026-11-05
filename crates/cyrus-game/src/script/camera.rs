@@ -2,6 +2,7 @@
 use crate::script::LivingState;
 use anyhow::Result;
 use cyrus_script::Native;
+use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 
 /// A camera record's flag byte. The engine leaves the bits unnamed; the names describe each bit's
@@ -93,10 +94,10 @@ impl CameraRecord {
         }
         let offset = rotate(self.position_offset, bound_angles)?;
         let mut angles = std::array::from_fn(|axis| {
-            i32::from(bound_angles[axis]).wrapping_sub(self.angle_offset[axis]) as u16 & 2047
+            wrap(i32::from(bound_angles[axis]).wrapping_sub(self.angle_offset[axis]) as u16)
         });
         if self.flags.contains(CameraFlags::PITCH_OVERRIDE) {
-            angles[0] = self.angle_offset[0].wrapping_neg() as u16 & 2047;
+            angles[0] = wrap(self.angle_offset[0].wrapping_neg() as u16);
         }
         let orbit = rotate([0, 0, self.distance.wrapping_shl(8).wrapping_neg()], angles)?;
         Ok(add(add(bound_position, orbit), offset))
@@ -293,7 +294,7 @@ impl CameraRecord {
                 self.distance = super::rounded_distance(orbit)? >> 8;
                 let angles = direction_angles(orbit)?;
                 self.angle_offset = std::array::from_fn(|axis| {
-                    angles[axis].wrapping_add(i32::from(bound_angles[axis])) & 2047
+                    wrap(angles[axis].wrapping_add(i32::from(bound_angles[axis])))
                 });
                 self.flags.remove(CameraFlags::REQUEST);
                 self.flags.insert(CameraFlags::UNLIMITED_MOVEMENT);
@@ -415,7 +416,7 @@ impl CameraState {
                 angles[0] += shake;
             }
         }
-        angles.map(|angle| (angle & 0x7ff) as u16)
+        angles.map(|angle| wrap(angle) as u16)
     }
 
     /// Cut the render camera to the published pose, as setup does once the first pose exists.
@@ -495,14 +496,14 @@ impl CameraState {
             next.render.position = whole.map(|axis| (axis / 256) as f32);
             for (axis, factor) in [(0, 1), (1, 0), (2, 2)] {
                 let previous = next.render.angles[axis];
-                let mut gap = (previous & 0x7ff) - (next.current.angles[axis] & 0x7ff);
+                let mut gap = wrap(previous) - wrap(next.current.angles[axis]);
                 if gap > 0x400 {
                     gap -= 0x800;
                 } else if gap < -0x400 {
                     gap += 0x800;
                 }
                 let step = (-f64::from(gap as f32) * f64::from(settings.angles[factor])) as f32;
-                next.render.angles[axis] = (f64::from(step).trunc() as i32 + previous) & 0x7ff;
+                next.render.angles[axis] = wrap(f64::from(step).trunc() as i32 + previous);
             }
         } else {
             next.render.position = next.current.position.map(|axis| (axis / 256) as f32);
@@ -1635,8 +1636,8 @@ fn direction_angles(direction: [i32; 3]) -> Result<[i32; 3]> {
     let horizontal = super::rounded_distance([x, 0, z])?;
     let bearing = |x, z| -i32::from(super::spatial::query_bearing(x, z));
     Ok([
-        (bearing(horizontal, y) - 512) & 2047,
-        (bearing(x, z) - 1024) & 2047,
+        wrap(bearing(horizontal, y) - 512),
+        wrap(bearing(x, z) - 1024),
         0,
     ])
 }

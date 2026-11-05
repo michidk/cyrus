@@ -8,6 +8,7 @@ use crate::script::locomotion::StepDirection;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
+use cyrus_world::heading::wrap;
 mod activation;
 mod actor_bounce;
 mod attack;
@@ -5634,9 +5635,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             // roll by the plain angles; actor orientation negates all three, so this is the
             // actor-orientation builder with pitch and roll negated.
             let rotated = cyrus_world::transform::Matrix::orientation([
-                local.angles[0].wrapping_neg() & 2047,
+                wrap(local.angles[0].wrapping_neg()),
                 local.angles[1],
-                local.angles[2].wrapping_neg() & 2047,
+                wrap(local.angles[2].wrapping_neg()),
             ])
             .transform(offset)?;
             let position =
@@ -5656,19 +5657,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 let horizontal =
                     cyrus_collision::distance::rounded_distance([unit[0], 0, unit[2]])?;
                 // The original's table bearing is the negation of the shared query bearing.
-                let elevation = i32::from(
-                    super::spatial::query_bearing(horizontal, unit[1]).wrapping_neg() & 2047,
-                );
+                let elevation = i32::from(wrap(
+                    super::spatial::query_bearing(horizontal, unit[1]).wrapping_neg(),
+                ));
                 [
-                    (elevation.wrapping_sub(0x200) & 0x7ff) as u16,
+                    wrap(elevation.wrapping_sub(0x200)) as u16,
                     super::spatial::query_bearing(difference[0], difference[2]),
                     0,
                 ]
             } else {
                 [
-                    (arguments[4].integer()? & 2047) as u16,
-                    (arguments[5].integer()? & 2047) as u16,
-                    (arguments[6].integer()? & 2047) as u16,
+                    wrap(arguments[4].integer()?) as u16,
+                    wrap(arguments[5].integer()?) as u16,
+                    wrap(arguments[6].integer()?) as u16,
                 ]
             };
             self.registry.create_object(id, name, position, angles)?;
@@ -5989,7 +5990,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             position[1] = position[1]
                 .wrapping_sub(extent.wrapping_shl(8))
                 .wrapping_sub(standing_height.wrapping_shl(8));
-            self.registry.pending_player_placement = Some((position, (yaw & 0x7ff) as u16));
+            self.registry.pending_player_placement = Some((position, wrap(yaw) as u16));
             return Ok(CallResult::Complete(0));
         }
         if function == Native::CameraController {

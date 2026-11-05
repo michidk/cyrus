@@ -10,10 +10,10 @@ use crate::rope::{Attachment, PumpKeys};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::decision::heading_difference;
-use crate::script::heading::{HALF_TURN, wrap};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_world::heading::{HALF_TURN, wrap};
 
 /// Links searched below the requested one start this many before it.
 const HAND_SEARCH_BACK: i32 = 8;

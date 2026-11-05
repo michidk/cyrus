@@ -1,6 +1,7 @@
 //! Console marker placement: the loaded map's own markers and the saved user markers.
 use super::ScriptWorld;
 use anyhow::{Context, Result};
+use cyrus_world::heading::wrap;
 
 /// The state one saved user marker holds (preservation `engine/console.md`, marker file section).
 /// Positions are Q8 runtime units; every angle is in the engine's 0 through 2047 units. The camera
@@ -83,7 +84,7 @@ impl ScriptWorld {
             .as_mut()
             .context("getmarker: spatial state not prepared")?
             .actor_mut(index)?;
-        let angles = placement.orientation.map(|angle| (angle & 2047) as u16);
+        let angles = placement.orientation.map(|angle| wrap(angle) as u16);
         actor.relocate(placement.position, angles[1]);
         actor.local.angles = angles;
         actor.snapshot();
