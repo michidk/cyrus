@@ -274,6 +274,13 @@ impl ScriptWorld {
                     .expect("admitted ordinary control")
                     .advance_action_transition_counter(ticks);
                 self.finish_ledge_climb(id, ticks, sounds)?;
+                let control = self.actors[id.index]
+                    .control
+                    .as_mut()
+                    .expect("admitted ordinary control");
+                if control.extra_time != 255 {
+                    control.extra_time = u32::from(control.extra_time).saturating_sub(ticks) as u8;
+                }
                 if !self.actors[id.index]
                     .control
                     .as_ref()

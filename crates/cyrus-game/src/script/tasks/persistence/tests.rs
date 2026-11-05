@@ -2024,6 +2024,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
         let mut angles = [0; 3];
         let mut counters = 0;
         let mut direction = 0;
+        let mut classification = 0;
         let mut called = 0;
         let mut frame = None;
         let mut updates = vec![];
@@ -2076,6 +2077,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
                             },
                             animation_system: false,
                             motion: Some(MotionCall {
+                                classification: &mut classification,
                                 direction: &mut direction,
                                 counters: &mut counters,
                             }),
@@ -2088,6 +2090,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
             assert_eq!(done, elapsed == 3);
             assert_eq!(position, [0, 0, z]);
             assert_eq!(direction, 6);
+            assert_eq!(classification, 6);
             assert_eq!(called, if available { 4 } else { 0 });
             assert_eq!(
                 counters,
@@ -2631,6 +2634,9 @@ struct RecordingPointHost {
     breathing: bool,
 }
 impl PointHost for RecordingPointHost {
+    fn goto_location(&mut self, _: i32) -> Result<i32> {
+        anyhow::bail!("recording host does not provide GotoLocation")
+    }
     fn dragon_breath(&mut self) -> Result<bool> {
         self.breaths += 1;
         Ok(self.breathing)
@@ -4110,6 +4116,7 @@ fn walk_backward_matches_the_original_routine() {
         let mut angles = [0, heading as u16, 0];
         let mut counters = (counter as u8) << 6;
         let mut direction = 0;
+        let mut classification = 0;
         let mut called = 0;
         let mut frame = None;
         let mut updates = vec![];
@@ -4148,6 +4155,7 @@ fn walk_backward_matches_the_original_routine() {
                         admission,
                         animation_system: false,
                         motion: Some(MotionCall {
+                            classification: &mut classification,
                             direction: &mut direction,
                             counters: &mut counters,
                         }),
@@ -4241,6 +4249,7 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
     use crate::script::tasks::{LocomotionAdmission, LocomotionCall, MotionCall};
     let mut counters = 48;
     let mut direction = 0;
+    let mut classification = 0;
     let mut called = 0;
     assert!(
         Task::WalkForward
@@ -4264,6 +4273,7 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
                         },
                         animation_system: false,
                         motion: Some(MotionCall {
+                            classification: &mut classification,
                             direction: &mut direction,
                             counters: &mut counters
                         }),
@@ -4275,6 +4285,7 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
             .unwrap()
     );
     assert_eq!((direction, counters, called), (0, 48, 0));
+    assert_eq!(classification, 0);
 }
 
 #[test]
@@ -4283,6 +4294,7 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
     for (probe, expected) in [(Some(false), Some(true)), (None, None)] {
         let mut counters = 48;
         let mut direction = 0;
+        let mut classification = 0;
         let mut called = 0;
         let result = Task::Forward.complete(
             &[Argument::Integer(4)],
@@ -4306,6 +4318,7 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
                     },
                     animation_system: false,
                     motion: Some(MotionCall {
+                        classification: &mut classification,
                         direction: &mut direction,
                         counters: &mut counters,
                     }),
@@ -4321,6 +4334,7 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
             ),
         }
         assert_eq!((direction, called), (2, 0));
+        assert_eq!(classification, 2);
     }
 }
 

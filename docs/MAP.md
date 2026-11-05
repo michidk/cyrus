@@ -217,6 +217,7 @@ module where it is defined and regenerate.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update
+- `src/script/registry/lunge_tests.rs` — Lunge and ordinary continuation retain classification at their own admission boundaries.
 - `src/script/registry/map_marker.rs` — Console marker placement: the loaded map's own markers and the saved user markers.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.

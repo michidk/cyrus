@@ -64,7 +64,7 @@ impl ScriptWorld {
         self.request_ordinary_group(id, AnimationGroup::LIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = LivingState::LIGHTING_TORCH;
-        control.motion_companion = 0;
+        control.extra_time = 0;
         Ok(())
     }
 
@@ -86,7 +86,7 @@ impl ScriptWorld {
         self.request_ordinary_group(id, AnimationGroup::UNLIGHT_TORCH, false, ticks, sounds)?;
         let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = LivingState::DOUSING_TORCH;
-        control.motion_companion = 0;
+        control.extra_time = 0;
         Ok(())
     }
 

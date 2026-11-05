@@ -46,6 +46,20 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Public property dispatch routes motion, action, response and AI fields to the
+receiver's owning state. Byte writes retain the low eight bits; signed word
+properties retain the low sixteen bits. `LastCollide` accesses only the response
+word's low byte and preserves its other marks. `Sflags` uses model collision
+metadata independently of `DisableScript`; missing owners fail explicitly.
+Verified: the field contracts follow preservation's
+[SOUP properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md).
+
+`GotoLocation` composes receiver location lookup, arrival admission and the
+retained AI selector/location/delay refresh through the native task caller.
+Its explicit refresh does not enable autonomous selector-four movement or add
+an ordinary AI timer stage. Automatic caller placement and steering remain
+unsupported until their complete contracts are established.
+
 Verified: the ordinary ground probe follows preservation's
 [terrain sink recovery](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-sink-recovery)
 order: terrain recovery, actor bounce, then queued motion before support sampling.

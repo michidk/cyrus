@@ -336,7 +336,7 @@ impl super::ScriptWorld {
             return self.run_rope_jump_displacement(id, frame_scale);
         }
         // Per tick distance numerator and the cap of the accumulated distance, both in Q8.
-        let (rate, cap) = match motion.kind() {
+        let (rate, cap): (i32, i32) = match motion.kind() {
             JumpMotion::RUNNING | JumpMotion::RUNNING_LEFT_LEAD => (0x10000, 0x18000),
             JumpMotion::FORWARD => (0xb400, 0x10000),
             _ => return Ok(()),
@@ -357,8 +357,8 @@ impl super::ScriptWorld {
         let accumulated = control.sliding_distance;
         let distance = if accumulated < cap {
             let step = (rate / divisor).wrapping_mul(frame_scale as i32) >> 8;
-            if cap < accumulated + step {
-                cap - accumulated
+            if cap < accumulated.wrapping_add(step) {
+                cap.wrapping_sub(accumulated)
             } else {
                 step
             }
@@ -375,7 +375,7 @@ impl super::ScriptWorld {
         if suppressed {
             return Ok(());
         }
-        control.sliding_distance += distance;
+        control.sliding_distance = control.sliding_distance.wrapping_add(distance);
         if distance > 0 {
             let pose = self.spatial(id)?.local;
             let position = cyrus_world::transform::translate_forward(
@@ -770,6 +770,11 @@ impl super::ScriptWorld {
                 }
             }
         }
+        actor
+            .control
+            .as_mut()
+            .expect("validated jump control")
+            .motion_classification = 2;
         actor
             .control
             .as_mut()

@@ -378,10 +378,16 @@ pub struct ActorControlState {
     pub ai_type: super::AiType,
     /// The DEF `ai_mode` byte, independent of the `ai_type` lifecycle selector.
     pub ai_mode: u8,
+    /// Receiver-owned unsigned AI delay, retained independently of mode and ordinary countdown.
+    pub ai_delay: u8,
+    /// Signed low-word location retained by GotoLocation independently of AI mode and delay.
+    pub ai_location: i16,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
     /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
     pub motion_companion: u8,
+    /// Receiver-owned ordinary countdown; zero and 255 do not decrement.
+    pub extra_time: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
     pub falling_state: JumpMotion,
@@ -469,6 +475,8 @@ pub struct ScriptActor {
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     native_commands: [super::tasks::NativeTaskCommandState; 6],
+    /// Stored actor default while no playback allocation is prepared.
+    unprepared_animation_default: i16,
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
     update_failure: Option<String>,
@@ -542,6 +550,7 @@ impl ScriptActor {
                 .unwrap_or_default(),
             tasks: Default::default(),
             native_commands: Default::default(),
+            unprepared_animation_default: 0,
             animation: None,
             animation_failure: None,
             update_failure: None,
@@ -1236,6 +1245,7 @@ impl ScriptWorld {
                     .unwrap_or_default(),
                 tasks: Default::default(),
                 native_commands: Default::default(),
+                unprepared_animation_default: 0,
                 animation: None,
                 model: Default::default(),
                 collision: None,
@@ -3599,6 +3609,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     .control
                     .as_mut()
                     .map(|control| super::tasks::MotionCall {
+                        classification: &mut control.motion_classification,
                         direction: &mut control.motion_direction,
                         counters: &mut control.move_counter,
                     }),
@@ -4089,6 +4100,34 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             && !matches!(state.surface, 2 | 4);
         admission.walk_backward_mode = walking_backward;
         admission.forward_admitted = Some(super::locomotion::forward_admitted(&state));
+        // Backward and lateral classifications precede their live refusal queries.
+        // Dry backward walking instead stores only after its support check succeeds.
+        let classification = match operation {
+            LocomotionOperation::Backward | LocomotionOperation::WalkBackward
+                if !walking_backward
+                    && super::locomotion::backward_admission(state, || false)
+                        != super::locomotion::BackwardAdmission::Refused =>
+            {
+                Some(7)
+            }
+            LocomotionOperation::Strafe(strafe)
+                if super::locomotion::strafe_admission(state, strafe)
+                    != super::locomotion::StrafeAdmission::Refused =>
+            {
+                Some(match strafe {
+                    super::locomotion::Strafe::Left => 4,
+                    super::locomotion::Strafe::Right => 5,
+                })
+            }
+            _ => None,
+        };
+        if let Some(classification) = classification {
+            self.registry.actors[self.index]
+                .control
+                .as_mut()
+                .context("locomotion classification control unavailable")?
+                .motion_classification = classification;
+        }
         // WalkForward has no caller-sampled substitute for its side-effecting query.
         if walking {
             admission.forward_step_clear = None;
@@ -4706,11 +4745,22 @@ pub(super) fn raex_word(
 /// engine/SOUPPROPS.md) place `rope_wait` at +0x1b0 (the companion motion byte), `slide_flag` at
 /// +0x1b1 (sliding); `fall_flag` (+0x1b2, falling), `jump_flag` (+0x1b3, queued motion) and
 /// `extra_flag` (+0x1b4, living state) are typed and converted in the property handlers.
-/// `extra_time` (+0x1b5) has no cyrus field and stays unsupported.
+/// `extra_time` is the independent ordinary countdown described by preservation.
+/// `last_direction` shares the retained movement classification written by motion producers.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
         Property::RopeWait => &mut control.motion_companion,
+        Property::ExtraTime => &mut control.extra_time,
         Property::SlideFlag => &mut control.sliding_state,
+        Property::LastDirection => &mut control.motion_classification,
+        Property::MoveCounter => &mut control.move_counter,
+        Property::OriginTime => &mut control.fall_timer,
+        Property::ActionTime => &mut control.jump_window,
+        Property::ArmsTime => &mut control.action_transition_counter,
+        Property::LastCollideCount => &mut control.last_collide_count,
+        Property::DisableScript => &mut control.script_control,
+        Property::AiMode => &mut control.ai_mode,
+        Property::AiDelay => &mut control.ai_delay,
         _ => return None,
     })
 }
@@ -4758,6 +4808,34 @@ impl Host for GameHost<'_, '_, '_, '_> {
 
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         let name = self.property(target, reference)?;
+        if name == Property::LastCollide {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .context("last_collide control owner unavailable")?;
+            return Ok(i32::from(control.last_collide.bits() as u8));
+        }
+        if name == Property::Sflags {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .model
+                .collision_flags
+                .map(i32::from)
+                .with_context(|| format!("property {name}: collision metadata unavailable"));
+        }
+        if name == Property::PanicGroup {
+            let index = self.property_receiver(target)?;
+            let actor = &self.registry.actors[index];
+            return Ok(i32::from(
+                actor
+                    .animation
+                    .as_ref()
+                    .map_or(actor.unprepared_animation_default, |animation| {
+                        animation.playback.default_group().index() as i16
+                    }),
+            ));
+        }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
@@ -4814,6 +4892,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(i32::from(value));
         }
+        if name == Property::UnderSurface {
+            let index = self.property_receiver(target)?;
+            let id = self.registry.id(index)?;
+            return self.registry.actor_surface(id).map(i32::from);
+        }
+        if matches!(
+            name,
+            Property::Origin | Property::OriginAccum | Property::ActionFlag | Property::Action
+        ) {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .with_context(|| format!("{name} control owner unavailable"))?;
+            return Ok(match name {
+                Property::Origin => control.fall_origin_y,
+                Property::OriginAccum => control.sliding_distance,
+                Property::ActionFlag => control.actions.pending as i32,
+                _ => control.actions.accepted as i32,
+            });
+        }
         if name == Property::TorchTimer {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -4838,7 +4937,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if matches!(
             name,
-            Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+            Property::AiType | Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -4846,6 +4945,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_ref()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             return Ok(i32::from(match name {
+                Property::AiType => control.ai_type.byte(),
                 Property::ExtraFlag => control.living_state.byte(),
                 Property::FallFlag => control.falling_state.byte(),
                 _ => control.queued_motion.byte(),
@@ -4878,6 +4978,62 @@ impl Host for GameHost<'_, '_, '_, '_> {
 
     fn write_property(&mut self, target: &Target, reference: u16, value: i32) -> Result<()> {
         let name = self.property(target, reference)?;
+        if name == Property::LastCollide {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .context("last_collide control owner unavailable")?;
+            control.last_collide = super::CollisionFlags::from_bits(
+                (control.last_collide.bits() & !255) | u32::from(value as u8),
+            );
+            return Ok(());
+        }
+        if name == Property::Sflags {
+            let index = self.property_receiver(target)?;
+            let flags = self.registry.actors[index]
+                .model
+                .collision_flags
+                .as_mut()
+                .with_context(|| format!("property {name}: collision metadata unavailable"))?;
+            *flags = value as u8;
+            return Ok(());
+        }
+        if name == Property::PanicGroup {
+            let index = self.property_receiver(target)?;
+            let actor = &mut self.registry.actors[index];
+            if let Some(animation) = actor.animation.as_mut() {
+                animation
+                    .playback
+                    .set_stored_default(AnimationGroup::from_index(value as u16));
+            } else {
+                actor.unprepared_animation_default = value as i16;
+            }
+            return Ok(());
+        }
+        if name == Property::UnderSurface {
+            let index = self.property_receiver(target)?;
+            let id = self.registry.id(index)?;
+            self.registry.actor_surface(id)?;
+            return self.registry.set_actor_surface(id, value as u8);
+        }
+        if matches!(
+            name,
+            Property::Origin | Property::OriginAccum | Property::ActionFlag | Property::Action
+        ) {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("{name} control owner unavailable"))?;
+            match name {
+                Property::Origin => control.fall_origin_y = value,
+                Property::OriginAccum => control.sliding_distance = value,
+                Property::ActionFlag => control.actions.pending = value as u32,
+                _ => control.actions.accepted = value as u32,
+            }
+            return Ok(());
+        }
         if name == Property::TorchTimer {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -4889,7 +5045,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if matches!(
             name,
-            Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+            Property::AiType | Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -4898,6 +5054,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             let byte = value as u8;
             match name {
+                Property::AiType => control.ai_type = super::AiType::from_byte(byte),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
                 _ => control.queued_motion = JumpMotion::from_byte(byte),
@@ -7359,6 +7516,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .control
                         .as_mut()
                         .map(|control| super::tasks::MotionCall {
+                            classification: &mut control.motion_classification,
                             direction: &mut control.motion_direction,
                             counters: &mut control.move_counter,
                         }),
@@ -7557,6 +7715,7 @@ mod fighting_tests {
                 location_offsets: vec![],
                 tasks: Default::default(),
                 native_commands: Default::default(),
+                unprepared_animation_default: 0,
                 animation: None,
                 animation_failure: None,
                 update_failure: None,
@@ -7706,6 +7865,7 @@ mod selector_tests {
             location_offsets: vec![],
             tasks: Default::default(),
             native_commands: Default::default(),
+            unprepared_animation_default: 0,
             animation: None,
             animation_failure: None,
             update_failure: None,
@@ -7816,3 +7976,7 @@ mod selector_tests {
         assert!(!registry.globals.player_swapped());
     }
 }
+
+#[cfg(test)]
+#[path = "registry/lunge_tests.rs"]
+mod lunge_tests;

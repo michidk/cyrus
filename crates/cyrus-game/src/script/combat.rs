@@ -644,11 +644,11 @@ pub(super) fn sheath_eligible(
         && holding
 }
 
-/// Enter the sheathing state: lifecycle byte 21, companion byte cleared, combat flag 0x04
+/// Enter the sheathing state: lifecycle byte 21, extra-time byte cleared, combat flag 0x04
 /// cleared and a 24-tick cooldown.
 pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) {
     control.living_state = LivingState::SHEATHING_SWORD;
-    control.motion_companion = 0;
+    control.extra_time = 0;
     let combat = control
         .combat
         .as_mut()
@@ -778,11 +778,16 @@ mod sheath_tests {
     fn begin_sheathing_sets_state_clears_the_combat_flag_and_starts_the_cooldown() {
         let mut control = armed();
         control.motion_companion = 9;
+        control.extra_time = 19;
         begin_sheathing(&mut control);
         let combat = control.combat.unwrap();
         assert_eq!(
-            (control.living_state, control.motion_companion),
-            (LivingState::SHEATHING_SWORD, 0)
+            (
+                control.living_state,
+                control.motion_companion,
+                control.extra_time
+            ),
+            (LivingState::SHEATHING_SWORD, 9, 0)
         );
         assert_eq!((combat.flags.bits(), combat.cooldown), (0x03, 24));
     }

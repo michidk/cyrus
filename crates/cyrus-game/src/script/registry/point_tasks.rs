@@ -7,6 +7,43 @@ use cyrus_script::Attribute;
 use cyrus_script::Native;
 
 impl PointHost for GameHost<'_, '_, '_, '_> {
+    fn goto_location(&mut self, location: i32) -> Result<i32> {
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let destination = self.receiver_location("GotoLocation", location)?;
+        self.registry.actors[self.index]
+            .control
+            .as_ref()
+            .context("GotoLocation control owner unavailable")?;
+        if self.registry.arrive_ordinary_point(id, destination)? {
+            self.registry.actors[self.index]
+                .control
+                .as_mut()
+                .expect("admitted GotoLocation control")
+                .ai_type = crate::script::AiType::NONE;
+            return Ok(0);
+        }
+        // Timing is demanded only by the nonarrival refresh, after the selector/location writes.
+        let actor = &mut self.registry.actors[self.index];
+        let control = actor
+            .control
+            .as_mut()
+            .expect("admitted GotoLocation control");
+        control.ai_type = crate::script::AiType::FIND_LOCATION;
+        control.ai_location = location as i16;
+        if control.ai_delay != 0 && control.ai_delay != 255 {
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .context("GotoLocation refresh requires nominal_ticks")?;
+            control.ai_delay = u32::from(control.ai_delay).saturating_sub(ticks) as u8;
+        }
+        actor.attributes[Attribute::Collide] = 4;
+        Ok(i32::from(control.ai_location != -1))
+    }
+
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
         self.registry
             .offset_selected_player(self.index, offset, true)

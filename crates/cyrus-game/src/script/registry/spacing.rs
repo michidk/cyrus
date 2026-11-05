@@ -569,6 +569,8 @@ impl ScriptWorld {
     /// Query the forward Q8 amount without translating. This requests animation,
     /// marks the shared forward-called flag and advances the actual startup
     /// counter. Translation suppression returns the adjusted unscaled amount.
+    /// Classification becomes running after support admission, before animation
+    /// validation or dispatch; a later refusal or callback failure keeps that write.
     /// A following movement invocation must read the resulting live state.
     pub fn ordinary_forward_amount(
         &mut self,
@@ -628,8 +630,13 @@ impl ScriptWorld {
             };
             let step = actor.attributes[attribute];
             let adjustment = actor.attributes[Attribute::StepType];
+            self.actors[index]
+                .control
+                .as_mut()
+                .context("forward amount control unavailable")?
+                .motion_classification = 2;
             ensure!(
-                actor
+                self.actors[index]
                     .animation
                     .as_ref()
                     .context("forward amount animation unavailable")?
@@ -761,7 +768,7 @@ impl ScriptWorld {
     /// only when its movement was not called this update and the current animation group is one
     /// of the continuing groups. It requests no group, so an idle request made earlier in the
     /// update stays pending until the playing group finishes, and the actor keeps moving until
-    /// then (preservation SOUP.md, movement continuation). The walk, walk-backward and sidestep
+    /// then (preservation SOUP.md, movement continuation). The Circle, walk, walk-backward and sidestep
     /// steps, and any step of a swimming actor, need the ordinary collision geometry for their
     /// step check or edge probe and make no step without it. The sliding and ledge variants are
     /// not continued (#52).
@@ -825,6 +832,37 @@ impl ScriptWorld {
                     .context("movement continuation control unavailable")?
                     .motion_direction = step.direction();
             }
+            // Sidesteps always retain classification on refusal; deep walking stores after its edge check.
+            if matches!(step, Continuation::Sidestep(_))
+                || (!deep && matches!(step, Continuation::Walk | Continuation::WalkBackward))
+            {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("movement continuation control unavailable")?
+                    .motion_classification = step.direction();
+            }
+            if deep && matches!(step, Continuation::Walk | Continuation::WalkBackward) {
+                let Some(geometry) = inputs.locomotion_geometry else {
+                    return Ok(());
+                };
+                if !self.edge_probe_clear(id, step.direction(), geometry.ground.scene)? {
+                    return Ok(());
+                }
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("movement continuation control unavailable")?
+                    .motion_classification = step.direction();
+            }
+            if deep && matches!(step, Continuation::Sidestep(_)) {
+                let Some(geometry) = inputs.locomotion_geometry else {
+                    return Ok(());
+                };
+                if !self.edge_probe_clear(id, step.direction(), geometry.ground.scene)? {
+                    return Ok(());
+                }
+            }
             match step {
                 Continuation::Forward => {
                     if (counters >> 4) & 3 < 3
@@ -843,8 +881,29 @@ impl ScriptWorld {
                         return Ok(());
                     }
                 }
-                // Combat circling runs no lateral step check, as its native does not.
-                Continuation::Circle(_) => {}
+                Continuation::Circle(strafe) => {
+                    let Some(geometry) = inputs.locomotion_geometry else {
+                        return Ok(());
+                    };
+                    let direction = match strafe {
+                        Strafe::Left => StepDirection::Left,
+                        Strafe::Right => StepDirection::Right,
+                    };
+                    if !self.ordinary_step_clear(
+                        id,
+                        direction,
+                        geometry.ground,
+                        geometry.environment,
+                        sounds,
+                    )? {
+                        return Ok(());
+                    }
+                    self.actors[index]
+                        .control
+                        .as_mut()
+                        .context("movement continuation control unavailable")?
+                        .motion_classification = step.direction();
+                }
                 Continuation::Walk | Continuation::WalkBackward | Continuation::Sidestep(_) => {
                     let Some(geometry) = inputs.locomotion_geometry else {
                         return Ok(());
@@ -866,8 +925,15 @@ impl ScriptWorld {
                     }
                 }
             }
-            if deep {
-                // A swimming actor also needs the terrain edge probe along its motion direction.
+            if matches!(step, Continuation::Forward | Continuation::Backward) {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .context("movement continuation control unavailable")?
+                    .motion_classification = step.direction();
+            }
+            if deep && matches!(step, Continuation::Forward | Continuation::Backward) {
+                // Walking and sidesteps already checked the edge; circling needs only lateral admission.
                 let Some(geometry) = inputs.locomotion_geometry else {
                     return Ok(());
                 };

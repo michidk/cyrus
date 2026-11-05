@@ -18,6 +18,9 @@ pub struct QuickKeys {
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScriptKeys {
     pub letters: u32,
+    /// Latest mapped ASCII letter received after the current frame's event clear.
+    /// Callers own event timing; a held-key sample alone supplies no event.
+    pub latest_letter: Option<u8>,
     pub shift: bool,
     pub control: bool,
     pub alt: bool,
@@ -31,7 +34,7 @@ pub struct ScriptKeys {
 }
 
 impl ScriptKeys {
-    /// `InKey`'s test: the key of an ASCII letter or digit code (either case) is down and every
+    /// `InKey` accepts a held or latest-event ASCII letter (either case) when every
     /// modifier named by the higher code bytes (`s`, `c`, `a`, either case) is held. `None` for
     /// a character without a recovered scan code.
     pub fn in_key(&self, code: u32) -> Option<bool> {
@@ -52,7 +55,11 @@ impl ScriptKeys {
         if (control && !self.control) || (shift && !self.shift) || (alt && !self.alt) {
             return Some(false);
         }
-        Some(self.letters >> letter & 1 != 0)
+        Some(
+            self.letters >> letter & 1 != 0
+                || self.latest_letter.map(|key| key.to_ascii_lowercase())
+                    == Some(key.to_ascii_lowercase()),
+        )
     }
 }
 
@@ -117,6 +124,7 @@ pub(super) fn sample(
             .enumerate()
             .filter(|(_, key)| keys.pressed(**key))
             .fold(0, |mask, (index, _)| mask | 1 << index),
+        latest_letter: None,
         shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
         control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
         alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),

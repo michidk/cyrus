@@ -282,6 +282,7 @@ impl Task {
             Self::Projectile => (Native::ProjectileAI, 0, None),
             Self::MoveMarker => (Native::MoveMarker, 2, None),
             Self::MoveLocation => (Native::MoveLocation, 2, None),
+            Self::GotoLocation => (Native::GotoLocation, 1, Some(CallKind::Task)),
             Self::MovePosition => (Native::MovePosition, 4, None),
             Self::MoveNodeMarker => (Native::MoveNodeMarker, 2, None),
             Self::MoveNodeLocation => (Native::MoveNodeLocation, 2, None),

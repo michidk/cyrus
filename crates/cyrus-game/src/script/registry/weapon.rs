@@ -297,7 +297,7 @@ impl<'a> CombatReceiver<'a> {
             LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
         ) {
             control.living_state = LivingState::ORDINARY;
-            control.motion_companion = 0;
+            control.extra_time = 0;
         }
         if control.weapon_drawn {
             control.weapon_drawn = false;
@@ -717,6 +717,7 @@ mod tests {
             location_offsets: vec![],
             tasks: Default::default(),
             native_commands: Default::default(),
+            unprepared_animation_default: 0,
             animation: Some(ScriptAnimation {
                 playback: cyrus_world::animation::ActorAnimation::from_asset(
                     &data,
@@ -1129,14 +1130,7 @@ mod tests {
             receiver.cleanup(id, 0, &mut |_, _| Ok(())).unwrap();
             let control = receiver.actor.control.as_ref().unwrap();
             assert_eq!(control.motion_direction, 3);
-            assert_eq!(
-                control.motion_companion,
-                if expected == LivingState::DRAWING_SWORD {
-                    0
-                } else {
-                    9
-                }
-            );
+            assert_eq!(control.motion_companion, 9);
         }
     }
 }

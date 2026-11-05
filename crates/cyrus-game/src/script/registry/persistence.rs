@@ -13,8 +13,14 @@ struct ControlSnapshot {
     script_control: u8,
     death_selector: u8,
     death_response: u8,
+    #[serde(default)]
+    ai_delay: u8,
+    #[serde(default)]
+    ai_location: i16,
     living_state: LivingState,
     motion_companion: u8,
+    #[serde(default)]
+    extra_time: u8,
     sliding_state: u8,
     falling_state: JumpMotion,
     queued_motion: JumpMotion,
@@ -98,8 +104,11 @@ impl ControlSnapshot {
             script_control: control.script_control,
             death_selector: control.ai_type.byte(),
             death_response: control.ai_mode,
+            ai_delay: control.ai_delay,
+            ai_location: control.ai_location,
             living_state: control.living_state,
             motion_companion: control.motion_companion,
+            extra_time: control.extra_time,
             sliding_state: control.sliding_state,
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
@@ -160,8 +169,11 @@ impl ControlSnapshot {
             script_control: self.script_control,
             ai_type: crate::script::AiType::from_byte(self.death_selector),
             ai_mode: self.death_response,
+            ai_delay: self.ai_delay,
+            ai_location: self.ai_location,
             living_state: self.living_state,
             motion_companion: self.motion_companion,
+            extra_time: self.extra_time,
             sliding_state: self.sliding_state,
             falling_state: self.falling_state,
             queued_motion: self.queued_motion,
@@ -340,6 +352,9 @@ struct ActorSnapshot {
     flat: Option<super::flat::FlatState>,
     tasks: super::super::NativeTasksSnapshot,
     native_commands: [super::super::tasks::NativeTaskCommandState; 6],
+
+    #[serde(default)]
+    unprepared_animation_default: i16,
     animation: Option<AnimationSnapshot>,
     animation_failure: Option<String>,
     update_failure: Option<String>,
@@ -399,6 +414,7 @@ impl ActorSnapshot {
                 .map(player::PlayerMovement::snapshot),
             tasks: actor.tasks.snapshot(),
             native_commands: actor.native_commands,
+            unprepared_animation_default: actor.unprepared_animation_default,
             animation: actor.animation.as_ref().map(|animation| AnimationSnapshot {
                 playback: animation.playback.snapshot(),
                 frame: animation.frame,
@@ -586,6 +602,7 @@ impl ActorSnapshot {
             .player_movement
             .map(player::PlayerMovement::from_snapshot)
             .transpose()?;
+        actor.unprepared_animation_default = self.unprepared_animation_default;
         actor.animation = animation;
         actor.animation_failure = self.animation_failure;
         actor.update_failure = self.update_failure;

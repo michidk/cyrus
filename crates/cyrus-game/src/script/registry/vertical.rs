@@ -269,7 +269,6 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated ordinary queued control");
         control.fall_timer = after.timer;
-        control.queued_motion = after.queued;
         control.falling_state = after.falling;
         if force && animated && self.updates.animation_system {
             let surface = actor.surface;
@@ -307,6 +306,11 @@ impl ScriptWorld {
                 }
             }
         }
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated ordinary queued control")
+            .queued_motion = after.queued;
         Ok(())
     }
 

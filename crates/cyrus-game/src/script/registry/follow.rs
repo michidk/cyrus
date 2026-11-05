@@ -239,18 +239,21 @@ impl ScriptWorld {
 impl super::ActorControlState {
     /// Advance the retained action counter before ordinary animation work.
     /// Preservation's SOUP action-counter rule uses signed bytes and wrapping
-    /// tick subtraction. Living state does not participate in early clearing.
+    /// tick subtraction. Early clearing tests the complete queued/falling bytes;
+    /// admitted updates clear their raised-arms bits before subtraction.
     pub(super) fn advance_action_transition_counter(&mut self, ticks: u32) {
         if self.action_transition_counter == 0 {
             return;
         }
-        if self.actions.iter().any(|word| word & 255 == 0)
+        if (self.queued_motion == crate::script::JumpMotion::NONE
+            || self.falling_state == crate::script::JumpMotion::NONE)
             && (self.action_transition_counter as i8) < 3
         {
             self.action_transition_counter = 0;
             return;
         }
-        self.actions.iter_mut().for_each(|word| *word &= !128);
+        self.queued_motion = self.queued_motion.with_arms_raised(false);
+        self.falling_state = self.falling_state.with_arms_raised(false);
         let remaining = self.action_transition_counter.wrapping_sub(ticks as u8) as i8;
         self.action_transition_counter = remaining.max(0) as u8;
     }
@@ -261,29 +264,34 @@ mod tests {
     use super::super::ActorControlState;
 
     #[test]
-    fn action_counter_preserves_direction_edges_and_signed_byte_timing() {
-        for (counter, directions, ticks, expected_counter, expected_directions) in [
-            (0, [128, 255], 1, 0, [128, 255]),
-            (2, [0, 255], 0, 0, [0, 255]),
-            (2, [128, 255], 1, 1, [0, 127]),
-            (6, [0, 255], 2, 4, [0, 127]),
-            (3, [1, 1], 6, 0, [1, 1]),
-            (1, [1, 1], 255, 2, [1, 1]),
-            (255, [0, 255], 1, 0, [0, 255]),
-            (6, [128, 255], 258, 4, [0, 127]),
+    fn action_counter_preserves_zero_and_early_clear_motion_bytes() {
+        use crate::script::JumpMotion;
+        for (counter, queued, falling, ticks, remaining, next_queued, next_falling) in [
+            (0, 129, 128, 1, 0, 129, 128),
+            (2, 0, 129, 0, 0, 0, 129),
+            (2, 129, 128, 1, 1, 1, 0),
+            (6, 0, 129, 2, 4, 0, 1),
+            (3, 129, 129, 6, 0, 1, 1),
+            (1, 129, 129, 255, 2, 1, 1),
+            (255, 0, 129, 1, 0, 0, 129),
+            (6, 129, 129, 258, 4, 1, 1),
         ] {
             for living_state in
                 [0, 9, 10, 15, 17, 19, 20, 255].map(crate::script::LivingState::from_byte)
             {
                 let mut control = ActorControlState {
                     living_state,
-                    actions: directions.into(),
+                    queued_motion: JumpMotion::from_byte(queued),
+                    falling_state: JumpMotion::from_byte(falling),
+                    actions: [128, 255].into(),
                     action_transition_counter: counter,
                     ..Default::default()
                 };
                 control.advance_action_transition_counter(ticks);
-                assert_eq!(control.action_transition_counter, expected_counter);
-                assert_eq!(<[u32; 2]>::from(control.actions), expected_directions);
+                assert_eq!(control.action_transition_counter, remaining);
+                assert_eq!(control.queued_motion.byte(), next_queued);
+                assert_eq!(control.falling_state.byte(), next_falling);
+                assert_eq!(control.actions, [128, 255]);
                 assert_eq!(control.living_state, living_state);
             }
         }

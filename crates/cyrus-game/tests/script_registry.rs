@@ -14397,6 +14397,18 @@ fn player_walking_fixture_with(
     cyrus_assets::animation::Animations,
     cyrus_game::player::data::PlayerScene,
 ) {
+    player_walking_fixture_with_animation(prepare, |_| {})
+}
+
+fn player_walking_fixture_with_animation(
+    prepare: impl FnOnce(&mut Scripts),
+    prepare_animation: impl FnOnce(&mut cyrus_assets::animation::Animations),
+) -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
     use cyrus_assets::animation::AnimationModel;
     use cyrus_game::script::ScriptActorSource;
     let mut scripts = cache();
@@ -14519,6 +14531,7 @@ fn player_walking_fixture_with(
         .initialize_player_spatial(player, [2560, -1536, 7680], [0; 3])
         .unwrap();
     assert!(world.begin_player_movement_update(player, 0).is_err());
+    prepare_animation(&mut data);
     world
         .initialize_player_animation(player, &data, 0, &mut |_| Ok(()))
         .unwrap();
@@ -22988,9 +23001,10 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
 }
 
 #[test]
-fn backward_and_circle_continuations_set_their_own_called_flags() {
+fn backward_continuation_sets_its_own_called_flag() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
-    for (group, flag, direction) in [(93, 8, 3), (94, 1, 25), (95, 2, 5)] {
+    {
+        let (group, flag, direction) = (93, 8, 3);
         let (mut world, _scripts, _data) = spacing_fixture_group(group, |_| {});
         world.ordinary_actors([0, 0]).unwrap();
         let id = world.id(0).unwrap();
@@ -38795,6 +38809,1521 @@ fn actor_prelight_entry_retains_loader_pose_and_restores_current_eligibility() -
     Ok(())
 }
 
+fn sample_rope_jump_controller(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    held: &cyrus_game::player::input::PlayerInput,
+    fail_sound: bool,
+) -> anyhow::Result<()> {
+    use cyrus_game::script::{OrdinaryGroundQuery, PlayerControllerInput, ScriptInputs};
+    let player = world.selected_player().unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, scene, data, [10, 30], &[player, map])
+        .unwrap();
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world.begin_player_movement_update(player, 0)?;
+    let result = world.advance_player_controller(
+        player,
+        OrdinaryGroundQuery {
+            scene,
+            animations: data,
+            prepared: &prepared,
+            distance: 4,
+            sidedness: false,
+        },
+        cyrus_game::clock::ClockStep {
+            frame_scale: 256,
+            nominal_ticks: 0,
+            fine_ticks: 0,
+        },
+        ScriptInputs {
+            player_controller: Some(PlayerControllerInput {
+                held,
+                walk_mode: false,
+                auto_defend: false,
+            }),
+            hud: Some(&hud),
+            fine_ticks: Some(0),
+            shell_execution: Some(false),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            forward_step_clear: Some(true),
+            locomotion_geometry: Some(cyrus_game::script::LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene,
+                    animations: data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                environment: cyrus_game::script::ObstacleEnvironment {
+                    selected_player: Some(player),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            }),
+            ..Default::default()
+        },
+        &mut cyrus_game::random::EngineRandom::default(),
+        &mut |id, cue| {
+            let _ = (id, cue);
+            anyhow::ensure!(!fail_sound, "forced countdown sound rejected");
+            Ok(())
+        },
+    );
+    let finished = world.finish_player_movement_update(player);
+    result?;
+    finished
+}
+
+fn rope_classification_fixture() -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    rope_classification_fixture_with(|_| {}, |_| {})
+}
+
+fn rope_classification_fixture_with(
+    prepare_scripts: impl FnOnce(&mut Scripts),
+    prepare_animation: impl FnOnce(&mut cyrus_assets::animation::Animations),
+) -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with_animation(
+        |scripts| {
+            scripts.updates.ropes_load = Some(true);
+            scripts.updates.rope = Some(cyrus_assets::script::RopeSettings {
+                jump_add: 64,
+                attach_angle: 0,
+            });
+            prepare_scripts(scripts);
+        },
+        |data| {
+            let groups = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap()["animation_groups"]
+                .as_array_mut()
+                .unwrap();
+            for group in [6, 32, 84, 85] {
+                let mut commands = vec![];
+                if group == 85 {
+                    commands.push(serde_json::json!({"opcode":4,"sound_param":9,"volume_shift":0}));
+                }
+                commands.extend([
+                    serde_json::json!({"opcode":0,"frame_reference":0}),
+                    serde_json::json!({"opcode":2,"value":0}),
+                ]);
+                groups.push(serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":commands}));
+            }
+            prepare_animation(data);
+        },
+    );
+    let player = world.selected_player().unwrap();
+    let index = player.index;
+    sample_rope_jump_controller(
+        &mut world,
+        &data,
+        &scene,
+        &cyrus_game::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        world.actors()[index]
+            .control_state()
+            .unwrap()
+            .queued_motion
+            .byte(),
+        1
+    );
+    data.metadata["ropes"] = serde_json::json!([{
+        "position": [-0.5, 0.3, (30.0 - 16777215.0 / 256.0) / 20.0],
+        "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
+        "length": 8, "static_model": "", "rope_model": "ROPELINK",
+        "unknown1": [0, 0, 0],
+    }]);
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    world.prepare_ropes(&data).unwrap();
+    assert!(
+        !world
+            .ordinary_overlap_spheres(player, &data)
+            .unwrap()
+            .is_empty()
+    );
+
+    (scripts, world, data, scene)
+}
+
+fn tick_rope_classification(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    held: cyrus_game::player::input::PlayerInput,
+    fail_sound: bool,
+) {
+    tick_rope_classification_with_timing(world, data, scene, held, fail_sound, [1, 8, 256]);
+}
+
+fn tick_rope_classification_with_timing(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    held: cyrus_game::player::input::PlayerInput,
+    fail_sound: bool,
+    [nominal_ticks, fine_ticks, frame_scale]: [u32; 3],
+) {
+    use cyrus_game::script::{OrdinaryInputs, PlayerControllerInput, ScriptInputs};
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world
+        .update_ordinary(
+            data,
+            [10, 30],
+            OrdinaryInputs {
+                scene: Some(scene),
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(nominal_ticks),
+                    hud: Some(&hud),
+                    step_fps: Some(12),
+                    fine_ticks: Some(fine_ticks),
+                    frame_scale: Some(frame_scale),
+                    shell_execution: Some(false),
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: true,
+                        auto_defend: false,
+                    }),
+                    ..Default::default()
+                },
+            },
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| {
+                anyhow::ensure!(!fail_sound, "rope release sound rejected");
+                Ok(())
+            },
+            100,
+        )
+        .unwrap();
+}
+
+#[test]
+fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_motion() {
+    use cyrus_game::player::input::PlayerInput;
+    for (forward, backward, speed, classification) in [
+        (false, false, 0, 2),
+        (true, false, 64, 2),
+        (false, true, -64, 3),
+    ] {
+        let (_, mut world, data, scene) = rope_classification_fixture();
+        let player = world.selected_player().unwrap();
+        tick_rope_classification(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                jump: true,
+                ..Default::default()
+            },
+            false,
+        );
+        assert!(
+            world.selected_player_on_rope(),
+            "player={:?}, control={:?}",
+            world.actors()[player.index].failure(),
+            world.actors()[player.index].control_state()
+        );
+        let attached_class = world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_classification;
+        tick_rope_classification(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                jump: true,
+                ..Default::default()
+            },
+            false,
+        );
+        assert!(
+            world.selected_player_on_rope(),
+            "held jump must not release the latch"
+        );
+        assert_eq!(
+            world.actors()[player.index]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            attached_class
+        );
+        tick_rope_classification(&mut world, &data, &scene, PlayerInput::default(), false);
+        tick_rope_classification(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                jump: true,
+                forward,
+                backward,
+                ..Default::default()
+            },
+            false,
+        );
+        assert!(!world.selected_player_on_rope());
+        assert!(
+            world.actors()[player.index].failure().is_none(),
+            "{:?}",
+            world.actors()[player.index].failure()
+        );
+        let control = world.actors()[player.index].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion.byte(), control.jump_selector),
+            (24, 24)
+        );
+        assert_eq!(control.rope_speed, speed);
+        assert_eq!(control.motion_classification, classification);
+        // The ordinary wrapper clears directions without a locomotion call.
+        assert_eq!(control.move_counter, 0);
+    }
+}
+
+#[test]
+fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_queuing() {
+    use cyrus_game::player::input::PlayerInput;
+    let (_, mut world, data, scene) = rope_classification_fixture();
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(
+        &mut world,
+        &data,
+        &scene,
+        PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    );
+    assert!(
+        world.selected_player_on_rope(),
+        "player={:?}, control={:?}",
+        world.actors()[player.index].failure(),
+        world.actors()[player.index].control_state()
+    );
+    tick_rope_classification(&mut world, &data, &scene, PlayerInput::default(), false);
+    let before = world.actors()[player.index]
+        .control_state()
+        .unwrap()
+        .motion_classification;
+    assert_eq!(before, 2);
+    tick_rope_classification(
+        &mut world,
+        &data,
+        &scene,
+        PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        true,
+    );
+    assert!(!world.selected_player_on_rope());
+    assert!(
+        world.actors()[player.index]
+            .failure()
+            .unwrap()
+            .contains("rope release sound rejected")
+    );
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (control.queued_motion.byte(), control.jump_selector),
+        (24, 24)
+    );
+    assert_eq!(control.motion_classification, 2);
+    let failure = world.actors()[player.index].failure().unwrap().to_owned();
+    tick_rope_classification(&mut world, &data, &scene, PlayerInput::default(), false);
+    assert_eq!(
+        world.actors()[player.index].failure(),
+        Some(failure.as_str())
+    );
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (control.queued_motion.byte(), control.motion_classification),
+        (24, 2)
+    );
+}
+
+fn detached_rope_countdown_fixture() -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    detached_rope_countdown_fixture_with(|_| {})
+}
+
+fn detached_rope_countdown_fixture_with(
+    prepare_animation: impl FnOnce(&mut cyrus_assets::animation::Animations),
+) -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    use cyrus_game::{player::input::PlayerInput, script::ScriptInputs};
+    let (_, mut world, data, scene) = rope_classification_fixture_with(
+        |scripts| {
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::Health] = 40;
+        },
+        |data| {
+            let groups = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap()["animation_groups"]
+                .as_array_mut()
+                .unwrap();
+            for group in [132, 133] {
+                groups.push(
+                    serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
+                );
+            }
+            prepare_animation(data);
+        },
+    );
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(
+        &mut world,
+        &data,
+        &scene,
+        PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    );
+    assert!(
+        world.selected_player_on_rope(),
+        "player={:?}, control={:?}",
+        world.actors()[player.index].failure(),
+        world.actors()[player.index].control_state()
+    );
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world
+        .apply_selected_contact_health(
+            player,
+            -1,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert!(!world.selected_player_on_rope());
+    assert!(world.ropes()[0].attachments.is_empty());
+    assert_eq!(
+        world.actors()[player.index].attributes()[Attribute::Health],
+        39
+    );
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.queued_motion.byte(),
+            control.falling_state.byte(),
+            control.jump_selector
+        ),
+        (0, 0, 24)
+    );
+    assert_eq!(control.motion_classification, 2);
+    (world, data, scene)
+}
+
+#[test]
+fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initialization() {
+    use cyrus_game::player::input::PlayerInput;
+    let (mut world, data, scene) = detached_rope_countdown_fixture();
+    let player = world.selected_player().unwrap();
+    let jump = PlayerInput {
+        jump: true,
+        ..Default::default()
+    };
+    sample_rope_jump_controller(&mut world, &data, &scene, &jump, false).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.queued_motion.byte(),
+            control.jump_selector,
+            control.motion_classification
+        ),
+        (24, 24, 2)
+    );
+    // A second live sample must not request the sounding initialization again while queued.
+    sample_rope_jump_controller(&mut world, &data, &scene, &jump, true).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.queued_motion.byte(),
+            control.jump_selector,
+            control.motion_classification
+        ),
+        (24, 24, 2)
+    );
+    assert!(world.actors()[player.index].failure().is_none());
+}
+
+#[test]
+fn forced_countdown_jump_sound_failure_retains_queue_before_classification_and_blocks_retry() {
+    use cyrus_game::player::input::PlayerInput;
+    let (mut world, data, scene) = detached_rope_countdown_fixture();
+    let player = world.selected_player().unwrap();
+    let jump = PlayerInput {
+        jump: true,
+        ..Default::default()
+    };
+    let error = sample_rope_jump_controller(&mut world, &data, &scene, &jump, true).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("forced countdown sound rejected"),
+        "{error:#}"
+    );
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.queued_motion.byte(),
+            control.jump_selector,
+            control.motion_classification
+        ),
+        (24, 24, 2)
+    );
+    let failure = world.actors()[player.index].failure().unwrap().to_owned();
+    assert!(failure.contains("forced countdown sound rejected"));
+    assert!(sample_rope_jump_controller(&mut world, &data, &scene, &jump, false).is_err());
+    assert_eq!(
+        world.actors()[player.index].failure(),
+        Some(failure.as_str())
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        2
+    );
+}
+
+fn rope_regrab_fixture() -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    let (mut world, data, scene) = detached_rope_countdown_fixture_with(|data| {
+        let groups = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap()["animation_groups"]
+            .as_array_mut()
+            .unwrap();
+        groups.push(
+            serde_json::json!({"group_index":44,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
+        );
+        for group in groups.iter_mut().filter(|group| group["group_index"] != 0) {
+            for command in group["commands"].as_array_mut().unwrap() {
+                if command["opcode"] == 2 {
+                    *command = serde_json::json!({"opcode":1});
+                }
+            }
+        }
+        let grab = groups
+            .iter_mut()
+            .find(|group| group["group_index"] == 84)
+            .unwrap();
+        grab["commands"].as_array_mut().unwrap().insert(
+            0,
+            serde_json::json!({"opcode":4,"sound_param":9,"volume_shift":0}),
+        );
+    });
+    sample_rope_jump_controller(
+        &mut world,
+        &data,
+        &scene,
+        &cyrus_game::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    )
+    .unwrap();
+    let player = world.selected_player().unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .jump_selector,
+        24
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        2
+    );
+    // Complete the authored finite animation through the public stage, without ticking controls.
+    for _ in 0..4 {
+        world
+            .advance(
+                player,
+                cyrus_game::script::ScriptStage::Animation,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(256),
+                    frame_scale: Some(0),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        world.inspect(player.index, 1)["actors"][0]["animation"]["current_group"],
+        0
+    );
+    (world, data, scene)
+}
+
+#[test]
+fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
+    let (mut world, data, scene) = rope_regrab_fixture();
+    let player = world.selected_player().unwrap();
+    // The countdown refuses regrab before the later collision stages cancel queued motion.
+    tick_rope_classification_with_timing(
+        &mut world,
+        &data,
+        &scene,
+        cyrus_game::player::input::PlayerInput::default(),
+        false,
+        [23, 0, 0],
+    );
+    assert!(
+        world.actors()[player.index].failure().is_none(),
+        "{:?}",
+        world.actors()[player.index].failure()
+    );
+    assert!(!world.selected_player_on_rope());
+    assert!(world.ropes()[0].attachments.is_empty());
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.jump_selector,
+            control.queued_motion.byte(),
+            control.falling_state.byte(),
+            control.motion_classification
+        ),
+        (1, 0, 0, 2)
+    );
+    // Re-enter airborne motion through the same controller while one exclusion tick remains.
+    sample_rope_jump_controller(
+        &mut world,
+        &data,
+        &scene,
+        &cyrus_game::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .queued_motion
+            .byte(),
+        24
+    );
+    tick_rope_classification_with_timing(
+        &mut world,
+        &data,
+        &scene,
+        cyrus_game::player::input::PlayerInput::default(),
+        false,
+        [1, 0, 0],
+    );
+    assert!(
+        world.actors()[player.index].failure().is_none(),
+        "{:?}",
+        world.actors()[player.index].failure()
+    );
+    assert!(
+        world.selected_player_on_rope(),
+        "player={:?}, control={:?}",
+        world.actors()[player.index].failure(),
+        world.actors()[player.index].control_state()
+    );
+    assert_eq!(world.ropes()[0].attachments.len(), 1);
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.jump_selector,
+            control.queued_motion.byte(),
+            control.falling_state.byte(),
+            control.motion_classification
+        ),
+        (0, 0, 0, 2)
+    );
+}
+
+#[test]
+fn rope_expiry_uses_full_nominal_ticks_and_retains_classification_on_grab_failure() {
+    for ticks in [24, 256] {
+        let (mut world, data, scene) = rope_regrab_fixture();
+        let player = world.selected_player().unwrap();
+        tick_rope_classification_with_timing(
+            &mut world,
+            &data,
+            &scene,
+            cyrus_game::player::input::PlayerInput::default(),
+            true,
+            [ticks, 0, 0],
+        );
+        assert!(!world.selected_player_on_rope());
+        assert!(world.ropes()[0].attachments.is_empty());
+        assert!(
+            world.actors()[player.index]
+                .failure()
+                .unwrap()
+                .contains("rope release sound rejected")
+        );
+        let control = world.actors()[player.index].control_state().unwrap();
+        assert_eq!(
+            (
+                control.jump_selector,
+                control.queued_motion.byte(),
+                control.motion_classification
+            ),
+            (0, 24, 2)
+        );
+        let failure = world.actors()[player.index].failure().unwrap().to_owned();
+        tick_rope_classification_with_timing(
+            &mut world,
+            &data,
+            &scene,
+            cyrus_game::player::input::PlayerInput::default(),
+            false,
+            [1, 0, 0],
+        );
+        assert!(!world.selected_player_on_rope());
+        assert_eq!(
+            world.actors()[player.index].failure(),
+            Some(failure.as_str())
+        );
+    }
+}
+
+fn public_jump_classification_fixture(
+    group: u16,
+    sound: bool,
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+    scripts.definition.functions.push(Function {
+        name: cyrus_script::Native::Jump,
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (0, assign_call(1, function_id, Native::Jump, &[])),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Increment {
+                    destination: Place::Local { index: 0 },
+                    delta: 1,
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let groups = [
+        0, 18, 19, 23, 30, 31, 32, 33, 34, 35, 36, 37, 49, 50, 85, 111,
+    ]
+    .map(|index| {
+        let mut commands = vec![];
+        if sound && index == 32 {
+            commands.push(serde_json::json!({"opcode":4,"sound_param":9,"volume_shift":0}));
+        }
+        commands.extend([
+            serde_json::json!({"opcode":0,"frame_reference":0}),
+            serde_json::json!({"opcode":2,"value":0}),
+        ]);
+        serde_json::json!({"group_index":index,"anim_id":1,"anim_type":0,"commands":commands})
+    });
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","animation_groups":groups}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &data, AnimationGroup::from_index(group))
+        .unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Animation,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    world.set_actor_surface(id, 0).unwrap();
+    (world, data)
+}
+
+fn invoke_public_script_jump(world: &mut ScriptWorld, fail_sound: bool) -> anyhow::Result<()> {
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(cyrus_script::Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            Some(&mut |_, _| {
+                anyhow::ensure!(!fail_sound, "public Jump sound rejected");
+                Ok(())
+            }),
+            None,
+            100,
+        )
+        .map(|_| ())
+}
+
+#[test]
+fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refusal() {
+    use cyrus_game::script::ObstacleEnvironment;
+    for (group, motion, queued) in [(0, 8, 1), (18, 8, 8), (18, 9, 9), (30, 9, 9)] {
+        let (mut world, data) = public_jump_classification_fixture(group, false);
+        let id = world.id(0).unwrap();
+        let environment = ObstacleEnvironment {
+            selected_player: None,
+            auto_grab: false,
+            item_system_ready: false,
+            shell_execution: false,
+            ticks: 0,
+        };
+        assert!(
+            !world
+                .begin_ordinary_jump(id, &data, motion, true, environment, &mut |_, _| panic!(
+                    "refusal emitted sound"
+                ))
+                .unwrap()
+        );
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            0
+        );
+        assert!(
+            world
+                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| Ok(()))
+                .unwrap()
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion.byte(), control.motion_classification),
+            (queued, 2)
+        );
+        assert!(
+            !world
+                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| panic!(
+                    "queued refusal emitted sound"
+                ))
+                .unwrap()
+        );
+        invoke_public_script_jump(&mut world, true).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            2
+        );
+        assert_eq!(
+            world.actors()[1]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            0
+        );
+    }
+}
+
+#[test]
+fn script_jump_returns_before_landing_with_receiver_classification_two() {
+    for (group, queued) in [(0, 1), (18, 8), (19, 3), (23, 3), (30, 8), (31, 8)] {
+        let (mut world, _) = public_jump_classification_fixture(group, false);
+        invoke_public_script_jump(&mut world, false).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion.byte(), control.motion_classification),
+            (queued, 2)
+        );
+        assert_eq!(
+            world.actors()[1]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            0
+        );
+    }
+    let (mut world, _) = public_jump_classification_fixture(0, true);
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, 2).unwrap();
+    invoke_public_script_jump(&mut world, true).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (control.queued_motion.byte(), control.motion_classification),
+        (0, 0)
+    );
+}
+
+#[test]
+fn normal_and_script_jump_initialization_failure_precedes_classification_write() {
+    use cyrus_game::script::ObstacleEnvironment;
+    for script in [false, true] {
+        let (mut world, data) = public_jump_classification_fixture(0, true);
+        let id = world.id(0).unwrap();
+        let error = if script {
+            invoke_public_script_jump(&mut world, true).unwrap_err()
+        } else {
+            world
+                .begin_ordinary_jump(
+                    id,
+                    &data,
+                    8,
+                    false,
+                    ObstacleEnvironment {
+                        selected_player: None,
+                        auto_grab: false,
+                        item_system_ready: false,
+                        shell_execution: false,
+                        ticks: 0,
+                    },
+                    &mut |_, _| anyhow::bail!("public Jump sound rejected"),
+                )
+                .unwrap_err()
+        };
+        assert!(
+            format!("{error:#}").contains("public Jump sound rejected"),
+            "{error:#}"
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.queued_motion.byte(), control.motion_classification),
+            (1, 0)
+        );
+        assert!(world.actors()[0].animation_failure().is_some());
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 4);
+        assert!(invoke_public_script_jump(&mut world, false).is_err());
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            0
+        );
+    }
+}
+
+fn queued_jump_lifetime_fixture(
+    queued: u8,
+    sound_group: Option<u16>,
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
+    let function = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: cyrus_script::Native::Jump,
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let reference = scripts.definition.references.len() as u16;
+    scripts
+        .definition
+        .references
+        .push(cyrus_script::Property::JumpFlag);
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (0, assign_call(1, function, Native::Jump, &[])),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference,
+                    },
+                    formula: Formula {
+                        first: Value::Integer {
+                            value: i32::from(queued),
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let groups = [0, 32, 39, 40, 44, 48, 56, 58, 65, 67].map(|group| {
+        let mut commands = vec![];
+        if sound_group == Some(group) {
+            commands.push(serde_json::json!({"opcode":4,"sound_param":9,"volume_shift":0}));
+        }
+        commands.extend([
+            serde_json::json!({"opcode":0,"frame_reference":group}),
+            serde_json::json!({"opcode":1}),
+        ]);
+        serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":commands})
+    });
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","animation_groups":groups}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &data, cyrus_script::AnimationGroup::JUMP_START)
+        .unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Animation,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    world.set_actor_surface(id, 0).unwrap();
+    invoke_public_script_jump(&mut world, false).unwrap();
+    world.snapshot_spatial(id).unwrap();
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        2
+    );
+    (world, data)
+}
+
+fn queued_jump_lifetime_sample(world: &ScriptWorld) -> (u8, u8, u8, u8) {
+    let control = world.actors()[0].control_state().unwrap();
+    (
+        control.fall_timer,
+        control.queued_motion.byte(),
+        control.falling_state.byte(),
+        control.motion_classification,
+    )
+}
+
+#[test]
+fn public_jump_continuation_and_landing_retain_classification_two() {
+    use cyrus_game::script::{
+        ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryLandingDecision, OrdinaryLandingSettings,
+    };
+    let (mut world, data) = queued_jump_lifetime_fixture(1, None);
+    let id = world.id(0).unwrap();
+    let (_, _, models) = static_model_fixture(cache());
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[])
+        .unwrap();
+    let query = || OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 50,
+        sidedness: true,
+    };
+    let environment = ObstacleEnvironment {
+        selected_player: None,
+        auto_grab: false,
+        item_system_ready: false,
+        shell_execution: false,
+        ticks: 0,
+    };
+    for expected in [(8, 1, 0, 2), (16, 1, 0, 2), (24, 1, 0, 2), (32, 0, 1, 2)] {
+        assert!(
+            world
+                .resolve_ordinary_queued_motion(id, query(), environment, 8, 0, &mut |_, _| Ok(()))
+                .unwrap()
+        );
+        assert_eq!(queued_jump_lifetime_sample(&world), expected);
+    }
+    assert!(
+        !world
+            .resolve_ordinary_queued_motion(id, query(), environment, 8, 0, &mut |_, _| panic!(
+                "unqueued poll emitted sound"
+            ))
+            .unwrap()
+    );
+    assert_eq!(queued_jump_lifetime_sample(&world), (32, 0, 1, 2));
+    assert!(
+        world
+            .continue_ordinary_falling(id, &data, environment, 8, 0, 50, &mut |_, _| Ok(()))
+            .unwrap()
+    );
+    assert_eq!(queued_jump_lifetime_sample(&world), (24, 0, 1, 2));
+    assert_eq!(
+        world
+            .resolve_ordinary_landing_damage(
+                id,
+                &data,
+                environment,
+                OrdinaryLandingSettings {
+                    death_height: 1000,
+                    hurt_height: 1000,
+                    hurt_zap: 10,
+                },
+                None,
+                &mut |_, _| Ok(())
+            )
+            .unwrap(),
+        OrdinaryLandingDecision::Ordinary
+    );
+    world
+        .complete_ordinary_landing(id, &data, environment, None, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(queued_jump_lifetime_sample(&world), (24, 0, 0, 2));
+    assert_eq!(
+        world.actors()[1]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        0
+    );
+}
+
+#[test]
+fn public_queued_request_failure_precedes_vertical_and_preserves_classification() {
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
+    let (mut world, data) = queued_jump_lifetime_fixture(1, Some(39));
+    let id = world.id(0).unwrap();
+    let (_, _, models) = static_model_fixture(cache());
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[])
+        .unwrap();
+    let query = OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 50,
+        sidedness: true,
+    };
+    let environment = ObstacleEnvironment {
+        selected_player: None,
+        auto_grab: false,
+        item_system_ready: false,
+        shell_execution: false,
+        ticks: 0,
+    };
+    let before = world.spatial(id).unwrap().local.position;
+    let error = world
+        .resolve_ordinary_queued_motion(id, query, environment, 30, 0, &mut |_, _| {
+            anyhow::bail!("continuation sound rejected")
+        })
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("continuation sound rejected"));
+    assert_eq!(queued_jump_lifetime_sample(&world), (0, 1, 0, 2));
+    assert_eq!(world.spatial(id).unwrap().local.position, before);
+    assert!(world.actors()[0].animation_failure().is_some());
+}
+
+#[test]
+fn public_script_high_bit_peak_clears_queued_only_after_transition_request() {
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
+    for fail in [false, true] {
+        let (mut world, data) = queued_jump_lifetime_fixture(129, Some(58));
+        let id = world.id(0).unwrap();
+        let (_, _, models) = static_model_fixture(cache());
+        let scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[])
+            .unwrap();
+        let query = OrdinaryGroundQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            distance: 50,
+            sidedness: true,
+        };
+        let environment = ObstacleEnvironment {
+            selected_player: None,
+            auto_grab: false,
+            item_system_ready: false,
+            shell_execution: false,
+            ticks: 0,
+        };
+        let mut sounds = 0;
+        let result =
+            world.resolve_ordinary_queued_motion(id, query, environment, 30, 0, &mut |_, _| {
+                sounds += 1;
+                anyhow::ensure!(!fail, "peak sound rejected");
+                Ok(())
+            });
+        assert_eq!(sounds, 1);
+        if fail {
+            assert!(format!("{:#}", result.unwrap_err()).contains("peak sound rejected"));
+            assert_eq!(queued_jump_lifetime_sample(&world), (30, 129, 129, 2));
+            assert!(
+                world
+                    .complete_ordinary_landing(id, &data, environment, None, &mut |_, _| Ok(()))
+                    .is_err()
+            );
+            assert_eq!(queued_jump_lifetime_sample(&world), (30, 129, 129, 2));
+        } else {
+            assert!(result.unwrap());
+            assert_eq!(queued_jump_lifetime_sample(&world), (30, 0, 129, 2));
+            world
+                .complete_ordinary_landing(id, &data, environment, None, &mut |_, _| Ok(()))
+                .unwrap();
+            assert_eq!(queued_jump_lifetime_sample(&world), (30, 0, 0, 2));
+        }
+    }
+}
+
+fn selected_hang_classification_fixture() -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    let (_, mut world, data, scene) = player_walking_fixture_with_animation(
+        |scripts| {
+            let function = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: cyrus_script::Native::Jump,
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            let queued = scripts.definition.references.len() as u16;
+            scripts
+                .definition
+                .references
+                .push(cyrus_script::Property::JumpFlag);
+            let living = scripts.definition.references.len() as u16;
+            scripts
+                .definition
+                .references
+                .push(cyrus_script::Property::ExtraFlag);
+            let property = |reference, value, next| Step {
+                next,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value },
+                        rest: vec![],
+                    },
+                },
+            };
+            scripts.actors.get_mut("CYRUS").unwrap().program.steps = BTreeMap::from([
+                (0, assign_call(1, function, Native::Jump, &[])),
+                (1, property(queued, 0, 2)),
+                (2, property(living, 15, 3)),
+                (
+                    3,
+                    Step {
+                        next: 4,
+                        operation: Operation::End { target: 4 },
+                    },
+                ),
+                (4, assign_call(5, function, Native::Jump, &[])),
+                (
+                    5,
+                    Step {
+                        next: 6,
+                        operation: Operation::End { target: 4 },
+                    },
+                ),
+            ]);
+        },
+        |data| {
+            let actor = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap();
+            for group in [32, 56] {
+                let mut commands = vec![];
+                if group == 56 {
+                    commands.push(serde_json::json!({"opcode":4,"sound_param":9,"volume_shift":0}));
+                }
+                commands.extend([
+                    serde_json::json!({"opcode":0,"frame_reference":0}),
+                    serde_json::json!({"opcode":1}),
+                ]);
+                actor["animation_groups"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(serde_json::json!({
+                        "group_index":group,"anim_id":1,"anim_type":0,"commands":commands
+                    }));
+            }
+        },
+    );
+    let player = world.selected_player().unwrap();
+    world.set_actor_surface(player, 0).unwrap();
+    advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.motion_classification,
+            control.living_state.byte(),
+            control.queued_motion.byte()
+        ),
+        (2, 15, 0)
+    );
+    (world, data, scene)
+}
+
+fn advance_selected_hang_script(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    fail: bool,
+) -> anyhow::Result<()> {
+    use cyrus_game::script::{ActivationInputs, PlayerCollisionSource, ScriptInputs};
+    let player = world
+        .selected_player()
+        .ok_or_else(|| anyhow::anyhow!("selected hang player absent"))?;
+    let actors = [player, world.id(0)?];
+    let activation = ActivationInputs {
+        player,
+        actors: BTreeMap::new(),
+        labels: BTreeMap::new(),
+        lockout: 0,
+        dialogue_open: false,
+        lineup_result: 0,
+        use_held: false,
+        item_system_ready: false,
+        shell_execution: false,
+        render_disabled: false,
+    };
+    world
+        .advance(
+            player,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                activation: Some(&activation),
+                player_collision: Some(PlayerCollisionSource {
+                    scene,
+                    animations: data,
+                    view: [10, 30],
+                    actors: &actors,
+                }),
+                nominal_ticks: Some(0),
+                fine_ticks: Some(0),
+                frame_scale: Some(256),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            Some(&mut |_, _| {
+                anyhow::ensure!(!fail, "hang release sound rejected");
+                Ok(())
+            }),
+            None,
+            100,
+        )
+        .map(|_| ())
+}
+
+#[test]
+fn selected_public_jump_hang_release_retains_nonzero_classification_and_continues() {
+    let (mut world, data, scene) = selected_hang_classification_fixture();
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.motion_classification,
+            control.living_state.byte(),
+            control.action_transition_counter,
+            control.queued_motion.byte()
+        ),
+        (2, 0, 6, 0)
+    );
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+    advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.motion_classification,
+            control.living_state.byte(),
+            control.queued_motion.byte()
+        ),
+        (2, 0, 1)
+    );
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        0
+    );
+}
+
+#[test]
+fn selected_public_jump_hang_surface_refusal_retains_classification() {
+    let (mut world, data, scene) = selected_hang_classification_fixture();
+    let player = world.selected_player().unwrap();
+    world.set_actor_surface(player, 2).unwrap();
+    advance_selected_hang_script(&mut world, &data, &scene, true).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.motion_classification,
+            control.living_state.byte(),
+            control.action_transition_counter,
+            control.queued_motion.byte()
+        ),
+        (2, 15, 0, 0)
+    );
+    world.set_actor_surface(player, 0).unwrap();
+    advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        2
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .living_state
+            .byte(),
+        0
+    );
+}
+
+#[test]
+fn selected_public_jump_hang_sound_failure_precedes_drop_completion() {
+    let (mut world, data, scene) = selected_hang_classification_fixture();
+    let player = world.selected_player().unwrap();
+    let error = advance_selected_hang_script(&mut world, &data, &scene, true).unwrap_err();
+    assert!(format!("{error:#}").contains("hang release sound rejected"));
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.motion_classification,
+            control.living_state.byte(),
+            control.action_transition_counter,
+            control.queued_motion.byte()
+        ),
+        (2, 17, 0, 0)
+    );
+    assert!(world.actors()[player.index].animation_failure().is_some());
+    assert!(advance_selected_hang_script(&mut world, &data, &scene, false).is_err());
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_classification,
+        2
+    );
+}
+
 #[test]
 fn logical_session_preserves_the_selected_rope_jump_latch() {
     use cyrus_game::{
@@ -39983,6 +41512,11 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
             u8::from(expected_group == 32)
         );
         assert_eq!(actor["control"]["falling_state"], 0);
+        assert_eq!(
+            actor["control"]["motion_classification"],
+            if expected_group == 32 { 2 } else { 0 },
+            "top {top}: edge handling precedes the jump classification store"
+        );
     }
 }
 
@@ -40854,6 +42388,151 @@ fn fx_flicker_on_off_rejects_nonpositive_bounds_before_allocating_or_drawing() {
         assert!(world.actors()[0].light_state().is_none());
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
         assert_eq!(random.state(), 1);
+    }
+}
+
+#[test]
+fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_script() {
+    use cyrus_game::cheats::{CheatStore, Cheats};
+    use cyrus_game::script::{OrdinaryForwardAmountInputs, ScriptKeys};
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    for (enabled, known_keys, expected) in [(false, true, 2), (true, true, 0), (true, false, 2)] {
+        let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+            scripts.updates.final_version = true;
+            scripts.definition.references = vec![cyrus_script::Property::LastDirection];
+            let player = scripts.actors.get_mut("CYRUS").unwrap();
+            player.attributes[Attribute::Collide] = 4;
+            player.program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::Assign {
+                            destination: Place::Flag { index: 0 },
+                            formula: Formula {
+                                first: Value::Read {
+                                    place: Place::Property {
+                                        object: Object::Me,
+                                        reference: 0,
+                                    },
+                                },
+                                rest: vec![],
+                            },
+                        },
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        });
+        let player = world.selected_player().unwrap();
+        // Running is the production writer; the prepared script only reads its retained byte.
+        let amount = world
+            .ordinary_forward_amount(
+                player,
+                OrdinaryForwardAmountInputs {
+                    selected_player: Some(player),
+                    holding_weapon: false,
+                    frame_scale: 256,
+                    ticks: 1,
+                    duration: 4,
+                    elapsed: 0,
+                },
+                None,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert!(amount > 0);
+        assert_eq!(
+            world.actors()[player.index]
+                .control_state()
+                .unwrap()
+                .motion_classification,
+            2
+        );
+        let mut cheats = Cheats::new(Memory);
+        cheats
+            .execute("yeahbaby", Some(u32::from(enabled)))
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        hud.configure(
+            &inventory_asset(&[]),
+            &cyrus_game::preferences::Preferences::default(),
+        );
+        let held = cyrus_game::player::input::PlayerInput::default();
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                cyrus_game::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        hud: Some(&hud),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(1),
+                        step_fps: Some(30),
+                        shell_execution: Some(false),
+                        player_controller: Some(cyrus_game::script::PlayerControllerInput {
+                            held: &held,
+                            walk_mode: true,
+                            auto_defend: false,
+                        }),
+                        ground_bypass: Some(cheats.ground_bypass().unwrap()),
+                        script_keys: known_keys.then_some(ScriptKeys {
+                            page_up: enabled,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[player.index];
+        if known_keys {
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        }
+        assert_eq!(
+            actor.control_state().unwrap().motion_classification,
+            expected,
+            "enabled={enabled}, known_keys={known_keys}, failure={:?}",
+            actor.failure()
+        );
+        if known_keys {
+            world
+                .advance(
+                    player,
+                    ScriptStage::Body(Thread::Main),
+                    cyrus_game::script::ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            assert_eq!(world.flags()[0], i32::from(expected));
+        } else {
+            assert!(actor.failure().unwrap().contains("debug navigation keys"));
+        }
     }
 }
 

@@ -761,11 +761,16 @@ impl ScriptWorld {
         control.fall_timer = 0;
         control.sliding_distance = 0;
         control.queued_motion = JumpMotion::ROPE;
-        control.motion_classification = 2;
         self.player_rope.latch = true;
         self.player_rope.turn_rate = 0;
         self.player_rope.previous_node = None;
-        self.request_ordinary_group(id, AnimationGroup::ROPE_JUMP, true, ticks, sounds)
+        self.request_ordinary_group(id, AnimationGroup::ROPE_JUMP, true, ticks, sounds)?;
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("rope release control unavailable")?
+            .motion_classification = 2;
+        Ok(())
     }
 
     /// Puts the player on its link, measures the node's speed and sets the actor's pitch from the

@@ -190,6 +190,8 @@ pub(super) enum MoveTarget {
 /// The receiver's facing and point-walking owner: one `FaceAngle`/`FacePos` turn step or one
 /// ordinary point-wrapper step per invocation.
 pub(super) trait PointHost {
+    /// One GotoLocation arrival/selector refresh, nonzero while pending.
+    fn goto_location(&mut self, location: i32) -> Result<i32>;
     /// One point-wrapper step toward `target` within a Q8 arrival tolerance; the wrapper's
     /// return, nonzero while the walk continues.
     fn move_to(&mut self, wrapper: PointWrapper, target: MoveTarget, tolerance: i32)
@@ -299,6 +301,8 @@ pub(super) struct LocomotionAdmission {
 }
 
 pub(super) struct MotionCall<'a> {
+    /// Retained movement-helper classification, independent of displacement direction.
+    pub classification: &'a mut u8,
     pub direction: &'a mut u8,
     pub counters: &'a mut u8,
 }
@@ -599,6 +603,8 @@ enum Task {
     MoveMarker,
     /// `MoveLocation(location, tolerance)`: the direct point wrapper toward a receiver location.
     MoveLocation,
+    /// `GotoLocation(location)`: arrival snap or retained AI location/selector refresh.
+    GotoLocation,
     /// `MovePosition(x, y, z, tolerance)`: the direct point wrapper toward a Q8 position.
     MovePosition,
     /// `MoveNodeMarker(marker, tolerance)`: the point wrapper toward a marker.
@@ -1241,6 +1247,16 @@ impl Task {
                 }
                 duration.wrapping_sub(1) <= elapsed
             }
+            Self::GotoLocation => {
+                let [location] = arguments else {
+                    anyhow::bail!("GotoLocation requires one argument")
+                };
+                services
+                    .point
+                    .context("GotoLocation receiver owner unavailable")?
+                    .goto_location(location.integer()?)?
+                    == 0
+            }
             Self::MoveMarker
             | Self::MoveLocation
             | Self::MovePosition
@@ -1541,10 +1557,11 @@ impl Task {
                     {
                         return Ok(true);
                     }
-                    *receiver
+                    let receiver = receiver
                         .as_mut()
-                        .context("WalkBackward motion state unavailable")?
-                        .direction = BACKWARD_MOTION_DIRECTION;
+                        .context("WalkBackward motion state unavailable")?;
+                    *receiver.classification = 7;
+                    *receiver.direction = BACKWARD_MOTION_DIRECTION;
                     if state.holding_weapon || state.combat_mode {
                         (
                             AnimationGroup::FIGHT_BACK,
@@ -1566,6 +1583,12 @@ impl Task {
                         probe_needed = true;
                         motion.admission.blocked_ahead_30.unwrap_or(false)
                     });
+                    if admission != BackwardAdmission::Refused {
+                        *receiver
+                            .as_mut()
+                            .context("MoveBackward motion state unavailable")?
+                            .classification = 7;
+                    }
                     anyhow::ensure!(
                         !(probe_needed && motion.admission.blocked_ahead_30.is_none()),
                         "MoveBackward blocked-ahead probe input unavailable"
@@ -1676,6 +1699,7 @@ impl Task {
                 {
                     return Ok(true);
                 }
+                *receiver.classification = if walking { 6 } else { 2 };
                 *receiver.direction = if walking { 6 } else { FORWARD_MOTION_DIRECTION };
                 let mut halved = false;
                 let (group, step) =
@@ -1797,6 +1821,10 @@ impl Task {
                 let receiver = motion
                     .motion
                     .with_context(|| format!("{name} motion state unavailable"))?;
+                *receiver.classification = match strafe {
+                    super::locomotion::Strafe::Left => 4,
+                    super::locomotion::Strafe::Right => 5,
+                };
                 *receiver.direction = strafe.motion_direction();
                 let input = animation.as_mut().with_context(|| {
                     format!("{name} requires prepared animation and explicit nominal ticks")
@@ -2873,6 +2901,12 @@ impl NativeTasks {
             Task::Projectile
         } else if function == Native::MoveMarker {
             Task::MoveMarker
+        } else if function == Native::GotoLocation {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "GotoLocation requires task encoding"
+            );
+            Task::GotoLocation
         } else if function == Native::MoveLocation {
             Task::MoveLocation
         } else if function == Native::MovePosition {
@@ -3039,6 +3073,7 @@ impl NativeTasks {
             Native::ProjectileAI,
             Native::MoveMarker,
             Native::MoveLocation,
+            Native::GotoLocation,
             Native::MovePosition,
             Native::MoveNodeMarker,
             Native::MoveNodeLocation,
@@ -3059,6 +3094,7 @@ impl NativeTasks {
                     | Task::Projectile
                     | Task::MoveMarker
                     | Task::MoveLocation
+                    | Task::GotoLocation
                     | Task::MovePosition
                     | Task::MoveNodeMarker
                     | Task::MoveNodeLocation
