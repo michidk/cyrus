@@ -146,6 +146,9 @@ pub struct HudState {
     /// Selected item ID, or `None` when nothing is owned.
     pub selected: Option<u16>,
     pub count: Option<u32>,
+    /// The held Next/Previous item press already stepped the selection; a release re-arms it.
+    #[serde(skip)]
+    item_press_consumed: bool,
     #[serde(skip)]
     elapsed: f32,
     /// Every frame of the fixed atlases, held so swapping frames never reloads an image.
@@ -228,6 +231,7 @@ impl HudState {
             prompt: None,
             selected: hud.selected.or_else(|| hud.items.first().map(|i| i.id)),
             count: None,
+            item_press_consumed: false,
             elapsed: 0.0,
             frames,
             text: Vec::new(),
@@ -1185,17 +1189,24 @@ fn update(
         }
         _ => fallback_overlay,
     };
-    let cycle = if matches!(
-        overlay,
-        ActivationOverlay::Item {
-            cycle_allowed: true,
-            ..
-        }
-    ) {
-        match (
-            controls.just_pressed(Action::PreviousItem),
-            controls.just_pressed(Action::NextItem),
+    // Item keys step once per press. A press held while a prompt is drawn steps at the later
+    // item-path update (preservation HUD rules); a mouse binding reads for one update only.
+    let held = (
+        controls.pressed(Action::PreviousItem),
+        controls.pressed(Action::NextItem),
+    );
+    if held == (false, false) {
+        state.item_press_consumed = false;
+    }
+    let cycle = if !state.item_press_consumed
+        && matches!(
+            overlay,
+            ActivationOverlay::Item {
+                cycle_allowed: true,
+                ..
+            }
         ) {
+        match held {
             (true, false) => Some(false),
             (false, true) => Some(true),
             _ => None,
@@ -1203,6 +1214,7 @@ fn update(
     } else {
         None
     };
+    state.item_press_consumed |= cycle.is_some();
     let inventory = script_hud.inventory(cycle);
     state.selected = inventory.as_ref().and_then(|items| items.selected);
     let live_items: Vec<_> = hud
@@ -2622,6 +2634,12 @@ mod tests {
             .map(|(_, node, visibility)| (node.image.clone(), *visibility))
             .unwrap();
         assert_eq!((image, visibility), (expected, Visibility::Inherited));
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().selected,
+            Some(2),
+            "a held item key steps once per press"
+        );
 
         {
             let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
@@ -2633,11 +2651,18 @@ mod tests {
         }
         app.update();
         assert_eq!(app.world().resource::<HudState>().selected, Some(2));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Period);
+        app.update();
         {
             let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
             let player_index = inputs.player.index;
             inputs.actors.get_mut(&player_index).unwrap().animation = None;
         }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Period);
         app.update();
         assert_eq!(app.world().resource::<HudState>().selected, Some(1));
     }
