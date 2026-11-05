@@ -223,10 +223,7 @@ fn selected_water_prepass_clears_direction_and_uses_null_source_death() {
             world.actors()[index].failure()
         );
         assert_eq!(
-            world.actors()[index]
-                .control_state()
-                .unwrap()
-                .directional_state,
+            world.actors()[index].control_state().unwrap().actions,
             [0; 2]
         );
         assert_eq!(

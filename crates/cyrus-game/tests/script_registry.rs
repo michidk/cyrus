@@ -6,6 +6,7 @@ use cyrus_game::script::CombatFlags;
 use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
+use cyrus_game::script::StepDirection;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
@@ -10609,7 +10610,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
         cyrus_world::transform::translate_forward(before.position, before.angles[1], 2048).unwrap()
     );
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!((control.motion_direction, control.movement_flags), (2, 48));
+    assert_eq!((control.motion_direction, control.move_counter), (2, 48));
     let y = world.spatial(id).unwrap().local.position[1];
     let environment = ObstacleEnvironment {
         selected_player: None,
@@ -10699,22 +10700,22 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
 #[test]
 fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translation() {
     use cyrus_game::script::{OrdinaryDirectionalMotion, ordinary_directional_motion};
-    for (motion, direction, bits, heading) in [
-        (2, 2, 48, 2000),
-        (6, 2, 48, 2000),
-        (8, 2, 48, 2000),
-        (9, 2, 48, 2000),
-        (24, 2, 48, 2000),
-        (3, 3, 192, 976),
-        (7, 3, 192, 976),
-        (4, 4, 3, 464),
-        (5, 5, 12, 1488),
+    for (motion, direction, step, heading) in [
+        (2, 2, StepDirection::Forward, 2000),
+        (6, 2, StepDirection::Forward, 2000),
+        (8, 2, StepDirection::Forward, 2000),
+        (9, 2, StepDirection::Forward, 2000),
+        (24, 2, StepDirection::Forward, 2000),
+        (3, 3, StepDirection::Backward, 976),
+        (7, 3, StepDirection::Backward, 976),
+        (4, 4, StepDirection::Left, 464),
+        (5, 5, StepDirection::Right, 1488),
     ] {
         assert_eq!(
             ordinary_directional_motion(motion | 128, 2000, 4096, 2, false),
             Some(OrdinaryDirectionalMotion {
                 direction,
-                movement_bits: bits,
+                step,
                 heading,
                 distance: Some(2048)
             })
@@ -10723,7 +10724,7 @@ fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translati
             ordinary_directional_motion(motion, 2000, 4096, 0, true),
             Some(OrdinaryDirectionalMotion {
                 direction,
-                movement_bits: bits,
+                step,
                 heading,
                 distance: None
             })
@@ -11077,10 +11078,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
     world.apply_ordinary_directional_motion(id, 4, 512).unwrap();
     assert!(!world.retain_ordinary_water_position(id).unwrap());
     assert_ne!(world.spatial(id).unwrap().local.position, before);
-    assert_eq!(
-        world.actors()[0].control_state().unwrap().movement_flags,
-        51
-    );
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 51);
     let other_snapshot = world
         .capture_ordinary_rollback(other, &mut |_, _| Ok(()))
         .unwrap();
@@ -11100,10 +11098,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
     assert_eq!(world.spatial(id).unwrap().local.position, before);
     assert_eq!(world.animation_frame(id).unwrap(), Some(10));
     assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 0);
-    assert_eq!(
-        world.actors()[0].control_state().unwrap().movement_flags,
-        48
-    );
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 48);
     assert!(
         world.actors()[0]
             .control_state()
@@ -11202,7 +11197,7 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
             movement_heading: 0,
             target_heading: 0,
             group: AnimationGroup::SLIDE,
-            movement_bits: 0x30,
+            step: StepDirection::Forward,
             distance: 4608,
         }
     );
@@ -11212,7 +11207,7 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
             movement_heading: 0,
             target_heading: 1024,
             group: AnimationGroup::SLIDE_BACKWARD_TORCH,
-            movement_bits: 0xc0,
+            step: StepDirection::Backward,
             distance: 2304,
         }
     );
@@ -11323,7 +11318,7 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
         (
             control.sliding_state,
             control.sliding_distance,
-            control.movement_flags
+            control.move_counter
         ),
         (1, 256, 0x30)
     );
@@ -12045,7 +12040,7 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
     let state = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (
-            state.movement_flags,
+            state.move_counter,
             state.falling_state,
             state.sliding_state,
             state.last_collide.bits()
@@ -15749,7 +15744,7 @@ fn scripted_walk_steps_move_the_selected_player_through_the_support_check() {
 
 #[test]
 fn selected_directional_refusal_marks_response_without_moving_the_player() {
-    use cyrus_game::script::{OrdinaryGroundQuery, OrdinaryStepDirection, ScriptActorSource};
+    use cyrus_game::script::{OrdinaryGroundQuery, ScriptActorSource, StepDirection};
     let (_, mut world, data, scene) = player_walking_fixture();
     let index = world
         .actors()
@@ -15765,10 +15760,10 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
         .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
         .unwrap();
     for (direction, expected) in [
-        (OrdinaryStepDirection::Forward, 0x80),
-        (OrdinaryStepDirection::Left, 0xa0),
-        (OrdinaryStepDirection::Right, 0xe0),
-        (OrdinaryStepDirection::Backward, 0x1e0),
+        (StepDirection::Forward, 0x80),
+        (StepDirection::Left, 0xa0),
+        (StepDirection::Right, 0xe0),
+        (StepDirection::Backward, 0x1e0),
     ] {
         assert!(
             !world
@@ -15976,7 +15971,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         (
             control.motion_classification,
             control.motion_direction,
-            control.movement_flags
+            control.move_counter
         ),
         (6, 2, 0x30)
     );
@@ -21611,7 +21606,7 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
 
 #[test]
 fn directional_body_refusal_retains_markers_and_skips_support_without_translation() {
-    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryStepDirection};
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery, StepDirection};
     let (mut world, data, models) = static_model_fixture_at(cache(), Some(20.0), [10, 20, 30]);
     let id = world.id(0).unwrap();
     let other = world.id(1).unwrap();
@@ -21624,9 +21619,9 @@ fn directional_body_refusal_retains_markers_and_skips_support_without_translatio
         .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
         .unwrap();
     for (direction, markers) in [
-        (OrdinaryStepDirection::Left, 0x20),
-        (OrdinaryStepDirection::Right, 0x60),
-        (OrdinaryStepDirection::Backward, 0x160),
+        (StepDirection::Left, 0x20),
+        (StepDirection::Right, 0x60),
+        (StepDirection::Backward, 0x160),
     ] {
         assert!(
             !world
@@ -21667,7 +21662,7 @@ fn directional_body_refusal_retains_markers_and_skips_support_without_translatio
 #[test]
 fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
     use cyrus_game::script::{
-        ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryStepDirection, WorldRestoreContext,
+        ObstacleEnvironment, OrdinaryGroundQuery, StepDirection, WorldRestoreContext,
         WorldSnapshotSources,
     };
     let mut scripts = cache();
@@ -21689,9 +21684,9 @@ fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
     let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     for rope in [false, true] {
         for direction in [
-            OrdinaryStepDirection::Left,
-            OrdinaryStepDirection::Right,
-            OrdinaryStepDirection::Backward,
+            StepDirection::Left,
+            StepDirection::Right,
+            StepDirection::Backward,
         ] {
             let mut snapshot = saved.clone();
             snapshot["actors"][0]["control"]["rope_attached"] = rope.into();
@@ -22279,7 +22274,7 @@ fn forward_amount_advances_shared_counter_and_called_state_without_translation()
             amount
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.movement_flags, counter);
+        assert_eq!(control.move_counter, counter);
         assert_eq!(control.motion_direction, 2);
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
         assert_eq!(world.spatial(id).unwrap().local.position, before.position);
@@ -22336,7 +22331,7 @@ fn forward_amount_uses_live_combat_action_surface_torch_and_suppression() {
                 group
             );
             assert_eq!(
-                world.actors()[0].control_state().unwrap().movement_flags,
+                world.actors()[0].control_state().unwrap().move_counter,
                 0xF3
             );
         }
@@ -22369,7 +22364,7 @@ fn forward_amount_guards_precede_animation_and_geometry_and_keep_shared_state() 
             0
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.movement_flags, 0xC3);
+        assert_eq!(control.move_counter, 0xC3);
         assert_eq!(control.motion_direction, 99);
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
     }
@@ -22399,7 +22394,7 @@ fn forward_amount_waits_for_current_animation_without_advancing_counter() {
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.motion_direction, 2);
-        assert_eq!(control.movement_flags, counter);
+        assert_eq!(control.move_counter, counter);
         let state = world.inspect(0, 1);
         assert_eq!(state["globals"]["locomotion_called"], called);
         assert_eq!(
@@ -22438,7 +22433,7 @@ fn forward_amount_requires_live_step_geometry_only_below_saturated_counter() {
                 99
             );
             assert_eq!(
-                world.actors()[0].control_state().unwrap().movement_flags,
+                world.actors()[0].control_state().unwrap().move_counter,
                 counter
             );
             assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
@@ -22497,7 +22492,7 @@ fn synchronous_forward_resamples_the_counter_mutated_by_the_amount_query() {
         );
         assert_eq!(world.spatial(id).unwrap().local.position, expected_position);
         assert_eq!(
-            world.actors()[0].control_state().unwrap().movement_flags,
+            world.actors()[0].control_state().unwrap().move_counter,
             expected_counter
         );
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
@@ -22540,7 +22535,7 @@ fn synchronous_movement_retains_duration_and_animation_wait_results_without_task
         );
         assert_eq!(world.spatial(id).unwrap().local.position, position);
         assert_eq!(
-            world.actors()[0].control_state().unwrap().movement_flags,
+            world.actors()[0].control_state().unwrap().move_counter,
             counter
         );
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
@@ -22592,7 +22587,7 @@ fn synchronous_backward_and_combat_strafes_use_existing_real_movement() {
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.motion_direction, direction);
-        assert_eq!(control.movement_flags, counter);
+        assert_eq!(control.move_counter, counter);
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], called);
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
     }
@@ -28155,7 +28150,7 @@ fn coordinate_walking_restores_only_overshoot_owned_state_at_inclusive_boundarie
         if snapped {
             assert_eq!(world.spatial(id).unwrap().local.position, [0, 200, 20000]);
             assert_eq!(
-                world.actors()[0].control_state().unwrap().movement_flags,
+                world.actors()[0].control_state().unwrap().move_counter,
                 0x85
             );
             assert_eq!(
@@ -28173,7 +28168,7 @@ fn coordinate_walking_restores_only_overshoot_owned_state_at_inclusive_boundarie
                 movement_snapshot(&moved, &scripts, &data)["actors"][0]["animation"]
             );
             assert_eq!(
-                world.actors()[0].control_state().unwrap().movement_flags,
+                world.actors()[0].control_state().unwrap().move_counter,
                 0x95
             );
             assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
@@ -28212,7 +28207,7 @@ fn coordinate_walking_initial_arrival_needs_no_movement_or_sound_owner() {
             world.spatial(id).unwrap().local.position,
             [0, 0, destination[2]]
         );
-        assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
+        assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 0);
         assert_eq!(
             movement_snapshot(&world, &scripts, &data)["map_updates"],
             serde_json::json!([])
@@ -28391,7 +28386,7 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
             phase
         );
         assert_eq!(
-            world.actors()[0].control_state().unwrap().movement_flags,
+            world.actors()[0].control_state().unwrap().move_counter,
             movement_flags
         );
         assert!(world.spatial(id).unwrap().local.position[2] > 768 - distance);
@@ -28434,7 +28429,7 @@ fn coordinate_walking_reads_local_bearing_after_movement() {
         0
     );
     assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, 2561]);
-    assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 0);
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 255);
 }
 
@@ -30834,7 +30829,7 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
             control.action_transition_counter,
             if fail_reset_sound { 0 } else { 6 }
         );
-        assert_eq!(control.directional_state, [128, 255]);
+        assert_eq!(control.actions, [128, 255]);
         let saved = movement_snapshot(&world, &scripts, &data);
         assert!(saved["actors"][index]["model"]["ledge_support"].is_null());
     }
@@ -30898,7 +30893,7 @@ fn selected_health_ledge_reset_uses_torch_counter_independently_of_weapon_state(
                 if torch == 0 { 6 } else { 0 }
             );
             assert_eq!(
-                control.directional_state,
+                control.actions,
                 if torch == 0 { [128, 255] } else { [0, 0] }
             );
             assert_eq!(control.motion_direction, if torch == 0 { 7 } else { 0 });
@@ -30949,7 +30944,7 @@ fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or
     let control = world.actors()[index].control_state().unwrap();
     assert_eq!(control.living_state, LivingState::DROPPING);
     assert_eq!(control.motion_direction, 0);
-    assert_eq!(control.directional_state, [0, 0]);
+    assert_eq!(control.actions, [0, 0]);
     assert_eq!(control.action_transition_counter, 0);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
     assert!(
@@ -32359,7 +32354,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
                     .player_step_clear(
                         player,
                         inputs.locomotion_geometry.unwrap().ground,
-                        cyrus_game::script::OrdinaryStepDirection::Forward,
+                        cyrus_game::script::StepDirection::Forward,
                     )
                     .unwrap();
                 assert_eq!(world.spatial(player).unwrap().local.position, position);
@@ -36121,7 +36116,7 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     let actor = &world.actors()[id.index];
     assert!(actor.failure().is_none(), "{:?}", actor.failure());
     let control = actor.control_state().unwrap();
-    assert_eq!(control.directional_state, [0, 0]);
+    assert_eq!(control.actions, [0, 0]);
     // The jump entry's queued state ran one arbitration and survived to the next update.
     assert_ne!(queued_before, JumpMotion::NONE);
     assert_eq!(world.spatial(id).unwrap().local.position[0], stable[0]);
@@ -36212,7 +36207,7 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
                 let control = actor.control_state().unwrap();
                 if promoted {
                     assert_eq!(control.jump_window, 0);
-                    assert_eq!(control.directional_state, [0, 0x300]);
+                    assert_eq!(control.actions, [0, 0x300]);
                     assert_eq!(control.queued_motion, queued);
                     let animation = &world.inspect(0, 1)["actors"][0]["animation"];
                     assert!(
@@ -36222,7 +36217,7 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
                     );
                 } else {
                     assert_eq!(control.jump_window, first_timer);
-                    assert_eq!(control.directional_state, [0x100 | bit, 0x200]);
+                    assert_eq!(control.actions, [0x100 | bit, 0x200]);
                     assert_eq!(control.queued_motion, JumpMotion::NONE);
                 }
             }
@@ -36302,7 +36297,7 @@ fn ordinary_update_consumes_both_authored_jump_masks_before_the_fallback() {
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
         let control = actor.control_state().unwrap();
         assert_eq!(control.jump_window, 1);
-        assert_eq!(control.directional_state, [0x100, 0x300]);
+        assert_eq!(control.actions, [0x100, 0x300]);
         assert_eq!(control.queued_motion, queued);
         let animation = &world.inspect(0, 1)["actors"][0]["animation"];
         assert!(
@@ -37526,7 +37521,7 @@ fn action_statement_resets_preserve_high_words_through_snapshot_restore() {
             )
             .unwrap();
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.directional_state, expected, "{name}");
+        assert_eq!(control.actions, expected, "{name}");
         assert_eq!(
             control.jump_window, 27,
             "duplicate SetAction and reset preserve timer"
@@ -39745,7 +39740,7 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.motion_direction, 3);
-        assert_eq!(control.movement_flags & 0xc0, 0x40);
+        assert_eq!(control.move_counter & 0xc0, 0x40);
         assert!(
             world.actors()[0]
                 .failure()
@@ -40069,7 +40064,7 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
     let actor = &world.actors()[index];
     assert!(actor.failure().is_none(), "{:?}", actor.failure());
     let control = actor.control_state().unwrap();
-    assert_eq!(control.directional_state, [0, 0]);
+    assert_eq!(control.actions, [0, 0]);
     assert_eq!(control.queued_motion, JumpMotion::RUNNING);
     assert_eq!(control.falling_state, JumpMotion::NONE);
     assert_eq!(control.fall_origin_y, stable[1]);
@@ -40289,7 +40284,7 @@ fn terrain_sink_check_restores_the_stable_position_only_below_the_margin() {
         let control = world.actors()[0].control_state().unwrap();
         if sinks {
             assert_eq!((after[0], after[2]), (0, 0), "sample {height}");
-            assert_eq!(control.movement_flags, 0);
+            assert_eq!(control.move_counter, 0);
         } else {
             assert_eq!(after[0], before[0], "sample {height}");
             assert_eq!(after[2], before[2], "sample {height}");

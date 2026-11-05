@@ -160,20 +160,59 @@ impl Strafe {
         }
     }
 
+    /// The packed-counter direction this strafe steps in.
+    pub fn step_direction(self) -> StepDirection {
+        match self {
+            Self::Left => StepDirection::Left,
+            Self::Right => StepDirection::Right,
+        }
+    }
+
     /// Bit of the shared direction-called flags the stepper sets once it moves.
     pub fn called_flag(self) -> u8 {
-        match self {
-            Self::Left => 1,
-            Self::Right => 2,
-        }
+        self.step_direction().called_flag()
     }
 
     /// Shift of this direction's packed step counter.
     pub fn counter_shift(self) -> u8 {
-        match self {
-            Self::Left => 0,
-            Self::Right => 2,
-        }
+        self.step_direction().counter_shift()
+    }
+}
+
+/// A direction of the actor's packed `move_counter` byte and of the shared direction-called
+/// flags. The byte holds a two-bit counter per direction and the flags one bit per direction,
+/// both from least significant: left, right, forward/walk, backward (preservation
+/// `docs/engine/SOUP.md`, movement; `docs/engine/SOUPPROPS.md`, packed movement counter).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepDirection {
+    Left,
+    Right,
+    Forward,
+    Backward,
+}
+
+impl StepDirection {
+    /// Every direction's called flag.
+    pub const ALL_CALLED: u8 = 0xf;
+
+    /// Bit of the shared direction-called flags.
+    pub const fn called_flag(self) -> u8 {
+        1 << self as u8
+    }
+
+    /// Shift of this direction's two-bit counter in `move_counter`.
+    pub const fn counter_shift(self) -> u8 {
+        2 * self as u8
+    }
+
+    /// This direction's counter field; setting it saturates the counter at three.
+    pub const fn counter_mask(self) -> u8 {
+        3 << self.counter_shift()
+    }
+
+    /// This direction's counter in a packed `move_counter` byte.
+    pub const fn counter(self, move_counter: u8) -> u8 {
+        (move_counter >> self.counter_shift()) & 3
     }
 }
 

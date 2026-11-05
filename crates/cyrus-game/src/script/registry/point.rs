@@ -14,6 +14,7 @@ use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -37,11 +38,11 @@ impl ScriptWorld {
             let reads_query_position = self.actors[index].attributes[Attribute::Slave] != 0
                 || self.spatial(id)?.linked_position.is_some();
             let position = self.spatial(id)?.local.position;
-            let movement_flags = self.actors[index]
+            let move_counter = self.actors[index]
                 .control
                 .as_ref()
                 .context("coordinate walking control unavailable")?
-                .movement_flags;
+                .move_counter;
             if !self.point_destination_arrived(index, destination, tolerance, inputs)? {
                 let animation = self.actors[index]
                     .animation
@@ -78,13 +79,13 @@ impl ScriptWorld {
                 if !(256..=1792).contains(&difference) {
                     return Ok(1);
                 }
-                self.globals.locomotion_called &= !4;
+                self.globals.locomotion_called &= !StepDirection::Forward.called_flag();
                 let actor = &mut self.actors[index];
                 actor
                     .control
                     .as_mut()
                     .expect("admitted coordinate walking control")
-                    .movement_flags = movement_flags;
+                    .move_counter = move_counter;
                 let animation = actor
                     .animation
                     .as_mut()

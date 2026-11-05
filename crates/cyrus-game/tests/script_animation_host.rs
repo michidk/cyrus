@@ -5833,7 +5833,7 @@ fn backward_attribute_ramp_survives_task_passes_and_world_restoration() {
         locomotion_stage(&mut world, id, if index == 0 { BODY } else { TASKS }, &hud);
         assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
         assert_eq!(
-            world.actors()[0].control_state().unwrap().movement_flags,
+            world.actors()[0].control_state().unwrap().move_counter,
             counter
         );
         if index == 0 {
@@ -5884,11 +5884,8 @@ fn routed_backward_task_advances_only_the_receivers_counter() {
         .unwrap();
     let hud = locomotion_hud();
     locomotion_stage(&mut world, caller, BODY, &hud);
-    assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
-    assert_eq!(
-        world.actors()[1].control_state().unwrap().movement_flags,
-        64
-    );
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 0);
+    assert_eq!(world.actors()[1].control_state().unwrap().move_counter, 64);
     for z in [0, -1024, -3072] {
         locomotion_stage(&mut world, receiver, TASKS, &hud);
         assert_eq!(world.spatial(receiver).unwrap().local.position, [0, 0, z]);
@@ -5910,10 +5907,7 @@ fn forward_task_stops_reading_the_step_check_after_three_steps() {
         )
         .unwrap();
     }
-    assert_eq!(
-        world.actors()[0].control_state().unwrap().movement_flags,
-        48
-    );
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 48);
     let before = world.spatial(id).unwrap().local.position;
     forward_stage(&mut world, id, TASKS, &hud, None).unwrap();
     assert_eq!(
@@ -5930,10 +5924,7 @@ fn directional_motion_and_forward_tasks_share_the_same_packed_counter() {
         world.apply_ordinary_directional_motion(id, 2, 0).unwrap(),
         Some(2)
     );
-    assert_eq!(
-        world.actors()[0].control_state().unwrap().movement_flags,
-        48
-    );
+    assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 48);
     assert_eq!(
         serde_json::to_value(world.globals()).unwrap()["locomotion_called"],
         4
@@ -5962,10 +5953,7 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
         world.set_actor_surface(id, 0).unwrap();
         world.apply_ordinary_directional_motion(id, 3, 0).unwrap();
         assert_eq!(
-            world.actors()[index]
-                .control_state()
-                .unwrap()
-                .movement_flags,
+            world.actors()[index].control_state().unwrap().move_counter,
             192
         );
     }
@@ -5990,7 +5978,7 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
         .unwrap();
     for actor in world.actors() {
         assert!(actor.failure().is_none(), "{:?}", actor.failure());
-        assert_eq!(actor.control_state().unwrap().movement_flags, 0);
+        assert_eq!(actor.control_state().unwrap().move_counter, 0);
     }
 }
 
@@ -6111,7 +6099,7 @@ fn walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll(
         assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
         let control = world.actors()[id.index].control_state().unwrap();
         assert_eq!(control.motion_direction, 6);
-        assert_eq!(control.movement_flags, ((index + 1).min(3) as u8) << 4);
+        assert_eq!(control.move_counter, ((index + 1).min(3) as u8) << 4);
         assert_eq!(control.last_collide.bits() & 0xff, 0);
     }
     assert_eq!(

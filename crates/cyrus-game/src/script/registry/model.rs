@@ -14,6 +14,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::actor_models::ActorModelCollision;
@@ -729,7 +730,7 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .expect("validated control")
-                    .directional_state = [0; 2];
+                    .actions = Default::default();
                 if matches!(water_surface, Some(2 | 4)) {
                     self.apply_selected_death_health(
                         id,
@@ -801,7 +802,10 @@ impl ScriptWorld {
                     .as_ref()
                     .expect("validated control");
                 if control.queued_motion != JumpMotion::NONE
-                    || control.directional_state.iter().any(|state| state & 3 != 0)
+                    || control
+                        .actions
+                        .iter()
+                        .any(|state| state & ActionWords::JUMPS != 0)
                 {
                     continue;
                 }

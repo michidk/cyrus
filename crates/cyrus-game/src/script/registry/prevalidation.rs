@@ -173,7 +173,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .context("ordinary ground prevalidation control unavailable")?
-                .movement_flags = 0;
+                .move_counter = 0;
             self.apply_ordinary_obstacle_transition(id, data, environment, sounds)?;
         }
         Ok(())

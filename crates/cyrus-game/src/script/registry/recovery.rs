@@ -12,7 +12,7 @@ use cyrus_world::{
 /// Position comes from the update-entry or stable record at the owning response.
 pub struct OrdinaryRollbackSnapshot {
     actor: ScriptActorId,
-    movement_flags: u8,
+    move_counter: u8,
     pub(super) landing_recovery: bool,
     animation: Option<(ActorAnimationCheckpoint, Option<u32>)>,
 }
@@ -69,11 +69,11 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
     ) -> Result<OrdinaryRollbackSnapshot> {
         let actor = &self.actors[self.resolve(id)?];
-        let movement_flags = actor
+        let move_counter = actor
             .control
             .as_ref()
             .context("ordinary rollback control unavailable")?
-            .movement_flags;
+            .move_counter;
         let animation = actor
             .animation
             .as_ref()
@@ -102,7 +102,7 @@ impl ScriptWorld {
                     )
                 )
             }),
-            movement_flags,
+            move_counter,
             animation,
         })
     }
@@ -301,7 +301,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("ordinary rollback control unavailable")?
-            .movement_flags = snapshot.movement_flags;
+            .move_counter = snapshot.move_counter;
         Ok(())
     }
 

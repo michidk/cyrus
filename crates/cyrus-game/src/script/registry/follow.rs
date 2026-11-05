@@ -244,13 +244,13 @@ impl super::ActorControlState {
         if self.action_transition_counter == 0 {
             return;
         }
-        if self.directional_state.iter().any(|word| word & 255 == 0)
+        if self.actions.iter().any(|word| word & 255 == 0)
             && (self.action_transition_counter as i8) < 3
         {
             self.action_transition_counter = 0;
             return;
         }
-        self.directional_state = self.directional_state.map(|value| value & !128);
+        self.actions.iter_mut().for_each(|word| *word &= !128);
         let remaining = self.action_transition_counter.wrapping_sub(ticks as u8) as i8;
         self.action_transition_counter = remaining.max(0) as u8;
     }
@@ -277,13 +277,13 @@ mod tests {
             {
                 let mut control = ActorControlState {
                     living_state,
-                    directional_state: directions,
+                    actions: directions.into(),
                     action_transition_counter: counter,
                     ..Default::default()
                 };
                 control.advance_action_transition_counter(ticks);
                 assert_eq!(control.action_transition_counter, expected_counter);
-                assert_eq!(control.directional_state, expected_directions);
+                assert_eq!(<[u32; 2]>::from(control.actions), expected_directions);
                 assert_eq!(control.living_state, living_state);
             }
         }

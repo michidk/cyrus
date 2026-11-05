@@ -111,6 +111,7 @@ pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};
 pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};
 pub mod locomotion;
+pub use locomotion::StepDirection;
 mod maintenance;
 mod markers;
 mod menu;
@@ -125,7 +126,6 @@ pub use registry::falling::{
     ordinary_landing_decision, ordinary_landing_request,
 };
 pub use registry::ground::{OrdinaryCollisionShape, OrdinaryGroundQuery, OrdinaryStableProbe};
-pub use registry::hazard::OrdinaryStepDirection;
 pub use registry::model::{
     ModelPresentation, ModelSupportOwners, OrdinaryCollisionQuery, StableRecoveryQuery,
 };
@@ -161,6 +161,7 @@ mod quick_keys;
 pub use quick_keys::{QuickKeys, ScriptKeys};
 mod presentation;
 mod registry;
+pub use registry::ActionWords;
 pub use registry::ordinary::{
     ModelPreparation, OrdinaryContext, OrdinaryInputs, OrdinaryPhase, OrdinarySoundExecutor,
     OrdinaryUpdates, ScriptView, WorldClockSample, run_ordinary,

@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::JumpMotion;
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -80,7 +81,8 @@ pub fn ordinary_falling_request(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrdinaryDirectionalMotion {
     pub direction: u8,
-    pub movement_bits: u8,
+    /// Direction whose `move_counter` field the motion saturates and whose called flag it sets.
+    pub step: StepDirection,
     pub heading: u16,
     pub distance: Option<i32>,
 }
@@ -94,11 +96,11 @@ pub fn ordinary_directional_motion(
     surface: u8,
     model_controls_motion: bool,
 ) -> Option<OrdinaryDirectionalMotion> {
-    let (direction, movement_bits, offset) = match motion & 127 {
-        2 | 6 | 8 | 9 | 24 => (2, 0x30, 0),
-        3 | 7 => (3, 0xc0, 1024),
-        4 => (4, 3, 512),
-        5 => (5, 12, 1536),
+    let (direction, step, offset) = match motion & 127 {
+        2 | 6 | 8 | 9 | 24 => (2, StepDirection::Forward, 0),
+        3 | 7 => (3, StepDirection::Backward, 1024),
+        4 => (4, StepDirection::Left, 512),
+        5 => (5, StepDirection::Right, 1536),
         _ => return None,
     };
     let distance = if matches!(surface, 2 | 4) {
@@ -108,7 +110,7 @@ pub fn ordinary_directional_motion(
     };
     Some(OrdinaryDirectionalMotion {
         direction,
-        movement_bits,
+        step,
         heading: heading.wrapping_add(offset) & 2047,
         distance: (!model_controls_motion && distance > 0).then_some(distance),
     })
@@ -627,14 +629,8 @@ impl ScriptWorld {
             .as_mut()
             .context("ordinary directional control unavailable")?;
         control.motion_direction = action.direction;
-        control.movement_flags |= action.movement_bits;
-        self.globals.locomotion_called |= match action.direction {
-            2 => 4,
-            3 => 8,
-            4 => 1,
-            5 => 2,
-            _ => unreachable!("directional policy supplies directions two through five"),
-        };
+        control.move_counter |= action.step.counter_mask();
+        self.globals.locomotion_called |= action.step.called_flag();
         if let Some(position) = translated {
             self.spatial
                 .as_mut()

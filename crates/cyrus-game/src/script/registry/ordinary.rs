@@ -651,7 +651,7 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .expect("admitted control")
-                        .movement_flags,
+                        .move_counter,
                     self.globals.locomotion_called,
                 );
                 // The selected player's carried destination is admitted against geometry.

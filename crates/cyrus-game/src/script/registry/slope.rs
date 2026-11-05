@@ -1,5 +1,6 @@
 //! Ordinary slope response follows preservation's player engine rules.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -10,7 +11,8 @@ pub struct OrdinarySlide {
     pub movement_heading: u16,
     pub target_heading: u16,
     pub group: AnimationGroup,
-    pub movement_bits: u8,
+    /// Direction whose `move_counter` field the slide saturates and whose called flag it sets.
+    pub step: StepDirection,
     pub distance: i32,
 }
 
@@ -46,7 +48,11 @@ pub fn ordinary_slide(
             (false, false) => AnimationGroup::SLIDE_BACKWARD,
             (false, true) => AnimationGroup::SLIDE_BACKWARD_TORCH,
         },
-        movement_bits: if forward { 0x30 } else { 0xc0 },
+        step: if forward {
+            StepDirection::Forward
+        } else {
+            StepDirection::Backward
+        },
         distance: slide_speed
             .max(8)
             .wrapping_mul(128)
@@ -490,8 +496,8 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated slope control")
-            .movement_flags |= slide.movement_bits;
-        self.globals.locomotion_called |= if slide.movement_bits == 0x30 { 4 } else { 8 };
+            .move_counter |= slide.step.counter_mask();
+        self.globals.locomotion_called |= slide.step.called_flag();
         if slide.distance > 0 {
             let position = cyrus_world::transform::translate_forward(
                 self.spatial(id)?.local.position,

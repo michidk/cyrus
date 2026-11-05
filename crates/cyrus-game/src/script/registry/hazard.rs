@@ -1,20 +1,11 @@
 //! The nonplayer step hazard test follows the original's destination surface classification.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use crate::script::AiType;
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 
-/// Receiver-relative destination check. Forward is WalkForward's admission;
-/// the other directions follow preservation's fight-spacing admission rules.
-#[derive(Clone, Copy, Debug)]
-pub enum OrdinaryStepDirection {
-    Forward,
-    Left,
-    Right,
-    Backward,
-}
-
-impl OrdinaryStepDirection {
+impl StepDirection {
     pub(super) fn mark_blocked_response(self, control: &mut super::ActorControlState) {
         match self {
             Self::Forward => {
@@ -65,13 +56,7 @@ impl ScriptWorld {
         environment: super::transition::ObstacleEnvironment,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
-        self.ordinary_step_clear(
-            id,
-            OrdinaryStepDirection::Forward,
-            query,
-            environment,
-            sounds,
-        )
+        self.ordinary_step_clear(id, StepDirection::Forward, query, environment, sounds)
     }
 
     /// Check a receiver-relative destination without translating the receiver.
@@ -80,7 +65,7 @@ impl ScriptWorld {
     pub fn ordinary_step_clear(
         &mut self,
         id: ScriptActorId,
-        direction: OrdinaryStepDirection,
+        direction: StepDirection,
         query: super::ground::OrdinaryGroundQuery<'_>,
         environment: super::transition::ObstacleEnvironment,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
@@ -103,18 +88,10 @@ impl ScriptWorld {
         let shape = self.ordinary_collision_shape(id)?;
         let attributes = &self.actors[index].attributes;
         let (axis, attribute, extent, reverse) = match direction {
-            OrdinaryStepDirection::Forward => {
-                (2, Attribute::ForwardWalk, shape.positive_extent[2], false)
-            }
-            OrdinaryStepDirection::Left => {
-                (0, Attribute::SideSpeed, shape.negative_extent[0], true)
-            }
-            OrdinaryStepDirection::Right => {
-                (0, Attribute::SideSpeed, shape.positive_extent[0], false)
-            }
-            OrdinaryStepDirection::Backward => {
-                (2, Attribute::BackwardWalk, shape.negative_extent[2], true)
-            }
+            StepDirection::Forward => (2, Attribute::ForwardWalk, shape.positive_extent[2], false),
+            StepDirection::Left => (0, Attribute::SideSpeed, shape.negative_extent[0], true),
+            StepDirection::Right => (0, Attribute::SideSpeed, shape.positive_extent[0], false),
+            StepDirection::Backward => (2, Attribute::BackwardWalk, shape.negative_extent[2], true),
         };
         let amount = i32::from(attributes[attribute])
             .wrapping_add(extent)

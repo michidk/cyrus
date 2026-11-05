@@ -254,7 +254,7 @@ impl ScriptWorld {
             .expect("validated control");
         if control.living_state != LivingState::ORDINARY {
             control.motion_direction = 0;
-            control.directional_state = [0; 2];
+            control.actions = Default::default();
         }
         Ok(())
     }

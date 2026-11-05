@@ -6,6 +6,7 @@
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -425,7 +426,10 @@ impl ScriptWorld {
         };
         let mut point = record.point;
         // A sidestep this update moves the ledge point a table step along the wall.
-        if self.globals.locomotion_called & 3 != 0 {
+        if self.globals.locomotion_called
+            & (StepDirection::Left.called_flag() | StepDirection::Right.called_flag())
+            != 0
+        {
             let [dx, dz] = super::ledge::heading_offset(256, 1792);
             point[0] = point[0].wrapping_add(dx);
             point[2] = point[2].wrapping_add(dz);
@@ -436,7 +440,11 @@ impl ScriptWorld {
             .context("ledge hang animation unavailable")?
             .playback
             .translation_suppressed();
-        if self.globals.locomotion_called & 3 != 0 && !suppressed {
+        if self.globals.locomotion_called
+            & (StepDirection::Left.called_flag() | StepDirection::Right.called_flag())
+            != 0
+            && !suppressed
+        {
             self.globals.selected_ledge_anchor = Some((point, record.heading));
             self.spatial
                 .as_mut()

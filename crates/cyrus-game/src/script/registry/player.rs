@@ -11,6 +11,8 @@ use crate::player::{
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::locomotion::StepDirection;
+use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::ground::SupportHistory;
@@ -377,7 +379,11 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("jump arbitration control unavailable")?;
-        if control.directional_state.iter().any(|byte| byte & 1 != 0) {
+        if control
+            .actions
+            .iter()
+            .any(|byte| byte & ActionWords::JUMP_RIGHT != 0)
+        {
             return Ok(());
         }
         if group.is_some_and(|group| {
@@ -385,18 +391,15 @@ impl ScriptWorld {
         }) || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
         {
-            control
-                .directional_state
-                .iter_mut()
-                .for_each(|byte| *byte &= !3);
+            control.actions.iter_mut().for_each(|byte| *byte &= !3);
             return Ok(());
         }
-        let step_hold = step_type == 0 || (control.movement_flags >> 4) & 3 == 3;
+        let step_hold = step_type == 0 || StepDirection::Forward.counter(control.move_counter) == 3;
         if step_hold
             && matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
             && !exit_reached
         {
-            control.directional_state[0] |= 3;
+            control.actions.pending |= ActionWords::JUMPS;
             control.jump_window = 0;
             return Ok(());
         }
@@ -863,9 +866,9 @@ impl ScriptWorld {
         &mut self,
         id: super::ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
-        direction: super::hazard::OrdinaryStepDirection,
+        direction: crate::script::locomotion::StepDirection,
     ) -> Result<bool> {
-        use super::hazard::OrdinaryStepDirection::{Backward, Forward, Left, Right};
+        use crate::script::locomotion::StepDirection::{Backward, Forward, Left, Right};
         let index = self.resolve(id)?;
         let shape = self.ordinary_collision_shape(id)?;
         let (attribute, extent, offset_axis, reverse) = match direction {
@@ -936,7 +939,10 @@ impl ScriptWorld {
                 && control.falling_state == JumpMotion::NONE
                 && control.sliding_state == 0
                 && control.living_state == LivingState::ORDINARY
-                && control.directional_state.iter().all(|flags| flags & 3 == 0),
+                && control
+                    .actions
+                    .iter()
+                    .all(|flags| flags & ActionWords::JUMPS == 0),
             "player forward query: ordinary grounded state required"
         );
         let collision = actor.attributes[Attribute::Collide];
@@ -1464,8 +1470,12 @@ fn steer_airborne(
         if control.falling_state != JumpMotion::NONE {
             control.motion_companion = 0;
         }
-        if control.directional_state.iter().all(|byte| byte & 1 == 0) {
-            for byte in &mut control.directional_state {
+        if control
+            .actions
+            .iter()
+            .all(|byte| byte & ActionWords::JUMP_RIGHT == 0)
+        {
+            for byte in control.actions.iter_mut() {
                 *byte &= !3;
             }
         }
@@ -1523,16 +1533,16 @@ mod airborne_tests {
         let mut control = super::super::ActorControlState {
             falling_state: JumpMotion::STANDING,
             motion_companion: 5,
-            directional_state: [6, 0x82],
+            actions: [6, 0x82].into(),
             ..Default::default()
         };
         steer_airborne(&mut control, None, &held);
         assert_eq!(
-            (control.motion_companion, control.directional_state),
+            (control.motion_companion, <[u32; 2]>::from(control.actions)),
             (0, [4, 0x80])
         );
-        control.directional_state = [1, 0];
+        control.actions = [1, 0].into();
         steer_airborne(&mut control, None, &held);
-        assert_eq!(control.directional_state, [1, 0]);
+        assert_eq!(<[u32; 2]>::from(control.actions), [1, 0]);
     }
 }

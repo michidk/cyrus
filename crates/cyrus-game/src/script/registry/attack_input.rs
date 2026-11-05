@@ -7,6 +7,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, bail};
 use cyrus_script::Attribute;
 
@@ -520,7 +521,7 @@ impl ScriptWorld {
         }
         let airborne = control.queued_motion != JumpMotion::NONE
             || control.falling_state == JumpMotion::STANDING;
-        let walking_jump = control.directional_state[0] & 3 != 0;
+        let walking_jump = control.actions.pending & ActionWords::JUMPS != 0;
         let falling = control.falling_state == JumpMotion::STANDING;
         let mut latches = self.actors[id.index]
             .player_movement

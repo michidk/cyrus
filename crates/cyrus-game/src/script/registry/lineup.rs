@@ -7,6 +7,7 @@ use super::{GameHost, ScriptActorId};
 use crate::script::CombatFlags;
 use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{Attribute, Native};
 
@@ -286,12 +287,7 @@ impl StepPort for PlayerLineup<'_, '_, '_, '_, '_> {
         self.record((), result);
     }
     fn clear_called(&mut self, step: CloseStep) {
-        self.host.registry.globals.locomotion_called &= !match step {
-            CloseStep::Left => 1,
-            CloseStep::Right => 2,
-            CloseStep::Forward => 4,
-            CloseStep::Backward => 8,
-        };
+        self.host.registry.globals.locomotion_called &= !StepDirection::from(step).called_flag();
     }
     fn set_horizontal(&mut self, x: i32, z: i32) {
         let result = self
@@ -465,7 +461,11 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
     }
     fn set_called_flags(&mut self, value: bool) {
         let flags = &mut self.host.registry.globals.locomotion_called;
-        *flags = if value { *flags | 0xf } else { *flags & !0xf };
+        *flags = if value {
+            *flags | StepDirection::ALL_CALLED
+        } else {
+            *flags & !StepDirection::ALL_CALLED
+        };
     }
     fn response_masked(&self) -> bool {
         self.host.registry.actors[self.player.index]

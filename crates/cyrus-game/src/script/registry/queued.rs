@@ -2,6 +2,8 @@
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::locomotion::StepDirection;
+use crate::script::registry::ActionWords;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// Current receiver state and established edge-service outcome.
@@ -368,8 +370,8 @@ impl super::ScriptWorld {
             .as_mut()
             .expect("validated displacement control");
         control.motion_direction = 2;
-        control.movement_flags |= 0x30;
-        self.globals.locomotion_called |= 4;
+        control.move_counter |= StepDirection::Forward.counter_mask();
+        self.globals.locomotion_called |= StepDirection::Forward.called_flag();
         if suppressed {
             return Ok(());
         }
@@ -438,7 +440,7 @@ impl super::ScriptWorld {
         {
             return Ok(());
         }
-        self.globals.locomotion_called |= 8;
+        self.globals.locomotion_called |= StepDirection::Backward.called_flag();
         let actor = &mut self.actors[index];
         let animation = actor
             .animation
@@ -458,7 +460,7 @@ impl super::ScriptWorld {
         };
         let control = actor.control.as_mut().expect("validated control");
         let distance = super::super::locomotion::initial_step_distance(
-            &mut control.movement_flags,
+            &mut control.move_counter,
             6,
             actor.attributes[Attribute::StepType],
             length,
@@ -510,7 +512,12 @@ impl super::ScriptWorld {
         }
         let backward = control.rope_speed < 0;
         control.motion_classification = if backward { 3 } else { 2 };
-        control.movement_flags |= if backward { 0xc0 } else { 0x30 };
+        control.move_counter |= if backward {
+            StepDirection::Backward
+        } else {
+            StepDirection::Forward
+        }
+        .counter_mask();
         let distance = control.rope_speed.unsigned_abs().wrapping_mul(frame_scale) >> 8;
         if suppressed || distance < 1 {
             return Ok(());
@@ -955,27 +962,27 @@ impl super::ActorControlState {
     fn advance_action_words(&mut self, ticks: u32, group: Option<AnimationGroup>) -> Option<u8> {
         self.jump_window = self.jump_window.wrapping_add(ticks as u8);
         if self.jump_window > 36 {
-            self.directional_state[1] |= self.directional_state[0];
-            self.directional_state[0] = 0;
+            self.actions.accepted |= self.actions.pending;
+            self.actions.pending = 0;
             self.jump_window = 0;
         }
         if self.queued_motion != JumpMotion::NONE
             || !matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
         {
-            self.directional_state
+            self.actions
                 .iter_mut()
-                .for_each(|word| *word &= !3);
+                .for_each(|word| *word &= !ActionWords::JUMPS);
         }
-        let motion = if self.directional_state[1] & 1 != 0 {
+        let motion = if self.actions.accepted & ActionWords::JUMP_RIGHT != 0 {
             8
-        } else if self.directional_state[1] & 2 != 0 {
+        } else if self.actions.accepted & ActionWords::JUMP_LEFT != 0 {
             9
         } else {
             return None;
         };
-        self.directional_state
+        self.actions
             .iter_mut()
-            .for_each(|word| *word &= !3);
+            .for_each(|word| *word &= !ActionWords::JUMPS);
         Some(motion)
     }
 }
@@ -988,7 +995,7 @@ mod action_word_tests {
     #[test]
     fn action_promotion_uses_wrapping_byte_and_strict_threshold() {
         let mut control = ActorControlState {
-            directional_state: [2147483907, 1073741824],
+            actions: [2147483907, 1073741824].into(),
             jump_window: 35,
             ..Default::default()
         };
@@ -996,26 +1003,26 @@ mod action_word_tests {
             control.advance_action_words(1, Some(AnimationGroup::RUN)),
             None
         );
-        assert_eq!(control.directional_state, [2147483907, 1073741824]);
+        assert_eq!(<[u32; 2]>::from(control.actions), [2147483907, 1073741824]);
         assert_eq!(
             control.advance_action_words(1, Some(AnimationGroup::RUN)),
             Some(8)
         );
-        assert_eq!(control.directional_state, [0, 3221225728]);
+        assert_eq!(<[u32; 2]>::from(control.actions), [0, 3221225728]);
         assert_eq!(control.jump_window, 0);
         control.jump_window = 255;
-        control.directional_state = [0x102, 0];
+        control.actions = [0x102, 0].into();
         assert_eq!(
             control.advance_action_words(1, Some(AnimationGroup::RUN_TORCH)),
             None
         );
         assert_eq!(control.jump_window, 0);
-        assert_eq!(control.directional_state, [0x102, 0]);
+        assert_eq!(<[u32; 2]>::from(control.actions), [0x102, 0]);
         assert_eq!(
             control.advance_action_words(37, Some(AnimationGroup::RUN_TORCH)),
             Some(9)
         );
-        assert_eq!(control.directional_state, [0, 0x100]);
+        assert_eq!(<[u32; 2]>::from(control.actions), [0, 0x100]);
     }
 
     #[test]
@@ -1028,13 +1035,13 @@ mod action_word_tests {
             ),
         ] {
             let mut control = ActorControlState {
-                directional_state: [0x123, 0x202],
+                actions: [0x123, 0x202].into(),
                 queued_motion: queued,
                 jump_window: 36,
                 ..Default::default()
             };
             assert_eq!(control.advance_action_words(1, Some(group)), None);
-            assert_eq!(control.directional_state, [0, 0x320]);
+            assert_eq!(<[u32; 2]>::from(control.actions), [0, 0x320]);
         }
     }
 }

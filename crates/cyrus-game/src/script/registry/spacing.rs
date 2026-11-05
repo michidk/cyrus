@@ -4,6 +4,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute, Native};
 
@@ -158,9 +159,9 @@ impl ScriptWorld {
             .locomotion_geometry
             .context("spacing directional geometry unavailable")?;
         let direction = match movement {
-            OrdinaryMovement::Backward => super::hazard::OrdinaryStepDirection::Backward,
-            OrdinaryMovement::Left => super::hazard::OrdinaryStepDirection::Left,
-            OrdinaryMovement::Right => super::hazard::OrdinaryStepDirection::Right,
+            OrdinaryMovement::Backward => crate::script::locomotion::StepDirection::Backward,
+            OrdinaryMovement::Left => crate::script::locomotion::StepDirection::Left,
+            OrdinaryMovement::Right => crate::script::locomotion::StepDirection::Right,
             _ => anyhow::bail!("spacing admission requires backward or lateral movement"),
         };
         if !self.ordinary_step_clear(
@@ -591,7 +592,7 @@ impl ScriptWorld {
             {
                 return Ok(0);
             }
-            if (control.movement_flags >> 4) & 3 < 3
+            if StepDirection::Forward.counter(control.move_counter) < 3
                 && !self
                     .forward_step_clear(
                         id,
@@ -654,7 +655,7 @@ impl ScriptWorld {
                 )));
             }
             let suppressed = animation.translation_suppressed();
-            self.globals.locomotion_called |= 4;
+            self.globals.locomotion_called |= StepDirection::Forward.called_flag();
             let amount = i32::from(step) << 8;
             let amount = if deep { amount >> 1 } else { amount };
             let amount = super::super::locomotion::initial_step_distance(
@@ -662,7 +663,7 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .context("forward amount control unavailable")?
-                    .movement_flags,
+                    .move_counter,
                 4,
                 adjustment,
                 amount,
@@ -772,7 +773,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         use super::super::locomotion::{self, Strafe};
-        use super::hazard::OrdinaryStepDirection;
+        use crate::script::locomotion::StepDirection;
         let result = (|| -> Result<()> {
             let index = self.resolve(id)?;
             // The held-weapon predicate needs the item owner; update passes without one
@@ -810,7 +811,7 @@ impl ScriptWorld {
                 .as_ref()
                 .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
             let adjustment = actor.attributes[Attribute::StepType];
-            let counters = control.movement_flags;
+            let counters = control.move_counter;
             let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
             let stance = holding_weapon || combat_stance;
             // The walk, walk-backward and sidestep steps store their direction before the check.
@@ -849,10 +850,10 @@ impl ScriptWorld {
                         return Ok(());
                     };
                     let direction = match step {
-                        Continuation::Sidestep(Strafe::Left) => OrdinaryStepDirection::Left,
-                        Continuation::Sidestep(Strafe::Right) => OrdinaryStepDirection::Right,
-                        Continuation::Walk => OrdinaryStepDirection::Forward,
-                        _ => OrdinaryStepDirection::Backward,
+                        Continuation::Sidestep(Strafe::Left) => StepDirection::Left,
+                        Continuation::Sidestep(Strafe::Right) => StepDirection::Right,
+                        Continuation::Walk => StepDirection::Forward,
+                        _ => StepDirection::Backward,
                     };
                     if !self.ordinary_step_clear(
                         id,
@@ -945,7 +946,7 @@ impl ScriptWorld {
             control.motion_direction = step.direction();
             self.globals.locomotion_called |= step.called_flag();
             let distance = locomotion::initial_step_distance(
-                &mut control.movement_flags,
+                &mut control.move_counter,
                 shift,
                 adjustment,
                 step_length,

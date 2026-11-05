@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -39,7 +40,10 @@ impl ScriptWorld {
             .as_ref()
             .context("support surface control unavailable")?;
         if control.queued_motion != JumpMotion::NONE
-            || control.directional_state.iter().any(|flags| flags & 3 != 0)
+            || control
+                .actions
+                .iter()
+                .any(|flags| flags & ActionWords::JUMPS != 0)
         {
             return Ok(0);
         }
@@ -348,7 +352,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("fall recovery control unavailable")?;
-        for byte in &mut control.directional_state {
+        for byte in control.actions.iter_mut() {
             *byte &= !3;
         }
         let stable = control.stable_local_position;
@@ -456,7 +460,11 @@ impl ScriptWorld {
             }
             return Ok(());
         }
-        if control.directional_state.iter().any(|byte| byte & 3 != 0) {
+        if control
+            .actions
+            .iter()
+            .any(|byte| byte & ActionWords::JUMPS != 0)
+        {
             return self.recover_ordinary_fall_entry(
                 id,
                 query,

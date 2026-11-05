@@ -154,7 +154,7 @@ impl ScriptWorld {
             .position = stable;
         let actor = &mut self.actors[id.index];
         let control = actor.control.as_mut().expect("admitted sink control");
-        control.movement_flags = 0;
+        control.move_counter = 0;
         let group = control.start_terrain_sink_fall(stable[1], jump_height, holding, current_group);
         actor.sync_falling_motion();
         if let Some(group) = group

@@ -4,6 +4,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::locomotion::StepDirection;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
@@ -321,6 +322,52 @@ pub(crate) struct ScriptAnimation {
 /// Allocated ordinary-map and player control state, separate from animation playback.
 /// Allocation and combat construction follow preservation's engine/animation.md.
 /// Player role transitions and death/removal transitions remain unsupported.
+/// The actor's directional action words: the DEF `action_flag` (pending) and `action` (accepted)
+/// properties. `SetAction` sets pending bits; a late update promotes them into the accepted word
+/// (preservation `docs/engine/SOUPPROPS.md`). Both keep all 32 bits a script writes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct ActionWords {
+    pub pending: u32,
+    pub accepted: u32,
+}
+
+impl ActionWords {
+    /// DEF `action_jump_right`: accepted, it selects the running jump motion.
+    pub const JUMP_RIGHT: u32 = 1;
+    /// DEF `action_jump_left`: accepted, it selects the left-lead running jump motion.
+    pub const JUMP_LEFT: u32 = 2;
+    /// Both directional jump bits.
+    pub const JUMPS: u32 = Self::JUMP_RIGHT | Self::JUMP_LEFT;
+
+    /// Both words, pending first.
+    pub fn iter(&self) -> impl Iterator<Item = u32> {
+        [self.pending, self.accepted].into_iter()
+    }
+
+    /// Both words, pending first.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut u32> {
+        [&mut self.pending, &mut self.accepted].into_iter()
+    }
+}
+
+impl From<[u32; 2]> for ActionWords {
+    fn from([pending, accepted]: [u32; 2]) -> Self {
+        Self { pending, accepted }
+    }
+}
+
+impl PartialEq<[u32; 2]> for ActionWords {
+    fn eq(&self, words: &[u32; 2]) -> bool {
+        <[u32; 2]>::from(*self) == *words
+    }
+}
+
+impl From<ActionWords> for [u32; 2] {
+    fn from(words: ActionWords) -> Self {
+        [words.pending, words.accepted]
+    }
+}
+
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
     pub navigation: super::ActorNavigation,
@@ -342,14 +389,14 @@ pub struct ActorControlState {
     pub motion_direction: u8,
     /// Retained movement-helper classification, distinct from displacement direction.
     pub motion_classification: u8,
-    /// Pending and accepted action words; their low bytes own directional motion flags.
-    pub directional_state: [u32; 2],
+    /// The pending (`action_flag`) and accepted (`action`) directional action words.
+    pub actions: ActionWords,
     /// Allocator-zero action-transition counter; state-17 reset assigns six.
     pub action_transition_counter: u8,
     /// Ticks since the directional-state pending byte began, promoting it after 36.
     pub jump_window: u8,
-    /// Packed left/right/forward/backward counters, two bits each; directional motion saturates its field.
-    pub movement_flags: u8,
+    /// The DEF `move_counter` byte: a two-bit counter per [`StepDirection`](super::locomotion::StepDirection).
+    pub move_counter: u8,
     /// Retained integer motion components; obstacle interruption only clears them here.
     pub motion_vector: [i32; 3],
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
@@ -3553,7 +3600,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     .as_mut()
                     .map(|control| super::tasks::MotionCall {
                         direction: &mut control.motion_direction,
-                        counters: &mut control.movement_flags,
+                        counters: &mut control.move_counter,
                     }),
                 called: &mut self.registry.globals.locomotion_called,
             }),
@@ -4151,12 +4198,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         self.registry.player_step_clear(
                             id,
                             geometry.ground,
-                            hazard::OrdinaryStepDirection::Backward,
+                            crate::script::locomotion::StepDirection::Backward,
                         )?
                     } else {
                         self.registry.ordinary_step_clear(
                             id,
-                            hazard::OrdinaryStepDirection::Backward,
+                            crate::script::locomotion::StepDirection::Backward,
                             geometry.ground,
                             geometry.environment,
                             sounds,
@@ -4210,8 +4257,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         | super::locomotion::StrafeAdmission::DeepWater { .. }
                 ) {
                     let direction = match strafe {
-                        super::locomotion::Strafe::Left => hazard::OrdinaryStepDirection::Left,
-                        super::locomotion::Strafe::Right => hazard::OrdinaryStepDirection::Right,
+                        super::locomotion::Strafe::Left => {
+                            crate::script::locomotion::StepDirection::Left
+                        }
+                        super::locomotion::Strafe::Right => {
+                            crate::script::locomotion::StepDirection::Right
+                        }
                     };
                     let selected = self.selected_player() == Some(id);
                     let mut missing_sound =
@@ -4259,7 +4310,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             self.registry.player_step_clear(
                                 id,
                                 geometry.ground,
-                                hazard::OrdinaryStepDirection::Forward,
+                                crate::script::locomotion::StepDirection::Forward,
                             )?
                         } else {
                             self.registry.walk_forward_step_clear(
@@ -4280,7 +4331,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                                 geometry.ground.scene,
                             )?);
                         }
-                        if (control.movement_flags >> 4) & 3 < 3 {
+                        if StepDirection::Forward.counter(control.move_counter) < 3 {
                             admission.forward_step_clear = self.registry.forward_step_clear(
                                 id,
                                 geometry.environment.selected_player,
@@ -4427,14 +4478,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             } = sound
             {
                 if let Some(control) = control.as_mut()
-                    && control.directional_state[0] & 3 != 0
+                    && control.actions.pending & ActionWords::JUMPS != 0
                 {
                     let clear = if mask == 1 { 2 } else { 1 };
-                    control
-                        .directional_state
-                        .iter_mut()
-                        .for_each(|word| *word &= !clear);
-                    control.directional_state[1] |= control.directional_state[0];
+                    control.actions.iter_mut().for_each(|word| *word &= !clear);
+                    control.actions.accepted |= control.actions.pending;
                     return Ok(cyrus_world::animation::TransitionDecision::Take);
                 }
                 return Ok(cyrus_world::animation::TransitionDecision::Continue);
@@ -4492,7 +4540,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 animation.playback.mark_exit();
             }
             if let Some(control) = self.registry.actors[self.index].control.as_mut() {
-                control.movement_flags |= 0x30;
+                control.move_counter |= StepDirection::Forward.counter_mask();
             }
             let sounds = self
                 .sounds
@@ -4970,19 +5018,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("action native: control unavailable")?;
             if function == Native::ResetAllAction {
-                control.directional_state = [0; 2];
+                control.actions = Default::default();
             } else if function == Native::ResetAction {
-                control
-                    .directional_state
-                    .iter_mut()
-                    .for_each(|word| *word &= !mask);
+                control.actions.iter_mut().for_each(|word| *word &= !mask);
             } else {
-                if !matches!(mask, 1 | 2)
-                    || control
-                        .directional_state
-                        .iter()
-                        .any(|word| word & mask != 0)
-                {
+                if !matches!(mask, 1 | 2) || control.actions.iter().any(|word| word & mask != 0) {
                     return Ok(CallResult::CompleteWithoutValue);
                 }
                 let animation = actor
@@ -4999,17 +5039,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     || control.falling_state != JumpMotion::NONE
                 {
                     control
-                        .directional_state
+                        .actions
                         .iter_mut()
-                        .for_each(|word| *word &= !3);
+                        .for_each(|word| *word &= !ActionWords::JUMPS);
                 } else {
                     let step_hold = actor.attributes[Attribute::StepType] == 0
-                        || (control.movement_flags >> 4) & 3 == 3;
+                        || StepDirection::Forward.counter(control.move_counter) == 3;
                     if step_hold
                         && matches!(group, AnimationGroup::RUN | AnimationGroup::RUN_TORCH)
                         && !animation.playback.exit_reached()
                     {
-                        control.directional_state[0] |= 3;
+                        control.actions.pending |= ActionWords::JUMPS;
                         control.jump_window = 0;
                     } else {
                         self.call(target, kind, Native::Jump, &[], invocation, flags)?;
@@ -7320,7 +7360,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .as_mut()
                         .map(|control| super::tasks::MotionCall {
                             direction: &mut control.motion_direction,
-                            counters: &mut control.movement_flags,
+                            counters: &mut control.move_counter,
                         }),
                     called: &mut self.registry.globals.locomotion_called,
                 }),

@@ -89,6 +89,17 @@ pub enum CloseStep {
     Forward,
 }
 
+impl From<CloseStep> for super::locomotion::StepDirection {
+    fn from(step: CloseStep) -> Self {
+        match step {
+            CloseStep::Right => Self::Right,
+            CloseStep::Backward => Self::Backward,
+            CloseStep::Left => Self::Left,
+            CloseStep::Forward => Self::Forward,
+        }
+    }
+}
+
 /// Helper chosen by the pre-step relative bearing: right for 257 through 768, backward for 769
 /// through 1280, left for 1281 through 1792, forward otherwise.
 pub fn close_step(bearing: u16) -> CloseStep {

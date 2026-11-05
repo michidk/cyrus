@@ -303,7 +303,7 @@ impl ScriptWorld {
         control.queued_motion = JumpMotion::NONE;
         control.sliding_state = 0;
         control.living_state = LivingState::ORDINARY;
-        control.directional_state = [0; 2];
+        control.actions = Default::default();
         control.jump_selector = 0;
         let rope = &mut self.ropes[rope_index];
         // The engine links a newly attached node at the rope-list head.  Chain
