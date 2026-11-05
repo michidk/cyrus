@@ -18,6 +18,9 @@ pub enum CheatEffect {
     List,
     Save,
     PlayerDistance,
+    TorchRetention,
+    ActorUpdateSkip,
+    MagicCarpet,
     Unsupported,
 }
 
@@ -115,8 +118,49 @@ impl Cheats {
             "oracle" => CheatEffect::List,
             "savecheats" => CheatEffect::Save,
             "neversaydie" => CheatEffect::PlayerDistance,
+            "goldfinger" => CheatEffect::TorchRetention,
+            "drno" => CheatEffect::ActorUpdateSkip,
+            "magiccarpet" => CheatEffect::MagicCarpet,
             _ => CheatEffect::Unsupported,
         }
+    }
+
+    /// The drno state: the ordinary main stage is skipped for every actor except the selected
+    /// player and the camera actor. Active for any nonzero value.
+    pub fn actor_update_skipped(&self) -> Result<bool> {
+        Ok(self.state()?.value("drno").context("missing drno state")? != 0)
+    }
+
+    /// The yeahbaby state: the selected player's ground-support probe is skipped while a vertical
+    /// debug key is held or the Home toggle is set. Active for any nonzero value. The ground
+    /// bypass, the Page Up and Page Down movement and the Insert step with its camera limiter
+    /// suspension are integrated. The catalog reports the effect unsupported pending complete
+    /// native and browser acceptance.
+    pub fn ground_bypass(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("yeahbaby")
+            .context("missing yeahbaby state")?
+            != 0)
+    }
+
+    /// The magiccarpet state: the selected player's ground-support probe clears its falling byte
+    /// and ends. Active only for the value 1, not for any other nonzero value.
+    pub fn magic_carpet(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("magiccarpet")
+            .context("missing magiccarpet state")?
+            == 1)
+    }
+
+    /// The goldfinger state for the selected player's burning torch, active for any nonzero value.
+    pub fn torch_retained(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("goldfinger")
+            .context("missing goldfinger state")?
+            != 0)
     }
 
     /// The original PlayerDistance override is active for any nonzero value.

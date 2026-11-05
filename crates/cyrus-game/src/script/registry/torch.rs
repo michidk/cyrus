@@ -111,6 +111,16 @@ impl ScriptWorld {
         {
             return Ok(());
         }
+        // With goldfinger on, the selected player's counter becomes a full 100 here and the water
+        // branches and the countdown do not run that update (preservation `engine/cheats.md`).
+        if inputs.retained && self.selected_player() == Some(id) {
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("checked control")
+                .torch_burning = 100;
+            return Ok(());
+        }
         let surface = actor.surface.unwrap_or(0);
         let control = self.actors[index]
             .control
@@ -208,6 +218,8 @@ pub(super) struct TorchInputs {
     pub drawing: bool,
     pub sheathing: bool,
     pub holding: bool,
+    /// The goldfinger cheat: the selected player's burning torch is held at a full counter.
+    pub retained: bool,
 }
 
 /// Whether the actor is in, or playing the group of, a lighting or dousing transition.
@@ -263,6 +275,7 @@ impl ScriptWorld {
             drawing,
             sheathing,
             holding,
+            retained: inputs.torch_retained.unwrap_or(false),
         })
     }
 
@@ -345,6 +358,7 @@ impl GameHost<'_, '_, '_, '_> {
             drawing,
             sheathing,
             holding,
+            retained: self.inputs.torch_retained.unwrap_or(false),
         })
     }
 }

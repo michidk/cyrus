@@ -21,6 +21,13 @@ pub struct ScriptKeys {
     pub shift: bool,
     pub control: bool,
     pub alt: bool,
+    /// Page Up and Page Down held: the `yeahbaby` ground bypass keys.
+    pub page_up: bool,
+    pub page_down: bool,
+    /// Home went down since the previous sample: it toggles the `yeahbaby` ground bypass.
+    pub home_pressed: bool,
+    /// Insert held: the `yeahbaby` forward step and camera limiter suspension.
+    pub insert: bool,
 }
 
 impl ScriptKeys {
@@ -113,6 +120,10 @@ pub(super) fn sample(
         shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
         control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
         alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
+        page_up: keys.pressed(KeyCode::PageUp),
+        page_down: keys.pressed(KeyCode::PageDown),
+        home_pressed: keys.just_pressed(KeyCode::Home),
+        insert: keys.pressed(KeyCode::Insert),
     };
     use crate::player::input::Action;
     *quick = QuickKeys {

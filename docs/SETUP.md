@@ -694,7 +694,19 @@ once). It accepts numeric literals only, not symbols; a missing marker reports a
 placement error and keeps the player where it was. `item add,id` gives the selected player one item through
 the session inventory, the same acquisition path as the `AddItem` native (**Inferred** from the console reference;
 the original handler was not compared). The other `item` operations (`player`, `show`, `sub`, `drop`) report
-that they are unsupported. Other catalog entries report unavailable owners.
+that they are unsupported. `getmapmarker number` moves the selected player to the loaded map's marker of that
+number and keeps its heading (**Verified** from preservation `engine/console.md`; not compared in the original);
+a marker beyond the map's table or without its presence byte reports an error and moves nothing. The built-in
+table used when no map table is loaded reports unavailable. `setmarker number` saves the selected player's
+position and orientation and the published camera pose under the current world and number in a marker file in
+cyrus's local state, and `getmarker number` moves the player to the first saved marker of that world and number,
+position, orientation and camera pose (**Verified** from preservation `engine/console.md`). The camera values are
+written at the command boundary; the next ordinary camera update retains its normal ownership. The file
+never lives in the install. Native and browser marker storage is not connected yet; hosts without marker
+storage report `setmarker` and `getmarker` unavailable. `delay [number]` makes every main-loop pass wait that many milliseconds in the native
+game (**Verified** from preservation `engine/console.md`); none, zero or a non-number clears it, a negative number
+is refused, and the browser reports it unavailable because its wait would block the page.
+Other catalog entries report unavailable owners.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
@@ -702,7 +714,30 @@ recover malformed local state; failed imports and saves retain existing state.
 
 **Verified:** `neversaydie` supplies the documented distance override during
 automatic world updates and explicit script steps, unless `distance_override`
-is supplied by the caller. Other gameplay effects report unsupported.
+is supplied by the caller. `goldfinger` holds the selected player's burning torch at a full
+counter: with any nonzero state, on the update that runs the torch burn (every eighth world-loop
+frame, outside the dousing state) the counter becomes exactly 100 and neither the water branches
+nor the countdown run; a zero counter stays zero. `drno` skips the ordinary main stage, including its
+response timers, for every actor except the selected player and the camera actor (**Inferred**: the original's
+early return is **Verified**; that its skipped part is this stage is inferred from the task-system test beside it
+and the matching timer bookkeeping). It acts only where the caller supplies the cheat state: the automatic
+update and the control port do, direct stage calls without it do not. `magiccarpet` (the value exactly 1, not any
+nonzero value) makes the selected player's ground-support probe clear its falling byte and end. `yeahbaby`
+integrates its ground bypass and debug navigation handler. The bypass is on for a nonzero state or in developer mode (`[debug] final_version=0`,
+where missing key state leaves it inactive): while Page Up or Page Down is held, or the Home toggle (flipped once
+per Home press while it is on, and kept while it is off) is set, the selected player's probe clears the living
+state, the sliding, queued-motion and falling bytes and the motion classification and ends before any support
+query; unknown key state refuses the update. In the same state the selected player's handler moves the actor by
+16 map units for each of Page Up (up) and Page Down (down) held once per update, so both held cancel; Insert held suspends the camera's
+movement limiting (bit 0 of the selected camera record's flags, set on the first held update and restored on release
+or when the handler turns off, on the record selected then) and moves the actor forward by the frame scale times
+128 Q8 each update. With the camera session absent, Insert refuses the update. The catalog still reports
+`yeahbaby` unavailable pending complete native and browser acceptance. Installed START tests drive
+these keys and cheat states through ordinary Bevy app updates; they do not establish host parity. The keys are
+sampled from the keyboard once per frame, under the same input locks as the quick keys (console, logbook and
+loading read them as released), and read by that frame's ordinary update; a Home press in a frame where the
+ordinary update does not run is not retained, and the control port supplies no keys. Other gameplay
+effects report unsupported.
 **Unknown:** the original gameplay effect of `oddjob`; its raw state still
 supports toggling, assignment and persistence. These commands do not enable
 unsupported gameplay systems.

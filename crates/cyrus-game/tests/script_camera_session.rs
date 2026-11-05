@@ -272,6 +272,83 @@ fn show_player_fails_before_changing_the_camera_without_its_inputs() {
 }
 
 #[test]
+fn drno_skips_the_map_actor_but_preserves_player_and_camera_stage_admission() {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    let show_player = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: Native::ShowPlayer,
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: vec![],
+        },
+    };
+    for (name, origin) in [("CYRUS", 100), ("CAMERA", 200)] {
+        data.actors.insert(
+            name.into(),
+            actor(
+                vec![show_player.clone(), Operation::End { target: 0 }],
+                origin,
+            ),
+        );
+    }
+    data.content_id = data.content_identity().unwrap();
+    let observe = |world: &ScriptWorld, index: usize| {
+        let runtime = world.actors()[index].runtime().unwrap();
+        (
+            runtime.active_tasks(),
+            runtime.program_counter(Thread::Main),
+        )
+    };
+    let main_stage = |skipped: Option<bool>| {
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let hud = ScriptHud::default();
+        let before: Vec<_> = (0..3).map(|index| observe(&world, index)).collect();
+        for index in 0..3 {
+            let id = world.id(index).unwrap();
+            let result = world.advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    actor_update_skipped: skipped,
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            );
+            if index == CAMERA {
+                // The camera has no ordinary control record. Its exemption reaches the same
+                // lifecycle refusal with drno on or off instead of taking the skip return.
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains("script-control lifecycle unavailable"),
+                    "{error}"
+                );
+            } else {
+                result.unwrap();
+            }
+        }
+        let after: Vec<_> = (0..3).map(|index| observe(&world, index)).collect();
+        (before, after)
+    };
+    let (before, ordinary) = main_stage(None);
+    assert_ne!(ordinary[0], before[0], "the map actor's main stage starts");
+    let (_, off) = main_stage(Some(false));
+    assert_eq!(off, ordinary, "the cheat off changes nothing");
+    let (_, skipped) = main_stage(Some(true));
+    assert_eq!(skipped[0], before[0], "the map actor is skipped");
+    assert_eq!(skipped[PLAYER], ordinary[PLAYER], "the player is exempt");
+    assert_eq!(
+        skipped[CAMERA], ordinary[CAMERA],
+        "the camera actor is exempt"
+    );
+}
+
+#[test]
 fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
     let data = scripts(&["CYRUS", "CAMERA"]);
     let animations = Animations {

@@ -622,6 +622,201 @@ impl ScriptWorld {
         Ok((holding, combat_active))
     }
 
+    /// The `yeahbaby` ground bypass of the selected player's probe: while Page Up or Page Down is
+    /// held or the Home toggle is set, the actor's living state, sliding, queued-motion and
+    /// falling bytes and its motion classification clear and the probe ends before any support
+    /// query. The original also clears the actor's rope node reference; the probe does not run
+    /// for an actor attached to a rope here, so there is no reference to clear. Unknown keys
+    /// refuse the update instead of reading as released. Returns whether the bypass was taken.
+    fn ground_bypass_taken(
+        &mut self,
+        id: ScriptActorId,
+        script: super::ScriptInputs<'_>,
+    ) -> Result<bool> {
+        let Some(keys) = self.ground_bypass_keys(script)? else {
+            return Ok(false);
+        };
+        if !(keys.page_up || keys.page_down || self.ground_bypass_toggle) {
+            return Ok(false);
+        }
+        let control = self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("admitted ground control");
+        ensure!(
+            !control.rope_attached,
+            "yeahbaby ground bypass while attached to a rope is unsupported"
+        );
+        control.living_state = LivingState::ORDINARY;
+        control.sliding_state = 0;
+        control.queued_motion = JumpMotion::NONE;
+        control.falling_state = JumpMotion::NONE;
+        control.motion_classification = 0;
+        self.actors[id.index].sync_falling_motion();
+        Ok(true)
+    }
+
+    /// The keys the ground bypass reads, when it is active: the original enables the handler and
+    /// the probe test for a nonzero `yeahbaby` or when `[debug] final_version` is clear
+    /// (developer mode). Unknown key state refuses the update under the cheat; developer mode
+    /// without key state leaves the bypass inactive instead of guessing.
+    fn ground_bypass_keys(
+        &self,
+        script: super::ScriptInputs<'_>,
+    ) -> Result<Option<super::super::ScriptKeys>> {
+        if script.ground_bypass == Some(true) {
+            return script
+                .script_keys
+                .map(Some)
+                .context("yeahbaby ground bypass needs the debug navigation keys");
+        }
+        Ok(if self.updates.final_version {
+            None
+        } else {
+            script.script_keys
+        })
+    }
+
+    /// The key part of the selected player's per-update handler. While `yeahbaby` is on or in
+    /// developer mode: Page Up moves the actor's local Y up by 0x1000 (Q8, 16 map units) and Page
+    /// Down down by the same amount, each held key once per update and in that order, so both held
+    /// cancel; a Home press flips the ground bypass state, which persists also while the handler
+    /// is off; Insert held suspends the camera's movement limiting (bit 0 of the selected camera
+    /// record's flags, set on the first held update) and moves the actor forward along its heading
+    /// by the frame scale times 128 (Q8) each update. Insert not held, or the handler off, restores
+    /// the limiting once, on the record selected at that moment. Unknown keys refuse the update
+    /// under the cheat; in developer mode they leave the state unchanged.
+    fn run_yeahbaby_keys(
+        &mut self,
+        id: ScriptActorId,
+        script: super::ScriptInputs<'_>,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<()> {
+        if selected_player != Some(id) {
+            return Ok(());
+        }
+        let cheat = script.ground_bypass == Some(true);
+        let keys = if cheat || !self.updates.final_version {
+            match script.script_keys {
+                Some(keys) => Some(keys),
+                None if cheat => {
+                    anyhow::bail!("yeahbaby ground bypass needs the debug navigation keys")
+                }
+                None => return Ok(()),
+            }
+        } else {
+            None
+        };
+        if let Some(keys) = keys {
+            // Both held cancel: the two sequential wrapping steps sum to zero.
+            let delta = (i32::from(keys.page_down) - i32::from(keys.page_up)) * 0x1000;
+            if delta != 0 {
+                let spatial = self
+                    .spatial
+                    .as_mut()
+                    .context("yeahbaby vertical keys need the prepared spatial state")?
+                    .actor_mut(id.index)?;
+                spatial.local.position[1] = spatial.local.position[1].wrapping_add(delta);
+                if !self.map_updates.contains(&id.index) {
+                    self.map_updates.push(id.index);
+                }
+            }
+            if keys.home_pressed {
+                self.ground_bypass_toggle = !self.ground_bypass_toggle;
+            }
+        }
+        if keys.is_some_and(|keys| keys.insert) {
+            if !self.insert_camera_flag {
+                let camera = self
+                    .camera
+                    .as_mut()
+                    .context("yeahbaby Insert needs the camera session")?;
+                let selected = camera.selected.index();
+                camera.records[selected].flags |= 0x01;
+                self.insert_camera_flag = true;
+            }
+            let frame_scale = script
+                .frame_scale
+                .context("yeahbaby Insert step requires frame_scale")?;
+            let distance = (frame_scale as i32).wrapping_shl(15) >> 8;
+            let spatial = self
+                .spatial
+                .as_mut()
+                .context("yeahbaby Insert step needs the prepared spatial state")?
+                .actor_mut(id.index)?;
+            spatial.local.position = cyrus_world::transform::translate_forward(
+                spatial.local.position,
+                spatial.local.angles[1],
+                distance,
+            )?;
+            if !self.map_updates.contains(&id.index) {
+                self.map_updates.push(id.index);
+            }
+        } else if self.insert_camera_flag {
+            self.insert_camera_flag = false;
+            if let Some(camera) = self.camera.as_mut() {
+                let selected = camera.selected.index();
+                camera.records[selected].flags &= !0x01;
+            }
+        }
+        Ok(())
+    }
+
+    /// End the probe at a handled bounce or queued-motion answer. The probe's callers ignore its
+    /// answer and retain the stable position afterwards whenever the queued, falling and sliding
+    /// bytes are zero, so an early exit retains it too. The answer is reported as found support;
+    /// how the selected player's stable recovery treats it is not recovered.
+    fn end_probe_early(&mut self, id: ScriptActorId) -> Result<bool> {
+        self.retain_ordinary_stable_position(id)?;
+        Ok(true)
+    }
+
+    /// The part of the original's bounce handler that precedes the support query and that the
+    /// published rules settle (preservation player.md, actor bounce). `BOUNCE_ENTRY` and
+    /// `BOUNCE_RISING` belong to `BounceObject`: the handler reports handled and the probe ends
+    /// before the support query. An actor in one of the actor-bounce states whose support
+    /// reference is empty, has no animation or `MISC1` group, or has no bounce power loses the
+    /// reference and its living state. A valid support is left to `run_actor_bounce`. The support
+    /// reference is the retained support actor, which must persist between updates for these
+    /// states to last. Returns whether the probe ends.
+    pub(super) fn bounce_handler_prefix(&mut self, id: ScriptActorId) -> Result<bool> {
+        let living = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("bounce handler control unavailable")?
+            .living_state;
+        if matches!(
+            living,
+            LivingState::BOUNCE_ENTRY | LivingState::BOUNCE_RISING
+        ) {
+            return Ok(true);
+        }
+        if !living.is_actor_bounce() {
+            return Ok(false);
+        }
+        let valid = self.actors[id.index]
+            .model
+            .support
+            .actor
+            .and_then(|support| self.resolve(support).ok())
+            .is_some_and(|support| {
+                let support = &self.actors[support];
+                support.attributes[Attribute::BouncePower] != 0
+                    && support.animation.as_ref().is_some_and(|animation| {
+                        animation.playback.has_group(AnimationGroup::MISC1)
+                    })
+            });
+        if !valid {
+            self.actors[id.index].model.support.actor = None;
+            self.actors[id.index]
+                .control
+                .as_mut()
+                .expect("checked above")
+                .living_state = LivingState::ORDINARY;
+        }
+        Ok(false)
+    }
+
     /// The ground response: the support query, queued motion and the support, landing, slope and
     /// miss handling that follow it. Returns whether the support query found support.
     #[allow(clippy::too_many_arguments)] // one stage of the late wrapper with its caller's services
@@ -642,6 +837,69 @@ impl ScriptWorld {
             step_fps,
             weapon,
         } = inputs;
+        // The probe opens with the terrain sink check, then the bounce handler and the queued
+        // motion; any fall they start shortens the support probe below like any other fall.
+        self.recover_terrain_sink(id, query, environment, sounds)?;
+        if mask & 4 != 0 && !special {
+            if self.bounce_handler_prefix(id)? {
+                return self.end_probe_early(id);
+            }
+            let bouncing = self.actors[id.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.living_state.is_actor_bounce());
+            if bouncing
+                && self.run_actor_bounce(id, script.frame_scale, ticks, environment, sounds)?
+            {
+                return self.end_probe_early(id);
+            }
+            // Queued motion resolves before the support query, and a handled resolution ends
+            // the probe without it.
+            let control = self.actors[id.index]
+                .control
+                .as_ref()
+                .expect("admitted ground control");
+            // The bounce states (27 to 32) run the bounce handler in place of this resolution.
+            if control.queued_motion != JumpMotion::NONE
+                && !control.living_state.is_bounce()
+                && !matches!(
+                    control.living_state,
+                    LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
+                )
+            {
+                let handled = self.resolve_ordinary_queued_motion(
+                    id,
+                    query,
+                    environment,
+                    fine_ticks.context("queued motion needs the step's fine-tick increment")?,
+                    0,
+                    sounds,
+                )?;
+                if handled {
+                    return self.end_probe_early(id);
+                }
+            }
+        }
+        if mask & 4 != 0 && environment.selected_player == Some(id) {
+            if self.ground_bypass_taken(id, script)? {
+                return self.end_probe_early(id);
+            }
+            if script.magic_carpet == Some(true) {
+                // The magiccarpet exit clears the falling byte only.
+                self.actors[id.index]
+                    .control
+                    .as_mut()
+                    .expect("admitted ground control")
+                    .falling_state = JumpMotion::NONE;
+                self.actors[id.index].sync_falling_motion();
+                return self.end_probe_early(id);
+            }
+        }
+        let falling = falling
+            || self.actors[id.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.falling_state != JumpMotion::NONE);
         // An animated actor that is falling probes a shorter column once the measured FPS
         // reaches ten; static models always use the full distance.
         let support_query = if falling {
@@ -678,36 +936,6 @@ impl ScriptWorld {
             )?;
         }
         let support_found = support.is_some();
-        let mut queued_handled = false;
-        if mask & 4 != 0 && !special {
-            let control = self.actors[id.index]
-                .control
-                .as_ref()
-                .expect("admitted ground control");
-            // The `BounceObject` task owns `BOUNCE_ENTRY` and `BOUNCE_RISING`: the ground
-            // response is skipped for them; `BOUNCE_FALLING` takes the ordinary response.
-            if matches!(
-                control.living_state,
-                LivingState::BOUNCE_ENTRY | LivingState::BOUNCE_RISING
-            ) {
-                return Ok(support_found);
-            }
-            if control.queued_motion != JumpMotion::NONE
-                && !matches!(
-                    control.living_state,
-                    LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
-                )
-            {
-                queued_handled = self.resolve_ordinary_queued_motion(
-                    id,
-                    query,
-                    environment,
-                    fine_ticks.context("queued motion needs the step's fine-tick increment")?,
-                    0,
-                    sounds,
-                )?;
-            }
-        }
         if mask & 4 != 0 {
             let living_state = self.actors[id.index]
                 .control
@@ -738,7 +966,7 @@ impl ScriptWorld {
                     },
                     sounds,
                 )?;
-            } else if !queued_handled {
+            } else {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(
@@ -855,6 +1083,7 @@ impl ScriptWorld {
             shell_execution: weapon.is_some_and(|input| input.shell_execution),
             ticks,
         };
+        self.run_yeahbaby_keys(id, script, environment.selected_player)?;
         self.run_jump_window(
             id,
             query,

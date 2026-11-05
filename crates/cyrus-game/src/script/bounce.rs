@@ -118,7 +118,38 @@ pub fn step<P: BouncePort + ?Sized>(
         // `attr_jump_height` is the jump height in map units.
         port.set_lift(i32::from(port.jump_height()) * 256);
     }
-    if port.is_selected_player() && arguments.steer != 0 {
+    if glide(
+        port,
+        scale,
+        arguments.steer != 0,
+        arguments.speed,
+        arguments.power,
+        (LivingState::BOUNCE_RISING, LivingState::BOUNCE_FALLING),
+    )?
+    .is_some()
+    {
+        return Ok(false);
+    }
+    if port.falling_state() == JumpMotion::NONE {
+        port.set_living_state(LivingState::ORDINARY);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// The steering, forward step and lift shared by `BounceObject` and the actor bounce. While the
+/// actor is in the `rising` state the lift moves it up and either keeps it rising (`Some(true)`) or
+/// starts the fall and enters the `falling` state (`Some(false)`); in any other state it returns
+/// `None`.
+fn glide<P: BouncePort + ?Sized>(
+    port: &mut P,
+    scale: u32,
+    steer: bool,
+    speed: i32,
+    power: i32,
+    (rising, falling): (LivingState, LivingState),
+) -> Result<Option<bool>> {
+    if port.is_selected_player() && steer {
         let heading = i64::from(port.heading()) - port.turn_delta(scale);
         port.set_heading(heading.rem_euclid(2048) as u16);
     }
@@ -126,54 +157,121 @@ pub fn step<P: BouncePort + ?Sized>(
     position = cyrus_world::transform::translate_forward(
         position,
         port.heading(),
-        forward_step(arguments.speed, scale),
+        forward_step(speed, scale),
     )?;
     port.set_position(position)?;
-    let decay = (256i32.wrapping_sub(arguments.power)) << 4;
-    if port.living_state() == LivingState::BOUNCE_RISING {
-        let mut position = port.position();
-        position[1] = position[1].wrapping_sub(port.lift().wrapping_mul(scale as i32) >> 8);
-        port.set_position(position)?;
-        port.set_lift(
-            port.lift()
-                .wrapping_sub(decay.wrapping_mul(scale as i32) >> 8),
-        );
-        let weapon = port.holding_weapon()? || port.combat_mode();
-        if port.lift() <= 0 {
-            port.begin_fall();
-            if weapon {
-                if port.current_group() != Some(AnimationGroup::FIGHT_FALL_ATTACK) {
-                    port.request_group(AnimationGroup::FIGHT_FALL, true)?;
-                }
-            } else {
-                port.request_group(
-                    if port.torch_burning() {
-                        AnimationGroup::FALL_TORCH
-                    } else {
-                        AnimationGroup::FALL
-                    },
-                    true,
-                )?;
+    let decay = (256i32.wrapping_sub(power)) << 4;
+    if port.living_state() != rising {
+        return Ok(None);
+    }
+    let mut position = port.position();
+    position[1] = position[1].wrapping_sub(port.lift().wrapping_mul(scale as i32) >> 8);
+    port.set_position(position)?;
+    port.set_lift(
+        port.lift()
+            .wrapping_sub(decay.wrapping_mul(scale as i32) >> 8),
+    );
+    let weapon = port.holding_weapon()? || port.combat_mode();
+    if port.lift() <= 0 {
+        port.begin_fall();
+        if weapon {
+            if port.current_group() != Some(AnimationGroup::FIGHT_FALL_ATTACK) {
+                port.request_group(AnimationGroup::FIGHT_FALL, true)?;
             }
-            port.set_living_state(LivingState::BOUNCE_FALLING);
         } else {
             port.request_group(
-                if weapon {
-                    AnimationGroup::FIGHT_JUMP
-                } else if port.torch_burning() {
-                    AnimationGroup::JUMP_TORCH
+                if port.torch_burning() {
+                    AnimationGroup::FALL_TORCH
                 } else {
-                    AnimationGroup::JUMP
+                    AnimationGroup::FALL
                 },
-                false,
+                true,
             )?;
-            port.clear_motion();
         }
-        return Ok(false);
+        port.set_living_state(falling);
+        return Ok(Some(false));
+    }
+    port.request_group(
+        if weapon {
+            AnimationGroup::FIGHT_JUMP
+        } else if port.torch_burning() {
+            AnimationGroup::JUMP_TORCH
+        } else {
+            AnimationGroup::JUMP
+        },
+        false,
+    )?;
+    port.clear_motion();
+    Ok(Some(true))
+}
+
+/// What the ground probe's bounce handler reads from the support actor of an actor in the
+/// actor-bounce states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActorBounceSupport {
+    /// The support's bounce power (attribute 98): how quickly the lift decays.
+    pub power: i32,
+    /// The support's bounce move (attribute 99): the forward speed scalar.
+    pub speed: i32,
+    /// The support's bounce turn (attribute 100) is nonzero: the selected player steers.
+    pub steer: bool,
+    /// The support still shows the first half of its landing group, which holds state 27.
+    pub waiting: bool,
+}
+
+/// Whether the support still holds an actor in state 27: its current group is the landing group
+/// (`MISC1`, group 10), the animation's exit marker (`anim.stop_flag`) is clear, and the group's
+/// command cursor is below half of its command count (signed, truncating toward zero).
+pub fn actor_bounce_waiting(
+    current_group: Option<AnimationGroup>,
+    exit_reached: bool,
+    cursor: Option<i32>,
+    command_count: Option<usize>,
+) -> bool {
+    current_group == Some(AnimationGroup::MISC1)
+        && !exit_reached
+        && matches!(
+            (cursor, command_count),
+            (Some(cursor), Some(count)) if cursor < (count as i32) / 2
+        )
+}
+
+/// One update of an actor in the actor-bounce states (27 to 29) whose support is valid. True when
+/// the update is handled and the ground probe ends; false lets the probe continue. `clear_support`
+/// empties the actor's support reference when the actor has landed.
+pub fn actor_bounce_step<P: BouncePort + ?Sized>(
+    port: &mut P,
+    support: ActorBounceSupport,
+    clear_support: impl FnOnce(&mut P),
+) -> Result<bool> {
+    let scale = port.frame_scale();
+    if port.living_state() == LivingState::LANDED_ON_ACTOR {
+        if support.waiting {
+            port.clear_motion();
+            return Ok(true);
+        }
+        port.set_living_state(LivingState::BOUNCING_FROM_ACTOR);
+        // `attr_jump_height` times 16 times the first vertical factor, 16: the jump height in map
+        // units as a Q8 lift.
+        port.set_lift(i32::from(port.jump_height()) * 256);
+    }
+    if glide(
+        port,
+        scale,
+        support.steer,
+        support.speed,
+        support.power,
+        (
+            LivingState::BOUNCING_FROM_ACTOR,
+            LivingState::FALLING_FROM_ACTOR,
+        ),
+    )? == Some(true)
+    {
+        return Ok(true);
     }
     if port.falling_state() == JumpMotion::NONE {
         port.set_living_state(LivingState::ORDINARY);
-        return Ok(true);
+        clear_support(port);
     }
     Ok(false)
 }
@@ -438,5 +536,134 @@ mod tests {
         other.heading = 100;
         step(&mut other, &mut BounceState { started: true }, ARGS).unwrap();
         assert_eq!(other.heading, 100);
+    }
+    const SUPPORT: ActorBounceSupport = ActorBounceSupport {
+        power: 160,
+        speed: 40,
+        steer: true,
+        waiting: false,
+    };
+
+    #[test]
+    fn a_landed_actor_waits_for_the_support_animation_and_reports_handled() {
+        let mut actor = Actor {
+            living: LivingState::LANDED_ON_ACTOR,
+            falling: JumpMotion::STANDING,
+            ..ready()
+        };
+        let waiting = ActorBounceSupport {
+            waiting: true,
+            ..SUPPORT
+        };
+        assert!(actor_bounce_step(&mut actor, waiting, |_| ()).unwrap());
+        assert_eq!(actor.living, LivingState::LANDED_ON_ACTOR);
+        assert_eq!((actor.cleared, actor.falling), (1, JumpMotion::NONE));
+        assert_eq!(actor.position, [0; 3]);
+    }
+
+    #[test]
+    fn the_landed_actor_lifts_after_the_wait_and_reports_handled_while_rising() {
+        let mut actor = Actor {
+            living: LivingState::LANDED_ON_ACTOR,
+            heading: 100,
+            selected: true,
+            turn: 30,
+            ..ready()
+        };
+        assert!(actor_bounce_step(&mut actor, SUPPORT, |_| ()).unwrap());
+        assert_eq!(actor.living, LivingState::BOUNCING_FROM_ACTOR);
+        // Lift 80 x 256, less one decay step of (256 - 160) x 16; the Y move uses the old lift.
+        assert_eq!(actor.lift, 80 * 256 - 96 * 16);
+        assert_eq!(actor.position[1], -(80 * 256));
+        assert_eq!(actor.heading, 70);
+        assert_eq!(actor.requests, [(AnimationGroup::JUMP, false)]);
+        assert_eq!(actor.cleared, 1);
+    }
+
+    #[test]
+    fn a_spent_lift_starts_the_fall_unhandled_and_keeps_the_support() {
+        for (holding, torch, group) in [
+            (false, false, AnimationGroup::FALL),
+            (false, true, AnimationGroup::FALL_TORCH),
+            (true, false, AnimationGroup::FIGHT_FALL),
+        ] {
+            let mut actor = Actor {
+                living: LivingState::BOUNCING_FROM_ACTOR,
+                lift: 10,
+                holding,
+                torch,
+                ..ready()
+            };
+            let mut cleared = false;
+            assert!(!actor_bounce_step(&mut actor, SUPPORT, |_| cleared = true).unwrap());
+            assert!(actor.fall_started);
+            assert_eq!(actor.living, LivingState::FALLING_FROM_ACTOR);
+            assert_eq!(actor.requests, [(group, true)]);
+            assert!(!cleared);
+        }
+    }
+
+    #[test]
+    fn a_landed_fall_clears_the_state_and_the_support_reference() {
+        let mut actor = Actor {
+            living: LivingState::FALLING_FROM_ACTOR,
+            ..ready()
+        };
+        let mut cleared = false;
+        assert!(!actor_bounce_step(&mut actor, SUPPORT, |_| cleared = true).unwrap());
+        assert_eq!(actor.living, LivingState::ORDINARY);
+        assert!(cleared);
+        // Still falling: the state and the reference stay.
+        let mut falling = Actor {
+            living: LivingState::FALLING_FROM_ACTOR,
+            falling: JumpMotion::STANDING,
+            ..ready()
+        };
+        let mut cleared = false;
+        assert!(!actor_bounce_step(&mut falling, SUPPORT, |_| cleared = true).unwrap());
+        assert_eq!(falling.living, LivingState::FALLING_FROM_ACTOR);
+        assert!(!cleared);
+    }
+
+    #[test]
+    fn the_actor_bounce_steers_only_a_selected_player_with_a_turning_support() {
+        let actor = |selected| Actor {
+            living: LivingState::FALLING_FROM_ACTOR,
+            falling: JumpMotion::STANDING,
+            heading: 100,
+            turn: 30,
+            selected,
+            ..ready()
+        };
+        for (selected, steer, heading) in [(true, true, 70), (true, false, 100), (false, true, 100)]
+        {
+            let mut actor = actor(selected);
+            actor_bounce_step(&mut actor, ActorBounceSupport { steer, ..SUPPORT }, |_| ()).unwrap();
+            assert_eq!(actor.heading, heading, "{selected} {steer}");
+        }
+    }
+    #[test]
+    fn the_wait_holds_below_half_the_command_count_in_the_landing_group() {
+        let waits = |group, exit, cursor, count| actor_bounce_waiting(group, exit, cursor, count);
+        let misc = Some(AnimationGroup::MISC1);
+        // Ten commands: half is 5; seven: half is 3 (truncated); one: half is 0.
+        assert!(waits(misc, false, Some(4), Some(10)));
+        assert!(!waits(misc, false, Some(5), Some(10)));
+        assert!(waits(misc, false, Some(2), Some(7)));
+        assert!(!waits(misc, false, Some(3), Some(7)));
+        assert!(!waits(misc, false, Some(0), Some(1)));
+        // The cursor is signed.
+        assert!(waits(misc, false, Some(-1), Some(1)));
+        // The exit marker, another group or missing playback data end the wait.
+        assert!(!waits(misc, true, Some(0), Some(10)));
+        assert!(!waits(
+            Some(AnimationGroup::IDLE1),
+            false,
+            Some(0),
+            Some(10)
+        ));
+        assert!(!waits(None, false, Some(0), Some(10)));
+        assert!(!waits(misc, false, None, Some(10)));
+        assert!(!waits(misc, false, Some(0), None));
     }
 }

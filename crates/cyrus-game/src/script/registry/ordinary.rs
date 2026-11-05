@@ -261,7 +261,13 @@ impl ScriptWorld {
                     self.begin_player_movement_update(id, ticks)?;
                 }
                 self.snapshot_spatial(id)?;
-                self.actors[id.index].model.support = Default::default();
+                if !self.actors[id.index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.living_state.is_actor_bounce())
+                {
+                    self.actors[id.index].model.support = Default::default();
+                }
                 self.actors[id.index]
                     .control
                     .as_mut()
@@ -1522,6 +1528,18 @@ pub fn run_ordinary(
                 death_suppressed: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.death_suppressed().ok()),
+                torch_retained: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.torch_retained().ok()),
+                actor_update_skipped: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.actor_update_skipped().ok()),
+                ground_bypass: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.ground_bypass().ok()),
+                magic_carpet: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.magic_carpet().ok()),
                 combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),

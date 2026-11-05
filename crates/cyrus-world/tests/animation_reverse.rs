@@ -391,6 +391,44 @@ fn a_yielded_mask_eight_transition_keeps_its_cursor_and_ends_the_update() {
 }
 
 #[test]
+fn marking_the_exit_makes_a_forced_same_group_request_restart_the_group() {
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = json!([
+        {"opcode":15,"trigger_mask":8,"start_frame":0,"target_group":3},
+        {"opcode":0,"frame_reference":70},
+        {"opcode":1}
+    ]);
+    let group = AnimationGroup::from_index(7);
+    for (marked, restarts) in [(true, true), (false, false)] {
+        let mut actor =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+        // Without a current group the marker has no effect.
+        actor.mark_exit();
+        let mut asked = 0;
+        actor
+            .request_with_decisions(group, 0, 0, &mut |_| {
+                asked += 1;
+                Ok(TransitionDecision::Yield)
+            })
+            .unwrap();
+        assert!(!actor.exit_reached());
+        if marked {
+            actor.mark_exit();
+            assert!(actor.exit_reached());
+        }
+        // A forced request for the current group restarts it only while the exit marker is set;
+        // otherwise it only cancels the pending request and keeps the cursor.
+        actor
+            .force_request_with_decisions(group, 0, 0, &mut |_| {
+                asked += 1;
+                Ok(TransitionDecision::Yield)
+            })
+            .unwrap();
+        assert_eq!(asked, if restarts { 2 } else { 1 }, "marked {marked}");
+    }
+}
+
+#[test]
 fn forward_transitions_ask_the_host_and_reverse_steps_past_them() {
     let transition = json!({"opcode":15,"trigger_mask":2,"start_frame":0,"target_group":36});
     let mut data = data();

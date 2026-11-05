@@ -46,6 +46,13 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: the ordinary ground probe follows preservation's
+[terrain sink recovery](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-sink-recovery)
+order: terrain recovery, actor bounce, then queued motion before support sampling.
+Terrain recovery is inhibited during a camera transition. Actor-bounce states
+retain their support across ordinary updates; handled bounce or queued motion
+ends the probe before support sampling.
+
 Verified: selected-player walk-off recovery restores the retained stable position
 and enters the selected jump service before forcing its recovery group and running
 queued arbitration. It uses the same selected edge gates as ordinary jump entry.

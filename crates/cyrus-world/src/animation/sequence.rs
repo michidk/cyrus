@@ -316,6 +316,10 @@ impl FrameSequence {
         self.exit_reached
     }
 
+    pub(super) fn mark_exit(&mut self) {
+        self.exit_reached = true;
+    }
+
     pub(super) fn replace_after_exit(&self) -> bool {
         (self.type_one || self.type_two) && self.exit_reached
     }

@@ -49,7 +49,7 @@ fn toggles_assigns_lists_and_restores_only_after_savecheats() {
     );
     assert_eq!(
         restored.execute("magiccarpet", None).unwrap(),
-        CheatEffect::Unsupported
+        CheatEffect::MagicCarpet
     );
 }
 
@@ -68,6 +68,40 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
     assert!(!runtime.death_suppressed().unwrap());
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.death_suppressed().is_err());
+}
+
+#[test]
+fn actor_update_skip_reads_raw_nonzero_and_rejects_malformed_state() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.actor_update_skipped().unwrap());
+    for value in [1, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("drno", Some(value)).unwrap(),
+            CheatEffect::ActorUpdateSkip
+        );
+        assert!(runtime.actor_update_skipped().unwrap());
+    }
+    runtime.execute("drno", Some(0)).unwrap();
+    assert!(!runtime.actor_update_skipped().unwrap());
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.actor_update_skipped().is_err());
+}
+
+#[test]
+fn torch_retention_reads_raw_nonzero_and_rejects_malformed_state() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.torch_retained().unwrap());
+    for value in [1, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("goldfinger", Some(value)).unwrap(),
+            CheatEffect::TorchRetention
+        );
+        assert!(runtime.torch_retained().unwrap());
+    }
+    runtime.execute("goldfinger", Some(0)).unwrap();
+    assert!(!runtime.torch_retained().unwrap());
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.torch_retained().is_err());
 }
 
 #[test]
@@ -791,4 +825,40 @@ fn replacement_retains_raw_values_and_store_without_writing() -> anyhow::Result<
     runtime.execute("savecheats", None)?;
     assert_eq!(Cheats::new(store).state()?.value("neversaydie"), Some(42));
     Ok(())
+}
+
+#[test]
+fn magic_carpet_is_active_only_for_exactly_one_and_the_ground_bypass_for_any_nonzero() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.magic_carpet().unwrap());
+    assert!(!runtime.ground_bypass().unwrap());
+    // Off, on, off through the toggle.
+    assert_eq!(
+        runtime.execute("magiccarpet", None).unwrap(),
+        CheatEffect::MagicCarpet
+    );
+    assert!(runtime.magic_carpet().unwrap());
+    runtime.execute("magiccarpet", None).unwrap();
+    assert!(!runtime.magic_carpet().unwrap());
+    // Only the value one enables the carpet; the bypass reads any nonzero value.
+    for (value, carpet) in [
+        (1, true),
+        (2, false),
+        (42, false),
+        (u32::MAX, false),
+        (0, false),
+    ] {
+        runtime.execute("magiccarpet", Some(value)).unwrap();
+        assert_eq!(runtime.magic_carpet().unwrap(), carpet, "{value}");
+        runtime.execute("yeahbaby", Some(value)).unwrap();
+        assert_eq!(runtime.ground_bypass().unwrap(), value != 0, "{value}");
+    }
+    // Complete host acceptance is pending, so the catalog still reports the effect unavailable.
+    assert_eq!(
+        runtime.execute("yeahbaby", Some(1)).unwrap(),
+        CheatEffect::Unsupported
+    );
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.magic_carpet().is_err());
+    assert!(invalid.ground_bypass().is_err());
 }

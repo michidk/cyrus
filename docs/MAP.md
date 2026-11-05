@@ -128,6 +128,7 @@ module where it is defined and regenerate.
 - `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
 - `src/console.rs` — Game-owned console availability and cheat command handlers.
 - `src/console/cheats.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
+- `src/console/markers.rs` — The user marker file of `setmarker` and `getmarker` and the host storage seam for it. The layout
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/inventory_screen.rs` — Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 - `src/island_map.rs` — The island map screen: the marker position rules and the screen lifecycle.
@@ -182,6 +183,7 @@ module where it is defined and regenerate.
 - `src/script/quick_keys.rs` — The quick sword and quick health keys, sampled from the installed key bindings.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
+- `src/script/registry/actor_bounce.rs` — The ground probe's bounce handler for an actor that landed on a bouncing actor.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/attack_input.rs` — The selected player's armed attack input: per-key tap latches and the combo move start.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
@@ -213,6 +215,7 @@ module where it is defined and regenerate.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update
+- `src/script/registry/map_marker.rs` — Console marker placement: the loaded map's own markers and the saved user markers.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
@@ -233,6 +236,7 @@ module where it is defined and regenerate.
 - `src/script/registry/sight.rs` — Line of sight between two actors follows preservation's combat decision "In sight" rules.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.
 - `src/script/registry/spacing.rs` — Fight spacing reads and mutates the receiver's shared movement state.
+- `src/script/registry/terrain_sink.rs` — The terrain sink check that opens the ordinary ground-support probe.
 - `src/script/registry/torch.rs` — Torches: `LightTorch` and `UnlightTorch`, the burn countdown and the held-torch progression.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.

@@ -429,6 +429,16 @@ impl ActorAnimation {
         self.default
     }
 
+    /// Set the animation's exit marker (`anim.stop_flag`) on the current group, as a taken
+    /// selected-player mask-8 transition does before its group request: a forced request for the
+    /// current group then restarts it instead of only cancelling the pending request. No effect
+    /// without a current group.
+    pub fn mark_exit(&mut self) {
+        if let Some((_, sequence)) = &mut self.current {
+            sequence.mark_exit();
+        }
+    }
+
     /// Whether the current sequence reached its authored exit marker. This
     /// remains distinct from completion of the sequence's exit tail.
     pub fn exit_reached(&self) -> bool {

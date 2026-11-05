@@ -1,5 +1,6 @@
 //! Game-owned console availability and cheat command handlers.
 mod cheats;
+pub mod markers;
 use crate::script::{ScriptActors, ScriptWorld};
 use anyhow::{Context, ensure};
 use bevy::prelude::{
@@ -16,8 +17,20 @@ impl Plugin for GameConsolePlugin {
         app.add_plugins(cyrus_console::ConsolePlugin)
             .add_systems(PreUpdate, availability.before(ConsoleInput))
             .init_resource::<PendingConsoleLoad>()
+            .init_resource::<MainLoopDelay>()
             .add_systems(Update, apply_console_load)
             .console_symbols(symbol);
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(bevy::prelude::Last, apply_main_loop_delay);
+        app.console_command(
+            Command {
+                name: "delay".into(),
+                alias: Some("dl".into()),
+                usage: "delay [number]".into(),
+                cheat: false,
+            },
+            delay,
+        );
         for (name, alias, usage) in [
             ("get", "g", "get pattern"),
             ("set", "s", "set pattern,value[,value...]"),
@@ -40,6 +53,33 @@ impl Plugin for GameConsolePlugin {
                 cheat: false,
             },
             load,
+        );
+        app.console_command(
+            Command {
+                name: "getmapmarker".into(),
+                alias: Some("gmm".into()),
+                usage: "getmapmarker number".into(),
+                cheat: false,
+            },
+            get_map_marker,
+        );
+        app.console_command(
+            Command {
+                name: "setmarker".into(),
+                alias: Some("sm".into()),
+                usage: "setmarker number".into(),
+                cheat: false,
+            },
+            set_marker,
+        );
+        app.console_command(
+            Command {
+                name: "getmarker".into(),
+                alias: Some("gm".into()),
+                usage: "getmarker number".into(),
+                cheat: false,
+            },
+            get_marker,
         );
         app.console_command(
             Command {
@@ -153,6 +193,158 @@ fn apply_console_load(
         }
     }
     *was_open = open;
+}
+/// The wait `delay` asks each main-loop pass to add, in milliseconds; zero is none (preservation
+/// `engine/console.md`).
+#[derive(Resource, Default, Debug, PartialEq, Eq)]
+pub struct MainLoopDelay(pub u32);
+
+/// The decimal value of a `delay` argument: digits up to the first other byte, so no digits is
+/// zero, which clears the delay. A leading minus is refused, since the original would turn the
+/// negative number into an enormous wait. Values beyond `u32::MAX` saturate.
+#[cfg(not(target_arch = "wasm32"))]
+fn delay_milliseconds(arguments: &str) -> anyhow::Result<u32> {
+    let arguments = arguments.trim();
+    ensure!(
+        !arguments.starts_with('-'),
+        "delay does not accept a negative number"
+    );
+    Ok(arguments
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .fold(0u32, |value, digit| {
+            value
+                .saturating_mul(10)
+                .saturating_add(u32::from(digit - b'0'))
+        }))
+}
+
+/// `delay [number]` sets the wait each main-loop pass adds, in milliseconds; omitting the number,
+/// zero or a non-number clears it (preservation `engine/console.md`). The wait blocks the loop, so
+/// the browser, which cannot block, reports it unavailable.
+fn delay(
+    In(command): In<Invocation>,
+    mut state: ResMut<MainLoopDelay>,
+) -> anyhow::Result<Vec<String>> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (&command, &mut state);
+        anyhow::bail!("delay is unavailable in the browser: its wait would block the page")
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let milliseconds = delay_milliseconds(&command.args)?;
+        state.0 = milliseconds;
+        Ok(vec![if milliseconds == 0 {
+            "delay: cleared".to_owned()
+        } else {
+            format!("delay: {milliseconds} ms per loop")
+        }])
+    }
+}
+
+/// The delay's wait, at the end of each frame.
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_main_loop_delay(delay: Res<MainLoopDelay>) {
+    if delay.0 != 0 {
+        std::thread::sleep(std::time::Duration::from_millis(u64::from(delay.0)));
+    }
+}
+
+/// `getmapmarker number` moves the selected player to the loaded map's own marker of that number,
+/// keeping its heading (preservation `engine/console.md`, marker file section). A marker outside
+/// the map table or without its presence byte is reported and nothing moves. The original's
+/// built-in table, used when no map is loaded, is not implemented.
+fn get_map_marker(In(command): In<Invocation>, world: &mut World) -> anyhow::Result<Vec<String>> {
+    let marker = marker_number(&command)?;
+    let mut actors = world
+        .get_resource_mut::<ScriptActors>()
+        .context("getmapmarker requires a loaded script world")?;
+    actors
+        .current
+        .as_mut()
+        .context("getmapmarker requires a loaded script world")?
+        .move_selected_player_to_map_marker(marker)?;
+    Ok(vec![format!("getmapmarker: {marker}")])
+}
+
+/// The marker number argument of the marker commands: a numeric literal, not a symbol.
+fn marker_number(command: &Invocation) -> anyhow::Result<i32> {
+    ensure!(!command.args.is_empty(), "usage: {} number", command.name);
+    Ok(cyrus_console::number(command.args.trim(), |name| {
+        anyhow::bail!(
+            "{} accepts numeric literals, not the symbol {name:?}",
+            command.name
+        )
+    })? as i32)
+}
+
+/// `setmarker number` saves the selected player's position and orientation and the published
+/// camera pose under the current world and number in the host's marker file (preservation
+/// `engine/console.md`, marker file section). A same world and number is overwritten in place, and
+/// a stored file with a wrong magic or tag is replaced, as the original does. Other malformed
+/// files are refused. cyrus keeps the file in host local state, never in the install.
+fn set_marker(In(command): In<Invocation>, world: &mut World) -> anyhow::Result<Vec<String>> {
+    let number = marker_number(&command)?;
+    let (world_number, placement) = {
+        let script = world
+            .get_resource::<ScriptActors>()
+            .and_then(|actors| actors.current.as_ref())
+            .context("setmarker requires a loaded script world")?;
+        (script.world, script.selected_player_placement()?)
+    };
+    let storage = world
+        .get_resource::<markers::MarkerStorage>()
+        .context("setmarker: marker file storage is unavailable on this host")?;
+    let mut records = match storage.0.load()? {
+        Some(bytes) => {
+            markers::decode_for_update(&bytes).context("setmarker: invalid marker file")?
+        }
+        None => Vec::new(),
+    };
+    markers::upsert(
+        &mut records,
+        markers::MarkerRecord {
+            world: world_number,
+            number,
+            placement,
+        },
+    );
+    storage.0.save(&markers::encode(&records))?;
+    Ok(vec![format!("setmarker: {number}")])
+}
+
+/// `getmarker number` moves the selected player to the first saved marker of the current world and
+/// number: its position and orientation, with the previous position following. A missing file,
+/// a file that does not decode, or no matching marker reports an error and moves nothing. The saved
+/// camera pose is restored at the command boundary.
+fn get_marker(In(command): In<Invocation>, world: &mut World) -> anyhow::Result<Vec<String>> {
+    let number = marker_number(&command)?;
+    let records = {
+        let storage = world
+            .get_resource::<markers::MarkerStorage>()
+            .context("getmarker: marker file storage is unavailable on this host")?;
+        let bytes = storage
+            .0
+            .load()?
+            .context("getmarker: no marker file saved")?;
+        markers::decode(&bytes).context("getmarker: invalid marker file")?
+    };
+    let mut actors = world
+        .get_resource_mut::<ScriptActors>()
+        .context("getmarker requires a loaded script world")?;
+    let script = actors
+        .current
+        .as_mut()
+        .context("getmarker requires a loaded script world")?;
+    let record = *markers::find(&records, script.world, number).with_context(|| {
+        format!(
+            "getmarker: no marker {number} saved for world {}",
+            script.world
+        )
+    })?;
+    script.restore_selected_player_placement(&record.placement)?;
+    Ok(vec![format!("getmarker: {number}")])
 }
 /// `item add,id` gives the selected player one item through the session inventory. The other
 /// original operations (`player`, `show`, `sub`, `drop`) are not implemented.
@@ -442,5 +634,126 @@ mod tests {
         run(&mut world);
         assert!(!world.contains_resource::<SceneRequest>());
         assert!(world.resource::<PendingConsoleLoad>().0.is_none());
+    }
+
+    #[test]
+    fn getmapmarker_needs_a_numeric_marker_and_a_loaded_script_world() {
+        use super::*;
+        let mut world = World::new();
+        let id = world.register_system(get_map_marker);
+        let mut run = |args: &str| {
+            world
+                .run_system_with(
+                    id,
+                    Invocation {
+                        name: "getmapmarker".into(),
+                        args: args.into(),
+                        source: Source::Interactive,
+                    },
+                )
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(run("").contains("usage: getmapmarker number"));
+        assert!(run("flag").contains("numeric literals"));
+        assert!(run("3").contains("loaded script world"));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn delay_reads_decimal_digits_and_clears_on_none_zero_or_a_non_number() {
+        for (arguments, expected) in [
+            ("", 0),
+            ("0", 0),
+            ("250", 250),
+            (" 40 ", 40),
+            ("12abc", 12),
+            ("abc", 0),
+            ("0x10", 0),
+            ("4294967296", u32::MAX),
+        ] {
+            assert_eq!(
+                super::delay_milliseconds(arguments).unwrap(),
+                expected,
+                "{arguments:?}"
+            );
+        }
+        let error = super::delay_milliseconds("-5").unwrap_err().to_string();
+        assert!(error.contains("negative"), "{error}");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_delay_command_sets_replaces_and_clears_the_main_loop_wait() {
+        use super::*;
+        let mut world = World::new();
+        world.init_resource::<MainLoopDelay>();
+        let id = world.register_system(delay);
+        let run = |world: &mut World, args: &str| {
+            world
+                .run_system_with(
+                    id,
+                    Invocation {
+                        name: "delay".into(),
+                        args: args.into(),
+                        source: Source::Interactive,
+                    },
+                )
+                .unwrap()
+        };
+        assert_eq!(run(&mut world, "250").unwrap(), ["delay: 250 ms per loop"]);
+        assert_eq!(world.resource::<MainLoopDelay>().0, 250);
+        run(&mut world, "40").unwrap();
+        assert_eq!(world.resource::<MainLoopDelay>().0, 40);
+        assert!(run(&mut world, "-1").is_err());
+        assert_eq!(
+            world.resource::<MainLoopDelay>().0,
+            40,
+            "a refusal keeps the delay"
+        );
+        assert_eq!(run(&mut world, "").unwrap(), ["delay: cleared"]);
+        assert_eq!(world.resource::<MainLoopDelay>().0, 0);
+    }
+
+    #[test]
+    fn marker_commands_report_missing_storage_files_and_script_worlds() {
+        use super::markers::{MarkerStorage, MarkerStore};
+        use super::*;
+        struct Empty;
+        impl MarkerStore for Empty {
+            fn load(&self) -> anyhow::Result<Option<Vec<u8>>> {
+                Ok(None)
+            }
+            fn save(&self, _: &[u8]) -> anyhow::Result<()> {
+                anyhow::bail!("must not be written")
+            }
+        }
+        let mut world = World::new();
+        let set = world.register_system(set_marker);
+        let get = world.register_system(get_marker);
+        let run = |world: &mut World,
+                   id: bevy::ecs::system::SystemId<In<Invocation>, anyhow::Result<Vec<String>>>,
+                   name: &str,
+                   args: &str| {
+            world
+                .run_system_with(
+                    id,
+                    Invocation {
+                        name: name.into(),
+                        args: args.into(),
+                        source: Source::Interactive,
+                    },
+                )
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(run(&mut world, set, "setmarker", "").contains("usage: setmarker number"));
+        assert!(run(&mut world, get, "getmarker", "name").contains("numeric literals"));
+        assert!(run(&mut world, set, "setmarker", "1").contains("loaded script world"));
+        assert!(run(&mut world, get, "getmarker", "1").contains("storage is unavailable"));
+        world.insert_resource(MarkerStorage(Box::new(Empty)));
+        assert!(run(&mut world, get, "getmarker", "1").contains("no marker file saved"));
     }
 }

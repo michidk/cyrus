@@ -5,6 +5,7 @@ use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
 mod activation;
+mod actor_bounce;
 mod attack;
 mod attack_input;
 mod camera;
@@ -39,6 +40,8 @@ mod leap;
 mod ledge;
 mod ledge_states;
 mod light;
+mod map_marker;
+pub use map_marker::SavedPlacement;
 mod lineup;
 mod linked;
 pub(super) mod model;
@@ -54,6 +57,7 @@ mod probe;
 mod projectile;
 mod quick_keys;
 mod rope_host;
+mod terrain_sink;
 mod torch;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
@@ -236,6 +240,18 @@ pub struct ScriptInputs<'a> {
     pub shell_execution: Option<bool>,
     /// Shared drevil state; absence remains unknown when fatal health needs it.
     pub death_suppressed: Option<bool>,
+    /// Shared goldfinger state: the selected player's burning torch is held at a full counter.
+    /// Absence is the cheat being off.
+    pub torch_retained: Option<bool>,
+    /// Shared drno state: the ordinary main stage is skipped for every actor except the selected
+    /// player and the camera actor. Absence is the cheat being off.
+    pub actor_update_skipped: Option<bool>,
+    /// Shared yeahbaby state: the selected player's ground-support probe is bypassed while a
+    /// vertical debug key is held or the Home toggle is set. Absence is the cheat being off.
+    pub ground_bypass: Option<bool>,
+    /// Shared magiccarpet state (the value 1): the selected player's probe clears its falling
+    /// byte and ends. Absence is the cheat being off.
+    pub magic_carpet: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,
@@ -602,6 +618,12 @@ pub struct ScriptWorld {
     map_updates: Vec<usize>,
     /// Shared surface-query veto; absent until an assigning query establishes it.
     surface_veto: Option<bool>,
+    /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
+    /// ground probe only while the cheat is on and is not reset by turning the cheat off.
+    ground_bypass_toggle: bool,
+    /// The state word of the `yeahbaby` Insert step: set when the camera limiter was suspended on
+    /// the first held update, cleared when it is restored on release.
+    insert_camera_flag: bool,
     /// Camera session owned by the CAMERA instance; absent when the world has no
     /// selected player or CAMERA actor.
     camera: Option<super::camera::CameraState>,
@@ -665,6 +687,43 @@ impl ScriptWorld {
             .as_mut()
             .expect("test actor has control state")
             .rope_attached = attached;
+    }
+
+    /// Whether the `yeahbaby` Insert step holds the camera limiter suspended.
+    pub fn yeahbaby_insert_active(&self) -> bool {
+        self.insert_camera_flag
+    }
+
+    /// Whether the Home toggle of the yeahbaby ground bypass is set.
+    pub fn ground_bypass_toggle(&self) -> bool {
+        self.ground_bypass_toggle
+    }
+
+    /// Test hook: set a logical actor's queued motion.
+    #[doc(hidden)]
+    pub fn set_queued_motion_for_test(&mut self, id: ScriptActorId, motion: JumpMotion) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .queued_motion = motion;
+    }
+
+    /// Test hook: set a logical actor's living state.
+    #[doc(hidden)]
+    pub fn set_living_state_for_test(&mut self, id: ScriptActorId, state: LivingState) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .living_state = state;
+    }
+
+    /// Test hook: run the bounce handler's pre-support part for one actor; true when the probe
+    /// ends there.
+    #[doc(hidden)]
+    pub fn bounce_handler_prefix_for_test(&mut self, id: ScriptActorId) -> Result<bool> {
+        self.bounce_handler_prefix(id)
     }
 
     /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
@@ -1250,6 +1309,8 @@ impl ScriptWorld {
             actor_prelighting: None,
             retained_candidates: Default::default(),
             surface_veto: None,
+            ground_bypass_toggle: false,
+            insert_camera_flag: false,
             camera,
             camera_glide: scripts.camera.glide.into(),
             camera_limits: scripts.camera.limits,
@@ -2551,6 +2612,16 @@ impl ScriptWorld {
                 "world {} instance {index}: animation requires nominal_ticks",
                 self.world
             );
+        }
+        // With drno on, every actor except the selected player and the camera actor skips both
+        // its task update and its response timers (preservation `engine/cheats.md`), so nothing
+        // runs here, including the response finish.
+        if matches!(stage, ScriptStage::OrdinaryMain)
+            && inputs.actor_update_skipped.unwrap_or(false)
+            && self.selected_player() != Some(id)
+            && self.camera.as_ref().map(|camera| camera.camera_actor) != Some(id)
+        {
+            return Ok(());
         }
         if matches!(stage, ScriptStage::OrdinaryMain) && !self.updates.task_system {
             return self.finish_ordinary_script_response(id, nominal_ticks);
@@ -4410,6 +4481,10 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if let Some(function) = walk_step {
             // The taken transition ORs the finished ramp into the movement counters and runs
             // one step; the step forces its group itself.
+            // The original sets the animation's stop flag before the group request.
+            if let Some(animation) = self.registry.actors[self.index].animation.as_mut() {
+                animation.playback.mark_exit();
+            }
             if let Some(control) = self.registry.actors[self.index].control.as_mut() {
                 control.movement_flags |= 0x30;
             }
@@ -7500,6 +7575,8 @@ mod fighting_tests {
             model_admission: None,
             map_updates: Vec::new(),
             surface_veto: None,
+            ground_bypass_toggle: false,
+            insert_camera_flag: false,
             camera: None,
             camera_glide: Default::default(),
             camera_limits: Default::default(),
