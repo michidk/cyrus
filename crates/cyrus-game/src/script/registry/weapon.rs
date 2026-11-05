@@ -1,5 +1,6 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -392,10 +393,10 @@ impl<'a> CombatReceiver<'a> {
         if self.id != inputs.weapon.selected_player {
             control.script_control |= 2;
         }
-        if control.death_selector == 6 {
+        if control.ai_type == AiType::COMBAT {
             return Ok(());
         }
-        control.death_selector = 6;
+        control.ai_type = AiType::COMBAT;
         if self.actor.attributes[Attribute::Weapon] != 0 {
             if self
                 .actor

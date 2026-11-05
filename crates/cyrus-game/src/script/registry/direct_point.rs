@@ -7,6 +7,7 @@
 //! its default animation group and completes. Any other phase restarts from 0. Falling or queued
 //! motion interrupts every phase.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
@@ -184,6 +185,6 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("admitted point control")
-            .death_selector = 7;
+            .ai_type = AiType::POINT_NAVIGATION;
     }
 }

@@ -1,5 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
+use cyrus_game::script::AiType;
 use cyrus_game::script::CollisionFlags;
 use cyrus_game::script::CombatFlags;
 use cyrus_game::script::CombatMessageCode;
@@ -4344,7 +4345,7 @@ fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
         .unwrap();
     let control = world.actors()[0].control_state().unwrap();
     assert!(control.killed);
-    assert_eq!(control.death_selector, 8);
+    assert_eq!(control.ai_type, AiType::DEAD);
     assert!(!world.actors()[1].control_state().unwrap().killed);
     assert!(matches!(sounds.as_slice(), [(actor, ScriptSound::StopOwned)] if *actor == id));
 }
@@ -10690,8 +10691,8 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     );
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 0);
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!(control.death_selector, 8);
-    assert_eq!(control.death_response, 0);
+    assert_eq!(control.ai_type, AiType::DEAD);
+    assert_eq!(control.ai_mode, 0);
     assert_eq!(world.animation_frame(id).unwrap(), Some(134));
 }
 
@@ -13478,7 +13479,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
     let control = entry.actors()[id.index].control_state().unwrap();
     assert_eq!(
         (
-            control.death_selector,
+            control.ai_type.byte(),
             control.living_state,
             control.weapon_drawn
         ),
@@ -13565,7 +13566,8 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
         overridden.actors()[id.index]
             .control_state()
             .unwrap()
-            .death_selector,
+            .ai_type
+            .byte(),
         6
     );
     assert_eq!(overridden.animation_frame(id).unwrap(), Some(10));
@@ -13697,7 +13699,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                 let control = world.actors()[0].control_state().unwrap();
                 assert_eq!(
                     (
-                        control.death_selector,
+                        control.ai_type.byte(),
                         control.living_state,
                         control.weapon_drawn
                     ),
@@ -13743,7 +13745,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                 let control = world.actors()[0].control_state().unwrap();
                 assert_eq!(
                     (
-                        control.death_selector,
+                        control.ai_type.byte(),
                         control.living_state,
                         control.motion_direction,
                         control.weapon_drawn
@@ -13901,7 +13903,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             );
             assert_eq!(
                 (
-                    control.death_selector,
+                    control.ai_type.byte(),
                     control.script_control,
                     control.weapon_drawn
                 ),
@@ -13918,7 +13920,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
         }
         assert_eq!(
             (
-                control.death_selector,
+                control.ai_type.byte(),
                 control.script_control,
                 control.weapon_drawn
             ),
@@ -13926,7 +13928,10 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             "derived={derived} expression={expression} result={result:?}"
         );
         assert_eq!(control.combat.as_ref().unwrap().flags.bits(), 4);
-        assert_eq!(world.actors()[1].control_state().unwrap().death_selector, 0);
+        assert_eq!(
+            world.actors()[1].control_state().unwrap().ai_type,
+            AiType::NONE
+        );
         if expression {
             let error = format!("{:#}", result.unwrap_err());
             assert!(error.contains("numeric"), "{error}");
@@ -14078,7 +14083,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
             let control = actor.control_state().unwrap();
             assert_eq!(
                 (
-                    control.death_selector,
+                    control.ai_type.byte(),
                     control.living_state,
                     control.combat.as_ref().unwrap().flags.bits()
                 ),
@@ -25369,7 +25374,7 @@ fn direct_point_steps_turn_then_walk_complete_on_arrival_and_restart_from_unknow
         (
             result,
             world.globals().native_command().point_phase,
-            control.death_selector,
+            control.ai_type.byte(),
         )
     };
     let far_ahead = [255, -257, 100_000];
@@ -25934,7 +25939,7 @@ fn resurrect_clears_the_killed_flag_after_kill_me_and_releases_held_nodes() {
     let control = world.actors()[0].control_state().unwrap();
     // KillMe set the flag and selector 8; Resurrect cleared only the flag.
     assert!(!control.killed);
-    assert_eq!(control.death_selector, 8);
+    assert_eq!(control.ai_type, AiType::DEAD);
     assert!(world.peek_combat_message(id).unwrap().is_none());
     let saved = movement_snapshot(&world, &scripts, &data);
     assert_eq!(saved["walk_nodes"]["maps"][0], serde_json::json!([0, 0]));
@@ -25974,7 +25979,7 @@ fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
         .unwrap();
     let control = world.actors()[0].control_state().unwrap();
     assert!(!control.killed);
-    assert_eq!((control.death_selector, control.death_response), (1, 0));
+    assert_eq!((control.ai_type.byte(), control.ai_mode), (1, 0));
 }
 
 #[test]
@@ -26155,7 +26160,7 @@ fn perception_case(
     (
         combat.lost_sight_ticks,
         combat.lost_sight_routing,
-        i32::from(control.death_selector),
+        i32::from(control.ai_type.byte()),
         result.is_ok(),
     )
 }
@@ -26849,7 +26854,7 @@ fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
             (control.point_command.value, control.point_command.word),
             (7654321, 65535)
         );
-        assert_eq!(control.death_selector, if result == 0 { 0 } else { 7 });
+        assert_eq!(control.ai_type.byte(), if result == 0 { 0 } else { 7 });
         assert_eq!(world.inspect(0, 1)["actors"][0]["attributes"][1], 13);
         assert_eq!(
             world.spatial(id).unwrap().local.position,
@@ -27211,7 +27216,7 @@ fn point_node_arrival_advances_even_when_claim_is_rejected_and_registers_once() 
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (control.point_command.phase, control.death_selector),
+            (control.point_command.phase, control.ai_type.byte()),
             (expected_phase, 7)
         );
         assert_eq!(
@@ -27506,7 +27511,7 @@ fn point_node_facing_turns_then_selects_walk_or_shared_random_delay() {
                 (
                     control.point_command.phase,
                     control.point_command.word,
-                    control.death_selector
+                    control.ai_type.byte()
                 ),
                 (expected_phase, expected_word, 7)
             );
@@ -27766,7 +27771,7 @@ fn point_delay_countdown_preserves_signed_word_comparison_and_weapon_exit() {
             (
                 c.point_command.word,
                 c.point_command.phase,
-                c.death_selector
+                c.ai_type.byte()
             ),
             (expected_word, expected_phase, 7)
         );
@@ -27850,7 +27855,7 @@ fn point_delay_idle_uses_shared_draws_rejects_three_and_dispatches_before_return
             (
                 c.point_command.word,
                 c.point_command.phase,
-                c.death_selector
+                c.ai_type.byte()
             ),
             (15, 9, 7)
         );
@@ -27934,7 +27939,7 @@ fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_sa
         (
             c.point_command.word,
             c.point_command.phase,
-            c.death_selector
+            c.ai_type.byte()
         ),
         (16, 9, 0)
     );
@@ -28010,7 +28015,7 @@ fn point_delay_snapshot_resumes_countdown_and_zero_exit_needs_no_optional_owners
         (
             c.point_command.word,
             c.point_command.phase,
-            c.death_selector
+            c.ai_type.byte()
         ),
         (0, 2, 7)
     );
@@ -28067,7 +28072,7 @@ fn point_delay_missing_random_or_sound_owner_preserves_failure_order() {
             (
                 c.point_command.word,
                 c.point_command.phase,
-                c.death_selector
+                c.ai_type.byte()
             ),
             (16, 9, 0)
         );
@@ -28310,7 +28315,7 @@ fn point_walking_continues_then_claims_or_releases_nodes_with_one_registration()
             (
                 control.point_command.phase,
                 control.point_command.word,
-                control.death_selector
+                control.ai_type.byte()
             ),
             (phase, 1234, 7)
         );
@@ -30426,13 +30431,19 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
             )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[Attribute::Health], expected);
-        assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 0);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().ai_type,
+            AiType::NONE
+        );
         // No death groups exist in this fixture. Dispatch must still mark death,
         // without querying timing or calling animation sounds.
         world
             .dispatch_contact_death(id, 0, None, &mut |_, _| panic!("unexpected sound"))
             .unwrap();
-        assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 8);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().ai_type,
+            AiType::DEAD
+        );
     }
 }
 
@@ -31133,7 +31144,7 @@ fn contact_death_prefers_122_then_121_and_retains_combat_default() {
             .dispatch_contact_death(id, selector, Some(1), &mut |_, _| Ok(()))
             .unwrap();
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.death_selector, 8);
+        assert_eq!(control.ai_type, AiType::DEAD);
         assert_eq!(control.combat_death_default, expected);
         assert_eq!(
             (control.navigation.current, control.navigation.next),
@@ -31262,7 +31273,7 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
             expected_health
         );
         assert_eq!(
-            world.actors()[1].control_state().unwrap().death_selector,
+            world.actors()[1].control_state().unwrap().ai_type.byte(),
             if expected_health == 0 { 8 } else { 0 }
         );
         assert_eq!(cues.len(), expected_cues, "tip {tip_x} base {base_x}");
@@ -33916,7 +33927,8 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
         let before = world.actors()[player.index]
             .control_state()
             .unwrap()
-            .death_selector;
+            .ai_type
+            .byte();
         world
             .advance(
                 map,
@@ -33941,12 +33953,13 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
             "{function} leaves an unarmed player idle"
         );
         if function == Native::EndCombat {
-            assert_eq!(control.death_selector, 1);
-            assert_eq!(control.death_response, 0);
+            assert_eq!(control.ai_type, AiType::FIND_PLAYER);
+            assert_eq!(control.ai_mode, 0);
             assert_eq!(control.combat.as_ref().unwrap().flags.bits() & 4, 0);
         } else {
             assert_eq!(
-                control.death_selector, before,
+                control.ai_type.byte(),
+                before,
                 "SheathSword leaves the selector"
             );
         }
@@ -35439,7 +35452,7 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
         "the fixture table has no `anim_death_fight_hard`, so a zero-selector death falls back to `anim_death_fight_stab`"
     );
     let control = world.actors()[receiver.index].control_state().unwrap();
-    assert_eq!(control.death_selector, 8);
+    assert_eq!(control.ai_type, AiType::DEAD);
     assert_eq!(control.combat.as_ref().unwrap().action, -1);
 }
 
@@ -35544,7 +35557,7 @@ fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer()
         world.actors()[receiver.index].attributes()[Attribute::Health],
         0
     );
-    assert_eq!(control.death_selector, 8);
+    assert_eq!(control.ai_type, AiType::DEAD);
     assert_eq!(combat.action, -1);
     assert_eq!(combat.flags.bits() & 4, 0, "combat flag 0x04 cleared");
     assert_eq!(

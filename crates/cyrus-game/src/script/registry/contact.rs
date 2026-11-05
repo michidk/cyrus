@@ -1,5 +1,6 @@
 //! Combat contact queries follow preservation's SOUP motion-contact rules.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
@@ -57,7 +58,10 @@ impl ScriptWorld {
             else {
                 return Ok(false);
             };
-            if matches!(combat.action, -1 | 9) {
+            if matches!(
+                combat.action,
+                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+            ) {
                 return Ok(false);
             }
             let selector = self.actors[defender_index]

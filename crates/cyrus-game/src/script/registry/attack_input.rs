@@ -2,6 +2,8 @@
 //! Rules follow preservation's engine/player.md "Armed attack input".
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::player::input::PlayerInput;
+use crate::script::AiType;
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -251,7 +253,8 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref());
             if combat.is_some_and(|combat| {
-                combat.target == Some(id) && combat.attacker_selection_state == 1
+                combat.target == Some(id)
+                    && combat.attacker_selection_state == CombatControlState::COORDINATION_ACTIVE
             }) && !self.query_is_dead(candidate, Some(id))?
             {
                 attackers.push(candidate);
@@ -276,7 +279,7 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|control| control.combat.as_ref())
             .context("player stance combat unavailable")?;
-        if drawing || sheathing || combat.action != -1 {
+        if drawing || sheathing || combat.action != CombatControlState::NO_ACTION {
             return Ok(());
         }
         let mut index = 0;
@@ -308,7 +311,7 @@ impl ScriptWorld {
             .and_then(|control| control.combat.as_mut())
             .expect("admitted combat");
         combat.retained_action_indices[0] = index;
-        combat.action = 9;
+        combat.action = CombatControlState::STARTING_ACTION;
         self.execute_combat_attack(id, 0, inputs, sounds)?;
         Ok(())
     }
@@ -458,7 +461,7 @@ impl ScriptWorld {
             };
             if control.combat.is_some()
                 && in_reach(self, other, 1.0)?
-                && (actor.attributes[Attribute::Npc] == 0 || control.death_selector == 6)
+                && (actor.attributes[Attribute::Npc] == 0 || control.ai_type == AiType::COMBAT)
             {
                 return Ok(true);
             }
@@ -466,8 +469,8 @@ impl ScriptWorld {
         for &other in &traversal {
             let index = self.resolve(other)?;
             let actor = &self.actors[index];
-            let selector = actor.control.as_ref().map(|control| control.death_selector);
-            if matches!(selector, Some(6 | 8))
+            let selector = actor.control.as_ref().map(|control| control.ai_type);
+            if matches!(selector, Some(AiType::COMBAT | AiType::DEAD))
                 || actor.attributes[Attribute::Npc] == 0
                 || !in_reach(self, other, if kind == 3 { 6.0 } else { 1.0 })?
             {

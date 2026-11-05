@@ -1,5 +1,6 @@
 //! Live nonplayer counter timing, synchronous attack start and primitive sidesteps.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::decision::{CounterAttack, CounterAttackInput, Sidestep, counter_attack};
 use anyhow::{Context, Result, ensure};
@@ -70,7 +71,7 @@ impl ScriptWorld {
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .context("receiver combat unavailable")?;
-            if combat.action != -1 {
+            if combat.action != CombatControlState::NO_ACTION {
                 return Ok(false);
             }
             ensure!(
@@ -82,7 +83,7 @@ impl ScriptWorld {
                     ),
                 "selected-player attack starter unavailable"
             );
-            combat.action = 9;
+            combat.action = CombatControlState::STARTING_ACTION;
             self.execute_combat_attack(id, 0, inputs, sounds)?;
             Ok(true)
         })();
@@ -139,8 +140,10 @@ impl ScriptWorld {
             if !crate::script::decision::facing_each_other(
                 i32::from(target_heading),
                 i32::from(own_heading),
-            ) || matches!(target_combat.action, -1 | 9)
-                || combat.action != -1
+            ) || matches!(
+                target_combat.action,
+                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+            ) || combat.action != CombatControlState::NO_ACTION
                 || !combat.defense_indices.iter().any(Option::is_some)
                 || target_combat.flags.contains(CombatFlags::ATTACKED)
             {

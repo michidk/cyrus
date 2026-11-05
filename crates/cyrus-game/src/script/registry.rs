@@ -1,4 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use crate::script::AiType;
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -325,10 +327,10 @@ pub struct ActorControlState {
     pub point_command: super::PointCommandState,
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,
-    /// Lifecycle selector: combat entry uses six; IsDead tests eight.
-    pub death_selector: u8,
-    /// Companion AI mode byte, independent of the lifecycle death notification.
-    pub death_response: u8,
+    /// The DEF `ai_type` lifecycle selector.
+    pub ai_type: super::AiType,
+    /// The DEF `ai_mode` byte, independent of the `ai_type` lifecycle selector.
+    pub ai_mode: u8,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
     /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
@@ -939,7 +941,7 @@ impl ScriptWorld {
         {
             return Ok(());
         }
-        if !selected && control.death_selector == 8 {
+        if !selected && control.ai_type == AiType::DEAD {
             return Ok(());
         }
         if !selected
@@ -978,8 +980,8 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .expect("admitted control")
-                .death_selector
-                == 6
+                .ai_type
+                == AiType::COMBAT
         {
             self.run_ordinary_combat_decision(
                 id,
@@ -1005,7 +1007,7 @@ impl ScriptWorld {
                     .and_then(|control| control.combat.as_mut())
                     .expect("admitted combat");
                 if combat.action != 0 {
-                    combat.action = -1;
+                    combat.action = CombatControlState::NO_ACTION;
                     combat.retained_action_indices = [-1; 2];
                 }
                 // Both maintenance helpers with action -1 are inert in phase zero.
@@ -1031,7 +1033,7 @@ impl ScriptWorld {
         if !player_weapon_transition {
             if combat.cooldown != 0 {
                 combat.cooldown = combat.cooldown.saturating_sub(ticks);
-            } else if combat.action != -1 {
+            } else if combat.action != CombatControlState::NO_ACTION {
                 if (0..=6).contains(&combat.action) {
                     if self.combat_attack_window(id)? {
                         self.actors[index]
@@ -1051,7 +1053,7 @@ impl ScriptWorld {
                         )?;
                     }
                 } else {
-                    combat.action = -1;
+                    combat.action = CombatControlState::NO_ACTION;
                 }
             }
         }
@@ -1890,8 +1892,8 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("IsDead: actor death lifecycle unavailable")?
-            .death_selector
-            == 8)
+            .ai_type
+            == AiType::DEAD)
     }
 
     fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
@@ -2002,7 +2004,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .with_context(|| format!("mark dead: actor {index} has no control state"))?
-            .death_selector = 8;
+            .ai_type = AiType::DEAD;
         Ok(())
     }
 
@@ -2268,7 +2270,7 @@ impl ScriptWorld {
             && self.actors[index]
                 .control
                 .as_ref()
-                .is_some_and(|control| control.death_selector != 8)
+                .is_some_and(|control| control.ai_type != AiType::DEAD)
             && matches!(self.actors[index].surface, Some(2 | 4))
         {
             self.cleanup_actor_weapon(id, id, ticks, sounds)?;
@@ -2292,7 +2294,7 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        let group = if control.death_selector == 8 {
+        let group = if control.ai_type == AiType::DEAD {
             if let Some(default) = control.combat_death_default {
                 AnimationGroup::from_index(default as u16)
             } else if animation
@@ -3652,7 +3654,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 continue;
             };
             if combat.target != Some(receiver)
-                || combat.attacker_selection_state != 1
+                || combat.attacker_selection_state != CombatControlState::COORDINATION_ACTIVE
                 || self.actor_is_dead(candidate.index)?
             {
                 continue;
@@ -4012,7 +4014,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             move_selected: control
                 .combat
                 .as_ref()
-                .is_some_and(|combat| combat.action != -1),
+                .is_some_and(|combat| combat.action != CombatControlState::NO_ACTION),
             selected_player_mode_one: self.registry.selected_player_index() == Some(self.index)
                 && actor.attributes[Attribute::PlayerType] == 1,
         })
@@ -4069,7 +4071,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             if actor
                 .control
                 .as_ref()
-                .is_some_and(|control| control.death_selector == 7)
+                .is_some_and(|control| control.ai_type == AiType::POINT_NAVIGATION)
                 && actor.attributes[Attribute::Collide] & 1 == 0
             {
                 admission.forward_step_clear = Some(true);
@@ -5857,12 +5859,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .control
                     .as_mut()
                     .context("Resurrect: receiver lifecycle unavailable")?;
-                if control.killed || control.death_selector == 8 {
+                if control.killed || control.ai_type == AiType::DEAD {
                     control.killed = false;
                     // A selector-6 receiver with combat state first runs the unconditional part
                     // of the end-of-combat reset; the script-control bit stays (it is only
                     // cleared there while the killed flag is still set).
-                    if control.death_selector == 6 {
+                    if control.ai_type == AiType::COMBAT {
                         let script_control = control.script_control;
                         super::combat::end_combat_reset(control);
                         control.script_control = script_control;
@@ -5905,7 +5907,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("KillMe: receiver lifecycle unavailable")?;
             control.killed = true;
-            control.death_selector = 8;
+            control.ai_type = AiType::DEAD;
             self.registry.actors[self.index].model.current = None;
             self.registry.actors[self.index].model.weapon = None;
             // The original frees the receiver's light and flat records, so a later call starts new ones.
@@ -6351,9 +6353,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             if function == Native::SetAiType {
-                control.death_selector = value;
+                control.ai_type = AiType::from_byte(value);
             } else {
-                control.death_response = value;
+                control.ai_mode = value;
             }
             return Ok(CallResult::Complete(0));
         }
@@ -6946,8 +6948,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // Receiver lifecycle bytes: MyAIType is the lifecycle selector, MyAIMode the death
         // notification byte; IsOnEdge holds for the ledge living states.
         let control_test: Option<fn(&ActorControlState) -> i32> = match function {
-            Native::MyAiType => Some(|control| i32::from(control.death_selector)),
-            Native::MyAiMode => Some(|control| i32::from(control.death_response)),
+            Native::MyAiType => Some(|control| i32::from(control.ai_type.byte())),
+            Native::MyAiMode => Some(|control| i32::from(control.ai_mode)),
             Native::IsOnEdge => Some(|control| i32::from(control.living_state.is_ledge())),
             // The original also answers 0 while its transition lock (global word read by
             // dozens of routines) is set; cyrus has no transition state, so it is clear.
@@ -7505,7 +7507,7 @@ mod fighting_tests {
                         attacker_selection_state: state,
                         ..Default::default()
                     }),
-                    death_selector: if dead { 8 } else { 0 },
+                    ai_type: if dead { AiType::DEAD } else { AiType::NONE },
                     ..Default::default()
                 }),
                 surface: Some(0),

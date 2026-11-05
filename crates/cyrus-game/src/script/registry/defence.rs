@@ -1,5 +1,6 @@
 //! Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
@@ -20,7 +21,10 @@ impl ScriptWorld {
             else {
                 return Ok(0);
             };
-            if matches!(combat.action, -1 | 9) {
+            if matches!(
+                combat.action,
+                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+            ) {
                 return Ok(0);
             }
             let slot = usize::try_from(combat.retained_action_indices[1])

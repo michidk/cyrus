@@ -1,5 +1,6 @@
 //! Falling continuation requests precede the shared vertical writer.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
 use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -294,7 +295,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated health control")
-                .death_selector = 8;
+                .ai_type = AiType::DEAD;
         } else if health == 0 {
             // The force-request boundary rejects an actor without animation state.
             if self.updates.animation_system && self.actors[index].animation.is_some() {
@@ -342,7 +343,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated health control")
-                .death_selector = 8;
+                .ai_type = AiType::DEAD;
         }
         Ok(true)
     }

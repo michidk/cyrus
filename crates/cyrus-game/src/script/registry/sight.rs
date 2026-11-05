@@ -1,6 +1,7 @@
 //! Line of sight between two actors follows preservation's combat decision "In sight" rules.
 use super::super::combat::{Engagement, combat_target_valid, engagement};
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result, ensure};
@@ -108,7 +109,7 @@ impl ScriptWorld {
                 return Ok(());
             };
             if id == selected_player
-                || control.death_selector == 8
+                || control.ai_type == AiType::DEAD
                 || !combat.flags.contains(CombatFlags::STANCE)
             {
                 return Ok(());
@@ -152,7 +153,7 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .expect("admitted control")
-                        .death_selector = 6;
+                        .ai_type = AiType::COMBAT;
                     self.actors[index]
                         .control
                         .as_mut()
@@ -237,7 +238,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .context("combat decision control unavailable")?;
-            if control.death_selector != 6 || self.query_is_dead(id, Some(selected_player))? {
+            if control.ai_type != AiType::COMBAT || self.query_is_dead(id, Some(selected_player))? {
                 return Ok(None);
             }
             let Some(combat) = control.combat.as_ref() else {

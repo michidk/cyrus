@@ -58,11 +58,14 @@ pub fn movement_threshold(speed: u8, scale: i32) -> i32 {
     (i32::from(speed) * 512 - 1).wrapping_mul(scale) >> 8
 }
 
-/// Whether a movement attempt is permitted: actor state 7, speed zero, a nonpositive threshold,
-/// or a distance strictly greater than the threshold.
-pub fn movement_permitted(state: u8, speed: u8, scale: i32, distance: i32) -> bool {
+/// Whether a movement attempt is permitted: point navigation, speed zero, a nonpositive
+/// threshold, or a distance strictly greater than the threshold.
+pub fn movement_permitted(ai_type: super::AiType, speed: u8, scale: i32, distance: i32) -> bool {
     let threshold = movement_threshold(speed, scale);
-    state == 7 || speed == 0 || threshold <= 0 || distance > threshold
+    ai_type == super::AiType::POINT_NAVIGATION
+        || speed == 0
+        || threshold <= 0
+        || distance > threshold
 }
 
 /// Bearing from the player to the target relative to the player's heading, wrapped to 2048: `b` of
@@ -225,6 +228,7 @@ pub fn face(input: FacingInput) -> anyhow::Result<Facing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::AiType;
 
     #[test]
     fn speed_follows_the_current_group_and_missing_state_is_zero() {
@@ -279,17 +283,17 @@ mod tests {
         // helper's still snaps, and the movement check admits through the speed itself.
         assert!(arrival_threshold(0, 256) < 0);
         assert_eq!(facing_threshold(0, 256), 256);
-        assert!(movement_permitted(0, 0, 256, 0));
+        assert!(movement_permitted(AiType::NONE, 0, 256, 0));
     }
 
     #[test]
     fn movement_permission_needs_state_seven_zero_speed_a_nonpositive_threshold_or_distance() {
         // Speed 3 at scale 256: threshold 1535.
-        assert!(!movement_permitted(0, 3, 256, 1535));
-        assert!(movement_permitted(0, 3, 256, 1536));
-        assert!(movement_permitted(7, 3, 256, 0));
+        assert!(!movement_permitted(AiType::NONE, 3, 256, 1535));
+        assert!(movement_permitted(AiType::NONE, 3, 256, 1536));
+        assert!(movement_permitted(AiType::POINT_NAVIGATION, 3, 256, 0));
         // A zero scale makes the threshold zero: nonpositive, so movement is permitted.
-        assert!(movement_permitted(0, 3, 0, 0));
+        assert!(movement_permitted(AiType::NONE, 3, 0, 0));
     }
 
     fn facing(position: [i32; 3], heading: u16, target: [i32; 3], speed: u8) -> Facing {

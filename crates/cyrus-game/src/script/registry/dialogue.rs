@@ -1,5 +1,6 @@
 //! Dialogue and combat-taunt presentation share authoritative logical actors.
 use super::{ScriptActor, ScriptActorId, ScriptWorld};
+use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
@@ -158,7 +159,7 @@ impl ScriptWorld {
                     .globals
                     .player_hit_inhibited()
                     .context("selected-player hit inhibition unavailable")?
-                || control.death_selector == 8
+                || control.ai_type == AiType::DEAD
                 || actor.combat_taunts.is_empty()
             {
                 return Ok(());

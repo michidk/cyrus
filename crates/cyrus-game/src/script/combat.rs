@@ -1,5 +1,6 @@
 //! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
+use crate::script::AiType;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{Attribute, Attributes};
@@ -87,11 +88,14 @@ pub struct CombatControlState {
     /// Nonzero after routed pursuit begins, cleared on reacquisition.
     pub lost_sight_routing: i32,
     pub flags: CombatFlags,
+    /// Attack action selector: [`Self::NO_ACTION`], [`Self::STARTING_ACTION`], or 0 to 6 while an
+    /// attack is processed.
     pub action: i32,
     pub cooldown: u32,
     /// World object-pool allocation index, retained across combat reinitialization.
     pub allocation_index: i32,
-    /// Combat coordination selector and attacker eligibility; exactly one admits a candidate.
+    /// Coordination selection state: [`Self::COORDINATION_ACTIVE`] takes the active branch and
+    /// admits a candidate; other values, normally [`Self::COORDINATION_WAITING`], wait.
     pub attacker_selection_state: i32,
     /// Pending attack move, then defense attack-slot selector. Selection remains caller-owned.
     pub retained_action_indices: [i32; 2],
@@ -111,6 +115,7 @@ pub struct CombatControlState {
     /// Nonplayer decision-stage state; see [`CombatDecision`].
     pub decision: CombatDecision,
 }
+
 impl Default for CombatControlState {
     fn default() -> Self {
         Self {
@@ -123,10 +128,10 @@ impl Default for CombatControlState {
             lost_sight_ticks: 0,
             lost_sight_routing: 0,
             flags: CombatFlags::default(),
-            action: -1,
+            action: Self::NO_ACTION,
             cooldown: 0,
             allocation_index: 0,
-            attacker_selection_state: 0,
+            attacker_selection_state: Self::COORDINATION_WAITING,
             retained_action_indices: [-1; 2],
             taunt_cache: None,
             taunt_dialogue: Some(0),
@@ -142,6 +147,15 @@ impl Default for CombatControlState {
 }
 
 impl CombatControlState {
+    /// No attack action; fight spacing runs only in this state.
+    pub const NO_ACTION: i32 = -1;
+    /// Set by the attack starter before the attack executor runs.
+    pub const STARTING_ACTION: i32 = 9;
+    /// Coordination state that waits for another actor to take its turn.
+    pub const COORDINATION_WAITING: i32 = 0;
+    /// Coordination state that takes the active attacking branch.
+    pub const COORDINATION_ACTIVE: i32 = 1;
+
     /// Allocate only for a new combat record; reinitialization retains its index.
     pub(crate) fn initialize(
         attributes: &Attributes,
@@ -652,9 +666,9 @@ pub(super) fn end_combat_reset(control: &mut super::registry::ActorControlState)
     };
     combat.flags.remove(CombatFlags::STANCE);
     combat.close_distance_passes = 0;
-    combat.attacker_selection_state = 0;
-    control.death_selector = 1;
-    control.death_response = 0;
+    combat.attacker_selection_state = CombatControlState::COORDINATION_WAITING;
+    control.ai_type = AiType::FIND_PLAYER;
+    control.ai_mode = 0;
     control.script_control &= !2;
     true
 }
@@ -665,7 +679,7 @@ pub(super) fn combat_target_valid(
     control: &super::registry::ActorControlState,
     own: super::ScriptActorId,
 ) -> bool {
-    !(control.death_selector == 8 && control.killed)
+    !(control.ai_type == AiType::DEAD && control.killed)
         && control
             .combat
             .as_ref()
@@ -731,8 +745,8 @@ mod sheath_tests {
     #[test]
     fn end_combat_resets_the_selector_mode_hook_flag_and_counters() {
         let mut control = ActorControlState {
-            death_selector: 6,
-            death_response: 3,
+            ai_type: AiType::COMBAT,
+            ai_mode: 3,
             script_control: 0b1011,
             combat: Some(CombatControlState {
                 flags: CombatFlags::from_bits(0x07),
@@ -750,14 +764,14 @@ mod sheath_tests {
         assert_eq!(combat.attacker_selection_state, 0);
         // The cooldown belongs to sheathing, not to the reset.
         assert_eq!(combat.cooldown, 9);
-        assert_eq!((control.death_selector, control.death_response), (1, 0));
+        assert_eq!((control.ai_type, control.ai_mode), (AiType::FIND_PLAYER, 0));
         assert_eq!(control.script_control, 0b1001);
         let mut bare = ActorControlState {
-            death_selector: 6,
+            ai_type: AiType::COMBAT,
             ..Default::default()
         };
         assert!(!end_combat_reset(&mut bare));
-        assert_eq!(bare.death_selector, 6);
+        assert_eq!(bare.ai_type, AiType::COMBAT);
     }
 
     #[test]
@@ -809,7 +823,7 @@ mod decision_tests {
             "no combat record"
         );
         let mut dead = with_target(None);
-        dead.death_selector = 8;
+        dead.ai_type = AiType::DEAD;
         assert!(
             combat_target_valid(&dead, id(1)),
             "state 8 alone is still valid"

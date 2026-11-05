@@ -424,7 +424,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .context("lineup selected-player control unavailable")?
-                .death_selector;
+                .ai_type;
             Ok(alignment::movement_permitted(
                 state,
                 self.speed(),

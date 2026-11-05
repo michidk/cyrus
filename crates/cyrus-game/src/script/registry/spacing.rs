@@ -1,5 +1,6 @@
 //! Fight spacing reads and mutates the receiver's shared movement state.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -195,14 +196,15 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
                 .context("fight spacing combat record unavailable")?;
-            if combat.action != -1 {
+            if combat.action != CombatControlState::NO_ACTION {
                 return Ok(());
             }
             let target = combat.target.context("fight spacing target unavailable")?;
             let [mut near, mut far, mut third] = combat.spacing_ranges;
             let mut period = combat.spacing_period;
             let allocation = combat.allocation_index;
-            let stance = combat.attacker_selection_state != 0;
+            let stance =
+                combat.attacker_selection_state != CombatControlState::COORDINATION_WAITING;
             let active = combat.flags.contains(CombatFlags::STANCE);
             let frame_scale = inputs
                 .frame_scale
@@ -356,7 +358,7 @@ impl ScriptWorld {
                     continue;
                 };
                 if combat.target != Some(target)
-                    || combat.attacker_selection_state != 1
+                    || combat.attacker_selection_state != CombatControlState::COORDINATION_ACTIVE
                     || self.query_is_dead(candidate, selected_player)?
                 {
                     continue;

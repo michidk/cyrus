@@ -1,5 +1,7 @@
 //! Receiver-owned attack execution through the four defense slots and shared animation owner.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use crate::script::decision::attack_step_with_animation;
@@ -161,13 +163,16 @@ impl ScriptWorld {
             .and_then(|control| control.combat.as_ref())
             .map(|combat| combat.action)
             .unwrap_or(-1);
-        if !matches!(receiver_action, -1 | 9) {
+        if !matches!(
+            receiver_action,
+            CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+        ) {
             self.actors[sender_index]
                 .control
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
                 .context("hit sender combat unavailable")?
-                .action = -1;
+                .action = CombatControlState::NO_ACTION;
         }
 
         let damage_admitted = self.actors[receiver_index].attributes[Attribute::VWeapon] == 0
@@ -241,7 +246,7 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|control| control.combat.as_ref())
             .context("hit response receiver combat unavailable")?;
-        if combat.attacker_selection_state == 0
+        if combat.attacker_selection_state == CombatControlState::COORDINATION_WAITING
             && !selected
             && !self.query_is_dead(receiver, selected_player)?
         {
@@ -423,7 +428,10 @@ impl ScriptWorld {
             else {
                 return Ok(false);
             };
-            if matches!(combat.action, -1 | 9) {
+            if matches!(
+                combat.action,
+                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+            ) {
                 return Ok(false);
             }
             let animation = actor
@@ -617,8 +625,8 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .context("face target control unavailable")?
-                    .death_selector
-                    == 8
+                    .ai_type
+                    == AiType::DEAD
                 {
                     continue;
                 }
@@ -849,7 +857,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("contact death control unavailable")?
-            .death_selector = 8;
+            .ai_type = AiType::DEAD;
         Ok(())
     }
 
@@ -987,7 +995,7 @@ impl ScriptWorld {
                     .and_then(|control| control.combat.as_mut())
                     .expect("validated combat record");
                 combat.close_distance_passes = 0;
-                combat.attacker_selection_state = 0;
+                combat.attacker_selection_state = CombatControlState::COORDINATION_WAITING;
             }
         }
         let was_dead = {
@@ -999,8 +1007,8 @@ impl ScriptWorld {
                 .combat
                 .as_mut()
                 .context("combat death record unavailable")?
-                .action = -1;
-            control.death_selector == 8
+                .action = CombatControlState::NO_ACTION;
+            control.ai_type == AiType::DEAD
         };
         if was_dead {
             self.release_held_walk_nodes(id)?;
@@ -1010,19 +1018,19 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated combat death control");
         if !was_dead {
-            if control.death_selector != 1 {
-                control.death_selector = 1;
-                control.death_response = 0;
+            if control.ai_type != AiType::FIND_PLAYER {
+                control.ai_type = AiType::FIND_PLAYER;
+                control.ai_mode = 0;
             }
             if control.killed {
                 control.script_control &= !2;
             }
         }
-        control.death_selector = 8;
+        control.ai_type = AiType::DEAD;
         let combat = control.combat.as_mut().expect("validated combat record");
         combat.flags.remove(CombatFlags::STANCE);
         combat.close_distance_passes = 0;
-        combat.attacker_selection_state = 0;
+        combat.attacker_selection_state = CombatControlState::COORDINATION_WAITING;
         if selected {
             self.apply_selected_death_health(id, -256, None, inputs, Some(random), sounds)?;
         }

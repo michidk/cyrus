@@ -1,5 +1,7 @@
 //! Combat coordination shares attacker eligibility, close counters and addressed class queues.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
+use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
@@ -105,7 +107,9 @@ impl ScriptWorld {
         // production caller supplies that hint, but inspection/tests may omit it; using the
         // world's selected role keeps the d005 handoff from promoting the selected player.
         let receiver_is_selected = self.selected_player_index() == Some(index);
-        if combat.attacker_selection_state == 0 && !receiver_is_selected {
+        if combat.attacker_selection_state == CombatControlState::COORDINATION_WAITING
+            && !receiver_is_selected
+        {
             if let Some(coordinator) = self.ordinary_waiting_coordinator(message.sender)? {
                 self.send_combat_message(id, coordinator, CombatMessageCode::SENDER_COORDINATES)?;
             } else {
@@ -189,7 +193,8 @@ impl ScriptWorld {
                     };
                     if candidate != target
                         && combat.target == Some(target)
-                        && combat.attacker_selection_state == 1
+                        && combat.attacker_selection_state
+                            == CombatControlState::COORDINATION_ACTIVE
                         && !self.query_is_dead(candidate, selected_player)?
                     {
                         self.set_combat_coordination(candidate, 0)?;
@@ -247,7 +252,7 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|control| control.combat.as_ref())
             .expect("admitted block receiver");
-        if combat.attacker_selection_state != 0
+        if combat.attacker_selection_state != CombatControlState::COORDINATION_WAITING
             || selected_player == Some(receiver)
             || self.query_is_dead(receiver, selected_player)?
         {
@@ -304,8 +309,8 @@ impl ScriptWorld {
                 continue;
             };
             if combat.target.is_some()
-                && control.death_selector != 8
-                && combat.attacker_selection_state == 1
+                && control.ai_type != AiType::DEAD
+                && combat.attacker_selection_state == CombatControlState::COORDINATION_ACTIVE
             {
                 return Ok(Some(candidate));
             }
@@ -348,7 +353,7 @@ impl ScriptWorld {
             let Some(combat) = control.combat.as_ref() else {
                 continue;
             };
-            if combat.target != target || control.death_selector == 8 {
+            if combat.target != target || control.ai_type == AiType::DEAD {
                 continue;
             }
             // The original tests the held-weapon owner before the stance flag and player exclusion.
@@ -388,7 +393,7 @@ impl ScriptWorld {
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
                 .context("receiver combat unavailable")?;
-            let active = combat.attacker_selection_state == 1;
+            let active = combat.attacker_selection_state == CombatControlState::COORDINATION_ACTIVE;
             let aggression = combat.decision.aggression;
             let close = combat.close_distance_passes;
             let target = combat.target;

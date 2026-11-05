@@ -151,6 +151,7 @@ module where it is defined and regenerate.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
 - `src/rope.rs` — Retained ropes from the installed `MPRP` records: construction, swing, chain placement and the
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
+- `src/script/ai_type.rs` — The actor's AI type byte (`ai_type`, `MyAiType`/`SetAiType`): its lifecycle selector.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attachment.rs` — Equipped-model geometry follows preservation's engine/attachment.md transform rules.

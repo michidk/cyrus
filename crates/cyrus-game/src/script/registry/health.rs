@@ -1,5 +1,7 @@
 //! Selected-player health services retain distinct publication and death ordering.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
+use crate::script::CombatControlState;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::{GameplayGlobals, ScriptSound};
@@ -790,7 +792,7 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .context("selected death control unavailable")?
-                    .death_selector = 8;
+                    .ai_type = AiType::DEAD;
                 if self
                     .globals
                     .player_death_override_group()
@@ -924,7 +926,7 @@ impl ScriptWorld {
                         .as_mut()
                         .and_then(|control| control.combat.as_mut())
                         .context("selected armed death combat record unavailable")?
-                        .action = -1;
+                        .action = CombatControlState::NO_ACTION;
                 }
             } else {
                 self.globals.set_player_death_override_group(0)?;

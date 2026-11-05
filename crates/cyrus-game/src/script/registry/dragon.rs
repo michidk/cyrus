@@ -1,6 +1,7 @@
 //! `DragonBreath` and `DragonBreathTask`: the dragon's smoke while it speaks, its fireball and the
 //! item swap when it dies. The task form runs the same update every frame until it returns zero.
 use super::GameHost;
+use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use crate::script::spatial::query_bearing;
@@ -9,8 +10,6 @@ use cyrus_collision::distance::rounded_distance;
 use cyrus_script::Attribute;
 use cyrus_script::Native;
 
-/// Death selector that marks a killed receiver.
-const KILLED_SELECTOR: u8 = 8;
 /// Smoke effect descriptor: texture 0x2480 on the alternate, reduced-scale path.
 const SMOKE_EFFECT: u32 =
     super::EnvironmentalEffect::ALTERNATE_DRAW | super::EnvironmentalEffect::REDUCED_SCALE | 0x2480;
@@ -68,7 +67,7 @@ impl GameHost<'_, '_, '_, '_> {
             .control
             .as_ref()
             .context("DragonBreath: receiver control unavailable")?;
-        if control.death_selector == KILLED_SELECTOR {
+        if control.ai_type == AiType::DEAD {
             self.swap_death_item()?;
             return Ok(false);
         }

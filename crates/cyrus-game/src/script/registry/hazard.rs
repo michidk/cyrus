@@ -1,5 +1,6 @@
 //! The nonplayer step hazard test follows the original's destination surface classification.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::AiType;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 
@@ -92,7 +93,8 @@ impl ScriptWorld {
         if control.rope_attached {
             return Ok(false);
         }
-        if control.death_selector == 7 && self.actors[index].attributes[Attribute::Collide] & 1 == 0
+        if control.ai_type == AiType::POINT_NAVIGATION
+            && self.actors[index].attributes[Attribute::Collide] & 1 == 0
         {
             return Ok(true);
         }
@@ -201,7 +203,8 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("forward step check control unavailable")?;
-        if (control.death_selector == 7 && actor.attributes[Attribute::Collide] & 1 == 0)
+        if (control.ai_type == AiType::POINT_NAVIGATION
+            && actor.attributes[Attribute::Collide] & 1 == 0)
             || actor.attributes[Attribute::Collide] & 2 == 0
         {
             return Ok(Some(true));

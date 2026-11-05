@@ -11,6 +11,7 @@
 //! outside phase zero, the shared held-target exclusion switch (always off in play) and the
 //! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use anyhow::{Context, Result};
@@ -387,7 +388,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("admitted point control")
-                .death_selector = 7;
+                .ai_type = AiType::POINT_NAVIGATION;
             return Ok(1);
         }
         let phase = shared.point_phase;
@@ -410,8 +411,8 @@ impl ScriptWorld {
         self.release_held_walk_nodes(id)?;
         let actor = &mut self.actors[index];
         let control = actor.control.as_mut().expect("admitted point control");
-        if control.death_selector == 7 {
-            control.death_selector = 0;
+        if control.ai_type == AiType::POINT_NAVIGATION {
+            control.ai_type = AiType::NONE;
         }
         actor.attributes[Attribute::Collide] = 13;
         Ok(0)
@@ -793,7 +794,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("admitted point control")
-            .death_selector = 7;
+            .ai_type = AiType::POINT_NAVIGATION;
         if !self.map_updates.contains(&index) {
             self.map_updates.push(index);
         }
@@ -826,8 +827,8 @@ impl ScriptWorld {
         self.release_held_walk_nodes(id)?;
         let actor = &mut self.actors[id.index];
         let control = actor.control.as_mut().expect("admitted point control");
-        if control.death_selector == 7 {
-            control.death_selector = 0;
+        if control.ai_type == AiType::POINT_NAVIGATION {
+            control.ai_type = AiType::NONE;
         }
         actor.attributes[Attribute::Collide] = 13;
         Ok(0)

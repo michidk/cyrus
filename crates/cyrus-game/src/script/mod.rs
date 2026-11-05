@@ -168,6 +168,7 @@ pub use registry::ordinary::{
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
+mod ai_type;
 /// Pure player-alignment arithmetic: `PlayerFaceObj`'s facing step and `PlayerLineUp`'s helpers.
 pub mod alignment;
 /// `BounceObject`'s launch state machine.
@@ -176,6 +177,7 @@ mod collision_flags;
 mod heading;
 mod jump_motion;
 mod living_state;
+pub use ai_type::AiType;
 pub use collision_flags::CollisionFlags;
 pub use jump_motion::JumpMotion;
 pub use living_state::LivingState;
