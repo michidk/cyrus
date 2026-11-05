@@ -496,12 +496,44 @@ fn move_pos_fixture(
     spatial: bool,
     attached: bool,
 ) -> ScriptWorld {
+    movement_query_fixture(
+        MovementQuery::Position(target),
+        named,
+        selector,
+        spatial,
+        attached,
+    )
+}
+
+enum MovementQuery {
+    Position([i32; 3]),
+    Speed(Option<cyrus_script::AnimationGroup>),
+}
+
+fn movement_query_fixture(
+    query: MovementQuery,
+    named: bool,
+    selector: u8,
+    spatial: bool,
+    attached: bool,
+) -> ScriptWorld {
     use cyrus_script::{AnimationGroup, Native, Property};
+    let (function, arguments, group) = match query {
+        MovementQuery::Position(target) => (
+            Native::MovePos,
+            target
+                .into_iter()
+                .map(|value| Value::Integer { value })
+                .collect::<Vec<_>>(),
+            Some(AnimationGroup::RUN),
+        ),
+        MovementQuery::Speed(group) => (Native::GetMovementSpeed, vec![], group),
+    };
     let mut scripts = cache();
     scripts.definition.references = vec![Property::AiType];
     scripts.definition.functions.push(Function {
-        name: Native::MovePos,
-        param_count: 3,
+        name: function,
+        param_count: u8::try_from(arguments.len()).unwrap(),
         kind: CallKind::Function,
     });
     scripts.instances[1].map_position = [2, 0, 0];
@@ -515,13 +547,10 @@ fn move_pos_fixture(
     };
     let call = Box::new(Call {
         function_id: 1,
-        function: Native::MovePos,
+        function,
         target: object.clone(),
         kind: CallKind::Function,
-        arguments: target
-            .into_iter()
-            .map(|value| Value::Integer { value })
-            .collect(),
+        arguments,
     });
     let value = if named {
         Value::ObjectCall { call }
@@ -605,12 +634,15 @@ fn move_pos_fixture(
     if spatial {
         world.prepare_spatial().unwrap();
     }
+    let Some(group) = group else {
+        return world;
+    };
     let mut data = cyrus_assets::animation::Animations {
         version: 2,
         world: 7,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
           "actors":[{"script_name":"LOGIC", "model_load_path":"animation_table", "mpsz_bounds_primary":0,
-          "raex":{"unknown_12":256}, "animation_groups":[{"group_index":18, "anim_id":1, "anim_type":0,
+          "raex":{"unknown_12":256}, "animation_groups":[{"group_index":group.index(), "anim_id":1, "anim_type":0,
           "commands":[{"opcode":0,"frame_reference":18},{"opcode":2,"value":0}]}]}]}),
         sections: Default::default(),
         models: Default::default(),
@@ -626,9 +658,7 @@ fn move_pos_fixture(
     }
     for index in 0..2 {
         let id = world.id(index).unwrap();
-        world
-            .bind_animation(id, &data, AnimationGroup::RUN)
-            .unwrap();
+        world.bind_animation(id, &data, group).unwrap();
         world
             .advance(
                 id,
@@ -742,4 +772,56 @@ fn move_pos_reads_the_publicly_composed_family_position() {
         world.spatial(world.id(0).unwrap()).unwrap().local.position,
         [-512, 0, 0]
     );
+}
+
+#[test]
+fn get_movement_speed_reads_the_receivers_unscaled_attribute_without_player_or_spatial_state() {
+    use cyrus_script::AnimationGroup;
+    for (group, expected) in [
+        (Some(AnimationGroup::RUN), 251),
+        (Some(AnimationGroup::RUN_TORCH), 251),
+        (Some(AnimationGroup::SWIM_FORWARD), 251),
+        (Some(AnimationGroup::RUN_BACKWARD), 252),
+        (Some(AnimationGroup::SWIM_BACKWARD), 252),
+        (Some(AnimationGroup::WALK), 253),
+        (Some(AnimationGroup::WALK_FORWARD_TORCH), 253),
+        (Some(AnimationGroup::WALK_BACKWARD), 254),
+        (Some(AnimationGroup::WALK_BACKWARD_TORCH), 254),
+        (Some(AnimationGroup::STEP_LEFT), 255),
+        (Some(AnimationGroup::STEP_LEFT_TORCH), 255),
+        (Some(AnimationGroup::STEP_RIGHT), 255),
+        (Some(AnimationGroup::STEP_RIGHT_TORCH), 255),
+        (Some(AnimationGroup::FIGHT_RUN), 17),
+        (Some(AnimationGroup::FIGHT_FORW), 19),
+        (Some(AnimationGroup::FIGHT_BACK), 19),
+        (Some(AnimationGroup::IDLE1), 0),
+        (None, 0),
+    ] {
+        for named in [false, true] {
+            let mut world =
+                movement_query_fixture(MovementQuery::Speed(group), named, 4, false, false);
+            let receiver = usize::from(named);
+            for (attribute, value) in [
+                (Attribute::ForwardSpeed, 251),
+                (Attribute::BackwardSpeed, 252),
+                (Attribute::ForwardWalk, 253),
+                (Attribute::BackwardWalk, 254),
+                (Attribute::SideSpeed, 255),
+                (Attribute::FightForwardWalk, 17),
+                (Attribute::FightForwardSpeed, 19),
+            ] {
+                world
+                    .set_actor_attribute(receiver, attribute.index(), value)
+                    .unwrap();
+            }
+            advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+            assert_eq!(world.flags(), [expected], "group {group:?}, named {named}");
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+            assert_eq!(
+                world.actors()[receiver].attributes()[Attribute::SideSpeed],
+                255
+            );
+            assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        }
+    }
 }

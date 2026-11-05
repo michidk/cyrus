@@ -72,6 +72,11 @@ Verified: refusal ordering and wrapping time-scaled thresholds follow preservati
 [MovePos contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#movepos).
 This predicate alone does not admit automatic selector-four progress.
 
+Verified: `GetMovementSpeed` reads the receiving actor's current animation group
+and returns its unscaled movement attribute byte, following preservation's
+[query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getmovementspeed).
+Absent animation and groups outside that mapping return zero.
+
 Verified: the ordinary ground probe follows preservation's
 [terrain sink recovery](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-sink-recovery)
 order: terrain recovery, actor bounce, then queued motion before support sampling.

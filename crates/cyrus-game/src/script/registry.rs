@@ -6301,6 +6301,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        if function == Native::GetMovementSpeed {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "GetMovementSpeed requires no arguments"
+            );
+            return Ok(CallResult::Complete(i32::from(
+                self.registry.ordinary_group_speed(self.index),
+            )));
+        }
         if function == Native::MovePos {
             anyhow::ensure!(arguments.len() == 3, "MovePos requires three arguments");
             let destination = [
