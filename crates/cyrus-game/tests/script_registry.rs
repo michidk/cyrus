@@ -43026,3 +43026,135 @@ fn fx_flicker_dim_restore_validates_base_source_and_does_not_guess_legacy_colour
     assert!(format!("{error:#}").contains("starting RGB unavailable"));
     assert_eq!(random.state(), 1);
 }
+
+#[test]
+fn console_marker_dispatch_restores_placement_and_preserves_failed_operations() {
+    use bevy::prelude::App;
+    use cyrus_game::console::{
+        GameConsolePlugin,
+        markers::{MarkerStorage, MarkerStore},
+    };
+    use cyrus_game::script::{ScriptActors, camera::CameraPose};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Stored {
+        bytes: Option<Vec<u8>>,
+        reject_save: bool,
+    }
+    struct Store(Arc<Mutex<Stored>>);
+    impl MarkerStore for Store {
+        fn load(&self) -> anyhow::Result<Option<Vec<u8>>> {
+            Ok(self.0.lock().unwrap().bytes.clone())
+        }
+        fn save(&self, bytes: &[u8]) -> anyhow::Result<()> {
+            let mut state = self.0.lock().unwrap();
+            anyhow::ensure!(!state.reject_save, "marker storage rejected save");
+            state.bytes = Some(bytes.to_vec());
+            Ok(())
+        }
+    }
+    let (_, mut script, _, _) = player_walking_fixture_with(|_| {});
+    script
+        .initialize_camera_pose(CameraPose {
+            position: [256, 512, 768],
+            angles: [11, 22, 33],
+        })
+        .unwrap();
+    script
+        .place_selected_player([10240, -768, 12800], 700)
+        .unwrap();
+    let saved = script.selected_player_placement().unwrap();
+    let mut actors = ScriptActors::default();
+    actors.current = Some(script);
+    let stored = Arc::new(Mutex::new(Stored::default()));
+    let mut app = App::new();
+    app.add_plugins(GameConsolePlugin)
+        .insert_resource(actors)
+        .insert_resource(MarkerStorage(Box::new(Store(stored.clone()))));
+    let submit = |app: &mut App, line: &str| {
+        cyrus_console::submit(app.world_mut(), line, cyrus_console::Source::Interactive)
+    };
+    assert_eq!(submit(&mut app, "setmarker 17").unwrap(), ["setmarker: 17"]);
+    let accepted = stored.lock().unwrap().bytes.clone().unwrap();
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .place_selected_player([0, 0, 0], 5)
+        .unwrap();
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .restore_selected_player_placement(&cyrus_game::script::SavedPlacement {
+            position: [0, 0, 0],
+            orientation: [0, 5, 0],
+            camera_position: [-256, -512, -768],
+            camera_angles: [44, 55, 66],
+        })
+        .unwrap();
+    let displaced = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap()
+        .selected_player_placement()
+        .unwrap();
+    assert_ne!(displaced.position, saved.position);
+    assert_ne!(displaced.camera_position, saved.camera_position);
+    stored.lock().unwrap().reject_save = true;
+    assert!(
+        submit(&mut app, "setmarker 17")
+            .unwrap_err()
+            .to_string()
+            .contains("rejected save")
+    );
+    assert_eq!(stored.lock().unwrap().bytes.as_ref().unwrap(), &accepted);
+    assert!(submit(&mut app, "getmarker 99").is_err());
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .selected_player_placement()
+            .unwrap(),
+        displaced
+    );
+    assert_eq!(submit(&mut app, "gm 17").unwrap(), ["getmarker: 17"]);
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .selected_player_placement()
+            .unwrap(),
+        saved
+    );
+    {
+        let mut state = stored.lock().unwrap();
+        state.reject_save = false;
+        state.bytes = Some(b"truncated".to_vec());
+    }
+    assert!(submit(&mut app, "getmarker 17").is_err());
+    assert!(submit(&mut app, "setmarker 17").is_err());
+    assert_eq!(
+        stored.lock().unwrap().bytes.as_deref(),
+        Some(b"truncated".as_slice())
+    );
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .selected_player_placement()
+            .unwrap(),
+        saved
+    );
+}
