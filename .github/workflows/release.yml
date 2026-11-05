@@ -199,7 +199,7 @@ jobs:
         id: bindgen
         run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)" >> "$GITHUB_OUTPUT"
       - name: Install matching wasm-bindgen
-        uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
       - name: Build and package
