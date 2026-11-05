@@ -75,6 +75,11 @@ Its explicit refresh does not enable autonomous selector-four movement or add
 an ordinary AI timer stage. Automatic caller placement and steering remain
 unsupported until their complete contracts are established.
 
+Verified: `IsBouncing` reads the receiving actor's motion state and returns one
+for states 27 through 32 inclusive, following preservation's
+[query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#isbouncing).
+It requires no selected-player, animation or geometry service.
+
 `MovePos` reads receiver position and playback speed through the public native
 caller and returns the horizontal proximity predicate without moving the actor.
 Verified: refusal ordering and wrapping time-scaled thresholds follow preservation's

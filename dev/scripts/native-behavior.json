@@ -5168,19 +5168,22 @@
     },
     {
       "native": "IsBouncing",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Original zero-argument receiver motion-state predicate; named implementation missing",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Zero-argument receiver motion-state predicate through the public VM caller",
+      "caller": "ScriptWorld::advance -> GameHost::call -> LivingState::is_bounce",
+      "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::is_bouncing_routes_every_motion_byte_without_geometry_or_player_services",
+        "crates/cyrus-game/tests/script_goto_location.rs::is_bouncing_rejects_arguments_before_result_and_retains_the_failure"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
         "https://github.com/michidk/redguard-preservation/pull/236"
       ],
-      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Reads receiver motion-state byte directly; inclusive 27 through 32 returns one, every other byte returns zero. No selected-player lookup, calls or actor/shared mutation. 4608 original instruction contexts/nine effective instruction controls pass over all 256 byte values with three distinct receivers, three unrelated actor patterns, two register seeds and opposite-truth decoys. Saved registers/stack/canary/actor-global bytes and stack-only writes checked; no intercepted services. Unknown: null/malformed receiver admission, motion-state producers, bounce physics, VM decoding and natural original/native/browser acceptance. Predicate truth does not establish bouncing movement support. Named implementation remains missing; no family behavior inferred.",
-      "reviewed_revision": "22d80975f274c490a8ecc39295b6fc6751fbfb64"
+      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Reads receiver motion-state byte directly; inclusive 27 through 32 returns one, every other byte returns zero. No selected-player lookup, calls or actor/shared mutation. 4608 original instruction contexts/nine effective instruction controls pass over all 256 byte values with three distinct receivers, three unrelated actor patterns, two register seeds and opposite-truth decoys. Saved registers/stack/canary/actor-global bytes and stack-only writes checked; no intercepted services. Unknown: null/malformed receiver admission, motion-state producers, bounce physics, VM decoding and natural original/native/browser acceptance. Predicate truth does not establish bouncing movement support. Production dispatch reads the existing typed LivingState. Public VM fixtures cover all 256 bytes for self and named receivers, state retention, continuation and malformed-arity failure. Verification results are recorded in the owning issue. Unknown natural original/browser acceptance and bounce-physics fidelity; this predicate does not establish the motion producer or bouncing movement support.",
+      "reviewed_revision": "0d17bda34508fc9d55f83b7305666a0ac56906e1"
     },
     {
       "native": "GetAttribute",

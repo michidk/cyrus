@@ -6327,6 +6327,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        if function == Native::IsBouncing {
+            anyhow::ensure!(arguments.is_empty(), "IsBouncing requires no arguments");
+            let control = self.registry.actors[self.index]
+                .control
+                .as_ref()
+                .context("IsBouncing receiver control unavailable")?;
+            return Ok(CallResult::Complete(i32::from(
+                control.living_state.is_bounce(),
+            )));
+        }
         if function == Native::GetMovementSpeed {
             anyhow::ensure!(
                 arguments.is_empty(),

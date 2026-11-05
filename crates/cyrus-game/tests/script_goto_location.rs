@@ -825,3 +825,163 @@ fn get_movement_speed_reads_the_receivers_unscaled_attribute_without_player_or_s
         }
     }
 }
+
+fn bouncing_query_fixture(state: u8, named: bool, malformed: bool) -> ScriptWorld {
+    use cyrus_script::{Native, Property};
+    let mut scripts = cache();
+    scripts.definition.references = vec![Property::ExtraFlag];
+    scripts.definition.functions.push(Function {
+        name: Native::IsBouncing,
+        param_count: u8::from(malformed),
+        kind: CallKind::Function,
+    });
+    let target = if named {
+        Object::Named { string: 0 }
+    } else {
+        Object::Me
+    };
+    let assign = |destination, first| Operation::Assign {
+        destination,
+        formula: Formula {
+            first,
+            rest: vec![],
+        },
+    };
+    let property = Place::Property {
+        object: target.clone(),
+        reference: 0,
+    };
+    let call = Box::new(Call {
+        function_id: 1,
+        function: Native::IsBouncing,
+        target,
+        kind: CallKind::Function,
+        arguments: if malformed {
+            vec![Value::Integer { value: 0 }]
+        } else {
+            vec![]
+        },
+    });
+    let operations = [
+        assign(
+            Place::Property {
+                object: Object::Me,
+                reference: 0,
+            },
+            Value::Integer {
+                value: if !(27..=32).contains(&state) { 27 } else { 0 },
+            },
+        ),
+        assign(
+            property.clone(),
+            Value::Integer {
+                value: i32::from(state),
+            },
+        ),
+        assign(
+            Place::Local { index: 0 },
+            Value::Read {
+                place: property.clone(),
+            },
+        ),
+        assign(
+            Place::Flag { index: 0 },
+            if named {
+                Value::ObjectCall { call }
+            } else {
+                Value::Call { call }
+            },
+        ),
+        assign(Place::Local { index: 0 }, Value::Read { place: property }),
+        Operation::End { target: 5 },
+    ];
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    ScriptWorld::prepare(&scripts, 7).unwrap()
+}
+
+#[test]
+fn is_bouncing_routes_every_motion_byte_without_geometry_or_player_services() {
+    for state in 0..=u8::MAX {
+        for named in [false, true] {
+            let mut world = bouncing_query_fixture(state, named, false);
+            let caller = world.id(1).unwrap();
+            world
+                .advance(
+                    caller,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs::default(),
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+            let expected = i32::from((27..=32).contains(&state));
+            assert_eq!(world.flags()[0], expected, "state {state}, named {named}");
+            assert_eq!(
+                world.actors()[1].runtime().unwrap().variables(),
+                &[i32::from(state)]
+            );
+            let receiver = usize::from(!named);
+            assert_eq!(
+                world.actors()[receiver]
+                    .control_state()
+                    .unwrap()
+                    .living_state
+                    .byte(),
+                state
+            );
+            assert!(world.actors()[1].failure().is_none());
+        }
+    }
+}
+
+#[test]
+fn is_bouncing_rejects_arguments_before_result_and_retains_the_failure() {
+    let mut world = bouncing_query_fixture(27, true, true);
+    let caller = world.id(1).unwrap();
+    let error = world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("IsBouncing requires no arguments"));
+    assert_eq!(world.flags()[0], 12);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .living_state
+            .byte(),
+        27
+    );
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), &[27]);
+    let failure = world.actors()[1].failure().unwrap().to_owned();
+    let _ = world.advance(
+        caller,
+        ScriptStage::Body(Thread::Main),
+        ScriptInputs::default(),
+        None,
+        None,
+        20,
+    );
+    assert_eq!(world.flags()[0], 12);
+    assert_eq!(world.actors()[1].failure(), Some(failure.as_str()));
+}
