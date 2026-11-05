@@ -339,7 +339,7 @@ struct ActorSnapshot {
     #[serde(default)]
     flat: Option<super::flat::FlatState>,
     tasks: super::super::NativeTasksSnapshot,
-    native_commands: [super::super::NativeCommandState; 6],
+    native_commands: [super::super::tasks::NativeTaskCommandState; 6],
     animation: Option<AnimationSnapshot>,
     animation_failure: Option<String>,
     update_failure: Option<String>,

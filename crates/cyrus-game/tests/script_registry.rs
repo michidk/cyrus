@@ -26130,6 +26130,7 @@ fn native_command_slots_restore_and_pass_shared_state_between_actors() {
     let mut saved = movement_snapshot(&world, &scripts, &data);
     let retained = NativeCommandState {
         continuation: 305419896,
+        continuation_direction: 2271560481,
         pause_ticks: u32::MAX,
         point_value: 7654321,
         point_word: 4321,
@@ -26139,22 +26140,30 @@ fn native_command_slots_restore_and_pass_shared_state_between_actors() {
     saved["actors"][0]["native_commands"][0] = serde_json::to_value(retained).unwrap();
     let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
     world.step_tasks(world.id(0).unwrap(), Some(256)).unwrap();
-    assert_eq!(*world.globals().native_command(), retained);
+    assert_eq!(
+        *world.globals().native_command(),
+        NativeCommandState {
+            point_value: 1,
+            ..retained
+        }
+    );
+    let mut slot = serde_json::to_value(retained).unwrap();
+    slot.as_object_mut().unwrap().remove("point_value");
     let saved = movement_snapshot(&world, &scripts, &data);
     assert_eq!(
         saved["actors"][0]["native_commands"],
-        serde_json::to_value([retained; 6]).unwrap()
+        serde_json::to_value(vec![slot.clone(); 6]).unwrap()
     );
     world.step_tasks(world.id(1).unwrap(), Some(256)).unwrap();
     let saved = movement_snapshot(&world, &scripts, &data);
     assert_eq!(
         saved["actors"][1]["native_commands"],
-        serde_json::to_value([retained; 6]).unwrap()
+        serde_json::to_value(vec![slot.clone(); 6]).unwrap()
     );
     let restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
     assert_eq!(
         movement_snapshot(&restored, &scripts, &data)["actors"][1]["native_commands"],
-        serde_json::to_value([retained; 6]).unwrap()
+        serde_json::to_value(vec![slot.clone(); 6]).unwrap()
     );
 }
 
@@ -26163,6 +26172,7 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
     use cyrus_game::script::{NativeCommandState, ScriptInputs, ScriptStage};
     let retained = NativeCommandState {
         continuation: 123,
+        continuation_direction: 0,
         pause_ticks: 456,
         point_value: 789,
         point_word: 12,
@@ -26244,13 +26254,19 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
                 20,
             )
             .unwrap();
-        assert_eq!(*world.globals().native_command(), retained);
+        assert_eq!(
+            *world.globals().native_command(),
+            NativeCommandState {
+                point_value: 1,
+                ..retained
+            }
+        );
         world.step(world.id(1).unwrap(), Thread::Main, 20).unwrap();
         assert_eq!(
             *world.globals().native_command(),
             if encoding == 2 {
                 NativeCommandState {
-                    point_value: 789,
+                    point_value: 1,
                     ..Default::default()
                 }
             } else {
@@ -26491,6 +26507,7 @@ fn point_wrapper_fixture(
     let mut saved = movement_snapshot(&world, &scripts, &data);
     saved["actors"][0]["native_commands"][0] = serde_json::to_value(NativeCommandState {
         continuation: 1234567,
+        continuation_direction: 0,
         pause_ticks: pause,
         point_value: 987654,
         point_word: 321,
@@ -26551,6 +26568,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
         *world.globals().native_command(),
         NativeCommandState {
             continuation: 1234567,
+            continuation_direction: 0,
             pause_ticks: 4,
             point_value: 1001,
             point_word: 50001,
@@ -26579,6 +26597,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
         *world.globals().native_command(),
         NativeCommandState {
             continuation: 1234567,
+            continuation_direction: 0,
             pause_ticks: 1,
             point_value: 1002,
             point_word: 50002,
@@ -40709,5 +40728,219 @@ fn fx_flicker_on_off_rejects_nonpositive_bounds_before_allocating_or_drawing() {
         assert!(world.actors()[0].light_state().is_none());
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
         assert_eq!(random.state(), 1);
+    }
+}
+
+fn phase_scripts(values: [i32; 7]) -> Scripts {
+    let mut scripts = random_scripts(Native::FxPhase, vec![], Object::Me);
+    scripts.definition.functions[1].kind = CallKind::Multitask;
+    scripts.definition.functions[1].param_count = 7;
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = wait(
+        1,
+        Native::FxPhase,
+        CallKind::Multitask,
+        values.map(|value| Value::Integer { value }).to_vec(),
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn fx_phase_tasks_keep_independent_colour_progress_and_resume_after_snapshot() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = phase_scripts([0, 100, -100, 80, 20, 60, 4]);
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    for (index, stage, ticks, rgb) in [
+        (0, ScriptStage::Body(Thread::Main), 1, [60, 40, 20]),
+        (1, ScriptStage::Body(Thread::Main), 2, [40, 60, -20]),
+        (0, ScriptStage::Tasks, 1, [40, 60, -20]),
+        (1, ScriptStage::Tasks, 1, [20, 80, -60]),
+        (0, ScriptStage::Tasks, 2, [0, 100, -100]),
+        (0, ScriptStage::Tasks, 1, [0, 100, -100]),
+        (0, ScriptStage::Tasks, 1, [20, 80, -60]),
+    ] {
+        world
+            .advance(
+                world.id(index).unwrap(),
+                stage,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(ticks),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let actor = &world.actors()[index];
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["rgb"], serde_json::json!(rgb));
+        assert_eq!(light["enabled"], false);
+        assert_eq!(light["locked"], false);
+        assert_eq!(actor.runtime().unwrap().active_tasks(), 1);
+        let snapshot = world.snapshot(&sources).unwrap();
+        world = ScriptWorld::from_snapshot(
+            snapshot,
+            &sources,
+            WorldRestoreContext {
+                generation: world.generation() + 1,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn fx_phase_updates_the_authored_light_projection_through_world_dispatch() {
+    let mut scripts = phase_scripts([0, 100, -100, 80, 20, 60, 4]);
+    scripts.instances.truncate(1);
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.instances = 1;
+    actor.instance_variables.truncate(1);
+    scripts.instances[0].object_type = 6;
+    scripts.instances[0].map_position = [600, 0, 600];
+    scripts.instances[0].light_radius = 100;
+    scripts.instances[0].light_intensity = 256;
+    scripts.instances[0].light_rgb = [12, -34, 56];
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    assert!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    let lights = world.object_lights();
+    assert_eq!(lights.len(), 1);
+    assert_eq!(lights[0].position, [600, 0, 600]);
+    assert_eq!(lights[0].radius, 100);
+    assert_eq!(lights[0].rgb, [60, 40, 20]);
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    assert_eq!(world.object_lights()[0].rgb, [40, 60, -20]);
+    assert_eq!(random.state(), 1);
+}
+
+#[test]
+fn fx_phase_zero_span_creates_a_record_and_completes_without_timing() {
+    for authored in [false, true] {
+        let mut scripts = phase_scripts([1, 2, 3, 4, 5, 6, 0]);
+        if authored {
+            scripts.instances[0].object_type = 6;
+            scripts.instances[0].light_rgb = [9, -7, 5];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+        let actor = &world.actors()[0];
+        assert!(actor.light_state().is_some());
+        if authored {
+            assert_eq!(
+                actor.light_state().unwrap()["rgb"],
+                serde_json::json!([9, -7, 5])
+            );
+        }
+        assert_eq!(actor.runtime().unwrap().active_tasks(), 1);
+        assert_eq!(*world.globals().native_command(), Default::default());
+        world.step_tasks(world.id(0).unwrap(), Some(256)).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        if authored {
+            assert_eq!(
+                world.actors()[0].light_state().unwrap()["rgb"],
+                serde_json::json!([9, -7, 5])
+            );
+        }
+    }
+}
+
+#[test]
+fn fx_phase_keeps_signed_word_channels_and_integer_interpolation() {
+    use cyrus_game::script::ScriptInputs;
+    for (values, expected) in [
+        ([0, 0, 0, 100, -100, 0, 3], [66, -67, 0]),
+        (
+            [65537, -65537, 32767, -32768, 17, 256, 9],
+            [-21846, -7267, 3868],
+        ),
+    ] {
+        let scripts = phase_scripts(values);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].light_state().unwrap()["rgb"],
+            serde_json::json!(expected)
+        );
+    }
+}
+
+#[test]
+fn fx_phase_reports_missing_timing_and_signed_division_overflow() {
+    use cyrus_game::script::ScriptInputs;
+    for (values, ticks, expected) in [
+        (
+            [0, 0, 0, 80, 20, 60, 4],
+            None,
+            "FxPhase nominal ticks unavailable",
+        ),
+        (
+            [0, 0, 0, 8_388_608, 0, 0, -1],
+            Some(1),
+            "FxPhase signed division overflow unsupported",
+        ),
+    ] {
+        let scripts = phase_scripts(values);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let error = world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: ticks,
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(expected));
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        assert!(world.actors()[0].light_state().is_some());
+        let later = world.step(id, Thread::Main, 20).unwrap_err();
+        assert!(format!("{later:#}").contains(expected));
     }
 }

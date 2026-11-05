@@ -135,3 +135,9 @@ Task passes load active slots and save empty, paused and pending slots. Complete
 slots leave their resulting command state shared without saving it. Initial
 allocation saves the first invocation result. Game hosts retain shared state
 above actors and six banks per actor; portable hosts may omit these callbacks.
+
+Verified: active task resumption supplies the scaled call count to the host while
+restoring its native continuation, before reevaluating operands. Empty and paused
+slots save the current native scratch without replacing the shared elapsed value,
+following preservation's
+[native command contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#point-navigation-command-state).

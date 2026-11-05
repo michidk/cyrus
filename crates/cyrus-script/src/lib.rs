@@ -164,8 +164,9 @@ pub trait Host {
     }
     /// Applies call-site command setup before evaluating native operands.
     fn prepare_native_command(&mut self, _: NativeCallSite) {}
-    /// Restore one of the six retained slots before reevaluating its operands.
-    fn load_native_command(&mut self, _: usize) {}
+    /// Restore one of six retained slots and publish its elapsed value before operand evaluation.
+    /// `elapsed` is absent when the caller has not supplied a frame scale.
+    fn load_native_command(&mut self, _: usize, _: Option<i32>) {}
     /// Retain current command state, including empty and paused slots.
     fn save_native_command(&mut self, _: usize, _: &mut u8) {}
     /// Resolves an object before evaluating its native operands. Routed tasks belong to the receiver.

@@ -4237,17 +4237,23 @@
     },
     {
       "native": "FxPhase",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Current RGB interpolation with independent native task continuation and snapshot restore",
+      "caller": "ScriptWorld::advance -> GameHost task call/poll -> receiver light and native command continuation",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::fx_phase_tasks_keep_independent_colour_progress_and_resume_after_snapshot",
+        "crates/cyrus-game/tests/script_registry.rs::fx_phase_zero_span_creates_a_record_and_completes_without_timing",
+        "crates/cyrus-game/tests/script_registry.rs::fx_phase_keeps_signed_word_channels_and_integer_interpolation",
+        "crates/cyrus-game/tests/script_registry.rs::fx_phase_updates_the_authored_light_projection_through_world_dispatch",
+        "crates/cyrus-game/tests/script_registry.rs::fx_phase_reports_missing_timing_and_signed_division_overflow"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/267"
+        "https://github.com/michidk/redguard-preservation/pull/267",
+        "https://github.com/michidk/redguard-preservation/commit/0b40dc4e06ad889c395896c442f3bae2be8bab94"
       ],
-      "limits": "Verified independent installed seven-argument multitask declaration/exact mapping/full517-byte native/282-byte receiver resolver. Resolver runs before zero-span return0. Nonzero span wraps shared accumulator+step; signed accumulator>span resets0 and direction=(direction+1)&1, equality continues. Shared direction selects endpoint triple order; signed wrapping shifted difference/span truncates toward0, wrapping multiply accumulator/arithmetic>>8/add start, low16 writes/no clamp, return1/16-byte callee cleanup.1632 isolated original-instruction contexts/90 sequential alternating-receiver calls/22 effective semantic controls;48 signed division-overflow contexts excluded. Two receivers/present-missing record/5 endpoint sextuples/7 spans/6 shared states/2 patterns. Full mapped memory/write order/domain/calls/return/preserved registers/stack/canary checked. Only exact41-byte allocation controlled, original initialization executes. Malformed/null allocation/global producers/time units/field meanings and consumers/VM scheduling/exhaustive domain/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
-      "reviewed_revision": "1bd281aa7efd70ff18564c19b5b0307ca473b7d3"
+      "limits": "Verified: original handler/resolver arithmetic and exact native task load/save establish current RGB writes and per-slot accumulator/direction ownership. Production-stage tests cover alternating receivers, equality/reset, integer interpolation, signed low-word channels, zero-span allocation/completion and snapshot continuation. Signed division overflow is explicitly unsupported. Unknown: complete dynamic allocator colour provenance and matched installed original/native/browser rendered acceptance under #39."
     },
     {
       "native": "ScriptParticles",

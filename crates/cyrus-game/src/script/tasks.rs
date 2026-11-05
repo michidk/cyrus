@@ -10,10 +10,13 @@ mod persistence;
 pub use persistence::{NativeTaskBindings, NativeTasksSnapshot};
 
 /// Generic native execution state shared by successive actors and task slots.
-/// Raw command bits preserve preservation's four-word load/save contract.
+/// Four words belong to task slots; the separate elapsed/point value stays shared.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeCommandState {
     pub continuation: u32,
+    /// Second native continuation word; `FxPhase` uses it as the direction.
+    #[serde(default)]
+    pub continuation_direction: u32,
     /// Unsigned shared point-navigation pause in nominal ticks.
     pub pause_ticks: u32,
     pub point_value: u32,
@@ -21,7 +24,39 @@ pub struct NativeCommandState {
     pub point_phase: u8,
     pub point_counter: u8,
 }
+/// Four native words retained by a task slot, excluding the shared elapsed/point value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) struct NativeTaskCommandState {
+    continuation: u32,
+    #[serde(default)]
+    continuation_direction: u32,
+    pause_ticks: u32,
+    point_word: u16,
+    point_phase: u8,
+    point_counter: u8,
+}
+impl NativeTaskCommandState {
+    pub(super) fn load(self, current: &mut NativeCommandState) {
+        current.continuation = self.continuation;
+        current.continuation_direction = self.continuation_direction;
+        current.pause_ticks = self.pause_ticks;
+        current.point_word = self.point_word;
+        current.point_phase = self.point_phase;
+        current.point_counter = self.point_counter;
+    }
+}
 impl NativeCommandState {
+    pub(super) fn task_state(self) -> NativeTaskCommandState {
+        NativeTaskCommandState {
+            continuation: self.continuation,
+            continuation_direction: self.continuation_direction,
+            pause_ticks: self.pause_ticks,
+            point_word: self.point_word,
+            point_phase: self.point_phase,
+            point_counter: self.point_counter,
+        }
+    }
+
     pub(super) fn prepare(&mut self, site: cyrus_script::NativeCallSite) {
         match site {
             cyrus_script::NativeCallSite::Hook => {}
@@ -88,10 +123,12 @@ pub(super) struct MenuCall<'a> {
 }
 
 /// Shared services sampled for each native task invocation.
+type LightEffect<'a> = dyn FnMut(Native, &[Argument]) -> Result<bool> + 'a;
+
 #[derive(Default)]
 pub(super) struct NativeServices<'a> {
     pub animation_requests_enabled: bool,
-    pub radius_flicker: Option<&'a mut dyn FnMut(i32) -> Result<()>>,
+    pub light_effect: Option<&'a mut LightEffect<'a>>,
     pub ambient: Option<&'a AmbientCall<'a>>,
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
@@ -449,6 +486,7 @@ fn talk_cycle(
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     RadiusFlicker,
+    ColorPhase,
     /// The installed `multitask PlayAnimation(10, 0)` request retains its slot across main loops.
     AnimationRequest,
     Dialogue,
@@ -640,17 +678,18 @@ impl Task {
         let ambient = services.ambient;
         let turning = matches!(self, Self::ControlAnimation { .. });
         Ok(match self {
-            Self::RadiusFlicker => {
-                let [bound] = arguments else {
-                    anyhow::bail!("FxFlickerOnOff requires one argument");
+            Self::RadiusFlicker | Self::ColorPhase => {
+                let function = if matches!(self, Self::RadiusFlicker) {
+                    Native::FxFlickerOnOff
+                } else {
+                    Native::FxPhase
                 };
                 services
-                    .radius_flicker
+                    .light_effect
                     .as_mut()
-                    .context("FxFlickerOnOff light service unavailable")?(
-                    bound.integer()?
-                )?;
-                false
+                    .context("light effect service unavailable")?(
+                    function, arguments
+                )?
             }
             Self::PlayerDialogue { started } => {
                 let [label] = arguments else {
@@ -2788,6 +2827,12 @@ impl NativeTasks {
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
+        } else if function == Native::FxPhase {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "FxPhase requires multitask encoding"
+            );
+            Task::ColorPhase
         } else if function == Native::FxFlickerOnOff {
             anyhow::ensure!(
                 kind == CallKind::Multitask,

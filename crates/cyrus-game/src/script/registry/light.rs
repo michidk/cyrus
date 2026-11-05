@@ -25,6 +25,62 @@ pub(super) struct LightState {
 }
 
 impl LightState {
+    pub fn effect(
+        record: &mut Option<Self>,
+        position: [i32; 3],
+        function: Native,
+        arguments: &[cyrus_script::Argument],
+        command: &mut crate::script::NativeCommandState,
+        ticks: Option<u32>,
+        random: Option<&mut crate::random::EngineRandom>,
+    ) -> anyhow::Result<bool> {
+        if function == Native::FxFlickerOnOff {
+            let [bound] = arguments else {
+                anyhow::bail!("FxFlickerOnOff requires one argument");
+            };
+            Self::flicker_radius(record, position, bound.integer()?, random)?;
+            return Ok(false);
+        }
+        anyhow::ensure!(
+            function == Native::FxPhase,
+            "unsupported light effect {function}"
+        );
+        let values = arguments
+            .iter()
+            .map(cyrus_script::Argument::integer)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let [a, b, c, d, e, f, span] = values.as_slice() else {
+            anyhow::bail!("FxPhase requires seven arguments");
+        };
+        let light = record.get_or_insert_with(|| Self::dynamic(position));
+        if *span == 0 {
+            return Ok(true);
+        }
+        let ticks = ticks.ok_or_else(|| anyhow::anyhow!("FxPhase nominal ticks unavailable"))?;
+        command.continuation = command.continuation.wrapping_add(ticks);
+        if (command.continuation as i32) > *span {
+            command.continuation = 0;
+            command.continuation_direction = command.continuation_direction.wrapping_add(1) & 1;
+        }
+        let (start, end) = if command.continuation_direction != 0 {
+            ([*a, *b, *c], [*d, *e, *f])
+        } else {
+            ([*d, *e, *f], [*a, *b, *c])
+        };
+        let mut rgb = [0; 3];
+        for axis in 0..3 {
+            let difference = end[axis]
+                .wrapping_shl(8)
+                .wrapping_sub(start[axis].wrapping_shl(8));
+            let slope = difference
+                .checked_div(*span)
+                .ok_or_else(|| anyhow::anyhow!("FxPhase signed division overflow unsupported"))?;
+            let delta = slope.wrapping_mul(command.continuation as i32) >> 8;
+            rgb[axis] = start[axis].wrapping_add(delta) as i16;
+        }
+        light.rgb = rgb;
+        Ok(false)
+    }
     pub fn flicker_radius(
         record: &mut Option<Self>,
         position: [i32; 3],

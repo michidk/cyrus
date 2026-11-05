@@ -1624,6 +1624,7 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
     #[derive(Default)]
     struct ContextHost {
         current: u32,
+        elapsed: Option<i32>,
         slots: [u32; 6],
         events: Vec<String>,
         complete: bool,
@@ -1632,9 +1633,14 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
         fn prepare_native_command(&mut self, _: NativeCallSite) {
             self.current = 0;
         }
-        fn load_native_command(&mut self, slot: usize) {
-            self.events.push(format!("load {slot}"));
+        fn load_native_command(&mut self, slot: usize, elapsed: Option<i32>) {
+            self.events.push(format!("load {slot} {elapsed:?}"));
             self.current = self.slots[slot];
+            self.elapsed = elapsed;
+        }
+        fn read_property(&mut self, _: &Target, _: u16) -> anyhow::Result<i32> {
+            self.events.push(format!("operand {:?}", self.elapsed));
+            Ok(self.elapsed.unwrap_or(0))
         }
         fn save_native_command(&mut self, slot: usize, result: &mut u8) {
             self.events.push(format!("save {slot}"));
@@ -1657,10 +1663,11 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
         fn poll(
             &mut self,
             _: u64,
-            _: &[Argument],
+            arguments: &[Argument],
             _: Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<bool> {
+            assert_eq!(arguments, &[Argument::Integer(self.elapsed.unwrap_or(0))]);
             self.events.push(format!("poll {}", self.current));
             self.current += 1;
             Ok(self.complete)
@@ -1669,8 +1676,17 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
             Ok(())
         }
     }
+    let mut task = call(Native::Wait, CallKind::Multitask);
+    if let Operation::Call { call } = &mut task {
+        call.arguments.push(Value::Read {
+            place: Place::Property {
+                object: Object::Me,
+                reference: 0,
+            },
+        });
+    }
     let mut vm = runtime(vec![
-        call(Native::Wait, CallKind::Multitask),
+        task,
         Operation::TaskPause { label: 0 },
         Operation::Yield,
         Operation::TaskResume { label: 0 },
@@ -1679,7 +1695,7 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
     let mut host = ContextHost::default();
     vm.invoke_body(Thread::Main, &mut host, &mut [], 100)
         .unwrap();
-    assert_eq!(host.events, ["initial", "save 0"]);
+    assert_eq!(host.events, ["operand None", "initial", "save 0"]);
     assert_eq!(vm.script_return(), 31);
     host.events.clear();
     host.current = 200;
@@ -1693,21 +1709,36 @@ fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
         .unwrap();
     host.events.clear();
     host.current = 900;
-    vm.invoke_tasks(&mut host, &mut []).unwrap();
+    vm.invoke_tasks_timed(&mut host, &mut [], 512).unwrap();
     assert_eq!(
         host.events,
         [
-            "load 0", "poll 200", "save 0", "save 1", "save 2", "save 3", "save 4", "save 5"
+            "load 0 Some(2)",
+            "operand Some(2)",
+            "poll 200",
+            "save 0",
+            "save 1",
+            "save 2",
+            "save 3",
+            "save 4",
+            "save 5"
         ]
     );
     assert_eq!(host.slots, [201; 6]);
     host.events.clear();
     host.complete = true;
-    vm.invoke_tasks(&mut host, &mut []).unwrap();
+    vm.invoke_tasks_timed(&mut host, &mut [], 512).unwrap();
     assert_eq!(
         host.events,
         [
-            "load 0", "poll 201", "save 1", "save 2", "save 3", "save 4", "save 5"
+            "load 0 Some(4)",
+            "operand Some(4)",
+            "poll 201",
+            "save 1",
+            "save 2",
+            "save 3",
+            "save 4",
+            "save 5"
         ]
     );
     assert_eq!(host.slots, [201, 202, 202, 202, 202, 202]);

@@ -202,6 +202,15 @@ order. Enabled records with negative amplitudes after low-word conversion remain
 explicitly unsupported and fail before light maintenance changes state or consumes
 random values. Disabled records retain the inactivity cleanup path.
 Snapshots retain each channel's phase; the session retains the shared random state.
+Verified: `FxPhase` interpolates the receiver's current RGB words through retained
+native task scratch, following preservation's
+[phase contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#fxphase).
+Concurrent tasks retain separate accumulators and directions across world snapshots.
+A zero span still creates the record and reports completion. The initial call
+retains its task slot until the next task pass applies completion.
+Signed division overflow is explicitly unsupported. The native task slots retain
+four words; the separate elapsed/point value is refreshed before operand evaluation.
+
 Verified: `FxLightSize` configures the same radius-modulation channel as `LightSize`,
 keeps the low sixteen bits of both arguments and resets its phase without enabling
 the record. Its multitask call finishes immediately without retaining a task slot,

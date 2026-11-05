@@ -418,7 +418,7 @@ pub struct ScriptActor {
     flat: Option<flat::FlatState>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
-    native_commands: [super::NativeCommandState; 6],
+    native_commands: [super::tasks::NativeTaskCommandState; 6],
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
     update_failure: Option<String>,
@@ -3506,16 +3506,19 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
-        let mut radius_flicker = |bound| {
-            light::LightState::flicker_radius(
+        let mut light_effect = |function, arguments: &[Argument]| {
+            light::LightState::effect(
                 &mut actor.light,
                 light_position,
-                bound,
+                function,
+                arguments,
+                &mut self.registry.globals.native_command,
+                self.inputs.nominal_ticks,
                 self.random.as_deref_mut(),
             )
         };
         let services = super::tasks::NativeServices {
-            radius_flicker: Some(&mut radius_flicker),
+            light_effect: Some(&mut light_effect),
             animation_requests_enabled: self.animation_system
                 && !actor
                     .control
@@ -4904,14 +4907,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
     fn prepare_native_command(&mut self, site: cyrus_script::NativeCallSite) {
         self.registry.globals.native_command.prepare(site);
     }
-    fn load_native_command(&mut self, slot: usize) {
-        self.registry.globals.native_command =
-            self.registry.actors[self.index].native_commands[slot];
+    fn load_native_command(&mut self, slot: usize, elapsed: Option<i32>) {
+        self.registry.actors[self.index].native_commands[slot]
+            .load(&mut self.registry.globals.native_command);
+        if let Some(elapsed) = elapsed {
+            self.registry.globals.native_command.point_value = elapsed as u32;
+        }
         self.registry.globals.native_command_return = 0;
     }
     fn save_native_command(&mut self, slot: usize, script_return: &mut u8) {
         self.registry.actors[self.index].native_commands[slot] =
-            self.registry.globals.native_command;
+            self.registry.globals.native_command.task_state();
         *script_return = self.registry.globals.native_command_return;
     }
     fn call(
@@ -7261,11 +7267,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
-        let mut radius_flicker = |bound| {
-            light::LightState::flicker_radius(
+        let mut light_effect = |function, arguments: &[Argument]| {
+            light::LightState::effect(
                 &mut actor.light,
                 light_position,
-                bound,
+                function,
+                arguments,
+                &mut self.registry.globals.native_command,
+                self.inputs.nominal_ticks,
                 self.random.as_deref_mut(),
             )
         };
@@ -7276,7 +7285,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             &mut animation,
             &mut spatial_call,
             super::tasks::NativeServices {
-                radius_flicker: Some(&mut radius_flicker),
+                light_effect: Some(&mut light_effect),
                 animation_requests_enabled: self.animation_system
                     && !actor
                         .control

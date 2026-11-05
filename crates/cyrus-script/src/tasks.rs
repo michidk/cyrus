@@ -112,7 +112,9 @@ impl Runtime {
                 host.save_native_command(index, &mut self.state.script_return);
                 continue;
             }
-            host.load_native_command(index);
+            let elapsed =
+                frame_scale.map(|scale| (u32::from(task.counter).wrapping_mul(scale) >> 8) as i32);
+            host.load_native_command(index, elapsed);
             let completed = (|| {
                 let call = if task.source.origin == self.origin {
                     let step = program
@@ -128,8 +130,6 @@ impl Runtime {
                 };
                 self.state.script_return = 0;
                 let arguments = self.arguments(&call, flags, host, &program.strings)?;
-                let elapsed = frame_scale
-                    .map(|scale| (u32::from(task.counter).wrapping_mul(scale) >> 8) as i32);
                 let invocation = self.invocation(elapsed);
                 let result = host.poll(task.token, &arguments, invocation, flags);
                 self.state.tasks[index].as_mut().unwrap().counter = task.counter.wrapping_add(1);
