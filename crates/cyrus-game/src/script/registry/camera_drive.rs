@@ -136,7 +136,7 @@ impl ScriptWorld {
         let camera = self.camera.as_ref().context("camera session unavailable")?;
         let record = &camera.records[camera.selected.index()];
         let bound = self.resolve(record.actor)?;
-        let (position, angles) = self.camera_binding_pose(bound)?;
+        let (position, angles) = self.camera_follow_pose(bound)?;
         let mut record = record.clone();
         let candidate = record.candidate(position, angles)?;
         let pose = CameraPose {

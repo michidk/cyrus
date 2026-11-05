@@ -76,6 +76,18 @@ F1's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
 right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
 player control. Its camera movement does not move Cyrus through the world.
 
+Faithful controls are the default. `--controls modern` (browser
+`?controls=modern`, or F1's Player controller setting) moves Cyrus with W, A, S
+and D relative to the camera: he turns toward the held direction while moving
+forward. He walks unless Shift is held, which runs; the Tab walk mode does not
+apply. Space jumps as installed. The arrow keys do not move him, and a quick
+sword key on W, A, S or D (S in the GOG install) moves instead of drawing the
+sword. `--camera modern` (`?camera=modern`, or F1's Camera setting) turns the
+follow camera with horizontal mouse movement and locks the cursor during play.
+Vertical mouse movement does not tilt the camera. The Faithful camera follows
+Cyrus's heading, so with it A or D keeps turning him in a circle; use both Modern
+settings together.
+
 ## Save and resume
 
 **Verified:** native and browser builds support cyrus save slots with gameplay

@@ -41,6 +41,9 @@ pub struct PlayerControllerInput<'a> {
     pub walk_mode: bool,
     /// The retained automatic-defence toggle.
     pub auto_defend: bool,
+    /// Modern controls: the heading the held direction steers toward, in place of the held
+    /// left and right turn. Faithful samples carry `None`.
+    pub steer: Option<u16>,
 }
 
 impl ScriptWorld {

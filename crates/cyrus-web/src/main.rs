@@ -76,6 +76,16 @@ fn main() {
         } else {
             Mode::Faithful
         },
+        player_controller: if options.controls.as_deref() == Some("modern") {
+            Mode::Modern
+        } else {
+            Mode::Faithful
+        },
+        camera: if options.camera.as_deref() == Some("modern") {
+            Mode::Modern
+        } else {
+            Mode::Faithful
+        },
         ..default()
     })
     .add_plugins((

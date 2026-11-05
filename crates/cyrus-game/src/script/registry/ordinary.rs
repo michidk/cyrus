@@ -461,11 +461,22 @@ impl ScriptWorld {
                     } else {
                         (settings.turn_speed, settings.turn_max_speed)
                     };
-                    self.globals.turn.update(
-                        [controller.held.left, controller.held.right],
-                        increment,
-                        limit,
-                    );
+                    if let Some(target) = controller.steer {
+                        let heading = self.spatial(id)?.local.angles[1];
+                        // Modern steering turns at four times the held-key limit.
+                        self.globals.turn.steer(
+                            heading,
+                            target,
+                            limit * 4,
+                            player_timing.frame_scale,
+                        );
+                    } else {
+                        self.globals.turn.update(
+                            [controller.held.left, controller.held.right],
+                            increment,
+                            limit,
+                        );
+                    }
                 }
                 if let Some(query) = player_query {
                     self.advance_player_controller(
@@ -868,6 +879,7 @@ pub struct OrdinaryContext<'w, 's> {
     hud: Option<Res<'w, super::super::ScriptHud>>,
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
+    look: Option<ResMut<'w, crate::player::input::MouseLook>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
@@ -1299,6 +1311,7 @@ pub fn run_ordinary(
         hud,
         entry,
         input,
+        mut look,
         quick,
         script_keys,
         toggles,
@@ -1472,20 +1485,60 @@ pub fn run_ordinary(
             return;
         }
     };
+    use crate::fidelity::Mode;
+    let modes = fidelity
+        .as_deref()
+        .map(|fidelity| (fidelity.player_controller, fidelity.camera));
+    let follow_turn = match modes {
+        Some((_, Mode::Modern)) => Some(look.as_deref_mut().map_or(0, |look| {
+            let turn = look.0.trunc();
+            look.0 -= turn;
+            turn as i32
+        })),
+        _ => None,
+    };
+    world.turn_follow_camera(follow_turn);
+    // Modern movement reads the held directions relative to the drawn camera's heading.
+    let modern = match (modes, input.as_deref()) {
+        (Some((Mode::Modern, _)), Some(held)) => Some(
+            held.camera_relative(
+                camera_frame
+                    .as_deref()
+                    .and_then(|frame| frame.published.as_ref())
+                    // View yaw turns opposite to actor headings: the view orientation mirrors
+                    // engine X (see the render camera's driven view transform).
+                    .map(|camera| cyrus_world::heading::wrap(camera.view_angles[1].wrapping_neg()))
+                    .or_else(|| {
+                        player_query
+                            .as_ref()
+                            .and_then(|query| query.player.map(|player| player.heading))
+                    })
+                    .unwrap_or_default(),
+            ),
+        ),
+        _ => None,
+    };
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)
-        && fidelity
-            .as_ref()
-            .is_some_and(|fidelity| fidelity.player_controller == crate::fidelity::Mode::Faithful)
+        && modes.is_some()
     {
         input
             .as_deref()
             .zip(toggles.as_deref())
-            .map(|(held, toggles)| super::player::PlayerControllerInput {
-                held,
-                walk_mode: toggles.walk_mode,
-                auto_defend: toggles.auto_defend,
+            .map(|(held, toggles)| match &modern {
+                Some((held, steer)) => super::player::PlayerControllerInput {
+                    held,
+                    walk_mode: false,
+                    auto_defend: toggles.auto_defend,
+                    steer: *steer,
+                },
+                None => super::player::PlayerControllerInput {
+                    held,
+                    walk_mode: toggles.walk_mode,
+                    auto_defend: toggles.auto_defend,
+                    steer: None,
+                },
             })
     } else {
         None

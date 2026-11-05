@@ -123,6 +123,38 @@ fn flycam_controller(
     }
 }
 
+/// Modern camera: lock and hide the cursor during gameplay that reads input, so the mouse turns
+/// the follow camera; release it everywhere else.
+fn grab_cursor(
+    state: Option<Res<State<cyrus_game::AppState>>>,
+    suppressed: Res<InputSuppressed>,
+    pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
+    logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>,
+    console: Option<Res<cyrus_console::Console>>,
+    fidelity: Res<cyrus_game::fidelity::Fidelity>,
+    mut windows: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
+) {
+    use bevy::window::CursorGrabMode;
+    let grab = fidelity.camera == cyrus_game::fidelity::Mode::Modern
+        && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+        && !suppressed.0
+        && pending_world.is_none()
+        && !logbook.is_some_and(|screen| screen.suspended())
+        // The F1 settings block the console while open.
+        && !console.is_some_and(|console| console.open || console.blocked);
+    let mode = if grab {
+        CursorGrabMode::Locked
+    } else {
+        CursorGrabMode::None
+    };
+    for mut cursor in &mut windows {
+        if cursor.grab_mode != mode {
+            cursor.grab_mode = mode;
+            cursor.visible = !grab;
+        }
+    }
+}
+
 /// The view transform of a driven camera: the render position in map units (the inverse of
 /// `script_view`'s mapping) and a look direction taken from the published angles. The angle
 /// triple's orientation matrix carries the local +Z axis along the look direction with the
@@ -203,6 +235,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<InputSuppressed>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(Update, suppress.before(InputSample))
+            .add_systems(Update, grab_cursor)
             .add_systems(
                 Update,
                 script_view

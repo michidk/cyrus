@@ -181,6 +181,38 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
 }
 
 #[test]
+fn modern_controls_steer_toward_the_camera_relative_heading() {
+    use cyrus_game::player::turn::{GroundTurn, turned};
+    let right = PlayerInput {
+        right: true,
+        walk: true,
+        ..default()
+    };
+    // Right of a view at heading 100 is a quarter turn lower; the player moves forward into it.
+    let (held, steer) = right.camera_relative(100);
+    assert_eq!(steer, Some(1636));
+    assert!(held.forward && !held.right && held.walk);
+    let back_left = PlayerInput {
+        backward: true,
+        left: true,
+        ..default()
+    };
+    assert_eq!(back_left.camera_relative(0).1, Some(768));
+    let (idle, steer) = PlayerInput::default().camera_relative(100);
+    assert_eq!((idle, steer), (PlayerInput::default(), None));
+
+    let mut turn = GroundTurn::default();
+    let mut steered = |heading, target, frame_scale| {
+        turn.steer(heading, target, 192, frame_scale);
+        turned(heading, turn.delta(frame_scale))
+    };
+    assert_eq!(steered(100, 1636, 256), 1956, "limited to 192 per update");
+    assert_eq!(steered(100, 90, 256), 90);
+    assert_eq!(steered(100, 150, 256), 150);
+    assert_eq!(steered(100, 90, 512), 90, "the frame scale applies");
+}
+
+#[test]
 fn ground_turn_matches_recorded_original_headings() {
     let mut turn = cyrus_game::player::turn::GroundTurn::default();
     let mut heading = 1734;

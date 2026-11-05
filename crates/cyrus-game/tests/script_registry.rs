@@ -14845,6 +14845,29 @@ fn keyboard_walk_session(verify_drno: bool) {
         .release(KeyCode::ArrowLeft);
     app.update();
     assert_eq!(heading(&app)[1], turning[1]);
+    // Modern controls steer toward the held direction relative to the camera's heading (the
+    // player's own here, with no drawn camera): left of it raises the heading. (This fixture
+    // binds Use to D.)
+    app.world_mut()
+        .resource_mut::<cyrus_game::fidelity::Fidelity>()
+        .player_controller = cyrus_game::fidelity::Mode::Modern;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::KeyA);
+    app.update();
+    let steered = heading(&app);
+    let gained = (steered[1] + 2048 - turning[1]) % 2048;
+    assert!((1..=512).contains(&gained), "{turning:?} -> {steered:?}");
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::KeyA);
+    app.world_mut()
+        .resource_mut::<cyrus_game::fidelity::Fidelity>()
+        .player_controller = cyrus_game::fidelity::Mode::Faithful;
+    for _ in 0..12 {
+        app.update();
+        position(&app);
+    }
     {
         let mut scenes = app
             .world_mut()
@@ -14965,6 +14988,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
                     held: &held,
                     walk_mode: true,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15077,6 +15101,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
                     held: &held,
                     walk_mode: false,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15187,6 +15212,7 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
                     held: &held,
                     walk_mode: false,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15301,6 +15327,7 @@ fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
                         held,
                         walk_mode: false,
                         auto_defend: false,
+                        steer: None,
                     }),
                     hud: Some(&hud),
                     fine_ticks: Some(0),
@@ -15446,6 +15473,7 @@ fn a_sliding_player_keeps_its_controller_running_but_takes_no_step() {
                     held: &held,
                     walk_mode: false,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15544,6 +15572,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
                     held: &held,
                     walk_mode: false,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15654,6 +15683,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
                     held: &held,
                     walk_mode: false,
                     auto_defend: false,
+                    steer: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -15955,6 +15985,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         },
                         walk_mode: true,
                         auto_defend: false,
+                        steer: None,
                     }),
                     ..Default::default()
                 },
@@ -16077,6 +16108,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         held: &held,
                         walk_mode: true,
                         auto_defend: false,
+                        steer: None,
                     }),
                     ..Default::default()
                 },
@@ -16120,6 +16152,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                             held: &released,
                             walk_mode: true,
                             auto_defend: false,
+                            steer: None,
                         }),
                         ..Default::default()
                     },
@@ -19086,6 +19119,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                             },
                             walk_mode: true,
                             auto_defend: false,
+                            steer: None,
                         }),
                         hud: (ticks == 0).then_some(&hud),
                         ..Default::default()
@@ -37886,6 +37920,7 @@ fn climbing_forward_queues_motion_without_leaving_the_climb() {
                         held: &held,
                         walk_mode: false,
                         auto_defend: false,
+                        steer: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -37968,6 +38003,7 @@ fn hanging_backward_releases_without_the_walk_key() {
                         held: &held,
                         walk_mode: false,
                         auto_defend: false,
+                        steer: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -38862,6 +38898,7 @@ fn sample_rope_jump_controller(
                 held,
                 walk_mode: false,
                 auto_defend: false,
+                steer: None,
             }),
             hud: Some(&hud),
             fine_ticks: Some(0),
@@ -39030,6 +39067,7 @@ fn tick_rope_classification_with_timing(
                         held: &held,
                         walk_mode: true,
                         auto_defend: false,
+                        steer: None,
                     }),
                     ..Default::default()
                 },
@@ -40454,6 +40492,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                             held: &held,
                             walk_mode: true,
                             auto_defend: false,
+                            steer: None,
                         }),
                         ..Default::default()
                     },
@@ -41500,6 +41539,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                             held: &held,
                             walk_mode: false,
                             auto_defend: false,
+                            steer: None,
                         }),
                         shell_execution: Some(false),
                         fine_ticks: Some(0),
@@ -41595,6 +41635,7 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
                         held: &held,
                         walk_mode: false,
                         auto_defend: false,
+                        steer: None,
                     }),
                     nominal_ticks: Some(1),
                     frame_scale: Some(256),
@@ -41989,6 +42030,7 @@ fn selected_player_update(
                         held: &held,
                         walk_mode: true,
                         auto_defend: false,
+                        steer: None,
                     }),
                     ground_bypass: cheats.0,
                     magic_carpet: cheats.1,
@@ -42505,6 +42547,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
                             held: &held,
                             walk_mode: true,
                             auto_defend: false,
+                            steer: None,
                         }),
                         ground_bypass: Some(cheats.ground_bypass().unwrap()),
                         script_keys: known_keys.then_some(ScriptKeys {

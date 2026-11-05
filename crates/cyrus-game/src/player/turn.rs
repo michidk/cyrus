@@ -47,6 +47,21 @@ impl GroundTurn {
         self.update(held, increment, limit);
         turned(heading, self.delta(frame_scale))
     }
+
+    /// Modern steering: hold the one side whose [`Self::delta`] at `frame_scale` turns
+    /// `heading` toward `target` this update, by at most `limit` scaled.
+    pub fn steer(&mut self, heading: u16, target: u16, limit: u32, frame_scale: u32) {
+        let half = i64::from(cyrus_world::heading::HALF_TURN);
+        // Positive turns right, which lowers the heading (see [`turned`]).
+        let difference = wrap(i64::from(heading) - i64::from(target) + half) - half;
+        let speed = ((difference.unsigned_abs() << 8) / u64::from(frame_scale.max(1)))
+            .min(u64::from(limit));
+        (self.left, self.right) = if difference > 0 {
+            (0, speed)
+        } else {
+            (speed, 0)
+        };
+    }
 }
 
 /// Whether a direction's accumulator adds the player's fight-turn attributes (accel up to

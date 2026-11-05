@@ -101,6 +101,7 @@ pub(super) fn sample(
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
+    fidelity: Option<Res<crate::fidelity::Fidelity>>,
     mut quick: ResMut<QuickKeys>,
     mut script_keys: ResMut<ScriptKeys>,
 ) {
@@ -133,9 +134,17 @@ pub(super) fn sample(
         home_pressed: keys.just_pressed(KeyCode::Home),
         insert: keys.pressed(KeyCode::Insert),
     };
-    use crate::player::input::Action;
+    use crate::player::input::{Action, Input, MODERN_MOVEMENT};
+    // Modern movement owns W, A, S and D, so an installed quick sword key among them (S by
+    // default) does not also draw the sword.
+    let sword_moves = fidelity
+        .is_some_and(|fidelity| fidelity.player_controller == crate::fidelity::Mode::Modern)
+        && inputs
+            .bindings()
+            .keyboard(Action::QuickSword)
+            .is_some_and(|sword| MODERN_MOVEMENT.map(Input::try_from).contains(&Ok(sword)));
     *quick = QuickKeys {
-        sword: inputs.pressed(Action::QuickSword),
+        sword: !sword_moves && inputs.pressed(Action::QuickSword),
         health: inputs.just_pressed(Action::QuickHealth),
         use_selected: inputs.just_pressed(Action::Use),
     };

@@ -707,6 +707,9 @@ pub struct ScriptWorld {
     ropes: Vec<crate::rope::Rope>,
     /// The selected player's rope handling state; not saved.
     player_rope: rope_host::PlayerRope,
+    /// Modern mouse camera: the heading the follow camera reads for the selected player in
+    /// place of its own. Transient, never saved.
+    follow_heading: Option<u16>,
 }
 impl ScriptWorld {
     /// Cancel native VM continuations and actor-owned task records before disposal.
@@ -1383,6 +1386,7 @@ impl ScriptWorld {
             effects: None,
             ropes: Vec::new(),
             player_rope: Default::default(),
+            follow_heading: None,
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -7807,6 +7811,7 @@ mod fighting_tests {
             effects: None,
             ropes: Vec::new(),
             player_rope: Default::default(),
+            follow_heading: None,
         };
         let host = GameHost {
             native_source_program: None,

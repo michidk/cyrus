@@ -23,6 +23,55 @@ pub struct PlayerInput {
     pub walk: bool,
 }
 
+/// The keys Modern movement reads, forward, backward, left and right.
+pub const MODERN_MOVEMENT: [KeyCode; 4] =
+    [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
+
+impl PlayerInput {
+    /// Modern camera-relative movement: the held directions, read relative to `view_heading`,
+    /// become forward plus the heading to steer toward. Walk stays the Modern walking request,
+    /// so the controller must see a cleared walk-mode toggle.
+    pub fn camera_relative(&self, view_heading: u16) -> (PlayerInput, Option<u16>) {
+        let across = i16::from(self.right) - i16::from(self.left);
+        let along = i16::from(self.forward) - i16::from(self.backward);
+        // Turning right lowers an engine heading, so right of the view is a quarter turn below it.
+        let offset = match (across, along) {
+            (0, 0) => None,
+            (0, 1) => Some(0),
+            (-1, 1) => Some(256),
+            (-1, 0) => Some(512),
+            (-1, -1) => Some(768),
+            (0, -1) => Some(1024),
+            (1, -1) => Some(1280),
+            (1, 0) => Some(1536),
+            _ => Some(1792),
+        };
+        let steer =
+            offset.map(|offset| cyrus_world::heading::wrap(view_heading.wrapping_add(offset)));
+        (
+            PlayerInput {
+                forward: steer.is_some(),
+                backward: false,
+                left: false,
+                right: false,
+                action: self.action,
+                jump: self.jump,
+                look: self.look,
+                walk: self.walk,
+            },
+            steer,
+        )
+    }
+}
+
+/// Modern mouse camera: horizontal mouse travel the follow camera has not yet taken, in
+/// 1/2048 turns, positive to the left as engine headings turn.
+#[derive(Resource, Default, Debug)]
+pub struct MouseLook(pub f32);
+
+/// Heading units per pixel of mouse travel: the inspection flycam's 0.0025 radians.
+const MOUSE_TURN: f32 = 0.0025 * 2048.0 / std::f32::consts::TAU;
+
 /// Retained gameplay toggles, initialized from installed HUD data or saved preferences.
 /// The HUD projects these values; world replacement must not reset them.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
@@ -574,8 +623,11 @@ pub(super) fn sample(
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<Fidelity>,
+    motion: Option<Res<bevy::input::mouse::AccumulatedMouseMotion>>,
+    state: Option<Res<State<crate::AppState>>>,
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
+    mut look: ResMut<MouseLook>,
 ) {
     if suppressed.0
         || pending_world.is_some()
@@ -584,15 +636,21 @@ pub(super) fn sample(
     {
         *input = PlayerInput::default();
         dialogue_skip.0 = false;
+        look.0 = 0.0;
         return;
+    }
+    // Mouse travel over a menu does not turn the camera on return.
+    if fidelity.camera == Mode::Modern
+        && state.is_some_and(|state| *state.get() == crate::AppState::InGame)
+        && let Some(motion) = motion
+    {
+        look.0 -= motion.delta.x * MOUSE_TURN;
     }
     *input = inputs.bindings().sample_devices(inputs.devices());
     dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
-        input.forward = keys.pressed(KeyCode::KeyW);
-        input.backward = keys.pressed(KeyCode::KeyS);
-        input.left = keys.pressed(KeyCode::KeyA);
-        input.right = keys.pressed(KeyCode::KeyD);
+        [input.forward, input.backward, input.left, input.right] =
+            MODERN_MOVEMENT.map(|key| keys.pressed(key));
         input.jump = keys.pressed(KeyCode::Space);
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     }

@@ -38,6 +38,34 @@ impl ScriptWorld {
         Ok((pose.position, pose.angles))
     }
 
+    /// The pose the follow camera places itself from: [`Self::camera_binding_pose`], with the
+    /// Modern mouse camera's heading for the selected player.
+    pub(super) fn camera_follow_pose(&self, index: usize) -> Result<([i32; 3], [u16; 3])> {
+        let (position, mut angles) = self.camera_binding_pose(index)?;
+        if let Some(heading) = self.follow_heading
+            && self.selected_player_index() == Some(index)
+        {
+            angles[1] = heading;
+        }
+        Ok((position, angles))
+    }
+
+    /// Modern mouse camera: turn the follow camera's heading by `turn` 1/2048 turns, starting
+    /// from the selected player's heading once it has a pose. `None` returns the camera to the
+    /// player's heading.
+    pub fn turn_follow_camera(&mut self, turn: Option<i32>) {
+        let start = || {
+            let index = self.selected_player_index()?;
+            Some(self.camera_binding_pose(index).ok()?.1[1])
+        };
+        self.follow_heading = turn.and_then(|turn| {
+            let heading = self.follow_heading.or_else(start)?;
+            Some(cyrus_world::heading::wrap(
+                heading.wrapping_add(turn as u16),
+            ))
+        });
+    }
+
     /// The `cameraController` native, the CAMERA actor's per-update hook: one pose update for the
     /// selected record's bound actor through `service`, then the logical camera actors take the
     /// published positions. Nothing changes when the update fails.
@@ -57,7 +85,7 @@ impl ScriptWorld {
             state.select(self.automatic_camera_slot(inputs)?)?;
         }
         let bound = self.resolve(state.records[state.selected.index()].actor)?;
-        let (position, angles) = self.camera_binding_pose(bound)?;
+        let (position, angles) = self.camera_follow_pose(bound)?;
         let updated = service.update(&mut state, position, angles);
         let published = service.take_published();
         updated?;
@@ -148,7 +176,7 @@ impl ScriptWorld {
             .as_ref()
             .with_context(|| format!("world {}: camera session unavailable", self.world))?;
         let camera_actor = self.resolve(camera.camera_actor)?;
-        let (position, angles) = self.camera_binding_pose(player)?;
+        let (position, angles) = self.camera_follow_pose(player)?;
         let mut state = camera.clone();
         state.reload_player_defaults(
             &self.camera_settings,
@@ -291,7 +319,7 @@ impl ScriptWorld {
             .with_context(|| context("session unavailable"))?;
         let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
         let (bound_position, bound_angles) = self
-            .camera_binding_pose(bound)
+            .camera_follow_pose(bound)
             .with_context(|| context("bound actor pose"))?;
         let spatial = self
             .spatial
