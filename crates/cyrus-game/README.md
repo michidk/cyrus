@@ -46,6 +46,12 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: `IsLightingTorch`, `IsUnlightingTorch` and `IsLightingOrUnlighting`
+query the supplied receiver after inventory, control and shell gates. Action state
+precedes animation-group fallback, and the combined query tests lighting first.
+The queries leave receiver state unchanged, following preservation's
+[torch predicate contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#islightingorunlighting).
+
 Verified: direct `MoveMarker`, `MoveLocation` and `MovePosition` steps release
 hanging selected players through the shared ledge transition before retaining
 phase zero and lifecycle selector seven. Nonselected hanging receivers retain

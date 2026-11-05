@@ -6405,3 +6405,149 @@ fn manual_journal_failed_write_preserves_entries_and_notification() {
     );
     assert!(writes.lock().unwrap().is_empty());
 }
+
+#[test]
+fn routed_torch_predicates_use_receiver_action_then_animation_without_mutation() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs, WorldSnapshotSources},
+    };
+    for (native, expected_states) in [
+        (Native::IsLightingTorch, [0, 1, 0]),
+        (Native::IsUnlightingTorch, [0, 0, 1]),
+        (Native::IsLightingOrUnlighting, [0, 1, 1]),
+    ] {
+        for (action_index, action) in [0, 33, 34].into_iter().enumerate() {
+            for group in [1, 149, 150] {
+                for gate in 0..4 {
+                    let mut scripts = scripts(vec![
+                        Operation::Assign {
+                            destination: Place::Flag { index: 0 },
+                            formula: Formula {
+                                first: Value::Call {
+                                    call: Box::new(Call {
+                                        function_id: 3,
+                                        kind: CallKind::Function,
+                                        target: Object::Named { string: 0 },
+                                        function: native,
+                                        arguments: vec![],
+                                    }),
+                                },
+                                rest: vec![],
+                            },
+                        },
+                        Operation::End { target: 0 },
+                    ]);
+                    scripts.definition.functions.push(Function {
+                        name: native,
+                        param_count: 0,
+                        kind: CallKind::Function,
+                    });
+                    scripts.definition.references = vec![cyrus_script::Property::ExtraFlag];
+                    scripts.actors.get_mut("OTHER").unwrap().program.steps = BTreeMap::from([
+                        (
+                            0,
+                            Step {
+                                next: 1,
+                                operation: Operation::Assign {
+                                    destination: Place::Property {
+                                        object: Object::Me,
+                                        reference: 0,
+                                    },
+                                    formula: Formula {
+                                        first: Value::Integer { value: action },
+                                        rest: vec![],
+                                    },
+                                },
+                            },
+                        ),
+                        (
+                            1,
+                            Step {
+                                next: 2,
+                                operation: Operation::End { target: 0 },
+                            },
+                        ),
+                    ]);
+                    scripts.content_id = scripts.content_identity().unwrap();
+                    let mut animation = animations(&scripts, false);
+                    animation.metadata["actors"][1]["animation_groups"] = json!([{
+                        "group_index":group,"anim_type":0,"anim_id":1,
+                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+                    }]);
+                    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+                    world.prepare_spatial().unwrap();
+                    let receiver = world.id(1).unwrap();
+                    stage(&mut world, receiver, BODY);
+                    assert!(world.actors()[1].failure().is_none());
+                    if gate != 2 {
+                        let receiver = world.id(1).unwrap();
+                        world
+                            .bind_animation(receiver, &animation, AnimationGroup::from_index(group))
+                            .unwrap();
+                        stage(&mut world, receiver, ScriptStage::Animation);
+                    }
+                    let collision = Default::default();
+                    let sources = WorldSnapshotSources {
+                        identity_memo: None,
+                        effects: None,
+                        player: None,
+                        scripts: &scripts,
+                        animations: &animation,
+                        collision: &collision,
+                    };
+                    let before =
+                        serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap()["actors"]
+                            [1]
+                        .clone();
+                    let hud = ScriptHud::default();
+                    if gate != 1 {
+                        hud.configure(&inventory_fixture(&[(1, 1)]), &Preferences::default());
+                    }
+                    world
+                        .advance(
+                            world.id(0).unwrap(),
+                            BODY,
+                            ScriptInputs {
+                                hud: Some(&hud),
+                                nominal_ticks: Some(1),
+                                frame_scale: Some(256),
+                                shell_execution: (gate != 1 && gate != 2).then_some(gate == 3),
+                                ..Default::default()
+                            },
+                            None,
+                            None,
+                            30,
+                        )
+                        .unwrap();
+                    assert!(
+                        world.actors()[0].failure().is_none(),
+                        "{native}, action {action}, group {group}, gate {gate}: {:?}",
+                        world.actors()[0].failure()
+                    );
+                    let animation_match = match native {
+                        Native::IsLightingTorch => group == 149,
+                        Native::IsUnlightingTorch => group == 150,
+                        _ => group == 149 || group == 150,
+                    };
+                    let expected = if gate == 0 {
+                        i32::from(expected_states[action_index] != 0 || animation_match)
+                    } else {
+                        0
+                    };
+                    assert_eq!(
+                        world.flags(),
+                        [expected],
+                        "{native}, action {action}, group {group}, gate {gate}"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap()["actors"]
+                            [1],
+                        before,
+                        "query mutated receiver"
+                    );
+                }
+            }
+        }
+    }
+}

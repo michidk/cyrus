@@ -6247,6 +6247,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if matches!(
+            function,
+            Native::IsLightingTorch | Native::IsUnlightingTorch | Native::IsLightingOrUnlighting
+        ) {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            return Ok(CallResult::Complete(i32::from(
+                self.receiver_torch_predicate(function)
+                    .with_context(|| function.to_string())?,
+            )));
+        }
         if function == Native::IsCarryingWeapon {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             return Ok(CallResult::Complete(i32::from(

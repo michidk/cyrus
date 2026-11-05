@@ -343,6 +343,45 @@ impl ScriptWorld {
 }
 
 impl GameHost<'_, '_, '_, '_> {
+    /// Read-only torch predicates follow the ordinary gates, then action before animation.
+    pub(super) fn receiver_torch_predicate(&self, function: Native) -> Result<bool> {
+        let actor = &self.registry.actors[self.index];
+        if !self
+            .inputs
+            .hud
+            .context("torch inventory host unavailable")?
+            .inventory_ready()?
+        {
+            return Ok(false);
+        }
+        let Some(control) = actor.control.as_ref() else {
+            return Ok(false);
+        };
+        if actor.animation.is_none() {
+            return Ok(false);
+        }
+        if self
+            .inputs
+            .shell_execution
+            .context("torch shell context unavailable")?
+        {
+            return Ok(false);
+        }
+        let lighting = || {
+            control.living_state == LivingState::LIGHTING_TORCH
+                || actor.bound_animation_group().flatten() == Some(AnimationGroup::LIGHT_TORCH)
+        };
+        let unlighting = || {
+            control.living_state == LivingState::DOUSING_TORCH
+                || actor.bound_animation_group().flatten() == Some(AnimationGroup::UNLIGHT_TORCH)
+        };
+        Ok(match function {
+            Native::IsLightingTorch => lighting(),
+            Native::IsUnlightingTorch => unlighting(),
+            Native::IsLightingOrUnlighting => lighting() || unlighting(),
+            _ => unreachable!("torch predicate dispatcher"),
+        })
+    }
     pub(super) fn torch_inputs(&self, index: usize, function: Native) -> Result<TorchInputs> {
         let (holding, drawing, sheathing) = self.actor_weapon_predicates(index, function)?;
         Ok(TorchInputs {
