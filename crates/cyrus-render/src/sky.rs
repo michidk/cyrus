@@ -37,10 +37,12 @@ impl SkyScrollSync {
 }
 
 fn scroll_velocity(direction: u16, speed: f32) -> Vec2 {
-    // Preserve the original angle table's rounded turn constant.
-    #[allow(clippy::approx_constant)]
-    let angle = f64::from(direction) * 6.2831852 / 2048.0;
-    Vec2::new(angle.sin() as f32, angle.cos() as f32) * (speed / 16.0)
+    // Sky and water share the initialized engine table, including its cosine tail.
+    let index = usize::from(direction);
+    Vec2::new(
+        cyrus_world::transform::rotation_sample(index),
+        cyrus_world::transform::rotation_sample(index + 512),
+    ) * (speed / 16.0)
 }
 
 #[derive(Component)]
@@ -274,6 +276,27 @@ mod tests {
         }
         assert_eq!(Sky::new(0).velocity, Vec2::ZERO);
         assert!((Sky::new(6).velocity.length() - 0.375).abs() < 0.00001);
+
+        // Original live sky samples, with the captured direction and zero offsets.
+        // A fresh trigonometric evaluation differs in both channels.
+        app.world_mut()
+            .resource_mut::<SkyScrollSync>()
+            .set(1662, [0.0, 0.0])
+            .unwrap();
+        app.update();
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            Vec4::new(-0.926_210_34, 0.377_007_28, 1.0, 0.0)
+        );
+        app.world_mut()
+            .resource_mut::<SkyScrollSync>()
+            .set(0, [12.0, 21.0])
+            .unwrap();
+        app.update();
 
         let entity = app
             .world_mut()
