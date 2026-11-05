@@ -43593,3 +43593,219 @@ fn direct_point_native_task_releases_hanging_player_then_resumes_turn_phase() {
     assert_eq!(world.globals().native_command().point_phase, 22);
     assert_eq!(world.spatial(player).unwrap().local.position, before);
 }
+
+fn node_point_ledge_fixture(
+    player_type: u8,
+) -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    let (scripts, mut world, mut data, scene) = player_walking_fixture_with_animation(
+        |scripts| {
+            let function = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: Native::MoveNodePosition,
+                param_count: 4,
+                kind: CallKind::Task,
+            });
+            let actor = scripts.actors.get_mut("CYRUS").unwrap();
+            actor.attributes[Attribute::PlayerType] = player_type;
+            actor.program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: wait(
+                            function,
+                            Native::MoveNodePosition,
+                            CallKind::Task,
+                            [2560, -1536, 7680, 0]
+                                .map(|value| Value::Integer { value })
+                                .to_vec(),
+                        ),
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        },
+        |data| {
+            let actor = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap();
+            actor["animation_groups"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({
+                    "group_index":56,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":4,"sound_param":9,"volume_shift":0},
+                        {"opcode":0,"frame_reference":0},{"opcode":1}]
+                }));
+        },
+    );
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    let control = &mut saved["actors"][player.index]["control"];
+    control["living_state"] = 17.into();
+    control["motion_direction"] = 15.into();
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        },
+        cyrus_game::script::WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    (world, data, scene)
+}
+
+#[test]
+fn node_point_ledge_update_precedes_pending_exit_and_preserves_sound_failure() {
+    use cyrus_game::script::{PlayerCollisionSource, ScriptInputs};
+    for fail in [false, true] {
+        let (mut world, data, scene) = node_point_ledge_fixture(0);
+        let player = world.selected_player().unwrap();
+        let actors = [player, world.id(0).unwrap()];
+        let before = world.spatial(player).unwrap().local.position;
+        let mut sounds = 0;
+        let result = world.move_ordinary_point(
+            player,
+            before,
+            0,
+            ScriptInputs {
+                player_collision: Some(PlayerCollisionSource {
+                    scene: &scene,
+                    animations: &data,
+                    view: [10, 30],
+                    actors: &actors,
+                }),
+                nominal_ticks: Some(0),
+                fine_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            Some(&mut |_, _| {
+                sounds += 1;
+                anyhow::ensure!(!fail, "node ledge sound rejected");
+                Ok(())
+            }),
+        );
+        let control = world.actors()[player.index].control_state().unwrap();
+        if fail {
+            assert!(format!("{:#}", result.unwrap_err()).contains("node ledge sound rejected"));
+            assert_eq!(
+                (
+                    control.living_state.byte(),
+                    control.action_transition_counter,
+                    control.ai_type.byte()
+                ),
+                (17, 0, 0)
+            );
+        } else {
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(
+                (
+                    control.living_state.byte(),
+                    control.action_transition_counter,
+                    control.ai_type.byte()
+                ),
+                (0, 6, 7)
+            );
+            assert_eq!(world.globals().native_command().point_phase, 0);
+        }
+        assert_eq!(sounds, 1);
+        assert_eq!(world.spatial(player).unwrap().local.position, before);
+    }
+}
+
+#[test]
+fn node_point_ledge_excluded_player_needs_no_ledge_services() {
+    let (mut world, _, _) = node_point_ledge_fixture(1);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    assert_eq!(
+        world
+            .move_ordinary_point(
+                player,
+                before,
+                0,
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None
+            )
+            .unwrap(),
+        1
+    );
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (control.living_state.byte(), control.ai_type.byte()),
+        (17, 7)
+    );
+    assert_eq!(world.globals().native_command().point_phase, 0);
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+}
+
+#[test]
+fn node_point_ledge_native_task_runs_transition_before_retaining_its_slot() {
+    let (mut world, data, scene) = node_point_ledge_fixture(0);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    advance_selected_hang_stage(
+        &mut world,
+        &data,
+        &scene,
+        false,
+        ScriptStage::Body(Thread::Main),
+    )
+    .unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.living_state.byte(),
+            control.action_transition_counter,
+            control.ai_type.byte()
+        ),
+        (0, 6, 7)
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .runtime()
+            .unwrap()
+            .active_tasks(),
+        1
+    );
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+    advance_selected_hang_stage(&mut world, &data, &scene, false, ScriptStage::Tasks).unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .runtime()
+            .unwrap()
+            .active_tasks(),
+        1
+    );
+    assert_eq!(world.globals().native_command().point_phase, 0);
+}

@@ -16,6 +16,13 @@ use cyrus_script::Attribute;
 type SoundSink<'a> =
     Option<&'a mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>;
 
+/// The ledge operation performed before a point command's pending exit.
+#[derive(Clone, Copy)]
+pub(super) enum PointLedgeAction {
+    ReleaseHang,
+    Advance,
+}
+
 impl ScriptWorld {
     /// One direct point step on the actor's own retained point command, the form engine callers
     /// use; a script task runs [`Self::move_point_direct`] on its slot's command instead.
@@ -50,6 +57,103 @@ impl ScriptWorld {
         result.with_context(|| format!("world {} actor {} direct point", self.world, id.index))
     }
 
+    /// Bind the selected receiver's ledge services lazily for direct and node point commands.
+    pub(super) fn step_point_ledge(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        action: PointLedgeAction,
+        sounds: SoundSink<'_>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        if self.selected_player() != Some(id) {
+            return Ok(());
+        }
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("point ledge control unavailable")?;
+        match action {
+            PointLedgeAction::ReleaseHang => {
+                if control.living_state != LivingState::HANGING {
+                    return Ok(());
+                }
+                if self
+                    .globals
+                    .selected_action_inhibition
+                    .context("point hang release inhibition unavailable")?
+                    != 0
+                {
+                    return Ok(());
+                }
+            }
+            PointLedgeAction::Advance => {
+                if actor.attributes[Attribute::PlayerType] == 1 || !control.living_state.is_ledge()
+                {
+                    return Ok(());
+                }
+            }
+        }
+        let prepared;
+        let geometry = if let Some(geometry) = inputs.locomotion_geometry {
+            geometry
+        } else {
+            let source = inputs
+                .player_collision
+                .context("point ledge geometry unavailable")?;
+            prepared = self.prepare_ordinary_collision_query(
+                id,
+                source.scene,
+                source.animations,
+                source.view,
+                source.actors,
+            )?;
+            super::LocomotionGeometry {
+                ground: super::ground::OrdinaryGroundQuery {
+                    scene: source.scene,
+                    animations: source.animations,
+                    prepared: &prepared,
+                    distance: source.scene.settings.post_collide_height,
+                    sidedness: false,
+                },
+                environment: super::transition::ObstacleEnvironment {
+                    selected_player: Some(id),
+                    auto_grab: false,
+                    item_system_ready: inputs
+                        .hud
+                        .map(super::super::ScriptHud::inventory_ready)
+                        .transpose()?
+                        .unwrap_or(false),
+                    shell_execution: inputs.shell_execution.unwrap_or(false),
+                    ticks: inputs
+                        .nominal_ticks
+                        .context("point ledge nominal ticks unavailable")?,
+                },
+            }
+        };
+        anyhow::ensure!(
+            geometry.environment.selected_player == Some(id),
+            "point ledge geometry selects another player"
+        );
+        let timing = super::ledge_states::LedgeTiming {
+            fine_ticks: inputs
+                .fine_ticks
+                .context("point ledge fine ticks unavailable")?,
+            frame_scale: inputs.frame_scale,
+        };
+        let sounds = sounds.context("point ledge sound handler unavailable")?;
+        match action {
+            PointLedgeAction::ReleaseHang => {
+                self.ledge_hang_release(id, geometry.ground, geometry.environment, timing, sounds)?;
+            }
+            PointLedgeAction::Advance => {
+                self.ledge_transition(id, geometry.ground, geometry.environment, timing, sounds)?;
+            }
+        }
+        Ok(())
+    }
+
     /// One direct point step toward a Q8 destination within a Q8 arrival tolerance. Returns one
     /// while the walk continues and zero once it completes. Hanging receivers run the selected
     /// player's hang release, then retain the move as pending without testing arrival.
@@ -71,69 +175,16 @@ impl ScriptWorld {
         let motion_pending =
             control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE;
         let hanging = control.living_state == LivingState::HANGING;
-        if !motion_pending && hanging && self.selected_player() == Some(id) {
-            let inhibition = self
-                .globals
-                .selected_action_inhibition
-                .context("direct point hang release inhibition unavailable")?;
-            if inhibition == 0 {
-                let prepared;
-                let geometry = if let Some(geometry) = inputs.locomotion_geometry {
-                    geometry
-                } else {
-                    let source = inputs
-                        .player_collision
-                        .context("direct point hang release geometry unavailable")?;
-                    prepared = self.prepare_ordinary_collision_query(
-                        id,
-                        source.scene,
-                        source.animations,
-                        source.view,
-                        source.actors,
-                    )?;
-                    super::LocomotionGeometry {
-                        ground: super::ground::OrdinaryGroundQuery {
-                            scene: source.scene,
-                            animations: source.animations,
-                            prepared: &prepared,
-                            distance: source.scene.settings.post_collide_height,
-                            sidedness: false,
-                        },
-                        environment: super::transition::ObstacleEnvironment {
-                            selected_player: Some(id),
-                            auto_grab: false,
-                            item_system_ready: inputs
-                                .hud
-                                .map(super::super::ScriptHud::inventory_ready)
-                                .transpose()?
-                                .unwrap_or(false),
-                            shell_execution: inputs.shell_execution.unwrap_or(false),
-                            ticks: inputs
-                                .nominal_ticks
-                                .context("direct point hang release nominal ticks unavailable")?,
-                        },
-                    }
-                };
-                anyhow::ensure!(
-                    geometry.environment.selected_player == Some(id),
-                    "direct point hang release geometry selects another player"
-                );
-                let timing = super::ledge_states::LedgeTiming {
-                    fine_ticks: inputs
-                        .fine_ticks
-                        .context("direct point hang release fine ticks unavailable")?,
-                    frame_scale: inputs.frame_scale,
-                };
-                self.ledge_hang_release(
-                    id,
-                    geometry.ground,
-                    geometry.environment,
-                    timing,
-                    sounds
-                        .as_deref_mut()
-                        .context("direct point hang release sound handler unavailable")?,
-                )?;
-            }
+        if !motion_pending && hanging {
+            self.step_point_ledge(
+                id,
+                inputs,
+                PointLedgeAction::ReleaseHang,
+                sounds.as_mut().map(|sink| {
+                    &mut **sink
+                        as &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>
+                }),
+            )?;
         }
         if motion_pending || hanging {
             self.globals.native_command.point_phase = 0;

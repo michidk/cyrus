@@ -55,6 +55,13 @@ partial state. These rules follow preservation's
 [direct point contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#direct-point-moves-movemarker-movelocation-moveposition)
 and [ledge release](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ledge-hang-release).
 
+Verified: node-point movement with motion direction 15 runs the selected player's
+shared ledge update before retaining its falling/queued pending exit. Player type
+one and other receivers skip the ledge service. The held next node still chooses
+pending phase one or zero. This follows preservation's point-entry contract;
+ledge transition failures precede pending lifecycle and collision writes.
+
+
 Verified: armed attacks blocked by a protected actor suppress opponent-unarmed
 taunts while the retained shared dialogue-cache entry remembers a sample,
 including a stopped channel. Clearing that sample allows ordered taunt selection

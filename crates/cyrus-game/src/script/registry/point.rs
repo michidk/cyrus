@@ -8,8 +8,8 @@
 //! Destination search uses the current enabled map without filtering reservations.
 //! Route claims preserve reservation order. Direct phases share live visibility,
 //! facing and walking services. Explicitly unsupported: a held route without a selected map
-//! outside phase zero, the shared held-target exclusion switch (always off in play) and the
-//! selected player's ledge direction; supported phases do not imply complete combat traversal.
+//! outside phase zero and the shared held-target exclusion switch (always off in play).
+//! Supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::CombatFlags;
@@ -311,7 +311,7 @@ impl ScriptWorld {
         tolerance: i32,
         inputs: ScriptInputs<'_>,
         mut random: Option<&mut crate::random::EngineRandom>,
-        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = id.index;
         let control = self.actors[index]
@@ -370,10 +370,17 @@ impl ScriptWorld {
         // Motion direction 15 runs a ledge update that only the selected player has; any other
         // actor takes the falling and queued-motion branch unchanged.
         let ledge_direction = control.motion_direction == 15;
-        anyhow::ensure!(
-            !(ledge_direction && self.selected_player_index() == Some(index)),
-            "point direction-15 movement unsupported"
-        );
+        if ledge_direction {
+            self.step_point_ledge(
+                id,
+                inputs,
+                super::direct_point::PointLedgeAction::Advance,
+                sounds.as_mut().map(|sink| {
+                    &mut **sink
+                        as &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>
+                }),
+            )?;
+        }
         let control = self.actors[index]
             .control
             .as_ref()
