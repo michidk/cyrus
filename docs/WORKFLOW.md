@@ -47,7 +47,14 @@ that bind everyone are in `AGENTS.md`.
 - Find the owning issue through [delivery tracking](https://github.com/michidk/cyrus/issues/92)
   or [SOUP #4](https://github.com/michidk/cyrus/issues/4). Claim it with the
   intended scope, agent/session, worktree and shared-file ownership before
-  editing. Check existing claims and coordinate with active owners.
+  editing. Check existing claims; a claim is enough, no other agent's approval
+  is needed. Resolve overlapping edits with `git pull --rebase`.
+- Take a whole issue as the unit of work and carry it to pushed code: implement,
+  build, test, commit, push, close. Do not stop after authoring source, and do
+  not spend a turn on audits, receipts, disk studies or status reports. Build
+  when needed, one Cargo build at a time across agents; if `df -h /` shows less
+  than 10 GB free, delete your own obsolete run output first. A docs-only commit
+  records a real engine fact, not a work boundary.
 - Keep progress, blockers, dependencies, acceptance criteria and handoffs in
   that issue. Record completed substeps as checked items with landing commits,
   verification results and limitations, even while the larger task remains open.
@@ -65,7 +72,8 @@ that bind everyone are in `AGENTS.md`.
   internal research, detailed comparison records and historical checkpoints in
   the private research archive, with source paths and hashes. Keep archive identity
   and links private; summarize evidence directly in the issue. Local `magic/` artifacts remain working copies and must be archived
-  before handoff.
+  before handoff. Batch both: publish and archive once per issue or handoff,
+  not after every change.
 - One worktree per agent. Several agents in one checkout leave each other's
   half-done files in the tree and fight over the cargo build lock;
   `t3_thread_launch` with a `workspaceStrategy`, or `git worktree add`, gives

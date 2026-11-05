@@ -43,9 +43,10 @@ acceptance, status and session claims. The maintainer's agents also follow
 4. **Do not guess.** Derive constants, formulas, and behavior from game data,
    original-game observations, or preservation evidence, and state the source.
    When in doubt, inspect the original game's decompilation to resolve the
-   uncertainty. Publish recovered engine facts in redguard-preservation before
-   relying on them here. If evidence is still incomplete, leave the behavior
-   explicitly unsupported. Neither `// unverified` nor Modern mode authorizes
+   uncertainty. Publish recovered engine facts in redguard-preservation; batch
+   them per issue rather than per change, and land them before the issue
+   closes. Until then, cite the evidence in the issue. If evidence is still
+   incomplete, leave the behavior explicitly unsupported. Neither `// unverified` nor Modern mode authorizes
    invented behavior. Keep raw decompilation and research under `magic/`;
    implement from documented facts, never copied decompiled code.
    **Use installed data as the source of truth.** Before implementing content,
@@ -90,7 +91,8 @@ tracked files, or user-facing reports. Keep its location in local tool configura
 Public evidence summaries must stand on their own without private archive links.
 
 Research documentation and decompiler output must be committed and pushed to
-the private research archive before a research task is handed over. Archive new or updated
+the private research archive before a research task is handed over. Archive
+once per issue or handoff, not after every change. Archive new or updated
 specifications, journals, task notes, handoffs, text observations, decompiled
 C-like exports, and supporting analysis records from `magic/`. A local-only
 copy does not complete the handoff.
@@ -127,6 +129,12 @@ untracked working memory. Each crate has a `README.md` with its commands.
   is optional and separate from agent acceptance and issue closure. Resolve
   dependencies with other agents and available tools; document genuine external
   blockers and continue independent work without waiting for human involvement.
+- Work in whole issues. A unit of work ends in committed, pushed code or a
+  precise external blocker, never in an audit, a receipt or authored-but-unbuilt
+  source. Build when the change needs it: one Cargo build at a time across
+  agents, and stop if `df -h /` shows less than 10 GB free. Do not invent other
+  admission gates or ask other agents to approve edits; a claim on the issue and
+  `git pull --rebase` are the coordination.
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
   scripts share one queue with at most three concurrent builds; `hauler status`
