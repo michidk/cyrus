@@ -25,6 +25,29 @@ pub(super) struct LightState {
 }
 
 impl LightState {
+    pub fn flicker_radius(
+        record: &mut Option<Self>,
+        position: [i32; 3],
+        bound: i32,
+        random: Option<&mut crate::random::EngineRandom>,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            bound > 0,
+            "FxFlickerOnOff requires a positive bound, got {bound}"
+        );
+        let random =
+            random.ok_or_else(|| anyhow::anyhow!("FxFlickerOnOff shared random unavailable"))?;
+        let light = record.get_or_insert_with(|| Self::dynamic(position));
+        if random.rnd(bound)? == 0 {
+            light.radius = if light.radius == 0 {
+                light.starting_radius
+            } else {
+                0
+            };
+        }
+        Ok(())
+    }
+
     pub fn authored(placement: &Instance) -> Self {
         Self {
             locked: true,

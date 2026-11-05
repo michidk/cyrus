@@ -39209,3 +39209,225 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
         AnimationGroup::JUMP_RUN_START.index()
     );
 }
+
+#[test]
+fn fx_light_size_configures_the_receiver_and_finishes_without_a_task_slot() {
+    use cyrus_game::script::ScriptInputs;
+    for authored in [false, true] {
+        let mut scripts = random_scripts(Native::FxLightSize, vec![], Object::Me);
+        scripts.definition.functions[1].kind = CallKind::Multitask;
+        scripts.definition.functions[1].param_count = 2;
+        if authored {
+            scripts.instances[0].object_type = 4;
+            scripts.instances[0].light_intensity = 211;
+            scripts.instances[0].light_radius = 900;
+        }
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.program.steps.get_mut(&0).unwrap().operation = wait(
+            1,
+            Native::FxLightSize,
+            CallKind::Multitask,
+            vec![
+                Value::Integer { value: 65543 },
+                Value::Integer { value: -1 },
+            ],
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let actor = &world.actors()[0];
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["size"], serde_json::json!([7, 0, 65535]));
+        assert_eq!(light["flicker"], serde_json::json!([0, 0, 0]));
+        assert_eq!(light["enabled"], authored);
+        assert_eq!(light["locked"], authored);
+        assert_eq!(light["radius"], if authored { 900 } else { 100 });
+        assert_eq!(light["intensity"], if authored { 211 } else { 256 });
+        assert_eq!(actor.runtime().unwrap().active_tasks(), 0);
+        assert_eq!(
+            actor.runtime().unwrap().program_counter(Thread::Main),
+            Some(0)
+        );
+    }
+}
+
+#[test]
+fn fx_light_size_multitask_modulates_the_authored_spatial_light_after_dispatch() {
+    let mut scripts = light_maintenance_scripts(6, 1, &[(Native::FxLightSize, &[7, 1])]);
+    scripts.definition.functions[1].kind = CallKind::Multitask;
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = wait(
+        1,
+        Native::FxLightSize,
+        CallKind::Multitask,
+        vec![Value::Integer { value: 7 }, Value::Integer { value: 1 }],
+    );
+    scripts.instances[0].light_rgb = [12, -34, 56];
+    let (_, mut world, data) = light_maintenance_world(scripts);
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    assert!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    let lights = world.object_lights();
+    assert_eq!(lights.len(), 1);
+    assert_eq!(lights[0].position, [600, 0, 600]);
+    assert_eq!(lights[0].radius, 103);
+    assert_eq!(lights[0].rgb, [12, -34, 56]);
+    assert_eq!(random.state(), 1103527590);
+    light_maintenance_update(&mut world, &data, true, 1, &mut random);
+    assert_eq!(world.object_lights()[0].radius, 103);
+    assert_eq!(random.state(), 2524885223);
+}
+
+#[test]
+fn fx_flicker_on_off_toggles_radius_on_each_retained_multitask_poll() {
+    use cyrus_game::script::ScriptInputs;
+    for (authored, bound) in [(false, 1), (true, 1), (false, 3), (true, 3)] {
+        let mut scripts = random_scripts(Native::FxFlickerOnOff, vec![], Object::Me);
+        scripts.definition.functions[1].kind = CallKind::Multitask;
+        if authored {
+            scripts.instances[0].object_type = 4;
+            scripts.instances[0].light_radius = 900;
+        }
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            1,
+            Native::FxFlickerOnOff,
+            CallKind::Multitask,
+            vec![Value::Integer { value: bound }],
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (_, _, animations) = revisit_test_app(&scripts);
+        let collision = Default::default();
+        let sources = cyrus_game::script::WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &animations,
+            collision: &collision,
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let mut id = world.id(0).unwrap();
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        let starting = if authored { 900 } else { 100 };
+        let toggled = if bound == 1 { 0 } else { starting };
+        for (stage, radius, seed) in [
+            (ScriptStage::Body(Thread::Main), toggled, 1103527590),
+            (
+                ScriptStage::Tasks,
+                if authored { 900 } else { 100 },
+                2524885223,
+            ),
+            (ScriptStage::Tasks, toggled, 662824084),
+        ] {
+            world
+                .advance(
+                    id,
+                    stage,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    Some(&mut random),
+                    20,
+                )
+                .unwrap();
+            let actor = &world.actors()[0];
+            let light = actor.light_state().unwrap();
+            assert_eq!(light["radius"], radius);
+            assert_eq!(light["starting_radius"], if authored { 900 } else { 100 });
+            assert_eq!(light["enabled"], authored);
+            assert_eq!(light["locked"], authored);
+            assert_eq!(actor.runtime().unwrap().active_tasks(), 1);
+            assert_eq!(random.state(), seed);
+            if seed == 1103527590 {
+                let snapshot = world.snapshot(&sources).unwrap();
+                world = ScriptWorld::from_snapshot(
+                    snapshot,
+                    &sources,
+                    cyrus_game::script::WorldRestoreContext {
+                        generation: 2,
+                        globals: Default::default(),
+                        samples: &Default::default(),
+                    },
+                )
+                .unwrap();
+                id = world.id(0).unwrap();
+                random = cyrus_game::random::EngineRandom::from_state(seed);
+            }
+        }
+    }
+}
+
+#[test]
+fn fx_flicker_on_off_rejects_nonpositive_bounds_before_allocating_or_drawing() {
+    for bound in [0, -1, i32::MIN] {
+        let mut scripts = random_scripts(Native::FxFlickerOnOff, vec![], Object::Me);
+        scripts.definition.functions[1].kind = CallKind::Multitask;
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            1,
+            Native::FxFlickerOnOff,
+            CallKind::Multitask,
+            vec![Value::Integer { value: bound }],
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        let error = world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                Default::default(),
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("FxFlickerOnOff requires a positive bound"));
+        assert!(world.actors()[0].light_state().is_none());
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        assert_eq!(random.state(), 1);
+    }
+}

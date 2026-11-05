@@ -195,6 +195,16 @@ order. Enabled records with negative amplitudes after low-word conversion remain
 explicitly unsupported and fail before light maintenance changes state or consumes
 random values. Disabled records retain the inactivity cleanup path.
 Snapshots retain each channel's phase; the session retains the shared random state.
+Verified: `FxLightSize` configures the same radius-modulation channel as `LightSize`,
+keeps the low sixteen bits of both arguments and resets its phase without enabling
+the record. Its multitask call finishes immediately without retaining a task slot,
+following preservation's [effect contract](https://github.com/michidk/redguard-preservation/blob/6d97244c6c89269508f5ec2e7c39aebd4cbc5b8d/docs/engine/SOUP.md#fxlightsize).
+Verified: `FxFlickerOnOff` retains a multitask that consumes one shared random draw
+on each call. A zero draw toggles current radius between zero and its starting
+value, following preservation's [radius toggle contract](https://github.com/michidk/redguard-preservation/blob/c2abc5dab1230e5c71b9a18e484a98f05eddb8a0/docs/engine/SOUP.md#fxflickeronoff).
+Normal light maintenance retains its separate radius clamp. Snapshot restoration
+preserves the task and receiver record. Nonpositive bounds remain explicitly unsupported; a zero bound enters the
+original's nonterminating reduction.
 This logical maintenance does not add ordinary actor lights to renderer submission.
 
 Verified: the production SOUP `End` notification releases activation ownership

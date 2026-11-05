@@ -4203,31 +4203,37 @@
     },
     {
       "native": "FxFlickerOnOff",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Persistent receiver radius toggle with shared random and restored continuation",
+      "caller": "ScriptWorld::advance -> GameHost native task call/poll -> retained receiver light",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_on_off_toggles_radius_on_each_retained_multitask_poll",
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_on_off_rejects_nonpositive_bounds_before_allocating_or_drawing"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/264"
+        "https://github.com/michidk/redguard-preservation/pull/264",
+        "https://github.com/michidk/redguard-preservation/commit/c2abc5dab1230e5c71b9a18e484a98f05eddb8a0"
       ],
-      "limits": "Verified independent installed one-argument multitask declaration/exact native/full95-byte handler and original resolver/bounded RNG/base RNG/seed getter. Bound passed directly without absolute conversion. Nonzero draw retains selected word; zero draw clears nonzero word or copies paired word into zero word; return1. Existing record reused; missing record requests41 bytes and initializes both words100 before toggle.2880 positive-bound original-instruction contexts/12 effective controls plus12 zero-bound budget exclusions; original subtraction-by-zero loop does not terminate. Full mapped memory/write order/domain/calls/return/registers/stack/canary checked. Only exact41-byte allocation controlled. Two receivers/present-missing records/15 positive bounds/4 seeds/6 word pairs/2 patterns. Negative bounds/malformed/null allocation/record producers and field meanings/consumers/seed lifecycle/exhaustive domain/VM scheduling/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
-      "reviewed_revision": "363e2c6c2aaf4b7895b6fe74ba8ff24cb3d54a08"
+      "limits": "Verified: exact original handler/resolver/random execution and public production initial-call/poll tests cover positive-bound radius toggles, missing/type-four records, enable/lock preservation, task retention and snapshot restore. Nonpositive bounds are explicitly unsupported. Unknown: matched installed original/native/browser rendered acceptance and complete light/renderer lifecycle under #39."
     },
     {
       "native": "FxLightSize",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Receiver radius modulation and immediate multitask completion",
+      "caller": "ScriptWorld::advance/update_separate -> GameHost::call -> retained light maintenance -> ScriptWorld::object_lights",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::fx_light_size_configures_the_receiver_and_finishes_without_a_task_slot",
+        "crates/cyrus-game/tests/script_registry.rs::fx_light_size_multitask_modulates_the_authored_spatial_light_after_dispatch"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/266"
+        "https://github.com/michidk/redguard-preservation/pull/266",
+        "https://github.com/michidk/redguard-preservation/commit/6d97244c6c89269508f5ec2e7c39aebd4cbc5b8d"
       ],
-      "limits": "Verified independent installed two-argument multitask declaration/exact native/full78-byte handler and original282-byte receiver resolver. Low16 first and second arguments stored in separate words, intervening word cleared, return0; no clamp/scale. Existing record reused; missing requests41 bytes, selected initialization before native assignments.1944 original-instruction contexts/12 effective semantic controls; full mapped memory/write order/domain/calls/return/registers/stack/canary checked. Only exact41-byte allocation controlled. Two receivers/present-missing records/9x9 argument pairs incl signed extrema/upper-bit-only changes/3 word triples/2 patterns. Malformed/null allocation/record producers, field meanings and consumers/VM scheduling/natural original/native/browser/exhaustive domain Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
-      "reviewed_revision": "bca07a27dcf3aec278ecac1b618237119ea1ac3b"
+      "limits": "Verified: original handler identity joins FxLightSize to LightSize radius modulation. Public production-stage tests cover absent/type-four records, low-word storage, lock and enable preservation, immediate task completion, and type-six post-dispatch modulation with the shared random stream. Unknown: matched installed original/native/browser rendered acceptance and complete renderer lifecycle under #39."
     },
     {
       "native": "FxPhase",

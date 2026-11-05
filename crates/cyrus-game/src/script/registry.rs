@@ -3381,6 +3381,10 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             Some([actor, player]) => (actor, Some(player)),
             None => (&mut self.registry.actors[self.index], None),
         };
+        let light_position = actor
+            .placement()
+            .map(|placement| placement.map_position.map(|value| value as i32))
+            .unwrap_or_default();
         let mut animation =
             actor
                 .animation
@@ -3431,7 +3435,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
+        let mut radius_flicker = |bound| {
+            light::LightState::flicker_radius(
+                &mut actor.light,
+                light_position,
+                bound,
+                self.random.as_deref_mut(),
+            )
+        };
         let services = super::tasks::NativeServices {
+            radius_flicker: Some(&mut radius_flicker),
             animation_requests_enabled: self.animation_system
                 && !actor
                     .control
@@ -4927,6 +4940,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Native::FlatSound,
                 Native::ResetRotation,
                 Native::Jump,
+                Native::FxLightSize,
             ]
             .contains(&function)
         {
@@ -5027,6 +5041,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Native::FlickerLight,
                 Native::LightFlickerOff,
                 Native::LightSize,
+                Native::FxLightSize,
                 Native::LightSizeOff,
             ]
             .contains(&function)
@@ -5036,7 +5051,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .map(|argument| argument.integer())
                 .collect::<Result<Vec<_>>>()?;
             let expected = match function {
-                Native::Light | Native::LightFlicker | Native::LightSize => 2,
+                Native::Light | Native::LightFlicker | Native::LightSize | Native::FxLightSize => 2,
                 Native::LightOffset => 3,
                 Native::LightFlickerOff | Native::LightSizeOff => 0,
                 _ => 1,
@@ -5075,7 +5090,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     light.offset = [values[0] as i16, values[1] as i16, values[2] as i16]
                 }
                 Native::LightFlicker => light.flicker = [values[0] as u16, 0, values[1] as u16],
-                Native::LightSize => light.size = [values[0] as u16, 0, values[1] as u16],
+                Native::LightSize | Native::FxLightSize => {
+                    light.size = [values[0] as u16, 0, values[1] as u16]
+                }
                 Native::LightSizeOff => light.size[0] = 0,
                 Native::FlickerLight => light.flicker = [values[0] as u16, 0, 1],
                 _ => light.flicker[0] = 0,
@@ -7115,6 +7132,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             Some([actor, player]) => (actor, Some(player)),
             None => (&mut self.registry.actors[self.index], None),
         };
+        let light_position = actor
+            .placement()
+            .map(|placement| placement.map_position.map(|value| value as i32))
+            .unwrap_or_default();
         let mut animation =
             actor
                 .animation
@@ -7165,6 +7186,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
+        let mut radius_flicker = |bound| {
+            light::LightState::flicker_radius(
+                &mut actor.light,
+                light_position,
+                bound,
+                self.random.as_deref_mut(),
+            )
+        };
         let result = actor.tasks.poll(
             token,
             arguments,
@@ -7172,6 +7201,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             &mut animation,
             &mut spatial_call,
             super::tasks::NativeServices {
+                radius_flicker: Some(&mut radius_flicker),
                 animation_requests_enabled: self.animation_system
                     && !actor
                         .control

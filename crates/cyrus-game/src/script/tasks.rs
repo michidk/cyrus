@@ -91,6 +91,7 @@ pub(super) struct MenuCall<'a> {
 #[derive(Default)]
 pub(super) struct NativeServices<'a> {
     pub animation_requests_enabled: bool,
+    pub radius_flicker: Option<&'a mut dyn FnMut(i32) -> Result<()>>,
     pub ambient: Option<&'a AmbientCall<'a>>,
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
@@ -447,6 +448,7 @@ fn talk_cycle(
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
+    RadiusFlicker,
     /// The installed `multitask PlayAnimation(10, 0)` request retains its slot across main loops.
     AnimationRequest,
     Dialogue,
@@ -638,6 +640,18 @@ impl Task {
         let ambient = services.ambient;
         let turning = matches!(self, Self::ControlAnimation { .. });
         Ok(match self {
+            Self::RadiusFlicker => {
+                let [bound] = arguments else {
+                    anyhow::bail!("FxFlickerOnOff requires one argument");
+                };
+                services
+                    .radius_flicker
+                    .as_mut()
+                    .context("FxFlickerOnOff light service unavailable")?(
+                    bound.integer()?
+                )?;
+                false
+            }
             Self::PlayerDialogue { started } => {
                 let [label] = arguments else {
                     anyhow::bail!("RTXp requires one argument");
@@ -2774,6 +2788,12 @@ impl NativeTasks {
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
+        } else if function == Native::FxFlickerOnOff {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "FxFlickerOnOff requires multitask encoding"
+            );
+            Task::RadiusFlicker
         } else if function == Native::Move {
             Task::Move
         } else if function == Native::Rotate {
