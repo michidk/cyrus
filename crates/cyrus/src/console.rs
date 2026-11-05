@@ -153,6 +153,27 @@ mod tests {
         store.save(b"first").unwrap();
         store.save(b"second").unwrap();
         assert_eq!(store.load().unwrap().unwrap(), b"second");
+        let reopened = LocalMarkers {
+            install: store.install.clone(),
+            directory: store.directory.clone(),
+        };
+        assert_eq!(reopened.load().unwrap().unwrap(), b"second");
+        let retained = root.join("retained");
+        std::fs::rename(&store.directory, &retained).unwrap();
+        std::fs::write(&store.directory, b"blocked state directory").unwrap();
+        assert!(store.save(b"rejected").is_err());
+        assert_eq!(
+            std::fs::read(retained.join("REDGUARD.MRK")).unwrap(),
+            b"second"
+        );
+        std::fs::remove_file(&store.directory).unwrap();
+        std::fs::rename(&retained, &store.directory).unwrap();
+        let unsafe_store = LocalMarkers {
+            install: store.install.clone(),
+            directory: store.install.root.clone(),
+        };
+        assert!(unsafe_store.load().is_err());
+        assert!(unsafe_store.save(b"rejected").is_err());
         assert!(store.path().unwrap().ends_with("REDGUARD.MRK"));
         assert!(!store.install.root.join("REDGUARD.MRK").exists());
         assert!(

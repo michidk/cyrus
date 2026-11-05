@@ -1,4 +1,5 @@
 //! Browser console preferences retain CPF bytes in local storage; logs download as text.
+use anyhow::Context;
 use cyrus_console::{Console, Preferences, Store};
 use cyrus_game::console::markers::{MarkerStorage, MarkerStore};
 
@@ -75,7 +76,9 @@ struct LocalMarkers;
 impl MarkerStore for LocalMarkers {
     fn load(&self) -> anyhow::Result<Option<Vec<u8>>> {
         crate::storage::read("cyrus-markers")?
-            .map(|text| serde_json::from_str::<Vec<u8>>(&text).map_err(anyhow::Error::from))
+            .map(|text| {
+                serde_json::from_str::<Vec<u8>>(&text).context("decoding cyrus-markers byte array")
+            })
             .transpose()
     }
     fn save(&self, bytes: &[u8]) -> anyhow::Result<()> {
