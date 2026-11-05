@@ -3726,6 +3726,52 @@ fn set_start_position_dispatch_needs_three_flags_and_spatial_state_only_when_fla
 }
 
 #[test]
+fn slave_family_controls_change_nothing_and_return_zero_for_any_master_byte() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for function in [
+        Native::EnableSlaves,
+        Native::DisableSlaves,
+        Native::KillSlaves,
+    ] {
+        for master in [0, 1, 255] {
+            let mut scripts = random_scripts(function, vec![], Object::Me);
+            scripts.definition.functions[1].param_count = 0;
+            scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Master] = master;
+            scripts.content_id = scripts.content_identity().unwrap();
+            let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+            let id = world.id(0).unwrap();
+            let before = world.actors()[0].attributes().clone();
+            world
+                .advance(
+                    id,
+                    ScriptStage::OrdinaryMain,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            let context = format!("{function}, master {master}");
+            assert!(world.actors()[0].failure().is_none(), "{context}");
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().variables()[0],
+                0,
+                "{context}"
+            );
+            assert_eq!(world.actors()[0].attributes(), &before, "{context}");
+            assert!(
+                !world.actors()[0].control_state().unwrap().killed,
+                "{context}"
+            );
+        }
+    }
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {

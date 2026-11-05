@@ -6697,6 +6697,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[self.index].attributes[attribute] != 0,
             )));
         }
+        // EnableSlaves, DisableSlaves and KillSlaves search the family tree for the receiver, but the
+        // shared lookup never selects a node. For a finite acyclic family they change nothing,
+        // leave the global slave scheduling alone and return zero. Cyclic families are outside
+        // the contract.
+        if [
+            Native::EnableSlaves,
+            Native::DisableSlaves,
+            Native::KillSlaves,
+        ]
+        .contains(&function)
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::TrueFunction {
             anyhow::ensure!(arguments.len() == 2, "TrueFunction: wrong argument count");
             return Ok(CallResult::Complete(1));
