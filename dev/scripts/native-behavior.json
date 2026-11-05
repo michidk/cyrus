@@ -5472,19 +5472,22 @@
     },
     {
       "native": "IsCarryingWeapon",
-      "status": "missing",
+      "status": "partial",
       "owner": 30,
-      "scope": "Direct named state/action/weapon dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed receiver carrying predicate: early attribute, gates and selected item type",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_is_carrying_weapon_checks_the_selected_item_type_not_its_quantity",
+        "crates/cyrus-game/tests/script_animation_host.rs::is_carrying_weapon_without_the_item_owner_reports_a_contextual_error"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
         "https://github.com/michidk/redguard-preservation/pull/276"
       ],
-      "limits": "Verified independent installed function parms0/exact lowercase native binding/full194-byte handler/117-byte ordered lookup. Supplied receiver metadata active byte returns1 before enable/control/mode checks. Otherwise enable/control pointer nonzero/mode0/nonzero selected byte and first ordered matching item type1 gives1; quantity not tested. No receiver/metadata/item/global mutation.2304 original instruction contexts/13 effective controls;2 receivers/3 active bytes/2 enables/2 modes/2 pointer tokens/3 keys/8 lists/2 patterns. Full mapped memory/write domain/no writes/calls/Boolean return/six regs/stack/canary checked; no controlled services. Null receiver is not safe: initial metadata read precedes null check. Unknown malformed/null pointer behavior beyond retained read order, state producers/lifecycle/cyclic lists/VM/natural original/native/browser/exhaustive domain. Production status unchanged; no gameplay/render/Cargo/runtime.",
-      "reviewed_revision": "8f3a9dff33d1b81dfef77ccaaef333a5419b355d"
+      "limits": "Verified independent installed function parms0/exact lowercase native binding/full194-byte handler/117-byte ordered lookup. Supplied receiver metadata active byte returns1 before enable/control/mode checks. Otherwise enable/control pointer nonzero/mode0/nonzero selected byte and first ordered matching item type1 gives1; quantity not tested. No receiver/metadata/item/global mutation.2304 original instruction contexts/13 effective controls;2 receivers/3 active bytes/2 enables/2 modes/2 pointer tokens/3 keys/8 lists/2 patterns. Full mapped memory/write domain/no writes/calls/Boolean return/six regs/stack/canary checked; no controlled services. Null receiver is not safe: initial metadata read precedes null check. Unknown malformed/null pointer behavior beyond retained read order, state producers/lifecycle/cyclic lists/VM/natural original/native/browser/exhaustive domain. Verified public routed dispatch: the receiver holding attribute answers before the gates; otherwise item owner, receiver animation and shell gates apply and the receiver selected-item byte must name an item defined as a weapon, with quantity untested; attributes unchanged; a missing item owner gives a contextual error. Unknown: installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "e20c83c6e0cab74ef40e3d073bb5d74e049eca2b"
     },
     {
       "native": "IsLightingOrUnlighting",

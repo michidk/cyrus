@@ -459,6 +459,18 @@ impl ScriptHud {
         Ok(state.inventory.is_some())
     }
 
+    /// Whether the installed item list defines `id` as a weapon; quantity is not tested.
+    pub(super) fn defined_weapon(&self, id: u8) -> Result<bool> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .is_some_and(|items| items.defined_weapon(id)))
+    }
+
     pub(super) fn owned_weapon(&self, id: u8) -> Result<bool> {
         let state = self.0.lock().expect("script HUD lock poisoned");
         if let Some(error) = &state.inventory_error {

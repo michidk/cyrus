@@ -4647,6 +4647,25 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .with_context(|| function.to_string())
     }
 
+    /// `IsCarryingWeapon`: the carrying attribute answers before the ordinary gates; otherwise the
+    /// receiver's selected item must be defined as a weapon, with its quantity untested.
+    fn receiver_carrying_weapon(&self) -> Result<bool> {
+        let actor = &self.registry.actors[self.index];
+        if actor.attributes[Attribute::HoldingWeapon] != 0 {
+            return Ok(true);
+        }
+        let hud = self.inputs.hud.context("inventory owner unavailable")?;
+        let shell = self
+            .inputs
+            .shell_execution
+            .context("shell context unavailable")?;
+        if !hud.inventory_ready()? || actor.animation.is_none() || shell {
+            return Ok(false);
+        }
+        let selected = actor.attributes[Attribute::Weapon];
+        Ok(selected != 0 && hud.defined_weapon(selected)?)
+    }
+
     /// Holding, drawing and sheathing for an actor, without `IsHoldingWeapon`'s attribute test.
     fn weapon_predicates(&self, index: usize) -> Result<(bool, bool, bool)> {
         let actor = &self.registry.actors[index];
@@ -6175,6 +6194,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .show_static(state.query_pose()?);
             }
             return Ok(CallResult::Complete(0));
+        }
+        if function == Native::IsCarryingWeapon {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            return Ok(CallResult::Complete(i32::from(
+                self.receiver_carrying_weapon()
+                    .with_context(|| function.to_string())?,
+            )));
         }
         if [
             Native::IsHoldingWeapon,

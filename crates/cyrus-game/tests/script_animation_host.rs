@@ -4122,6 +4122,147 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
 }
 
 #[test]
+fn routed_is_carrying_weapon_checks_the_selected_item_type_not_its_quantity() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    // (holding attribute, selected item byte, item defined as weapon, count, animation bound,
+    // shell execution, expected result)
+    for (holding, selected, weapon, count, bound, shell, expected) in [
+        (1, 0, false, 1, false, true, 1),
+        (0, 1, true, 0, true, false, 1),
+        (0, 1, true, 3, true, false, 1),
+        (0, 1, false, 3, true, false, 0),
+        (0, 0, true, 3, true, false, 0),
+        (0, 2, true, 3, true, false, 0),
+        (0, 1, true, 3, true, true, 0),
+        (0, 1, true, 3, false, false, 0),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Named { string: 0 },
+                            function: Native::IsCarryingWeapon,
+                            arguments: vec![],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: Native::IsCarryingWeapon,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let receiver_attributes = &mut data.actors.get_mut("OTHER").unwrap().attributes;
+        receiver_attributes[Attribute::HoldingWeapon] = holding;
+        receiver_attributes[Attribute::Weapon] = selected;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        if bound {
+            let mut animation = animations(&data, false);
+            animation.metadata["actors"][1]["animation_groups"] = json!([{
+                "group_index":1,"anim_type":0,"anim_id":1,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+            }]);
+            let receiver = world.id(1).unwrap();
+            world
+                .bind_animation(receiver, &animation, AnimationGroup::from_index(1))
+                .unwrap();
+            stage(&mut world, receiver, ScriptStage::Animation);
+        }
+        let mut asset = inventory_fixture(&[(1, count)]);
+        asset.inventory.get_mut(&1).unwrap().weapon = weapon;
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let before = world.actors()[1].attributes().clone();
+        world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(shell),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(
+            world.flags(),
+            [expected],
+            "holding {holding}, selected {selected}, weapon {weapon}, count {count}, \
+             bound {bound}, shell {shell}"
+        );
+        assert_eq!(world.actors()[1].attributes(), &before);
+    }
+}
+
+#[test]
+fn is_carrying_weapon_without_the_item_owner_reports_a_contextual_error() {
+    use cyrus_game::script::ScriptInputs;
+    let mut data = scripts(vec![
+        Operation::Assign {
+            destination: Place::Flag { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 3,
+                        kind: CallKind::Function,
+                        target: Object::Named { string: 0 },
+                        function: Native::IsCarryingWeapon,
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: Native::IsCarryingWeapon,
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            ScriptInputs {
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("IsCarryingWeapon: inventory owner unavailable"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn fighting_query_rejects_unprepared_ordinary_traversal() {
     use cyrus_game::script::ScriptInputs;
     let mut data = scripts(vec![

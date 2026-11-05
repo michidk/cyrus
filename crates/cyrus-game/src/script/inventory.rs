@@ -193,6 +193,12 @@ impl Inventory {
         Ok(())
     }
 
+    pub(super) fn defined_weapon(&self, id: u8) -> bool {
+        self.items
+            .get(&u16::from(id))
+            .is_some_and(|item| item.weapon)
+    }
+
     pub(super) fn owned_weapon(&self, id: u8) -> bool {
         self.items
             .get(&u16::from(id))
