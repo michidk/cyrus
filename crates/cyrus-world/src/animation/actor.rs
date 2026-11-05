@@ -429,6 +429,12 @@ impl ActorAnimation {
         self.default
     }
 
+    /// Change the receiver's stored default without requesting or advancing animation.
+    /// SOUP property writes retain any 16-bit value; group availability is checked by consumers.
+    pub fn set_stored_default(&mut self, group: AnimationGroup) {
+        self.default = group;
+    }
+
     /// Set the animation's exit marker (`anim.stop_flag`) on the current group, as a taken
     /// selected-player mask-8 transition does before its group request: a forced request for the
     /// current group then restarts it instead of only cancelling the pending request. No effect
