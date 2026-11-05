@@ -47,31 +47,9 @@ pub struct JoystickSettings {
 
 impl JoystickSettings {
     /// Reads the `key_*[1]` slot of KEYS.INI `[input]`.
-    // shortcut: parsed here until redguard-preservation releases `KeysIni::joystick_codes`
-    // (d8ee1cc6, unreleased after 0.10.4); then use it and delete this parser.
+    #[cfg(feature = "parsers")]
     pub fn parse(keys_ini: &str, tolerance: i32) -> Result<Self, String> {
-        let mut codes = [0; 8];
-        let mut section = String::new();
-        for line in keys_ini.lines() {
-            let line = line.split(';').next().unwrap_or_default().trim();
-            if line.starts_with('[') {
-                section = line.to_ascii_lowercase();
-            } else if let (true, Some((key, value))) = (section == "[input]", line.split_once('='))
-            {
-                let key = key.trim().to_ascii_lowercase();
-                if let Some(index) = ["up", "down", "left", "right", "a", "b", "c", "d"]
-                    .iter()
-                    .position(|name| key == format!("key_{name}[1]"))
-                {
-                    codes[index] = value
-                        .trim()
-                        .parse::<u8>()
-                        .ok()
-                        .filter(|code| *code <= 139)
-                        .ok_or_else(|| format!("KEYS.INI [input] {key}: expected code 0..139"))?;
-                }
-            }
-        }
+        let codes = rgpre::import::keys_ini::KeysIni::parse(keys_ini)?.joystick_codes();
         Ok(Self { codes, tolerance })
     }
 }

@@ -55,6 +55,20 @@ impl Program {
             let mut values = Vec::new();
             let mut places = Vec::new();
             let mut calls = Vec::new();
+            // Preservation decodes the installed ResetAllAction self task with two literal operands
+            // beyond its zero declared parameters; only that statement form may differ in arity.
+            let encoded_reset = match &step.operation {
+                Operation::Call { call } => (call.target == Object::Me
+                    && call.kind == super::CallKind::Task
+                    && call.function == crate::Native::ResetAllAction
+                    && call.arguments.len() == 2
+                    && call
+                        .arguments
+                        .iter()
+                        .all(|value| matches!(value, Value::Integer { .. })))
+                .then_some(call),
+                _ => None,
+            };
             match &step.operation {
                 Operation::Call { call } | Operation::ObjectCall { call } => calls.push(call),
                 Operation::Assign {
@@ -86,7 +100,10 @@ impl Program {
                     anyhow::ensure!(
                         declaration.is_some_and(|function| {
                             function.name == call.function
-                                && usize::from(function.param_count) == call.arguments.len()
+                                && (usize::from(function.param_count) == call.arguments.len()
+                                    || (function.param_count == 0
+                                        && encoded_reset
+                                            .is_some_and(|reset| std::ptr::eq(reset, call))))
                         }),
                         "instruction {offset}: function {} declaration mismatch for index {}",
                         call.function,
@@ -229,5 +246,80 @@ impl Program {
             self.value(value, 0)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{CallKind, Function, Step};
+    use super::*;
+    use crate::Native;
+
+    fn reset(arguments: Vec<Value>) -> Call {
+        Call {
+            function_id: 0,
+            kind: CallKind::Task,
+            target: Object::Me,
+            function: Native::ResetAllAction,
+            arguments,
+        }
+    }
+
+    fn validate(operation: Operation) -> Result<()> {
+        let definition = Definition {
+            functions: vec![Function {
+                name: Native::ResetAllAction,
+                param_count: 0,
+                kind: CallKind::Function,
+            }],
+            flags: vec![],
+            references: vec![],
+            attributes: vec![],
+        };
+        let program = Program {
+            version: 4,
+            entry: 0,
+            variables: vec![],
+            strings: vec![],
+            steps: [
+                (0, Step { next: 1, operation }),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]
+            .into(),
+        };
+        program.validate_definition(&definition)
+    }
+
+    #[test]
+    fn only_the_literal_reset_self_task_exceeds_its_arity() {
+        let literals = vec![Value::Integer { value: 23 }, Value::Integer { value: -4 }];
+        validate(Operation::Call {
+            call: reset(literals.clone()),
+        })
+        .unwrap();
+        let mut function = reset(literals.clone());
+        function.kind = CallKind::Function;
+        assert!(validate(Operation::Call { call: function }).is_err());
+        assert!(
+            validate(Operation::ObjectCall {
+                call: reset(literals)
+            })
+            .is_err()
+        );
+        let read = Value::Read {
+            place: Place::Local { index: 0 },
+        };
+        assert!(
+            validate(Operation::Call {
+                call: reset(vec![read, Value::Integer { value: 1 }])
+            })
+            .is_err()
+        );
     }
 }
