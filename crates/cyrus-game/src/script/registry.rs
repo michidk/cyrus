@@ -6884,6 +6884,34 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 i32::try_from(ticks).context("GetFramePassed ticks exceed the signed range")?,
             ));
         }
+        // DistanceFromStart(axis): saved start minus the local position on axis 0..2 in map units;
+        // any other axis returns zero before the coordinates are read.
+        if function == Native::DistanceFromStart {
+            let [axis] = arguments else {
+                anyhow::bail!("DistanceFromStart requires one argument")
+            };
+            let value = match usize::try_from(axis.integer()?) {
+                Ok(axis) if axis < 3 => self.registry.spatial(id)?.start_displacement(axis)?,
+                _ => 0,
+            };
+            return Ok(CallResult::Complete(value));
+        }
+        // IsShellScript returns the shell execution-context word, or zero while no shell script
+        // exists. The host models the word as a Boolean; whether the shell list keeps killed
+        // shells, and any word value other than zero or one, are not established.
+        if function == Native::IsShellScript {
+            anyhow::ensure!(arguments.is_empty(), "IsShellScript requires no arguments");
+            let context = self
+                .inputs
+                .shell_execution
+                .context("IsShellScript: shell context unavailable")?;
+            let has_shell = self
+                .registry
+                .actors
+                .iter()
+                .any(|actor| matches!(actor.source, ScriptActorSource::Shell(_)));
+            return Ok(CallResult::Complete(i32::from(context && has_shell)));
+        }
         if function == Native::InRectangle {
             let [x1, z1, x2, z2] = arguments else {
                 anyhow::bail!("InRectangle requires four arguments")

@@ -3105,15 +3105,17 @@
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6608250655"
       ],
       "native": "IsShellScript",
-      "status": "missing",
-      "scope": "Original zero-argument shared shell-context query; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
+      "status": "partial",
+      "scope": "Routed shell-context query while a shell script exists",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::is_shell_script_returns_the_execution_context_only_while_a_shell_exists"
+      ],
       "limits": "Verified: independent installed zero-argument declaration/native/full handler. Returns zero unless shell system enabled, shell list nonempty and receiver pointer nonnull; otherwise returns shared shell execution-context word unchanged. No Boolean normalization, receiver dereference, script identity/membership check, calls or nonstack mutation. 33280 original instruction contexts/eight effective controls pass, with every context-byte value plus selected full-word extremes, nonzero enabled/list/receiver variations and actor patterns. No intercepted services; shared state synthetic. Unknown: complete shell lifecycle producer integration, VM decoding/malformed admission and natural original/native/browser acceptance. Selected state/pointer contexts do not establish safety of malformed pointers elsewhere. Named implementation remains missing; no family inference."
     },
     {
       "owner": 5,
-      "reviewed_revision": "d3a69ae8659d86a3d96c138e34df9e06ff044b93",
+      "reviewed_revision": "d3a69ae8659d86a3d96c138e34df9e06ff044b93 Verified public routed dispatch: zero while no shell script actor exists, otherwise the host's shell execution context. Inferred: the host models the context word as a Boolean, so only zero and one are produced. Unknown: whether the original shell list keeps killed shells, other context word values, installed original/native/browser outputs and natural script callers.",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
@@ -3511,17 +3513,20 @@
     },
     {
       "native": "DistanceFromStart",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Original one-axis signed start-minus-local displacement; named implementation missing",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed saved-start displacement on axes 0..2",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::distance_from_start_returns_zero_at_the_start_and_for_unsupported_axes",
+        "crates/cyrus-game/tests/script_registry.rs::start_displacement_shifts_the_wrapped_difference_toward_negative_infinity"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/239"
       ],
-      "limits": "Verified: independent installed one-argument declaration/native/full handler. Axes0/1/2 select X/Y/Z; every other axis returns zero before coordinate reads. Saved start minus receiver local current wraps32bit then arithmetic shifts right8; negative fractional differences round toward negative infinity. No calls/intercepted services/nonstack mutation. 11626 original instruction contexts/13 effective controls pass with signed/fractional/wrapping pairs, distinct receiver/coordinate decoys, invalid axes, actor patterns/register seeds and selected invalid-axis/unmapped-receiver cases. Actor/global bytes, saved registers excluding argument register, stack/canary checked. Unknown: full32-bit coordinate/axis combinations, valid-axis null/malformed admission, coordinate producers, attachment effective-position integration, VM decoding and natural original/native/browser acceptance. Named implementation remains missing; no name/family inference.",
-      "reviewed_revision": "f12878c6ddc3086ff53a1bff61e9b4a4c43f2dc2"
+      "limits": "Verified: independent installed one-argument declaration/native/full handler. Axes0/1/2 select X/Y/Z; every other axis returns zero before coordinate reads. Saved start minus receiver local current wraps32bit then arithmetic shifts right8; negative fractional differences round toward negative infinity. No calls/intercepted services/nonstack mutation. 11626 original instruction contexts/13 effective controls pass with signed/fractional/wrapping pairs, distinct receiver/coordinate decoys, invalid axes, actor patterns/register seeds and selected invalid-axis/unmapped-receiver cases. Actor/global bytes, saved registers excluding argument register, stack/canary checked. Unknown: full32-bit coordinate/axis combinations, valid-axis null/malformed admission, coordinate producers, attachment effective-position integration, VM decoding and natural original/native/browser acceptance. Named implementation remains missing; no name/family inference. Verified public routed dispatch: the saved start (original home) minus the local position, shifted right by eight with 32-bit wrapping; axes other than 0 to 2 return zero. Unknown: starts moved by SetStartPosition-style natives (unimplemented), installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "997598949c0dc8be2947c0272eb3fa8693ad7243"
     },
     {
       "native": "AtPos",

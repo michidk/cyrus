@@ -615,6 +615,19 @@ impl ActorSpatial {
         Ok((receiver_position, player_position))
     }
 
+    /// `DistanceFromStart`: the saved start position (the original home, location zero) minus the
+    /// local position on one axis, in whole map units. The Q8 difference wraps in 32 bits and
+    /// shifts arithmetically, so negative fractions round toward negative infinity. `axis` is
+    /// 0 (X), 1 (Y) or 2 (Z).
+    pub fn start_displacement(&self, axis: usize) -> Result<i32> {
+        anyhow::ensure!(axis < 3, "DistanceFromStart: axis {axis} outside 0..3");
+        let home = self
+            .locations
+            .first()
+            .context("DistanceFromStart: saved start position unavailable")?;
+        Ok(home[axis].wrapping_sub(self.local.position[axis]) >> 8)
+    }
+
     /// `DistanceToLocation`: the rounded Euclidean length, in Q8 units, from the receiver to the
     /// selected location. A selector below zero or above the location count selects the home
     /// location; one equal to the count reads past the table in the original and is unsupported.

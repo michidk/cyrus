@@ -3601,6 +3601,92 @@ fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() 
 }
 
 #[test]
+fn distance_from_start_returns_zero_at_the_start_and_for_unsupported_axes() {
+    let call = |axis: i32| {
+        let world = run_native_world_with(&[(Native::DistanceFromStart, &[axis])], true).unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    for axis in [0, 1, 2, 3, -1, i32::MAX] {
+        assert_eq!(call(axis), 0, "axis {axis}");
+    }
+    assert!(run_native_world(&[(Native::DistanceFromStart, &[0])]).is_err());
+}
+
+#[test]
+fn start_displacement_shifts_the_wrapped_difference_toward_negative_infinity() {
+    let world = run_native_world_with(&[], true).unwrap();
+    let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+    let home = spatial.local.position;
+    // (offset of the local position from the start, expected whole-unit result)
+    for (offset, expected) in [
+        (256, -1),
+        (1, -1),
+        (0, 0),
+        (-1, 0),
+        (-255, 0),
+        (-256, 1),
+        (-257, 1),
+        (-512, 2),
+    ] {
+        for (axis, start) in home.into_iter().enumerate() {
+            let mut moved = spatial.clone();
+            moved.local.position[axis] = start.wrapping_add(offset);
+            assert_eq!(
+                moved.start_displacement(axis).unwrap(),
+                expected,
+                "axis {axis}, offset {offset}"
+            );
+        }
+    }
+    let mut wrapped = spatial.clone();
+    wrapped.local.position[0] = home[0].wrapping_add(i32::MIN);
+    assert_eq!(wrapped.start_displacement(0).unwrap(), i32::MIN >> 8);
+    assert!(spatial.start_displacement(3).is_err());
+}
+
+#[test]
+fn is_shell_script_returns_the_execution_context_only_while_a_shell_exists() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let run = |spawn: bool, context: Option<bool>| {
+        let mut scripts = random_scripts(Native::IsShellScript, vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        let mut shell = scripts.actors["LOGIC"].clone();
+        shell.code_origin += 1000;
+        shell.header_index += 100;
+        scripts.actors.insert("LATER".into(), shell);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        if spawn {
+            world.spawn_shell("LATER").unwrap();
+        }
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    shell_execution: context,
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .map(|_| world.actors()[0].runtime().unwrap().variables()[0])
+    };
+    assert_eq!(run(false, Some(true)).unwrap(), 0, "no shell in the list");
+    assert_eq!(run(true, Some(false)).unwrap(), 0, "not in shell context");
+    assert_eq!(run(true, Some(true)).unwrap(), 1);
+    let error = run(true, None).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("IsShellScript: shell context unavailable"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {
