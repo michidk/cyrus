@@ -4189,17 +4189,22 @@
     },
     {
       "native": "FxFlickerDim",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Authored starting-colour modulation with shared random and restored task continuation",
+      "caller": "ScriptWorld::advance -> GameHost light task call/poll -> receiver RGB",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_dim_uses_starting_colour_and_shared_random_after_snapshot",
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_dim_matches_original_absolute_bound_word_wrap_and_clamp",
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_dim_rejects_unknown_base_and_nonreturning_bounds_without_random_draws",
+        "crates/cyrus-game/tests/script_registry.rs::fx_flicker_dim_restore_validates_base_source_and_does_not_guess_legacy_colour"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/262"
+        "https://github.com/michidk/redguard-preservation/pull/262",
+        "https://github.com/michidk/redguard-preservation/commit/5c20598558160e19254b8f542062e2a7280ab1f6"
       ],
-      "limits": "Verified independent installed one-argument multitask declaration/exact native/full190-byte handler and original record resolver/absolute/bounded random/base RNG/seed getter. One shared random decrement across three base words; low16 before signed clamp below -255; return1. Existing record reused; missing record requests41 bytes, increments counters and initializes selected fields but not base words.2176 bounded original-instruction contexts/24 effective semantic controls; full mapped memory/write order/domain/calls/return/registers/stack/canary checked. Only exact41-byte allocation controlled. Two receivers/present-missing records/17 signed arguments/4 seeds/4 base triples/2 patterns. Zero/signed-minimum arguments do not terminate reduction loop, excluded from returning domain. Malformed/null allocation/seed lifecycle/base producers/field consumers/exhaustive domain/VM scheduling/natural original/native/browser Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
-      "reviewed_revision": "b926d3851aea55e27427ae6a56621f6eac88cd27"
+      "limits": "Verified: exact original handler/resolver/absolute/random execution establishes one draw, shared channel decrement, signed-word wrapping and lower clamp. Production tests cover authored light projection, shared RNG order, snapshots, absolute bounds, word wrap, source validation and explicit unknown-base rejection. Dynamic/type-four/legacy records without established starting RGB remain unsupported. Zero and minimum signed arguments fail before random draws. Unknown: matched installed original/native/browser rendered acceptance and complete dynamic allocation colour provenance."
     },
     {
       "native": "FxFlickerOnOff",

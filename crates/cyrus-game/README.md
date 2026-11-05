@@ -211,6 +211,16 @@ retains its task slot until the next task pass applies completion.
 Signed division overflow is explicitly unsupported. The native task slots retain
 four words; the separate elapsed/point value is refreshed before operand evaluation.
 
+Verified: `FxFlickerDim` subtracts one shared random draw from the receiver's
+starting RGB words, wraps each result to a signed word, and clamps below -255,
+following preservation's
+[colour modulation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#fxflickerdim).
+Authored type-six lights retain their starting colour independently of current
+phase/flicker output. Snapshots validate this base against its authored source.
+Dynamic/type-four records and older snapshots without an established base remain
+explicitly unsupported for dimming. Zero and minimum signed arguments also fail
+without consuming random state instead of entering the original's reduction loop.
+
 Verified: `FxLightSize` configures the same radius-modulation channel as `LightSize`,
 keeps the low sixteen bits of both arguments and resets its phase without enabling
 the record. Its multitask call finishes immediately without retaining a task slot,

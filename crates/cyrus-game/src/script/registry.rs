@@ -1145,7 +1145,7 @@ impl ScriptWorld {
                     Some(light::LightState::authored(placement))
                 }
                 // A type-four object gets the same record with the placement's intensity and
-                // radius; its colour is never initialised, so it stays zero.
+                // radius; its starting colour is unavailable to scripted dimming.
                 ScriptActorSource::Map(placement) if placement.object_type == 4 => {
                     Some(light::LightState {
                         rgb: [0; 3],

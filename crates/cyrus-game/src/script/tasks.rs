@@ -487,6 +487,7 @@ fn talk_cycle(
 enum Task {
     RadiusFlicker,
     ColorPhase,
+    ColorFlicker,
     /// The installed `multitask PlayAnimation(10, 0)` request retains its slot across main loops.
     AnimationRequest,
     Dialogue,
@@ -678,11 +679,12 @@ impl Task {
         let ambient = services.ambient;
         let turning = matches!(self, Self::ControlAnimation { .. });
         Ok(match self {
-            Self::RadiusFlicker | Self::ColorPhase => {
-                let function = if matches!(self, Self::RadiusFlicker) {
-                    Native::FxFlickerOnOff
-                } else {
-                    Native::FxPhase
+            Self::RadiusFlicker | Self::ColorPhase | Self::ColorFlicker => {
+                let function = match self {
+                    Self::RadiusFlicker => Native::FxFlickerOnOff,
+                    Self::ColorPhase => Native::FxPhase,
+                    Self::ColorFlicker => Native::FxFlickerDim,
+                    _ => unreachable!(),
                 };
                 services
                     .light_effect
@@ -2827,6 +2829,12 @@ impl NativeTasks {
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
+        } else if function == Native::FxFlickerDim {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "FxFlickerDim requires multitask encoding"
+            );
+            Task::ColorFlicker
         } else if function == Native::FxPhase {
             anyhow::ensure!(
                 kind == CallKind::Multitask,

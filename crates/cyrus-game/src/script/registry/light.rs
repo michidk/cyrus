@@ -16,6 +16,9 @@ pub(super) struct LightState {
     pub starting_radius: i16,
     pub radius: i16,
     pub rgb: [i16; 3],
+    /// Authored base strengths; absent when the original producer leaves them uninitialized.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_rgb: Option<[i16; 3]>,
     /// Script flicker parameters (`LightFlicker`): first value, phase, second value.
     #[serde(default)]
     pub flicker: [u16; 3],
@@ -39,6 +42,25 @@ impl LightState {
                 anyhow::bail!("FxFlickerOnOff requires one argument");
             };
             Self::flicker_radius(record, position, bound.integer()?, random)?;
+            return Ok(false);
+        }
+        if function == Native::FxFlickerDim {
+            let [amount] = arguments else {
+                anyhow::bail!("FxFlickerDim requires one argument");
+            };
+            let bound = amount.integer()?.wrapping_abs();
+            anyhow::ensure!(
+                bound > 0,
+                "FxFlickerDim requires a nonzero representable absolute bound"
+            );
+            let light = record.get_or_insert_with(|| Self::dynamic(position));
+            let base = light.starting_rgb.ok_or_else(|| {
+                anyhow::anyhow!("FxFlickerDim starting RGB unavailable for this light record")
+            })?;
+            let random =
+                random.ok_or_else(|| anyhow::anyhow!("FxFlickerDim shared random unavailable"))?;
+            let decrement = random.rnd(bound)? as i16;
+            light.rgb = base.map(|channel| channel.wrapping_sub(decrement).max(-255));
             return Ok(false);
         }
         anyhow::ensure!(
@@ -116,13 +138,14 @@ impl LightState {
             starting_radius: placement.light_radius,
             radius: placement.light_radius,
             rgb: placement.light_rgb,
+            starting_rgb: (placement.object_type == 6).then_some(placement.light_rgb),
             flicker: [0; 3],
             size: [0; 3],
         }
     }
 
     /// A script-created record: disabled and unlocked, intensity 256, radius 100, no offset.
-    /// Position and colour maintenance for such lights is not implemented.
+    /// Its starting colour is unavailable because this producer does not initialize it.
     pub fn dynamic(position: [i32; 3]) -> Self {
         Self {
             locked: false,
@@ -135,6 +158,7 @@ impl LightState {
             starting_radius: 100,
             radius: 100,
             rgb: [0; 3],
+            starting_rgb: None,
             flicker: [0; 3],
             size: [0; 3],
         }

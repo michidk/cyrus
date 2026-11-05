@@ -478,6 +478,22 @@ impl ActorSnapshot {
             self.name
         );
         if let Some(light) = &self.light {
+            if let Some(base) = light.starting_rgb {
+                let placement = actor
+                    .placement()
+                    .filter(|placement| placement.object_type == 6)
+                    .with_context(|| {
+                        format!(
+                            "saved actor {}: light starting RGB has no authored source",
+                            self.name
+                        )
+                    })?;
+                ensure!(
+                    base == placement.light_rgb,
+                    "saved actor {}: light starting RGB source differs",
+                    self.name
+                );
+            }
             // Retained source coordinates identify the authored record; drawing uses the
             // current spatial pose and offset.
             if let Some(placement) = actor

@@ -228,6 +228,7 @@ impl NativeTasks {
 impl Task {
     fn contract(self) -> (Native, usize, Option<CallKind>) {
         match self {
+            Self::ColorFlicker => (Native::FxFlickerDim, 1, Some(CallKind::Multitask)),
             Self::ColorPhase => (Native::FxPhase, 7, Some(CallKind::Multitask)),
             Self::RadiusFlicker => (Native::FxFlickerOnOff, 1, Some(CallKind::Multitask)),
             Self::AnimationRequest => (Native::PlayAnimation, 2, Some(CallKind::Multitask)),

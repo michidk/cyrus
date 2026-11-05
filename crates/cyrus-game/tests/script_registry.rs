@@ -40952,6 +40952,10 @@ fn fx_phase_updates_the_authored_light_projection_through_world_dispatch() {
     assert_eq!(lights[0].position, [600, 0, 600]);
     assert_eq!(lights[0].radius, 100);
     assert_eq!(lights[0].rgb, [60, 40, 20]);
+    assert_eq!(
+        world.actors()[0].light_state().unwrap()["starting_rgb"],
+        serde_json::json!([12, -34, 56])
+    );
     light_maintenance_update(&mut world, &data, true, 1, &mut random);
     assert_eq!(world.object_lights()[0].rgb, [40, 60, -20]);
     assert_eq!(random.state(), 1);
@@ -41059,4 +41063,219 @@ fn fx_phase_reports_missing_timing_and_signed_division_overflow() {
         let later = world.step(id, Thread::Main, 20).unwrap_err();
         assert!(format!("{later:#}").contains(expected));
     }
+}
+
+fn dim_scripts(kind: u8, amount: i32, base: [i16; 3]) -> Scripts {
+    let mut scripts = light_maintenance_scripts(kind, 2, &[(Native::FxFlickerDim, &[amount])]);
+    scripts.definition.functions[1].kind = CallKind::Multitask;
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = wait(
+        1,
+        Native::FxFlickerDim,
+        CallKind::Multitask,
+        vec![Value::Integer { value: amount }],
+    );
+    for placement in &mut scripts.instances {
+        placement.light_rgb = base;
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn fx_flicker_dim_uses_starting_colour_and_shared_random_after_snapshot() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = dim_scripts(6, 257, [-10, 300, -32768]);
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    for (index, stage, rgb, seed) in [
+        (
+            0,
+            ScriptStage::Body(Thread::Main),
+            [-207, 103, 32571],
+            1103527590,
+        ),
+        (
+            1,
+            ScriptStage::Body(Thread::Main),
+            [-136, 174, 32642],
+            2524885223,
+        ),
+        (0, ScriptStage::Tasks, [-138, 172, 32640], 662824084),
+    ] {
+        world
+            .advance(
+                world.id(index).unwrap(),
+                stage,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap();
+        let actor = &world.actors()[index];
+        let light = actor.light_state().unwrap();
+        assert_eq!(light["rgb"], serde_json::json!(rgb));
+        assert_eq!(light["starting_rgb"], serde_json::json!([-10, 300, -32768]));
+        assert_eq!(light["enabled"], true);
+        assert_eq!(light["locked"], true);
+        assert_eq!(actor.runtime().unwrap().active_tasks(), 1);
+        assert_eq!(random.state(), seed);
+        world = ScriptWorld::from_snapshot(
+            world.snapshot(&sources).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: world.generation() + 1,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )
+        .unwrap();
+        random = cyrus_game::random::EngineRandom::from_state(seed);
+    }
+    let lights = world.object_lights();
+    assert_eq!(lights[0].rgb, [-138, 172, 32640]);
+    assert_eq!(lights[1].rgb, [-136, 174, 32642]);
+    assert_eq!(lights[0].radius, 100);
+}
+
+#[test]
+fn fx_flicker_dim_matches_original_absolute_bound_word_wrap_and_clamp() {
+    use cyrus_game::script::ScriptInputs;
+    for (amount, base, expected) in [
+        (257, [-10, 300, -32768], [-207, 103, 32571]),
+        (-257, [-10, 300, -32768], [-207, 103, 32571]),
+        (257, [0, -255, 255], [-197, -255, 58]),
+        (1, [32767, -32768, -32767], [32767, -255, -255]),
+    ] {
+        let scripts = dim_scripts(6, amount, base);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs::default(),
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.object_lights()[0].rgb, expected);
+        assert_eq!(random.state(), 1103527590);
+    }
+}
+
+#[test]
+fn fx_flicker_dim_rejects_unknown_base_and_nonreturning_bounds_without_random_draws() {
+    use cyrus_game::script::ScriptInputs;
+    for (kind, amount, message) in [
+        (0, 257, "starting RGB unavailable"),
+        (4, 257, "starting RGB unavailable"),
+        (6, 0, "nonzero representable absolute bound"),
+        (6, i32::MIN, "nonzero representable absolute bound"),
+    ] {
+        let scripts = dim_scripts(kind, amount, [10, 20, 30]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        let error = world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs::default(),
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(message));
+        assert_eq!(random.state(), 1);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        let error = world.step(id, Thread::Main, 20).unwrap_err();
+        assert!(format!("{error:#}").contains(message));
+    }
+    let scripts = dim_scripts(6, 257, [10, 20, 30]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let error = world
+        .step(world.id(0).unwrap(), Thread::Main, 20)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("shared random unavailable"));
+    assert_eq!(
+        world.actors()[0].light_state().unwrap()["rgb"],
+        serde_json::json!([10, 20, 30])
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn fx_flicker_dim_restore_validates_base_source_and_does_not_guess_legacy_colour() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = dim_scripts(6, 257, [-10, 300, -32768]);
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let samples = Default::default();
+    let context = || WorldRestoreContext {
+        generation: 2,
+        globals: Default::default(),
+        samples: &samples,
+    };
+    let mut wrong = snapshot.clone();
+    wrong["actors"][0]["light"]["starting_rgb"] = serde_json::json!([1, 2, 3]);
+    let error =
+        ScriptWorld::from_snapshot(serde_json::from_value(wrong).unwrap(), &sources, context())
+            .err()
+            .unwrap();
+    assert!(format!("{error:#}").contains("starting RGB source differs"));
+    let mut legacy = snapshot;
+    legacy["actors"][0]["light"]
+        .as_object_mut()
+        .unwrap()
+        .remove("starting_rgb");
+    let mut world =
+        ScriptWorld::from_snapshot(serde_json::from_value(legacy).unwrap(), &sources, context())
+            .unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            Some(&mut random),
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("starting RGB unavailable"));
+    assert_eq!(random.state(), 1);
 }
