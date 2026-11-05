@@ -57,6 +57,16 @@ fi
 if ! command -v cargo >/dev/null && [ -x "$tools/cargo/bin/cargo" ]; then
     use_tools
 fi
+
+# Registry and git dependencies compile from files under CARGO_HOME. Checkouts with their own
+# CARGO_HOME (a toolchain copy, or a symlinked tools directory) would otherwise write the same
+# artifact names into a shared CARGO_TARGET_DIR with a crate hash that depends on that path, which
+# strands every dependent built against the other copy (rustdoc: E0463 can't find crate).
+# Remapping the dependency directories makes the hash path-independent.
+if [ -n "${CARGO_HOME:-}" ] && [ -z "${RUSTFLAGS:-}" ] && [ -z "${CARGO_ENCODED_RUSTFLAGS:-}" ]; then
+    CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:+$CARGO_BUILD_RUSTFLAGS }--remap-path-prefix=$CARGO_HOME/registry/src=/cargo/registry/src --remap-path-prefix=$CARGO_HOME/git/checkouts=/cargo/git/checkouts"
+    export CARGO_BUILD_RUSTFLAGS
+fi
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
     return 0
 fi

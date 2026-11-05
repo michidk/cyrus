@@ -140,6 +140,37 @@ exit 17
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("1 install tests skipped", result.stderr)
 
+    def toolchain_flags(self, **environment):
+        env = {key: value for key, value in os.environ.items()
+               if key not in ("CARGO_HOME", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS")}
+        env.update(environment)
+        with tempfile.TemporaryDirectory() as directory:
+            # A cargo on PATH keeps toolchain.sh from substituting its own CARGO_HOME.
+            stub = Path(directory) / "cargo"
+            stub.write_text("#!/bin/sh\n")
+            stub.chmod(0o755)
+            env["PATH"] = f"{directory}:{env['PATH']}"
+            result = subprocess.run(
+                ["bash", "-c", 'source "$1"; printf %s "${CARGO_BUILD_RUSTFLAGS-}"', "test",
+                 str(SCRIPTS / "toolchain.sh")],
+                capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_toolchain_remaps_dependency_paths_so_shared_targets_stay_consistent(self):
+        flags = self.toolchain_flags(CARGO_HOME="/tools-a/cargo")
+        self.assertIn("--remap-path-prefix=/tools-a/cargo/registry/src=/cargo/registry/src", flags)
+        self.assertIn("--remap-path-prefix=/tools-a/cargo/git/checkouts=/cargo/git/checkouts", flags)
+        other = self.toolchain_flags(CARGO_HOME="/tools-b/cargo")
+        self.assertEqual(
+            flags.replace("/tools-a/", "/tools-b/"), other,
+            "only the CARGO_HOME prefix may differ between checkouts",
+        )
+
+    def test_toolchain_leaves_explicit_rustflags_alone(self):
+        self.assertEqual(self.toolchain_flags(CARGO_HOME="/tools/cargo", RUSTFLAGS="-Dwarnings"), "")
+        self.assertEqual(self.toolchain_flags(), "")
+
 
 if __name__ == "__main__":
     unittest.main()
