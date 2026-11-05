@@ -492,8 +492,9 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
     for index in 0..bank.effects.len() {
         audio_paths.push(format!("sounds/{index:03}.wav"));
     }
+    let dialogue_exporter = cyrus_assets::sound::dialogue::export::Exporter::open(install, cache)?;
     for label in snapshot.dialogue().required_labels() {
-        cyrus_assets::sound::dialogue::export::export(install, cache, label)?;
+        dialogue_exporter.export(label)?;
         let key = label
             .iter()
             .map(|byte| format!("{byte:02x}"))

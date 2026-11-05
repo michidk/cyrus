@@ -89,6 +89,11 @@ impl cyrus_assets::sound::DialoguePayload for DialogueClip {
 #[derive(Default)]
 pub(super) struct DialoguePreparation {
     requests: std::collections::HashMap<[u8; 4], DialogueRequest>,
+    /// Scanned by the first export task; later tasks of the same world reuse it.
+    #[cfg(not(target_arch = "wasm32"))]
+    exporter: std::sync::Arc<
+        std::sync::OnceLock<Result<cyrus_assets::sound::dialogue::export::Exporter, String>>,
+    >,
 }
 
 enum DialogueRequest {
@@ -101,6 +106,10 @@ enum DialogueRequest {
 impl DialoguePreparation {
     pub(super) fn clear(&mut self) {
         self.requests.clear();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.exporter = Default::default();
+        }
     }
 
     pub(super) fn read(
@@ -137,24 +146,22 @@ impl DialoguePreparation {
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
         let path = format!("cache://dialogue/{key}.dialogue");
-        let pending = self
-            .requests
-            .values()
-            .filter(|request| !matches!(request, DialogueRequest::Failed(_)))
-            .count();
         if let std::collections::hash_map::Entry::Vacant(entry) = self.requests.entry(label) {
-            ensure!(
-                pending < 20,
-                "dialogue {key}: twenty pending preparations already retained"
-            );
             #[cfg(not(target_arch = "wasm32"))]
             let request = {
                 let install =
                     anyhow::Context::context(install, "dialogue preparation: install unavailable")?
                         .clone();
                 let cache = install.cache_path(cyrus_config::cache_dir())?;
+                let exporter = self.exporter.clone();
                 DialogueRequest::Exporting(bevy::tasks::IoTaskPool::get().spawn(async move {
-                    cyrus_assets::sound::dialogue::export::export(&install, &cache, label)
+                    match exporter.get_or_init(|| {
+                        cyrus_assets::sound::dialogue::export::Exporter::open(&install, &cache)
+                            .map_err(|error| format!("{error:#}"))
+                    }) {
+                        Ok(exporter) => exporter.export(label),
+                        Err(error) => anyhow::bail!("{error}"),
+                    }
                 }))
             };
             #[cfg(target_arch = "wasm32")]
@@ -257,12 +264,6 @@ mod tests {
             let server = app.world().resource::<AssetServer>().clone();
             let handle = server.load("cache://dialogue/54455354.dialogue");
             let mut preparation = DialoguePreparation::default();
-            for index in 0..25u8 {
-                preparation.requests.insert(
-                    [index, 0, 0, 0],
-                    DialogueRequest::Failed("unreached script label unavailable".into()),
-                );
-            }
             let Err(missing) = preparation.read(
                 *b"MISS",
                 &server,
@@ -437,7 +438,10 @@ impl DialoguePreparation {
                 "saved dialogue {label:?}: duplicate preparation"
             );
         }
-        Ok(Self { requests })
+        Ok(Self {
+            requests,
+            ..Self::default()
+        })
     }
 }
 

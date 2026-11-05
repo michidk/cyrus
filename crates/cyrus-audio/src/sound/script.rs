@@ -1352,9 +1352,6 @@ struct DialogueAssets<'w> {
     install: Option<Res<'w, cyrus_assets::install::GameInstall>>,
 }
 
-/// Installed clips prepared concurrently before ordinary simulation.
-const DIALOGUE_PREPARATIONS_IN_FLIGHT: usize = 8;
-
 fn scoped_ordinary(
     In(phase): In<cyrus_game::script::OrdinaryPhase>,
     mut context: cyrus_game::script::OrdinaryContext,
@@ -1429,30 +1426,21 @@ fn scoped_ordinary(
                 dialogue.install.as_deref(),
             )
         };
+        // Request every clip at once: the loads run on background tasks, so the
+        // time before the first update does not scale with the frame rate.
         let mut ready = true;
-        let mut in_flight = 0;
         for label in context.combat_taunt_labels() {
             if prepared_clips.iter().any(|clip| clip.entry.label == label) {
                 continue;
             }
             match read(label) {
                 Ok(Poll::Ready(clip)) => prepared_clips.push(clip),
-                Ok(Poll::Pending) => {
-                    ready = false;
-                    in_flight += 1;
-                    // Prepare several clips at once, well below the twenty-request retention limit.
-                    if in_flight == DIALOGUE_PREPARATIONS_IN_FLIGHT {
-                        break;
-                    }
-                }
+                Ok(Poll::Pending) => ready = false,
                 Err(error) => {
                     context.report_error(format!("ordinary combat taunt {label:?}: {error:#}"));
                     return;
                 }
             }
-        }
-        if !ready {
-            return;
         }
         for label in context.dialogue_labels() {
             if prepared_clips.iter().any(|clip| clip.entry.label == label) {
@@ -1460,13 +1448,7 @@ fn scoped_ordinary(
             }
             match read(label) {
                 Ok(Poll::Ready(clip)) => prepared_clips.push(clip),
-                Ok(Poll::Pending) => {
-                    ready = false;
-                    in_flight += 1;
-                    if in_flight == DIALOGUE_PREPARATIONS_IN_FLIGHT {
-                        break;
-                    }
-                }
+                Ok(Poll::Pending) => ready = false,
                 // Unreached scripts can name absent entries. Preparation retains
                 // their error; the actual invocation reports it if reached.
                 Err(_) => {}

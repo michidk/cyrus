@@ -289,7 +289,7 @@ The caller prepares dependencies before this synchronous operation. These loadin
 tasks or presentation by themselves. `game::prepare` also accepts
 `dialogue/<eight lowercase hex digits>.dialogue` and `.wav`, prepares only that
 authored four-byte key, and retains original text and voice lifetimes plus PCM
-metadata. Native `sound::dialogue::export::export` writes the same output.
+metadata. Native `sound::dialogue::export::Exporter` writes the same output after one install scan.
 The current original-text lifetime adapter supports ASCII without embedded NUL;
 other text encodings remain explicitly unsupported.
 

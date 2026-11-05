@@ -81,17 +81,32 @@ pub(crate) fn prepare(source: &dyn ReadAssets, path: &str, output: &mut dyn Outp
     )
 }
 
-/// Prepare one entry and its optional WAV in a native cache, without writing the install.
+/// Prepares dialogue entries and their optional WAVs in a native cache without
+/// writing the install. One install scan serves every label of a world.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-pub fn export(install: &crate::install::GameInstall, cache: &Path, label: [u8; 4]) -> Result<()> {
-    let source = crate::native::Files::scan(install, false)?;
-    let key = label
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    prepare(
-        &source,
-        &format!("dialogue/{key}.dialogue"),
-        &mut crate::preparation::DiskOutput(cache),
-    )
+pub struct Exporter {
+    source: crate::native::Files,
+    cache: std::path::PathBuf,
+}
+
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+impl Exporter {
+    pub fn open(install: &crate::install::GameInstall, cache: &Path) -> Result<Self> {
+        Ok(Self {
+            source: crate::native::Files::scan(install, false)?,
+            cache: cache.into(),
+        })
+    }
+
+    pub fn export(&self, label: [u8; 4]) -> Result<()> {
+        let key = label
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        prepare(
+            &self.source,
+            &format!("dialogue/{key}.dialogue"),
+            &mut crate::preparation::DiskOutput(&self.cache),
+        )
+    }
 }
