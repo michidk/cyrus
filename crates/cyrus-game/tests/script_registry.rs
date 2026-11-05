@@ -40234,6 +40234,16 @@ fn selected_hang_classification_fixture() -> (
     cyrus_assets::animation::Animations,
     cyrus_game::player::data::PlayerScene,
 ) {
+    selected_hang_fixture_with_point_task(false)
+}
+
+fn selected_hang_fixture_with_point_task(
+    point_task: bool,
+) -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
     let (_, mut world, data, scene) = player_walking_fixture_with_animation(
         |scripts| {
             let function = scripts.definition.functions.len() as u16;
@@ -40241,6 +40251,12 @@ fn selected_hang_classification_fixture() -> (
                 name: cyrus_script::Native::Jump,
                 param_count: 0,
                 kind: CallKind::Function,
+            });
+            let point = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: Native::MovePosition,
+                param_count: 4,
+                kind: CallKind::Task,
             });
             let queued = scripts.definition.references.len() as u16;
             scripts
@@ -40276,7 +40292,24 @@ fn selected_hang_classification_fixture() -> (
                         operation: Operation::End { target: 4 },
                     },
                 ),
-                (4, assign_call(5, function, Native::Jump, &[])),
+                (
+                    4,
+                    if point_task {
+                        Step {
+                            next: 5,
+                            operation: wait(
+                                point,
+                                Native::MovePosition,
+                                CallKind::Task,
+                                [0, 0, 100000, 0]
+                                    .map(|value| Value::Integer { value })
+                                    .to_vec(),
+                            ),
+                        }
+                    } else {
+                        assign_call(5, function, Native::Jump, &[])
+                    },
+                ),
                 (
                     5,
                     Step {
@@ -40332,6 +40365,16 @@ fn advance_selected_hang_script(
     scene: &cyrus_game::player::data::PlayerScene,
     fail: bool,
 ) -> anyhow::Result<()> {
+    advance_selected_hang_stage(world, data, scene, fail, ScriptStage::Body(Thread::Main))
+}
+
+fn advance_selected_hang_stage(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    fail: bool,
+    stage: ScriptStage,
+) -> anyhow::Result<()> {
     use cyrus_game::script::{ActivationInputs, PlayerCollisionSource, ScriptInputs};
     let player = world
         .selected_player()
@@ -40352,7 +40395,7 @@ fn advance_selected_hang_script(
     world
         .advance(
             player,
-            ScriptStage::Body(Thread::Main),
+            stage,
             ScriptInputs {
                 activation: Some(&activation),
                 player_collision: Some(PlayerCollisionSource {
@@ -43444,4 +43487,109 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
             }
         }
     }
+}
+
+#[test]
+fn direct_point_hanging_nonselected_receiver_retains_pending_without_services() {
+    let (mut world, _, _) = retained_point_fixture(18, 8, 12, |saved| {
+        saved["actors"][0]["control"]["living_state"] = 15.into();
+        saved["actors"][0]["control"]["point_command"] =
+            serde_json::json!({"value":0,"word":0,"phase":21,"counter":0});
+    });
+    let id = world.id(0).unwrap();
+    let before = world.spatial(id).unwrap().local.position;
+    for _ in 0..2 {
+        assert_eq!(
+            world
+                .move_ordinary_direct(id, before, 0, Default::default(), None, None)
+                .unwrap(),
+            1
+        );
+        let control = world.actors()[id.index].control_state().unwrap();
+        assert_eq!(
+            (control.living_state.byte(), control.ai_type.byte()),
+            (15, 7)
+        );
+        assert_eq!(world.globals().native_command().point_phase, 0);
+        assert_eq!(
+            world.actors()[id.index].attributes()[cyrus_script::Attribute::Collide],
+            13
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, before);
+    }
+}
+
+#[test]
+fn direct_point_selected_hang_release_uses_receiver_collision_and_preserves_sound_failure() {
+    use cyrus_game::script::{PlayerCollisionSource, ScriptInputs};
+    for fail in [false, true] {
+        let (mut world, data, scene) = selected_hang_classification_fixture();
+        let player = world.selected_player().unwrap();
+        let actors = [player, world.id(0).unwrap()];
+        let before = world.spatial(player).unwrap().local.position;
+        let mut sounds = 0;
+        let result = world.move_ordinary_direct(
+            player,
+            before,
+            0,
+            ScriptInputs {
+                player_collision: Some(PlayerCollisionSource {
+                    scene: &scene,
+                    animations: &data,
+                    view: [10, 30],
+                    actors: &actors,
+                }),
+                nominal_ticks: Some(0),
+                fine_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            Some(&mut |_, _| {
+                sounds += 1;
+                anyhow::ensure!(!fail, "direct hang sound rejected");
+                Ok(())
+            }),
+        );
+        let control = world.actors()[player.index].control_state().unwrap();
+        if fail {
+            assert!(format!("{:#}", result.unwrap_err()).contains("direct hang sound rejected"));
+            assert_eq!(control.living_state.byte(), 17);
+        } else {
+            assert_eq!(result.unwrap(), 1);
+            assert_eq!(
+                (
+                    control.living_state.byte(),
+                    control.action_transition_counter,
+                    control.ai_type.byte()
+                ),
+                (0, 6, 7)
+            );
+            assert_eq!(world.globals().native_command().point_phase, 0);
+        }
+        assert_eq!(sounds, 1);
+        assert_eq!(world.spatial(player).unwrap().local.position, before);
+    }
+}
+
+#[test]
+fn direct_point_native_task_releases_hanging_player_then_resumes_turn_phase() {
+    let (mut world, data, scene) = selected_hang_fixture_with_point_task(true);
+    let player = world.selected_player().unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.living_state.byte(),
+            control.action_transition_counter,
+            control.ai_type.byte()
+        ),
+        (0, 6, 7)
+    );
+    assert_eq!(world.globals().native_command().point_phase, 0);
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
+    advance_selected_hang_stage(&mut world, &data, &scene, false, ScriptStage::Tasks).unwrap();
+    assert_eq!(world.globals().native_command().point_phase, 22);
+    assert_eq!(world.spatial(player).unwrap().local.position, before);
 }

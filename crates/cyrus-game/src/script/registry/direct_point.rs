@@ -51,8 +51,8 @@ impl ScriptWorld {
     }
 
     /// One direct point step toward a Q8 destination within a Q8 arrival tolerance. Returns one
-    /// while the walk continues and zero once it completes. A receiver hanging from a ledge needs
-    /// the ledge release, which is unavailable.
+    /// while the walk continues and zero once it completes. Hanging receivers run the selected
+    /// player's hang release, then retain the move as pending without testing arrival.
     pub(super) fn move_point_direct(
         &mut self,
         id: ScriptActorId,
@@ -68,16 +68,79 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("direct point control unavailable")?;
-        if control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE {
+        let motion_pending =
+            control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE;
+        let hanging = control.living_state == LivingState::HANGING;
+        if !motion_pending && hanging && self.selected_player() == Some(id) {
+            let inhibition = self
+                .globals
+                .selected_action_inhibition
+                .context("direct point hang release inhibition unavailable")?;
+            if inhibition == 0 {
+                let prepared;
+                let geometry = if let Some(geometry) = inputs.locomotion_geometry {
+                    geometry
+                } else {
+                    let source = inputs
+                        .player_collision
+                        .context("direct point hang release geometry unavailable")?;
+                    prepared = self.prepare_ordinary_collision_query(
+                        id,
+                        source.scene,
+                        source.animations,
+                        source.view,
+                        source.actors,
+                    )?;
+                    super::LocomotionGeometry {
+                        ground: super::ground::OrdinaryGroundQuery {
+                            scene: source.scene,
+                            animations: source.animations,
+                            prepared: &prepared,
+                            distance: source.scene.settings.post_collide_height,
+                            sidedness: false,
+                        },
+                        environment: super::transition::ObstacleEnvironment {
+                            selected_player: Some(id),
+                            auto_grab: false,
+                            item_system_ready: inputs
+                                .hud
+                                .map(super::super::ScriptHud::inventory_ready)
+                                .transpose()?
+                                .unwrap_or(false),
+                            shell_execution: inputs.shell_execution.unwrap_or(false),
+                            ticks: inputs
+                                .nominal_ticks
+                                .context("direct point hang release nominal ticks unavailable")?,
+                        },
+                    }
+                };
+                anyhow::ensure!(
+                    geometry.environment.selected_player == Some(id),
+                    "direct point hang release geometry selects another player"
+                );
+                let timing = super::ledge_states::LedgeTiming {
+                    fine_ticks: inputs
+                        .fine_ticks
+                        .context("direct point hang release fine ticks unavailable")?,
+                    frame_scale: inputs.frame_scale,
+                };
+                self.ledge_hang_release(
+                    id,
+                    geometry.ground,
+                    geometry.environment,
+                    timing,
+                    sounds
+                        .as_deref_mut()
+                        .context("direct point hang release sound handler unavailable")?,
+                )?;
+            }
+        }
+        if motion_pending || hanging {
             self.globals.native_command.point_phase = 0;
             self.actors[index].attributes[Attribute::Collide] = 13;
             self.mark_direct_point_active(index);
             return Ok(1);
         }
-        anyhow::ensure!(
-            control.living_state != LivingState::HANGING,
-            "direct point ledge release unsupported"
-        );
         let phase = self.globals.native_command.point_phase;
         if !matches!(phase, 11 | 22)
             && self.point_destination_arrived(index, destination, tolerance, inputs)?

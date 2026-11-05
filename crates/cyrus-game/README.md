@@ -46,6 +46,15 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: direct `MoveMarker`, `MoveLocation` and `MovePosition` steps release
+hanging selected players through the shared ledge transition before retaining
+phase zero and lifecycle selector seven. Nonselected hanging receivers retain
+the pending move without selected-player services. Falling and queued motion
+bypass release. Synchronous sound failures retain the release transition's
+partial state. These rules follow preservation's
+[direct point contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#direct-point-moves-movemarker-movelocation-moveposition)
+and [ledge release](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ledge-hang-release).
+
 Verified: armed attacks blocked by a protected actor suppress opponent-unarmed
 taunts while the retained shared dialogue-cache entry remembers a sample,
 including a stopped channel. Clearing that sample allows ordered taunt selection
