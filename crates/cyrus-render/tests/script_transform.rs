@@ -141,6 +141,38 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
                 -3272.7998
             )
         );
+        let retained = app
+            .world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .take();
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), authored);
+        assert_eq!(
+            app.world()
+                .get::<GlobalTransform>(node)
+                .unwrap()
+                .translation(),
+            Vec3::ZERO
+        );
+        app.world_mut().resource_mut::<ScriptActors>().current = retained;
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), expected);
+
+        app.world_mut()
+            .get_mut::<ScriptBinding>(node)
+            .unwrap()
+            .actor
+            .generation = id.generation.wrapping_add(1);
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), authored);
+        app.world_mut()
+            .get_mut::<ScriptBinding>(node)
+            .unwrap()
+            .actor = id;
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), expected);
+
         app.world_mut().entity_mut(node).remove::<ScriptBinding>();
         app.update();
         assert_eq!(*app.world().get::<Visibility>(node).unwrap(), authored);
