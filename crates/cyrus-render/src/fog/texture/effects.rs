@@ -122,8 +122,17 @@ impl EffectDraw {
     pub const ALWAYS_DEPTH: u16 = 0x100;
     /// Depth test without depth writes.
     pub const NO_DEPTH_WRITE: u16 = 0x200;
-    /// Every flag this renderer draws; others are rejected as unsupported.
-    pub const SUPPORTED: u16 = 0x3e3;
+    /// FLAT attribute bits that flat submission never tests; they draw like cleared bits.
+    pub const IGNORED: u16 = 0x1e;
+    /// Every flag this renderer accepts; others, such as the upright flag `0x400`, are rejected
+    /// as unsupported.
+    pub const SUPPORTED: u16 = Self::BASE
+        | Self::IGNORED
+        | Self::MIRROR_X
+        | Self::MIRROR_Y
+        | Self::SPECIAL
+        | Self::ALWAYS_DEPTH
+        | Self::NO_DEPTH_WRITE;
 }
 
 impl TextureAnimations {

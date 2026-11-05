@@ -152,6 +152,17 @@ impl CombatControlState {
     pub const NO_ACTION: i32 = -1;
     /// Set by the attack starter before the attack executor runs.
     pub const STARTING_ACTION: i32 = 9;
+    // Actions 0 to 8 select the attack slot bound from DEF attributes 70 through 78
+    // (`attr_attack_single` to `attr_attack_disarm`, preservation SOUP.md).
+    pub const SINGLE_ACTION: i32 = 0;
+    pub const DOUBLE_ACTION: i32 = 1;
+    pub const TRIPLE_ACTION: i32 = 2;
+    pub const THRUST_ACTION: i32 = 3;
+    pub const LUNGE_ACTION: i32 = 4;
+    pub const LOW_ACTION: i32 = 5;
+    pub const JUMP_UP_ACTION: i32 = 6;
+    pub const JUMP_FORWARD_ACTION: i32 = 7;
+    pub const DISARM_ACTION: i32 = 8;
     /// Coordination state that waits for another actor to take its turn.
     pub const COORDINATION_WAITING: i32 = 0;
     /// Coordination state that takes the active attacking branch.

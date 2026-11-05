@@ -420,19 +420,29 @@ pub fn start_defence(
     movement: impl FnOnce(i32, i32) -> Result<()>,
     execute: impl FnOnce(&mut i32, &mut i32, i32) -> Result<()>,
 ) -> Result<bool> {
+    use super::combat::CombatControlState as Slot;
     if !input.slot_present {
         return Ok(false);
     }
     let admitted = match kind {
-        0 | 3 | 5 | 6 => *selected == -1,
-        1 | 2 => !input.selected_player || *selected == kind - 1,
-        4 | 8 => *selected == -1 && input.cooldown == 0 && !input.drawing && !input.sheathing,
+        Slot::SINGLE_ACTION | Slot::THRUST_ACTION | Slot::LOW_ACTION | Slot::JUMP_UP_ACTION => {
+            *selected == Slot::NO_ACTION
+        }
+        Slot::DOUBLE_ACTION | Slot::TRIPLE_ACTION => {
+            !input.selected_player || *selected == kind - 1
+        }
+        Slot::LUNGE_ACTION | Slot::DISARM_ACTION => {
+            *selected == Slot::NO_ACTION
+                && input.cooldown == 0
+                && !input.drawing
+                && !input.sheathing
+        }
         _ => false,
     };
     if !admitted {
         return Ok(false);
     }
-    if kind == 4 && input.selected_player {
+    if kind == Slot::LUNGE_ACTION && input.selected_player {
         movement(i32::from(input.fight_lunge_speed) << 8, 1)?;
     }
     *defence_selector = kind;

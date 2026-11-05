@@ -399,9 +399,9 @@ impl ScriptWorld {
     /// and otherwise unless an actor in that arc and range is a protected one (`attr_npc` nonzero,
     /// AI type neither combat nor dead): then the player speaks the opponent-unarmed taunt (the
     /// female variant when the target's `attr_woman` is nonzero, else the male one) and the move
-    /// does not start. The forward move (3) tests the protected actor against an arc six times as
-    /// wide. Arc and range come from the first
-    /// motion of the move's own attack slot; the receiver itself is not excluded.
+    /// does not start. The thrust move tests the protected actor against an arc six times as
+    /// wide. Arc and range come from the first motion of the move's own attack slot; the receiver
+    /// itself is not excluded.
     fn attack_reach_admits(
         &mut self,
         id: ScriptActorId,
@@ -475,7 +475,15 @@ impl ScriptWorld {
             let selector = actor.control.as_ref().map(|control| control.ai_type);
             if matches!(selector, Some(AiType::COMBAT | AiType::DEAD))
                 || actor.attributes[Attribute::Npc] == 0
-                || !in_reach(self, other, if kind == 3 { 6.0 } else { 1.0 })?
+                || !in_reach(
+                    self,
+                    other,
+                    if kind == CombatControlState::THRUST_ACTION {
+                        6.0
+                    } else {
+                        1.0
+                    },
+                )?
             {
                 continue;
             }
@@ -518,7 +526,12 @@ impl ScriptWorld {
             return Ok(());
         }
         // Only a first, second or third tap, or an idle record, may continue the combo.
-        if !matches!(combat.action, -1..=1) {
+        if !matches!(
+            combat.action,
+            CombatControlState::NO_ACTION
+                | CombatControlState::SINGLE_ACTION
+                | CombatControlState::DOUBLE_ACTION
+        ) {
             return Ok(());
         }
         let airborne = control.queued_motion != JumpMotion::NONE
@@ -536,7 +549,7 @@ impl ScriptWorld {
             if falling {
                 latches.jump_attack_pending = false;
                 latches.action.matches(latches.action.count, true);
-                Some(6)
+                Some(CombatControlState::JUMP_UP_ACTION)
             } else {
                 if !airborne {
                     latches.jump_attack_pending = false;
@@ -547,15 +560,15 @@ impl ScriptWorld {
             latches.action.matches(latches.action.count, true);
             None
         } else if latches.forward.matches(1, true) {
-            Some(4)
+            Some(CombatControlState::LUNGE_ACTION)
         } else if held.forward {
-            Some(3)
+            Some(CombatControlState::THRUST_ACTION)
         } else if latches.action.matches(2, true) {
-            Some(2)
+            Some(CombatControlState::TRIPLE_ACTION)
         } else if latches.action.matches(1, false) {
-            Some(1)
+            Some(CombatControlState::DOUBLE_ACTION)
         } else if latches.action.matches(0, false) {
-            Some(0)
+            Some(CombatControlState::SINGLE_ACTION)
         } else {
             latches.action.matches(latches.action.count, true);
             None

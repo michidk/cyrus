@@ -1067,7 +1067,7 @@ impl ScriptWorld {
                     .as_mut()
                     .and_then(|control| control.combat.as_mut())
                     .expect("admitted combat");
-                if combat.action != 0 {
+                if combat.action != CombatControlState::SINGLE_ACTION {
                     combat.action = CombatControlState::NO_ACTION;
                     combat.retained_action_indices = [-1; 2];
                 }

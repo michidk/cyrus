@@ -614,7 +614,7 @@ impl ScriptWorld {
             let (group, attribute) = if inputs.holding_weapon
                 || combat.is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE))
             {
-                if combat.is_some_and(|combat| combat.action == 4) {
+                if combat.is_some_and(|combat| combat.action == CombatControlState::LUNGE_ACTION) {
                     (AnimationGroup::ATTACK_LUNGE, Attribute::FightLungeSpeed)
                 } else {
                     (AnimationGroup::FIGHT_FORW, Attribute::FightForwardSpeed)
