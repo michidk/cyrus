@@ -4,6 +4,57 @@ use anyhow::Result;
 use cyrus_script::Native;
 use cyrus_world::transform::Matrix;
 
+/// A camera record's flag byte. The engine leaves the bits unnamed; the names describe each bit's
+/// documented use (preservation `docs/engine/SOUP.md`, camera sections).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CameraFlags(u8);
+
+impl CameraFlags {
+    /// Skips the movement-limiting stage.
+    pub const UNLIMITED_MOVEMENT: Self = Self(0x01);
+    /// Keeps the previously published camera angles instead of aiming at the target.
+    pub const KEEP_ORIENTATION: Self = Self(0x02);
+    /// The candidate position is the stored request added to the bound actor's position.
+    pub const RELATIVE_REQUEST: Self = Self(0x04);
+    /// The candidate position is the stored request itself; [`Self::RELATIVE_REQUEST`] wins.
+    pub const ABSOLUTE_REQUEST: Self = Self(0x08);
+    /// Both request bits.
+    pub const REQUEST: Self = Self(0x0c);
+    /// A selection change to this record cuts instead of gliding.
+    pub const CUT: Self = Self(0x20);
+    /// The pose collision stage runs for this record.
+    pub const COLLISION: Self = Self(0x40);
+    /// The pitch comes from the record's angle offset alone, not the bound actor's pitch.
+    pub const PITCH_OVERRIDE: Self = Self(0x80);
+
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    pub fn remove(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+}
+
+impl std::ops::BitOr for CameraFlags {
+    type Output = Self;
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
 /// One initialized camera record. Coordinates have eight fractional bits.
 /// Initialization must supply installed values; missing settings have no default here.
 #[derive(Clone, Debug)]
@@ -20,7 +71,7 @@ pub struct CameraRecord {
     /// Stored minimum, retaining the native stage-specific conversions.
     pub minimum_distance: i32,
     pub maximum_movement: u32,
-    pub flags: u8,
+    pub flags: CameraFlags,
 }
 
 impl CameraRecord {
@@ -34,17 +85,17 @@ impl CameraRecord {
         if self.distance.wrapping_shl(8) < self.minimum_distance {
             self.distance = self.minimum_distance;
         }
-        if self.flags & 0x04 != 0 {
+        if self.flags.contains(CameraFlags::RELATIVE_REQUEST) {
             return Ok(add(bound_position, self.request));
         }
-        if self.flags & 0x08 != 0 {
+        if self.flags.contains(CameraFlags::ABSOLUTE_REQUEST) {
             return Ok(self.request);
         }
         let offset = rotate(self.position_offset, bound_angles)?;
         let mut angles = std::array::from_fn(|axis| {
             i32::from(bound_angles[axis]).wrapping_sub(self.angle_offset[axis]) as u16 & 2047
         });
-        if self.flags & 0x80 != 0 {
+        if self.flags.contains(CameraFlags::PITCH_OVERRIDE) {
             angles[0] = self.angle_offset[0].wrapping_neg() as u16 & 2047;
         }
         let orbit = rotate([0, 0, self.distance.wrapping_shl(8).wrapping_neg()], angles)?;
@@ -211,7 +262,7 @@ impl CameraRecord {
             distance: 0,
             minimum_distance: 0,
             maximum_movement: 0,
-            flags: 0,
+            flags: CameraFlags::default(),
         }
     }
 
@@ -230,11 +281,13 @@ impl CameraRecord {
         match camera_move {
             0 => {
                 self.request = absolute;
-                self.flags = (self.flags | 0x08) & !0x04;
+                self.flags.remove(CameraFlags::RELATIVE_REQUEST);
+                self.flags.insert(CameraFlags::ABSOLUTE_REQUEST);
             }
             1 => {
                 self.request = relative;
-                self.flags = (self.flags | 0x04) & !0x08;
+                self.flags.remove(CameraFlags::ABSOLUTE_REQUEST);
+                self.flags.insert(CameraFlags::RELATIVE_REQUEST);
             }
             2 => {
                 self.distance = super::rounded_distance(orbit)? >> 8;
@@ -242,7 +295,8 @@ impl CameraRecord {
                 self.angle_offset = std::array::from_fn(|axis| {
                     angles[axis].wrapping_add(i32::from(bound_angles[axis])) & 2047
                 });
-                self.flags = (self.flags & !0x0c) | 0x01;
+                self.flags.remove(CameraFlags::REQUEST);
+                self.flags.insert(CameraFlags::UNLIMITED_MOVEMENT);
             }
             _ => {}
         }
@@ -266,7 +320,7 @@ impl CameraState {
         zero.maximum_movement = u32::try_from(settings.max_vel).map_err(|_| {
             anyhow::anyhow!("camera max_vel {}: negative unsupported", settings.max_vel)
         })?;
-        zero.flags = 0x40;
+        zero.flags = CameraFlags::COLLISION;
         let mut records: [CameraRecord; 9] = std::array::from_fn(|_| zero.clone());
         records[0].target_offset = settings.target_offset;
         for (index, mode) in settings.modes.iter().enumerate() {
@@ -288,8 +342,10 @@ impl CameraState {
             }
             match slot {
                 // The rope record adds the angle-override bit to the copied collision bit.
-                5 => record.flags |= 0xc0,
-                6 | 7 => record.flags = 0x40,
+                5 => record
+                    .flags
+                    .insert(CameraFlags::COLLISION | CameraFlags::PITCH_OVERRIDE),
+                6 | 7 => record.flags = CameraFlags::COLLISION,
                 _ => {}
             }
         }
@@ -393,7 +449,10 @@ impl CameraState {
         if !self.marks.snap {
             return true;
         }
-        self.records[self.selected.index()].flags & 0x20 == 0 && matches!(self.index.0, 0 | 3 | 4)
+        !self.records[self.selected.index()]
+            .flags
+            .contains(CameraFlags::CUT)
+            && matches!(self.index.0, 0 | 3 | 4)
     }
 
     /// The render step, once per frame after the pose update: glide the render camera towards
@@ -484,7 +543,7 @@ impl CameraState {
         live.distance = record.distance;
         live.minimum_distance = record.minimum_distance;
         live.maximum_movement = record.maximum_movement;
-        live.flags = 0x40;
+        live.flags = CameraFlags::COLLISION;
         self.selected = CameraSlot(0);
         self.index = CameraSlot(0);
         Ok(())
@@ -572,7 +631,7 @@ impl CameraState {
                     distance: record.distance,
                     minimum_distance: record.minimum_distance,
                     maximum_movement: record.maximum_movement,
-                    flags: record.flags,
+                    flags: record.flags.bits(),
                 })
                 .collect(),
             selected: self.selected.0,
@@ -611,7 +670,7 @@ impl CameraState {
                     distance: record.distance,
                     minimum_distance: record.minimum_distance,
                     maximum_movement: record.maximum_movement,
-                    flags: record.flags,
+                    flags: CameraFlags::from_bits(record.flags),
                 })
             })
             .collect::<Result<Vec<_>>>()?
@@ -923,7 +982,10 @@ impl CameraState {
     pub fn select(&mut self, slot: u8) -> Result<()> {
         let slot = CameraSlot::new(slot)?;
         if slot != self.selected
-            && (self.transition == 0 || self.records[usize::from(self.selected.0)].flags & 1 != 0)
+            && (self.transition == 0
+                || self.records[usize::from(self.selected.0)]
+                    .flags
+                    .contains(CameraFlags::UNLIMITED_MOVEMENT))
         {
             self.selected = slot;
             self.index = slot;
@@ -944,11 +1006,11 @@ impl CameraState {
         *counter = counter.wrapping_add(1);
         let flags = &mut self.records[usize::from(self.selected.0)].flags;
         if *counter == 1 && elapsed == 0 {
-            *flags |= 1;
+            flags.insert(CameraFlags::UNLIMITED_MOVEMENT);
             self.marks.snap = true;
             Ok(true)
         } else {
-            *flags &= !0x21;
+            flags.remove(CameraFlags::CUT | CameraFlags::UNLIMITED_MOVEMENT);
             self.marks.hold = true;
             Ok(false)
         }
@@ -963,7 +1025,7 @@ impl CameraState {
         let record = &mut self.records[self.selected.index()];
         record.position_offset = [0; 3];
         self.scripted_nesting = self.scripted_nesting.wrapping_add(1);
-        record.flags = 0x60;
+        record.flags = CameraFlags::CUT | CameraFlags::COLLISION;
         Ok(())
     }
 
@@ -1036,7 +1098,7 @@ impl CameraState {
         let record = &mut self.records[self.selected.index()];
         if running && pan.duration > 1 {
             let span = pan.duration - 1;
-            record.flags &= !0x0c;
+            record.flags.remove(CameraFlags::REQUEST);
             record.angle_offset = std::array::from_fn(|axis| {
                 i32::from(pan.bound_angles[axis])
                     .wrapping_add(saved.start[axis])
@@ -1053,8 +1115,8 @@ impl CameraState {
         }
         record.angle_offset = saved.final_offset;
         record.distance = saved.final_distance;
-        record.flags &= !0x01;
-        record.flags &= !0x20;
+        record.flags.remove(CameraFlags::UNLIMITED_MOVEMENT);
+        record.flags.remove(CameraFlags::CUT);
         self.show_player(pan.requested_slot, counter, elapsed)?;
         Ok(false)
     }
@@ -1084,7 +1146,9 @@ impl CameraState {
             *counter = next_counter;
             return Ok(false);
         }
-        next.records[next.selected.index()].flags |= 0x01;
+        next.records[next.selected.index()]
+            .flags
+            .insert(CameraFlags::UNLIMITED_MOVEMENT);
         next.marks.snap = true;
         next.marks.hold |= inputs.frame == VectorFrame::Actor;
         next.begin_scripted()?;
@@ -1097,7 +1161,7 @@ impl CameraState {
             vector = rotate(vector, inputs.bound_angles)?;
         }
         let record = &mut next.records[slot];
-        record.flags |= 0x01;
+        record.flags.insert(CameraFlags::UNLIMITED_MOVEMENT);
         let relative = add(vector, offset);
         record.request_move(
             inputs.camera_move,
@@ -1108,7 +1172,9 @@ impl CameraState {
         )?;
         update(&mut next)?;
         let slot = next.selected.index();
-        next.records[slot].flags &= !0x01;
+        next.records[slot]
+            .flags
+            .remove(CameraFlags::UNLIMITED_MOVEMENT);
         *self = next;
         *counter = next_counter;
         Ok(true)
@@ -1138,7 +1204,9 @@ impl CameraState {
         let mut next = self.clone();
         next.marks.forced_glide = true;
         if plain {
-            next.records[next.selected.index()].flags |= 0x40;
+            next.records[next.selected.index()]
+                .flags
+                .insert(CameraFlags::COLLISION);
         }
         if pan.duration < 0 {
             *self = next;
@@ -1187,11 +1255,12 @@ impl CameraState {
                 from.wrapping_add(to.wrapping_sub(from).wrapping_mul(elapsed) / span)
             };
             if pan.pan_type == 1 {
-                record.flags = (record.flags | 0x04) & !0x08;
+                record.flags.remove(CameraFlags::ABSOLUTE_REQUEST);
+                record.flags.insert(CameraFlags::RELATIVE_REQUEST);
                 record.request =
                     std::array::from_fn(|axis| step(saved.start_position[axis], relative[axis]));
             } else {
-                record.flags &= !0x0c;
+                record.flags.remove(CameraFlags::REQUEST);
                 record.angle_offset = std::array::from_fn(|axis| {
                     i32::from(inputs.bound_angles[axis]).wrapping_add(step(
                         saved.start_angles[axis],
@@ -1217,9 +1286,9 @@ impl CameraState {
             saved.vector,
             inputs.bound_angles,
         )?;
-        record.flags &= !0x01;
+        record.flags.remove(CameraFlags::UNLIMITED_MOVEMENT);
         if plain {
-            record.flags |= 0x40;
+            record.flags.insert(CameraFlags::COLLISION);
         }
         *self = next;
         *state = next_state;
@@ -1264,7 +1333,9 @@ impl CameraState {
                 .orient(position, look.bound_position, look.bound_angles)?
                 .angles;
             let record = &mut next.records[slot];
-            record.flags |= 0x0a;
+            record
+                .flags
+                .insert(CameraFlags::KEEP_ORIENTATION | CameraFlags::ABSOLUTE_REQUEST);
             record.request = position;
             next_state = Some(LookState {
                 start,
@@ -1289,7 +1360,7 @@ impl CameraState {
         } else {
             let position = next.current.position;
             let record = &mut next.records[next.selected.index()];
-            record.flags &= !0x02;
+            record.flags.remove(CameraFlags::KEEP_ORIENTATION);
             let relative = std::array::from_fn(|axis| {
                 position[axis]
                     .wrapping_sub(look.bound_position[axis])
@@ -1340,14 +1411,16 @@ impl CameraState {
                 .wrapping_sub(entry.position_offset[axis])
                 .wrapping_shl(8)
         });
-        entry.flags |= 0x21;
+        entry
+            .flags
+            .insert(CameraFlags::CUT | CameraFlags::UNLIMITED_MOVEMENT);
         next.marks.snap = true;
         next.begin_scripted()?;
         let slot = next.selected.index();
         next.records[slot].actor = inputs.actor;
         next.set_location_offsets(inputs.attributes);
         let record = &mut next.records[slot];
-        record.flags |= 0x01;
+        record.flags.insert(CameraFlags::UNLIMITED_MOVEMENT);
         record.request_move(
             inputs.camera_move,
             vector,
@@ -1357,7 +1430,9 @@ impl CameraState {
         )?;
         update(&mut next)?;
         let slot = next.selected.index();
-        next.records[slot].flags &= !0x01;
+        next.records[slot]
+            .flags
+            .remove(CameraFlags::UNLIMITED_MOVEMENT);
         *self = next;
         *counter = next_counter;
         Ok(true)
@@ -1406,7 +1481,10 @@ impl CameraState {
 
     /// Whether scripted ownership or the current record prevents reselection.
     pub fn reselection_inhibited(&self) -> bool {
-        self.scripted_active != 0 || self.records[usize::from(self.selected.0)].flags & 0x20 != 0
+        self.scripted_active != 0
+            || self.records[usize::from(self.selected.0)]
+                .flags
+                .contains(CameraFlags::CUT)
     }
 
     /// Publish a fully corrected pose and return the two logical actor position writes.
@@ -1465,7 +1543,7 @@ impl CameraState {
         limits: &MovementLimits,
     ) -> Result<bool> {
         let record = &self.records[usize::from(self.selected.0)];
-        if record.flags & 1 != 0 {
+        if record.flags.contains(CameraFlags::UNLIMITED_MOVEMENT) {
             return Ok(false);
         }
         let timing = |value: i32| value.wrapping_mul(limits.frame_scale.max(180)) >> 8;
@@ -1572,7 +1650,7 @@ impl CameraState {
         bound_angles: [u16; 3],
     ) -> Result<CameraPose> {
         let record = &mut self.records[usize::from(self.selected.0)];
-        if record.flags & 2 != 0 {
+        if record.flags.contains(CameraFlags::KEEP_ORIENTATION) {
             return Ok(CameraPose {
                 position,
                 angles: self.current.angles,
@@ -1713,7 +1791,8 @@ impl CameraState {
         let record = &mut state.records[usize::from(record_slot)];
         let mut position = record.candidate(inputs.bound_position, inputs.bound_angles)?;
         // A pan marks the frame to glide, which also skips the obstacle segment check.
-        let segment_enabled = record.flags & 0x40 != 0 && !state.marks.forced_glide;
+        let segment_enabled =
+            record.flags.contains(CameraFlags::COLLISION) && !state.marks.forced_glide;
         let target = if segment_enabled {
             Some(add(
                 inputs.bound_position,

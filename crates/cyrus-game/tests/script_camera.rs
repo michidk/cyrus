@@ -21,7 +21,7 @@ fn state() -> CameraState {
         distance: 0,
         minimum_distance: 0,
         maximum_movement: 1000,
-        flags: 0x4b,
+        flags: CameraFlags::from_bits(0x4b),
     };
     CameraState {
         records: std::array::from_fn(|_| record.clone()),
@@ -185,19 +185,19 @@ fn pose_preparation_orders_corrections_and_preserves_live_state_on_rejection() {
 #[test]
 fn selection_and_show_player_retain_transition_and_task_counter_rules() {
     let mut state = state();
-    state.records[1].flags = 0;
+    state.records[1].flags = CameraFlags::default();
     state.select(3).unwrap();
     assert_eq!(state.selected, CameraSlot::new(1).unwrap());
-    state.records[1].flags = 1;
+    state.records[1].flags = CameraFlags::UNLIMITED_MOVEMENT;
     state.select(3).unwrap();
     assert_eq!(state.selected, CameraSlot::new(3).unwrap());
     let mut counter = 0;
     assert!(state.show_player(Some(3), &mut counter, 0).unwrap());
     assert_eq!(counter, 1);
-    state.records[3].flags |= 0x20;
+    state.records[3].flags.insert(CameraFlags::CUT);
     assert!(state.reselection_inhibited());
     assert!(!state.show_player(Some(3), &mut counter, 1).unwrap());
-    assert_eq!(state.records[3].flags & 0x21, 0);
+    assert_eq!(state.records[3].flags.bits() & 0x21, 0);
     assert!(state.show_player(Some(9), &mut counter, 1).is_err());
     assert_eq!(counter, 2);
 }
@@ -308,18 +308,18 @@ fn request_precedence_and_distance_update_precede_geometry() {
     let mut record = state().records[0].clone();
     record.distance = 0;
     record.minimum_distance = 17;
-    record.flags = 0x0c;
+    record.flags = CameraFlags::REQUEST;
     assert_eq!(
         record.candidate([1000, 2000, 3000], [0; 3]).unwrap(),
         [1100, 2200, 3300]
     );
     assert_eq!(record.distance, 17);
-    record.flags = 0x08;
+    record.flags = CameraFlags::ABSOLUTE_REQUEST;
     assert_eq!(
         record.candidate([1000, 2000, 3000], [0; 3]).unwrap(),
         [100, 200, 300]
     );
-    record.flags = 0;
+    record.flags = CameraFlags::default();
     record.minimum_distance = 0;
     record.distance = 10;
     assert_eq!(
@@ -371,9 +371,13 @@ fn initial_records_follow_the_documented_installed_setting_mapping() {
         "zero keeps the record-zero rate"
     );
     assert_eq!(records[4].maximum_movement, 5);
-    assert_eq!(records[4].flags, 0x40);
-    assert_eq!(records[5].flags, 0xc0, "rope adds the angle-override bit");
-    assert_eq!(records[6].flags, 0x40);
+    assert_eq!(records[4].flags, CameraFlags::COLLISION);
+    assert_eq!(
+        records[5].flags,
+        CameraFlags::COLLISION | CameraFlags::PITCH_OVERRIDE,
+        "rope adds the angle-override bit"
+    );
+    assert_eq!(records[6].flags, CameraFlags::COLLISION);
     assert_eq!(
         records[8].angle_offset,
         [62, 5, 6],

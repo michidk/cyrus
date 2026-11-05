@@ -265,7 +265,9 @@ impl Fixture {
 
     fn limiter_suspended(&self) -> bool {
         let camera = self.world().camera().expect("camera session");
-        camera.records[camera.selected.index()].flags & 1 != 0
+        camera.records[camera.selected.index()]
+            .flags
+            .contains(cyrus_game::script::camera::CameraFlags::UNLIMITED_MOVEMENT)
     }
 
     /// Frames until the selected player's spatial state exists and has settled on the ground.

@@ -490,7 +490,7 @@ fn pose_stage_reproduces_the_original_without_obstacles() {
         record.distance = case.distance;
         record.minimum_distance = case.min_distance;
         record.maximum_movement = case.max_vel;
-        record.flags = case.flags;
+        record.flags = cyrus_game::script::camera::CameraFlags::from_bits(case.flags);
         let hits = CameraHitSelection {
             minimum_position: [0; 3],
             maximum_position: [0; 3],

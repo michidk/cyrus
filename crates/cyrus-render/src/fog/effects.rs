@@ -149,7 +149,7 @@ fn bind(
         source.validate()?;
         for (id, image) in &source.images {
             anyhow::ensure!(
-                image.flags & 1 != 0 && image.flags & !0x3e3 == 0,
+                image.flags & EffectDraw::BASE != 0 && image.flags & !EffectDraw::SUPPORTED == 0,
                 "effect texture {id}: drawing flags {:#x} unsupported",
                 image.flags
             );

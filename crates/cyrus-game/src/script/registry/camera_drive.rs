@@ -164,10 +164,14 @@ impl ScriptWorld {
             None::<MapTerrain<'_>>,
         )?;
         let selected = self.camera.as_ref().expect("initialized").selected.index();
-        self.camera.as_mut().expect("initialized").records[selected].flags |= 0x01;
+        self.camera.as_mut().expect("initialized").records[selected]
+            .flags
+            .insert(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
         let result = self.update_camera(hits, &settings, &mut geometry);
         let camera = self.camera.as_mut().expect("initialized");
-        camera.records[selected].flags &= !0x01;
+        camera.records[selected]
+            .flags
+            .remove(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
         let pose = result?;
         // Setup stores its first pose as both the current and the previous pose.
         camera.previous = camera.current;

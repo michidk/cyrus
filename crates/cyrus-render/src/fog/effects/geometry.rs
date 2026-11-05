@@ -9,17 +9,17 @@ use bevy::{
 
 pub(super) fn mesh(draw: &EffectDraw) -> Result<Mesh> {
     ensure!(
-        draw.flags & 1 != 0
-            && draw.flags & !0x3e3 == 0
-            && (draw.flags & 0x80 != 0) == draw.constant_rgb.is_some(),
+        draw.flags & EffectDraw::BASE != 0
+            && draw.flags & !EffectDraw::SUPPORTED == 0
+            && (draw.flags & EffectDraw::SPECIAL != 0) == draw.constant_rgb.is_some(),
         "effect billboard drawing flags {:#x} unsupported",
         draw.flags
     );
     let mut half = draw.half_extents / 20.0;
-    if draw.flags & 0x20 != 0 {
+    if draw.flags & EffectDraw::MIRROR_X != 0 {
         half.x = -half.x;
     }
-    if draw.flags & 0x40 != 0 {
+    if draw.flags & EffectDraw::MIRROR_Y != 0 {
         half.y = -half.y;
     }
     let mut mesh = Mesh::new(

@@ -185,7 +185,7 @@ fn run(
 }
 
 fn flags(world: &ScriptWorld, slot: usize) -> u8 {
-    world.camera().unwrap().records[slot].flags
+    world.camera().unwrap().records[slot].flags.bits()
 }
 
 const PLAYER: usize = 1;
@@ -442,7 +442,7 @@ fn show_player_pan_task_runs_to_completion_and_restores_the_selection() {
     assert_eq!(camera.selected.index(), 0, "showPlayer re-selects the slot");
     assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
     assert_eq!(camera.records[0].angle_offset, before.angle_offset);
-    assert_eq!(camera.records[0].flags, 0x40);
+    assert_eq!(camera.records[0].flags.bits(), 0x40);
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
     assert_eq!(world.flags(), [9], "the script continues after the pan");
 }
@@ -483,7 +483,7 @@ fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
         assert_eq!(records[1].position_offset, [-3, 2000, 3003]);
         assert_eq!(records[1].distance, 251);
         assert_eq!(records[3].target_offset, [41, 50, 63]);
-        assert_eq!(zero.flags, 0x40);
+        assert_eq!(zero.flags.bits(), 0x40);
     }
 }
 
@@ -555,7 +555,7 @@ fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
         [768 + position[0], -512 + position[1], 1280 + position[2]]
     );
     assert_eq!(
-        record.flags & 0x09,
+        record.flags.bits() & 0x09,
         0x08,
         "absolute request, no retained flag"
     );
@@ -665,7 +665,11 @@ fn look_task_fixes_the_orientation_until_it_finishes() {
     let hud = ScriptHud::default();
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
     let camera = world.camera().unwrap();
-    assert_eq!(camera.records[2].flags & 0x02, 0x02, "orientation fixed");
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0x02,
+        "orientation fixed"
+    );
     assert_eq!(camera.records[2].actor, world.id(0).unwrap());
     let mut passes = 0;
     while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
@@ -674,7 +678,11 @@ fn look_task_fixes_the_orientation_until_it_finishes() {
         run(&mut world, 0, TASKS, Some(&hud)).unwrap();
     }
     let camera = world.camera().unwrap();
-    assert_eq!(camera.records[2].flags & 0x02, 0, "orientation released");
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0,
+        "orientation released"
+    );
     assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
 }
 
@@ -1121,7 +1129,8 @@ mod live {
         assert_eq!(camera.selected.index(), 0);
         assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
         assert_eq!(
-            camera.records[0].flags, 0x40,
+            camera.records[0].flags.bits(),
+            0x40,
             "record zero is reset to its flag"
         );
         assert_eq!(

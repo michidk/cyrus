@@ -1839,7 +1839,7 @@ fn object_pans_reproduce_the_original_handlers() {
         record.distance = 321;
         record.minimum_distance = 77;
         record.maximum_movement = 800;
-        record.flags = case.initial_flags;
+        record.flags = cyrus_game::script::camera::CameraFlags::from_bits(case.initial_flags);
         let zero = state.records[0].clone();
         for slot in 1..9 {
             state.records[slot] = zero.clone();
@@ -1909,7 +1909,7 @@ fn object_pans_reproduce_the_original_handlers() {
                     request: scratch.request,
                     target_offset: scratch.target_offset,
                     distance: scratch.distance,
-                    flags: scratch.flags,
+                    flags: scratch.flags.bits(),
                 },
                 step.scratch,
                 "{label}: selected record"
@@ -1920,7 +1920,8 @@ fn object_pans_reproduce_the_original_handlers() {
                 "{label}: render marks"
             );
             assert_eq!(
-                state.records[0].flags, step.record_zero_flags,
+                state.records[0].flags.bits(),
+                step.record_zero_flags,
                 "{label}: record zero flags"
             );
         }

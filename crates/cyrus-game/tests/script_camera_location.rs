@@ -464,7 +464,7 @@ fn location_camera_reproduces_the_original_handler() {
         record.distance = 321;
         record.minimum_distance = 77;
         record.maximum_movement = 800;
-        record.flags = 0x40;
+        record.flags = cyrus_game::script::camera::CameraFlags::COLLISION;
         let zero = state.records[0].clone();
         for slot in 1..9 {
             state.records[slot] = zero.clone();
@@ -545,7 +545,7 @@ fn location_camera_reproduces_the_original_handler() {
                 request: scratch.request,
                 target_offset: scratch.target_offset,
                 distance: scratch.distance,
-                flags: scratch.flags,
+                flags: scratch.flags.bits(),
             },
             case.scratch,
             "{}: bound record",
@@ -559,7 +559,8 @@ fn location_camera_reproduces_the_original_handler() {
             case.name
         );
         assert_eq!(
-            state.records[0].flags, case.record_zero_flags,
+            state.records[0].flags.bits(),
+            case.record_zero_flags,
             "{}: record zero flags",
             case.name
         );

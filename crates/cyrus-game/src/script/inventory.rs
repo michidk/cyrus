@@ -11,6 +11,14 @@ pub(super) const SOUL_SWORD: u16 = 13;
 /// The charged weapon `chargeWeapon(1)` swaps in for the sabre.
 pub(super) const FLAMING_SABRE: u16 = 75;
 
+// ITEM.INI `flags` bits (preservation `config/item-ini.md`).
+/// Dropping the item removes it entirely, whatever the owned count.
+const REMOVE_ON_DROP: u32 = 1;
+/// Using the item drops one unit when the use changed its count.
+const DROP_AFTER_USE: u32 = 2;
+/// Using the item then empties it.
+const REMOVE_AFTER_USE: u32 = 4;
+
 /// Current item presentation. Ownership includes hidden items; cycling excludes them.
 pub struct InventoryView {
     pub selected: Option<u16>,
@@ -306,10 +314,10 @@ impl Inventory {
                 .with_context(|| format!("ITEM.INI drop_use_item_list[{id}] item {other}"))?;
         }
         let flags = self.items[&id].flags;
-        if self.count(id)? != before && flags & 2 != 0 {
+        if self.count(id)? != before && flags & DROP_AFTER_USE != 0 {
             self.remove(id, 1)?;
         }
-        if flags & 4 != 0 {
+        if flags & REMOVE_AFTER_USE != 0 {
             self.clear(id)?;
         }
         Ok(())
@@ -324,7 +332,7 @@ impl Inventory {
             .get_mut(&id)
             .with_context(|| format!("DropItem({id}): ITEM.INI definition absent"))?;
         item.count = item.count.saturating_sub(amount as u32);
-        if item.flags & 1 != 0 {
+        if item.flags & REMOVE_ON_DROP != 0 {
             item.count = 0;
         }
         self.remove_dependents(id, &mut Vec::new())

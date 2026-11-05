@@ -741,7 +741,9 @@ impl ScriptWorld {
                     .as_mut()
                     .context("yeahbaby Insert needs the camera session")?;
                 let selected = camera.selected.index();
-                camera.records[selected].flags |= 0x01;
+                camera.records[selected]
+                    .flags
+                    .insert(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
                 self.insert_camera_flag = true;
             }
             let frame_scale = script
@@ -765,7 +767,9 @@ impl ScriptWorld {
             self.insert_camera_flag = false;
             if let Some(camera) = self.camera.as_mut() {
                 let selected = camera.selected.index();
-                camera.records[selected].flags &= !0x01;
+                camera.records[selected]
+                    .flags
+                    .remove(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
             }
         }
         Ok(())

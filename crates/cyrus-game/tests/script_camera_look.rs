@@ -815,7 +815,7 @@ fn look_reproduces_the_original_handler() {
         record.distance = 321;
         record.minimum_distance = 77;
         record.maximum_movement = 800;
-        record.flags = 0x40;
+        record.flags = cyrus_game::script::camera::CameraFlags::COLLISION;
         let zero = state.records[0].clone();
         for slot in 1..9 {
             state.records[slot] = zero.clone();
@@ -874,7 +874,7 @@ fn look_reproduces_the_original_handler() {
                     request: scratch.request,
                     target_offset: scratch.target_offset,
                     distance: scratch.distance,
-                    flags: scratch.flags,
+                    flags: scratch.flags.bits(),
                 },
                 step.scratch,
                 "{label}: selected record"
@@ -885,7 +885,8 @@ fn look_reproduces_the_original_handler() {
                 "{label}: render marks"
             );
             assert_eq!(
-                state.records[0].flags, step.record_zero_flags,
+                state.records[0].flags.bits(),
+                step.record_zero_flags,
                 "{label}: record zero flags"
             );
         }

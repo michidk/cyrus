@@ -1244,7 +1244,12 @@ fn render_step_reproduces_the_original_glide_and_cut() {
         state.select(case.index as u8).unwrap();
         assert_eq!(state.index.index(), case.index);
         let flags = &mut state.records[state.selected.index()].flags;
-        *flags = 0x40 | if case.selected_flag_20 { 0x20 } else { 0 };
+        *flags = CameraFlags::COLLISION
+            | if case.selected_flag_20 {
+                CameraFlags::CUT
+            } else {
+                CameraFlags::default()
+            };
         state.scripted_active = case.scripted_active;
         state.current = CameraPose {
             position: case.published,

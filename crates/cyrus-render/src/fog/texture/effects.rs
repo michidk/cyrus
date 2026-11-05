@@ -59,7 +59,7 @@ impl PreparedEffects {
         let metadata = &self.metadata[&id];
         let alternate = descriptor & EnvironmentalEffect::ALTERNATE_DRAW != 0;
         ensure!(
-            alternate || metadata.flags & 0x80 == 0,
+            alternate || metadata.flags & EffectDraw::SPECIAL == 0,
             "effect texture {id}: special environmental-pool color inputs unsupported"
         );
         let (half_extents, radius) = metadata.shape(descriptor);
@@ -76,7 +76,11 @@ impl PreparedEffects {
                 255
             },
             alpha: if alternate { 140 } else { metadata.alpha },
-            flags: if alternate { 0x201 } else { metadata.flags },
+            flags: if alternate {
+                EffectDraw::NO_DEPTH_WRITE | EffectDraw::BASE
+            } else {
+                metadata.flags
+            },
             constant_rgb: None,
         })
     }
@@ -103,6 +107,23 @@ pub struct EffectDraw {
     /// Constant RGB, bypassing sampled texture RGB and model lighting for special actor flats.
     /// The indexed image remains bound with full texture alpha and disabled chroma rejection.
     pub constant_rgb: Option<[u8; 3]>,
+}
+
+impl EffectDraw {
+    /// Base drawing flag every billboard submission starts from.
+    pub const BASE: u16 = 0x01;
+    /// Negates the local X half extent.
+    pub const MIRROR_X: u16 = 0x20;
+    /// Negates the local Y half extent.
+    pub const MIRROR_Y: u16 = 0x40;
+    /// Constant-colour drawing that bypasses texture RGB and lighting.
+    pub const SPECIAL: u16 = 0x80;
+    /// Always-pass depth comparison.
+    pub const ALWAYS_DEPTH: u16 = 0x100;
+    /// Depth test without depth writes.
+    pub const NO_DEPTH_WRITE: u16 = 0x200;
+    /// Every flag this renderer draws; others are rejected as unsupported.
+    pub const SUPPORTED: u16 = 0x3e3;
 }
 
 impl TextureAnimations {
@@ -368,7 +389,7 @@ impl TextureAnimations {
                 binding.frames.len()
             );
         }
-        let special = metadata.flags & 0x80 != 0;
+        let special = metadata.flags & EffectDraw::SPECIAL != 0;
         let brightness = if special {
             255
         } else {
@@ -377,7 +398,12 @@ impl TextureAnimations {
             })? as u8
         };
         let alpha = if special { 255 } else { metadata.alpha };
-        let flags = metadata.flags | if special { 0x200 } else { 0 };
+        let flags = metadata.flags
+            | if special {
+                EffectDraw::NO_DEPTH_WRITE
+            } else {
+                0
+            };
         let state = self.states.get_mut(&binding.key).ok_or_else(|| {
             anyhow::anyhow!("actor flat texture {texture}: shared timeline absent")
         })?;

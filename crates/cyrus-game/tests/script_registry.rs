@@ -40585,7 +40585,9 @@ fn insert_suspends_the_camera_limiter_and_steps_forward_until_it_is_released() {
     let player = world.selected_player().unwrap();
     let limiter_off = |world: &ScriptWorld| {
         let camera = world.camera().unwrap();
-        camera.records[camera.selected.index()].flags & 1 != 0
+        camera.records[camera.selected.index()]
+            .flags
+            .contains(cyrus_game::script::camera::CameraFlags::UNLIMITED_MOVEMENT)
     };
     assert!(!limiter_off(&world));
     let insert = Some(ScriptKeys {

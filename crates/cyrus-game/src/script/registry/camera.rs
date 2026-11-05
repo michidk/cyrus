@@ -164,9 +164,13 @@ impl ScriptWorld {
         };
         state.current = first;
         state.previous = first;
-        state.records[0].flags |= 0x01;
+        state.records[0]
+            .flags
+            .insert(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
         service.update(&mut state, position, angles)?;
-        state.records[0].flags &= !0x01;
+        state.records[0]
+            .flags
+            .remove(crate::script::camera::CameraFlags::UNLIMITED_MOVEMENT);
         state.previous = state.current;
         state.reset_render();
         for index in [player, camera_actor] {
