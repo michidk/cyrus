@@ -52,8 +52,8 @@ that bind everyone are in `AGENTS.md`.
 - Take a whole issue as the unit of work and carry it to pushed code: implement,
   build, test, commit, push, close. Do not stop after authoring source, and do
   not spend a turn on audits, receipts, disk studies or status reports. Build
-  when needed, one Cargo build at a time across agents; if `df -h /` shows less
-  than 10 GB free, delete your own obsolete run output first. A docs-only commit
+  when needed, one Cargo build at a time across agents through hauler. Follow
+  `AGENTS.md`'s disk policy; free-space measurements never gate execution. A docs-only commit
   records a real engine fact, not a work boundary.
 - Keep progress, blockers, dependencies, acceptance criteria and handoffs in
   that issue. Record completed substeps as checked items with landing commits,

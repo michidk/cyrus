@@ -132,8 +132,11 @@ untracked working memory. Each crate has a `README.md` with its commands.
 - Work in whole issues. A unit of work ends in committed, pushed code or a
   precise external blocker, never in an audit, a receipt or authored-but-unbuilt
   source. Build when the change needs it: one Cargo build at a time across
-  agents, and stop if `df -h /` shows less than 10 GB free. Do not invent other
-  admission gates or ask other agents to approve edits; a claim on the issue and
+  agents through hauler, using the inherited target directory. Disk free-space
+  measurements are informational: never refuse admission or cancel a build
+  because of a disk-space threshold. Preserve source, evidence, needed outputs
+  and `.crate` caches. Do not invent other admission gates or ask other agents
+  to approve edits; a claim on the issue and
   `git pull --rebase` are the coordination.
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
