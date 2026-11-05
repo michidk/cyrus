@@ -344,13 +344,11 @@ pub struct ActorControlState {
     pub stable_local_position: [i32; 3],
     /// Accumulated sliding distance in Q8, cleared by ordinary jump entry.
     pub sliding_distance: i32,
-    /// Ordered body response marks; cleared only by their owning update stage.
-    pub body_response_flags: u8,
-    pub collision_transition_flags: u8,
-    /// Blocked-step byte followed by the remaining auxiliary response byte; both clear at wrapper cleanup.
-    pub collision_response_auxiliary: [u8; 2],
-    /// Allocator-zero collision-response age, incremented before clearing prior marks.
-    pub collision_response_age: u8,
+    /// Collision-response marks (`last_collide`); the script wrapper clears them after its work.
+    pub last_collide: super::CollisionFlags,
+    /// Allocator-zero collision-response age (`last_collide_count`), advanced before the wrapper
+    /// clears the marks.
+    pub last_collide_count: u8,
     /// Original low-word overlap contact identifier; zero also denotes a static placement.
     pub overlap_contact_identifier: u16,
     /// Kind of the last ground-response record the selected player's ordinary support query chose:
@@ -3779,10 +3777,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }],
             holding_weapon,
             torch: control.torch_burning != 0,
-            response_present: control.body_response_flags != 0
-                || control.collision_transition_flags != 0
-                || control.collision_response_auxiliary != [0, 0],
-            response_age: control.collision_response_age,
+            response_present: !control.last_collide.is_empty(),
+            response_age: control.last_collide_count,
         })
     }
 

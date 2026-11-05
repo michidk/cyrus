@@ -1,5 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
+use cyrus_game::script::CollisionFlags;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
@@ -7255,10 +7256,9 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
                 control.sliding_state,
                 control.falling_state,
                 control.queued_motion,
-                control.body_response_flags,
-                control.collision_transition_flags
+                control.last_collide.bits()
             ),
-            (0, JumpMotion::NONE, JumpMotion::NONE, 0, 0)
+            (0, JumpMotion::NONE, JumpMotion::NONE, 0)
         );
         world.prepare_spatial().unwrap();
         world.snapshot_spatial(id).unwrap();
@@ -7320,7 +7320,8 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
+                .last_collide
+                .bits(),
             2
         );
     }
@@ -7397,10 +7398,9 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 control.sliding_state,
                 control.falling_state,
                 control.queued_motion,
-                control.body_response_flags,
-                control.collision_transition_flags
+                control.last_collide.bits()
             ),
-            (0, JumpMotion::NONE, JumpMotion::NONE, 0, 0)
+            (0, JumpMotion::NONE, JumpMotion::NONE, 0)
         );
         world.prepare_spatial().unwrap();
         world.snapshot_spatial(id).unwrap();
@@ -7461,7 +7461,8 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
+                .last_collide
+                .bits(),
             flags
         );
         assert_eq!(world.actor_surface(id).unwrap(), 0);
@@ -7488,7 +7489,8 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
+                .last_collide
+                .bits(),
             flags | 4
         );
         world
@@ -7502,7 +7504,8 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
+                .last_collide
+                .bits(),
             flags | 4
         );
     }
@@ -8047,8 +8050,9 @@ fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() 
                 world.actors()[actor.index]
                     .control_state()
                     .unwrap()
-                    .body_response_flags,
-                4
+                    .last_collide
+                    .bits(),
+                0x400
             );
         }
         assert_eq!(
@@ -8095,15 +8099,17 @@ fn ordinary_overlap_touch_ends_pass_and_immovable_pair_rolls_back_without_new_ac
         world.actors()[0]
             .control_state()
             .unwrap()
-            .body_response_flags,
-        4
+            .last_collide
+            .bits(),
+        0x400
     );
     assert_eq!(
         world.actors()[1]
             .control_state()
             .unwrap()
-            .body_response_flags,
-        4
+            .last_collide
+            .bits(),
+        0x400
     );
     assert_eq!(
         world.actors()[0]
@@ -8156,15 +8162,17 @@ fn ordinary_overlap_touch_ends_pass_and_immovable_pair_rolls_back_without_new_ac
         world.actors()[0]
             .control_state()
             .unwrap()
-            .body_response_flags,
+            .last_collide
+            .bits(),
         0
     );
     assert_eq!(
         world.actors()[1]
             .control_state()
             .unwrap()
-            .body_response_flags,
-        4
+            .last_collide
+            .bits(),
+        0x400
     );
 }
 
@@ -8259,8 +8267,9 @@ fn ordinary_static_overlap_keeps_reverse_placement_order_and_tiny_response() {
                 world.actors()[0]
                     .control_state()
                     .unwrap()
-                    .body_response_flags,
-                4
+                    .last_collide
+                    .bits(),
+                0x400
             );
             assert_eq!(
                 world.actors()[0]
@@ -8284,7 +8293,8 @@ fn ordinary_static_overlap_keeps_reverse_placement_order_and_tiny_response() {
                 world.actors()[0]
                     .control_state()
                     .unwrap()
-                    .body_response_flags,
+                    .last_collide
+                    .bits(),
                 0
             );
         }
@@ -8508,7 +8518,11 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
             JumpMotion::NONE
         )
     );
-    assert_eq!(control.body_response_flags & 0x80, 0x80);
+    assert!(
+        control
+            .last_collide
+            .contains(CollisionFlags::LANDED_ON_ACTOR)
+    );
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
     // Living state 27 refuses a second landing; the pass still ends, and nothing else changes.
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
@@ -8741,8 +8755,9 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
-            if wrapper { 8 } else { 0 }
+                .last_collide
+                .bits(),
+            if wrapper { 0x800 } else { 0 }
         );
     }
 }
@@ -8807,7 +8822,7 @@ fn ordinary_bounds_query_commits_raw_normals_to_all_axes_and_marks_only_nonzero_
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_game::script::{OrdinaryObstacleQuery, ScriptInputs, ScriptStage};
     for (normal_scale, expected_position, expected_flags) in [
-        (0.25, [133632, 5248, 7936], 0x40),
+        (0.25, [133632, 5248, 7936], 0x4000),
         (0.75, [133632, 5120, 7680], 0),
     ] {
         let (mut world, data) = overlap_response_fixture(128, 0, 512);
@@ -8887,15 +8902,16 @@ fn ordinary_bounds_query_commits_raw_normals_to_all_axes_and_marks_only_nonzero_
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
+                .last_collide
+                .bits(),
             expected_flags
         );
-        assert_eq!(
-            world.actors()[0]
+        assert!(
+            !world.actors()[0]
                 .control_state()
                 .unwrap()
-                .collision_transition_flags,
-            0
+                .last_collide
+                .contains(CollisionFlags::ROLLBACK)
         );
         assert_eq!(
             world.model_presentation(id).unwrap().unwrap().pose.position,
@@ -8925,7 +8941,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
             living_state: LivingState::ORDINARY,
             falling_state: JumpMotion::NONE,
             queued_motion: JumpMotion::NONE,
-            body_response_flags: 0,
+            body_response_flags: CollisionFlags::default(),
             clear_motion_vector: false,
             fall_start: None,
         })
@@ -8949,7 +8965,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
                 living_state: LivingState::ORDINARY,
                 falling_state: JumpMotion::STANDING,
                 queued_motion: JumpMotion::NONE,
-                body_response_flags: 0x10,
+                body_response_flags: CollisionFlags::PREMETURE_JUMP_END,
                 clear_motion_vector: true,
                 fall_start: Some(ObstacleFallStart {
                     origin_y: 4352,
@@ -9012,7 +9028,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
                 living_state: LivingState::ORDINARY,
                 falling_state: falling,
                 queued_motion: JumpMotion::NONE,
-                body_response_flags: 0x10,
+                body_response_flags: CollisionFlags::PREMETURE_JUMP_END,
                 clear_motion_vector: clear,
                 fall_start: Some(ObstacleFallStart {
                     origin_y: 4352,
@@ -9031,7 +9047,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
             living_state: LivingState::ORDINARY,
             falling_state: JumpMotion::from_byte(0x81),
             queued_motion: JumpMotion::NONE,
-            body_response_flags: 0x20,
+            body_response_flags: CollisionFlags::PREMETURE_FALL,
             clear_motion_vector: false,
             fall_start: None
         })
@@ -9136,15 +9152,16 @@ fn ordinary_overlap_stage_repeats_obstacle_wrapper_after_weighted_static_separat
         world.actors()[0]
             .control_state()
             .unwrap()
-            .body_response_flags,
-        12
+            .last_collide
+            .bits(),
+        0xc00
     );
-    assert_eq!(
-        world.actors()[0]
+    assert!(
+        !world.actors()[0]
             .control_state()
             .unwrap()
-            .collision_transition_flags,
-        0
+            .last_collide
+            .contains(CollisionFlags::ROLLBACK)
     );
     assert_eq!(
         world.model_presentation(id).unwrap().unwrap().pose.position,
@@ -10761,13 +10778,12 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
         world.actors()[0].control_state().unwrap().movement_flags,
         48
     );
-    assert_eq!(
+    assert!(
         world.actors()[0]
             .control_state()
             .unwrap()
-            .collision_transition_flags
-            & 1,
-        1
+            .last_collide
+            .contains(CollisionFlags::ROLLBACK)
     );
     assert_eq!(
         events,
@@ -11532,11 +11548,8 @@ fn ordinary_script_wrapper_counts_and_clears_prior_response_marks() {
     );
     let state = world.actors()[0].control_state().unwrap();
     assert_eq!(
-        (
-            state.collision_response_age,
-            state.collision_transition_flags
-        ),
-        (0, 1)
+        (state.last_collide_count, state.last_collide.bits()),
+        (0, CollisionFlags::ROLLBACK.bits())
     );
     for (ticks, expected) in [(1, 1), (255, 0), (200, 200), (7, 200)] {
         mark(&mut world);
@@ -11544,23 +11557,18 @@ fn ordinary_script_wrapper_counts_and_clears_prior_response_marks() {
             .finish_ordinary_script_response(id, Some(ticks))
             .unwrap();
         let state = world.actors()[0].control_state().unwrap();
-        assert_eq!(state.collision_response_age, expected);
+        assert_eq!(state.last_collide_count, expected);
         assert_eq!(
-            (
-                state.body_response_flags,
-                state.collision_transition_flags,
-                state.overlap_contact_identifier
-            ),
-            (0, 0, 0)
+            (state.last_collide.bits(), state.overlap_contact_identifier),
+            (0, 0)
         );
-        assert_eq!(state.collision_response_auxiliary, [0; 2]);
     }
     world.finish_ordinary_script_response(id, None).unwrap();
     assert_eq!(
         world.actors()[0]
             .control_state()
             .unwrap()
-            .collision_response_age,
+            .last_collide_count,
         0
     );
 }
@@ -11671,9 +11679,9 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
             state.movement_flags,
             state.falling_state,
             state.sliding_state,
-            state.collision_transition_flags
+            state.last_collide.bits()
         ),
-        (0, JumpMotion::NONE, 0, 1)
+        (0, JumpMotion::NONE, 0, CollisionFlags::ROLLBACK.bits())
     );
     assert_eq!(
         events,
@@ -11704,10 +11712,7 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
         .unwrap();
     let state = world.actors()[0].control_state().unwrap();
     assert_eq!(
-        (
-            state.collision_response_age,
-            state.collision_transition_flags
-        ),
+        (state.last_collide_count, state.last_collide.bits()),
         (3, 0)
     );
 }
@@ -15289,10 +15294,10 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
         .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
         .unwrap();
     for (direction, expected) in [
-        (OrdinaryStepDirection::Forward, [0x80, 0]),
-        (OrdinaryStepDirection::Left, [0xa0, 0]),
-        (OrdinaryStepDirection::Right, [0xe0, 0]),
-        (OrdinaryStepDirection::Backward, [0xe0, 1]),
+        (OrdinaryStepDirection::Forward, 0x80),
+        (OrdinaryStepDirection::Left, 0xa0),
+        (OrdinaryStepDirection::Right, 0xe0),
+        (OrdinaryStepDirection::Backward, 0x1e0),
     ] {
         assert!(
             !world
@@ -15311,34 +15316,18 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
             "{direction:?}"
         );
         assert_eq!(world.spatial(player).unwrap().local.position, position);
-        assert_eq!(
-            [
-                world.actors()[index]
-                    .control_state()
-                    .unwrap()
-                    .body_response_flags,
-                world.actors()[index]
-                    .control_state()
-                    .unwrap()
-                    .collision_transition_flags,
-            ],
-            expected
-        );
         let control = world.actors()[index].control_state().unwrap();
-        assert_eq!(control.collision_response_auxiliary, [0, 0]);
+        assert_eq!(control.last_collide.bits(), expected);
         assert!(cyrus_game::script::alignment::fallback_response(
-            control.body_response_flags,
-            control.collision_transition_flags
+            control.last_collide
         ));
     }
     world
         .finish_ordinary_script_response(player, Some(9))
         .unwrap();
     let control = world.actors()[index].control_state().unwrap();
-    assert_eq!(control.collision_response_age, 9);
-    assert_eq!(control.collision_response_auxiliary, [0, 0]);
-    assert_eq!(control.body_response_flags, 0);
-    assert_eq!(control.collision_transition_flags, 0);
+    assert_eq!(control.last_collide_count, 9);
+    assert!(control.last_collide.is_empty());
 }
 
 #[test]
@@ -15451,7 +15440,8 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         world.actors()[index]
             .control_state()
             .unwrap()
-            .body_response_flags,
+            .last_collide
+            .bits(),
         4
     );
     let query = || OrdinaryGroundQuery {
@@ -21125,7 +21115,8 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
         world.actors()[id.index]
             .control_state()
             .unwrap()
-            .body_response_flags,
+            .last_collide
+            .bits(),
         0x80
     );
     world.finish_ordinary_script_response(id, Some(1)).unwrap();
@@ -21133,7 +21124,8 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
         world.actors()[id.index]
             .control_state()
             .unwrap()
-            .body_response_flags,
+            .last_collide
+            .bits(),
         0
     );
 }
@@ -21153,9 +21145,9 @@ fn directional_body_refusal_retains_markers_and_skips_support_without_translatio
         .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
         .unwrap();
     for (direction, markers) in [
-        (OrdinaryStepDirection::Left, [0x20, 0]),
-        (OrdinaryStepDirection::Right, [0x60, 0]),
-        (OrdinaryStepDirection::Backward, [0x60, 1]),
+        (OrdinaryStepDirection::Left, 0x20),
+        (OrdinaryStepDirection::Right, 0x60),
+        (OrdinaryStepDirection::Backward, 0x160),
     ] {
         assert!(
             !world
@@ -21183,16 +21175,11 @@ fn directional_body_refusal_retains_markers_and_skips_support_without_translatio
         );
         assert_eq!(world.spatial(id).unwrap().local.position, saved);
         assert_eq!(
-            [
-                world.actors()[id.index]
-                    .control_state()
-                    .unwrap()
-                    .body_response_flags,
-                world.actors()[id.index]
-                    .control_state()
-                    .unwrap()
-                    .collision_transition_flags,
-            ],
+            world.actors()[id.index]
+                .control_state()
+                .unwrap()
+                .last_collide
+                .bits(),
             markers
         );
     }
@@ -21281,8 +21268,9 @@ fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
                 world.actors()[0]
                     .control_state()
                     .unwrap()
-                    .collision_response_auxiliary,
-                [0x95, 0xA2]
+                    .last_collide
+                    .bits(),
+                0xA200_0095
             );
         }
     }
@@ -21383,7 +21371,8 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                     world.actors()[id.index]
                         .control_state()
                         .unwrap()
-                        .body_response_flags,
+                        .last_collide
+                        .bits(),
                     0
                 );
                 break;
@@ -21394,7 +21383,8 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                 world.actors()[id.index]
                     .control_state()
                     .unwrap()
-                    .body_response_flags,
+                    .last_collide
+                    .bits(),
                 0x80
             );
             assert_eq!(
@@ -22188,7 +22178,8 @@ fn synchronous_walk_forward_uses_live_body_refusal_without_creating_a_task() {
         world.actors()[0]
             .control_state()
             .unwrap()
-            .body_response_flags,
+            .last_collide
+            .bits(),
         0x80
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
@@ -28698,8 +28689,8 @@ fn grounded_overlap_admits_every_living_state_and_preserves_support_contact_orde
             );
             let own = world.actors()[0].control_state().unwrap();
             let other_control = world.actors()[1].control_state().unwrap();
-            assert_eq!(own.body_response_flags, if bypass { 0 } else { 4 });
-            assert_eq!(other_control.body_response_flags, 4);
+            assert_eq!(own.last_collide.bits(), if bypass { 0 } else { 0x400 });
+            assert_eq!(other_control.last_collide.bits(), 0x400);
             if bypass || offset == 83 {
                 assert_eq!(
                     [
@@ -28778,8 +28769,9 @@ fn grounded_static_overlap_uses_weighted_response_for_every_living_state() {
             world.actors()[0]
                 .control_state()
                 .unwrap()
-                .body_response_flags,
-            4
+                .last_collide
+                .bits(),
+            0x400
         );
     }
 }
@@ -38586,8 +38578,9 @@ fn selected_overlap_small_contacts_precede_unavailable_global_owners() {
             world.actors()[index]
                 .control_state()
                 .unwrap()
-                .body_response_flags
-                & 4,
+                .last_collide
+                .bits()
+                & 0x400,
             0
         );
     }

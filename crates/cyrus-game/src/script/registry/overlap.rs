@@ -280,7 +280,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated overlap control")
-                .body_response_flags |= 4;
+                .last_collide |= crate::script::CollisionFlags::MANAGED_COLLISION;
         }
         if separation >= 3 && support_bypass {
             return Ok(OrdinaryOverlapMotion::NoContact);
@@ -354,7 +354,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated overlap control");
-            other_control.body_response_flags |= 4;
+            other_control.last_collide |= crate::script::CollisionFlags::MANAGED_COLLISION;
             other_control.overlap_contact_identifier = actor_identifier;
         }
         if matches!(
@@ -365,7 +365,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated overlap control");
-            control.body_response_flags |= 4;
+            control.last_collide |= crate::script::CollisionFlags::MANAGED_COLLISION;
             control.overlap_contact_identifier = other_identifier;
         }
         Ok(response)
@@ -432,7 +432,7 @@ impl ScriptWorld {
             && other_has_group;
         let actor = &mut self.actors[id.index];
         let control = actor.control.as_mut().expect("checked above");
-        control.body_response_flags |= 0x80;
+        control.last_collide |= crate::script::CollisionFlags::LANDED_ON_ACTOR;
         if admitted {
             control.sliding_state = 0;
             control.falling_state = JumpMotion::NONE;
@@ -531,7 +531,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated static overlap control");
-            control.body_response_flags |= 4;
+            control.last_collide |= crate::script::CollisionFlags::MANAGED_COLLISION;
             control.overlap_contact_identifier = 0;
         }
         Ok(response)

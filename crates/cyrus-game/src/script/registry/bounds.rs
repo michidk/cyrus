@@ -148,7 +148,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .context("ordinary bounds control unavailable")?
-                .body_response_flags |= 0x40;
+                .last_collide |= crate::script::CollisionFlags::CROSS_POLYGON_PUSH;
         }
         Ok(())
     }

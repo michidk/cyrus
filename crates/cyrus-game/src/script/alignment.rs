@@ -131,10 +131,17 @@ pub fn level_roll(roll: u16, ticks: u32) -> u16 {
     }
 }
 
-/// Whether the player's packed collision-response word carries a mark that makes alignment fall
-/// back: the `0x01e2` mask over the body-response byte followed by the transition byte.
-pub fn fallback_response(body: u8, transition: u8) -> bool {
-    body & 0xe2 != 0 || transition & 1 != 0
+/// Whether the player's collision-response word carries a mark that makes alignment fall back:
+/// the `0x01e2` mask, a wall hit or any directional step refusal.
+pub fn fallback_response(flags: super::CollisionFlags) -> bool {
+    use super::CollisionFlags as F;
+    flags.intersects(
+        F::HIT_WALL
+            | F::CHECK_LEFT_FAIL
+            | F::CHECK_RIGHT_FAIL
+            | F::CHECK_FORWARD_FAIL
+            | F::CHECK_BACKWARD_FAIL,
+    )
 }
 
 /// Whether a collision response older than eight updates abandons alignment: a nonzero packed
@@ -1370,12 +1377,18 @@ mod tests {
 
     #[test]
     fn collision_responses_gate_alignment() {
-        assert!(!fallback_response(0, 0));
-        assert!(!fallback_response(0x1d, 0xfe));
-        for mark in [0x02, 0x20, 0x40, 0x80] {
-            assert!(fallback_response(mark, 0), "body mark {mark:#x}");
+        use crate::script::CollisionFlags as F;
+        assert!(!fallback_response(F::default()));
+        assert!(!fallback_response(F::from_bits(!0x01e2)));
+        for mark in [
+            F::HIT_WALL,
+            F::CHECK_LEFT_FAIL,
+            F::CHECK_RIGHT_FAIL,
+            F::CHECK_FORWARD_FAIL,
+            F::CHECK_BACKWARD_FAIL,
+        ] {
+            assert!(fallback_response(mark), "mark {:#x}", mark.bits());
         }
-        assert!(fallback_response(0, 1));
         assert!(!response_expired(true, 8));
         assert!(response_expired(true, 9));
         assert!(!response_expired(false, 200));

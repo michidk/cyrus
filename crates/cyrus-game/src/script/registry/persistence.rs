@@ -91,6 +91,7 @@ struct CombatSnapshot {
 
 impl ControlSnapshot {
     fn capture(control: &ActorControlState) -> Self {
+        let last_collide = control.last_collide.bits().to_le_bytes();
         Self {
             navigation: control.navigation,
             point_command: control.point_command,
@@ -115,10 +116,11 @@ impl ControlSnapshot {
             stable_position_valid: control.stable_position_valid,
             stable_local_position: control.stable_local_position,
             sliding_distance: control.sliding_distance,
-            body_response_flags: control.body_response_flags,
-            collision_transition_flags: control.collision_transition_flags,
-            collision_response_auxiliary: control.collision_response_auxiliary,
-            collision_response_age: control.collision_response_age,
+            // Snapshots keep the word's bytes in their earlier fields.
+            body_response_flags: last_collide[1],
+            collision_transition_flags: last_collide[2],
+            collision_response_auxiliary: [last_collide[0], last_collide[3]],
+            collision_response_age: control.last_collide_count,
             overlap_contact_identifier: control.overlap_contact_identifier,
             rope_attached: control.rope_attached,
             rope_speed: control.rope_speed,
@@ -176,10 +178,13 @@ impl ControlSnapshot {
             stable_position_valid: self.stable_position_valid,
             stable_local_position: self.stable_local_position,
             sliding_distance: self.sliding_distance,
-            body_response_flags: self.body_response_flags,
-            collision_transition_flags: self.collision_transition_flags,
-            collision_response_auxiliary: self.collision_response_auxiliary,
-            collision_response_age: self.collision_response_age,
+            last_collide: crate::script::CollisionFlags::from_bits(u32::from_le_bytes([
+                self.collision_response_auxiliary[0],
+                self.body_response_flags,
+                self.collision_transition_flags,
+                self.collision_response_auxiliary[1],
+            ])),
+            last_collide_count: self.collision_response_age,
             overlap_contact_identifier: self.overlap_contact_identifier,
             ground_kind: 0,
             rope_attached: self.rope_attached,

@@ -172,8 +172,10 @@ pub use sound::ScriptSound;
 pub mod alignment;
 /// `BounceObject`'s launch state machine.
 pub mod bounce;
+mod collision_flags;
 mod jump_motion;
 mod living_state;
+pub use collision_flags::CollisionFlags;
 pub use jump_motion::JumpMotion;
 pub use living_state::LivingState;
 mod group_sync;

@@ -307,10 +307,8 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
             .as_ref();
         control.is_some_and(|control| {
             alignment::response_expired(
-                control.body_response_flags != 0
-                    || control.collision_transition_flags != 0
-                    || control.collision_response_auxiliary != [0, 0],
-                control.collision_response_age,
+                !control.last_collide.is_empty(),
+                control.last_collide_count,
             )
         })
     }
@@ -472,18 +470,13 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
         self.host.registry.actors[self.player.index]
             .control
             .as_ref()
-            .is_some_and(|control| {
-                alignment::fallback_response(
-                    control.body_response_flags,
-                    control.collision_transition_flags,
-                )
-            })
+            .is_some_and(|control| alignment::fallback_response(control.last_collide))
     }
     fn response_age_over(&self) -> bool {
         self.host.registry.actors[self.player.index]
             .control
             .as_ref()
-            .is_some_and(|control| control.collision_response_age > 8)
+            .is_some_and(|control| control.last_collide_count > 8)
     }
     fn set_hook_flag(&mut self) {
         if let Some(control) = self.host.registry.actors[self.player.index]

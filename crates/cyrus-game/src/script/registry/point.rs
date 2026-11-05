@@ -317,7 +317,9 @@ impl ScriptWorld {
         // Hit reaction: a body response mark from another actor (contact identifier other than
         // one) outside phase 27 draws one raw value; its low two bits pick a retarget of the
         // previous next node (phase 27), a pause of 36 ticks, or nothing.
-        if control.body_response_flags & 4 != 0
+        if control
+            .last_collide
+            .contains(crate::script::CollisionFlags::MANAGED_COLLISION)
             && self.globals.native_command.point_phase != 27
             && control.overlap_contact_identifier != 1
         {
@@ -344,7 +346,9 @@ impl ScriptWorld {
             .as_ref()
             .expect("admitted point control");
         let shared = &mut self.globals.native_command;
-        shared.point_counter = if control.collision_response_auxiliary[0] & 128 != 0
+        shared.point_counter = if control
+            .last_collide
+            .contains(crate::script::CollisionFlags::CHECK_FORWARD_FAIL)
             && control.navigation.next != -1
             && control.navigation.map.is_some()
         {
@@ -591,16 +595,19 @@ impl ScriptWorld {
             "ordinary combat routed point navigation unsupported: map selection"
         );
         actor.attributes[Attribute::Collide] = 12;
-        let transition = control.collision_transition_flags & 1 != 0;
-        let (age, stable) = (
-            control.collision_response_age,
-            control.stable_local_position,
-        );
+        let transition = control
+            .last_collide
+            .contains(crate::script::CollisionFlags::ROLLBACK);
+        let (age, stable) = (control.last_collide_count, control.stable_local_position);
         // A blocked-step or body response mark drops the route: held nodes are released and
         // routing restarts from phase zero. A transition mark releases them too; a fresh one
         // returns the actor to its stable position, an older one selects phase 24.
-        let restart = control.collision_response_auxiliary[0] & 0x82 != 0
-            || control.body_response_flags & 0x0a != 0;
+        let restart = control.last_collide.intersects(
+            crate::script::CollisionFlags::HIT_WALL
+                | crate::script::CollisionFlags::CHECK_FORWARD_FAIL
+                | crate::script::CollisionFlags::CHECK_RUN_FORWARD_FAIL
+                | crate::script::CollisionFlags::VALIDATE_FORWARD_FAILED,
+        );
         if transition {
             self.release_held_walk_nodes(id)?;
             if age < 16 {

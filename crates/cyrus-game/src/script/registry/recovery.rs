@@ -44,24 +44,19 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        let marked = control.body_response_flags != 0
-            || control.collision_transition_flags != 0
-            || control.collision_response_auxiliary != [0; 2];
+        let marked = !control.last_collide.is_empty();
         if !marked {
-            control.collision_response_age = 0;
-        } else if control.collision_response_age < 200 {
+            control.last_collide_count = 0;
+        } else if control.last_collide_count < 200 {
             let ticks = nominal_ticks.with_context(|| {
                 format!(
                     "world {} instance {index}: ordinary script response requires nominal_ticks",
                     self.world
                 )
             })?;
-            control.collision_response_age =
-                control.collision_response_age.wrapping_add(ticks as u8);
+            control.last_collide_count = control.last_collide_count.wrapping_add(ticks as u8);
         }
-        control.body_response_flags = 0;
-        control.collision_transition_flags = 0;
-        control.collision_response_auxiliary = [0; 2];
+        control.last_collide = crate::script::CollisionFlags::default();
         control.overlap_contact_identifier = 0;
         Ok(())
     }
@@ -136,7 +131,7 @@ impl ScriptWorld {
             return Ok(false);
         }
         let position = control.stable_local_position;
-        let age = control.collision_response_age;
+        let age = control.last_collide_count;
         let prepared = self.prepare_stable_recovery_query(
             id,
             input.scene,
@@ -170,7 +165,7 @@ impl ScriptWorld {
             .expect("validated stable recovery control");
         control.falling_state = JumpMotion::NONE;
         control.sliding_state = 0;
-        control.collision_transition_flags |= 1;
+        control.last_collide |= crate::script::CollisionFlags::ROLLBACK;
         let heading_delta = input.random.rnd(turn * 4)? - turn * 2;
         let spatial = self
             .spatial
@@ -237,7 +232,7 @@ impl ScriptWorld {
             .expect("validated stable recovery control");
         control.falling_state = JumpMotion::NONE;
         control.sliding_state = 0;
-        control.collision_transition_flags |= 1;
+        control.last_collide |= crate::script::CollisionFlags::ROLLBACK;
         self.spatial
             .as_mut()
             .context("selected stable recovery spatial state unavailable")?
@@ -374,7 +369,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated water rollback control")
-            .collision_transition_flags |= 1;
+            .last_collide |= crate::script::CollisionFlags::ROLLBACK;
         Ok(true)
     }
 }

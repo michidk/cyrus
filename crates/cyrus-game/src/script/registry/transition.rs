@@ -33,7 +33,7 @@ pub struct ObstacleTransition {
     pub living_state: LivingState,
     pub falling_state: JumpMotion,
     pub queued_motion: JumpMotion,
-    pub body_response_flags: u8,
+    pub body_response_flags: crate::script::CollisionFlags,
     pub clear_motion_vector: bool,
     pub fall_start: Option<ObstacleFallStart>,
 }
@@ -63,18 +63,18 @@ pub fn ordinary_obstacle_transition(input: ObstacleTransitionInput) -> Option<Ob
         living_state: living,
         falling_state: input.falling_state,
         queued_motion: queued,
-        body_response_flags: 0,
+        body_response_flags: crate::script::CollisionFlags::default(),
         clear_motion_vector: clear,
         fall_start: None,
     };
     if queued == JumpMotion::NONE {
         if input.falling_state != JumpMotion::NONE {
-            result.body_response_flags = 0x20;
+            result.body_response_flags = crate::script::CollisionFlags::PREMETURE_FALL;
             result.falling_state =
                 JumpMotion::STANDING.with_arms_raised(input.falling_state.arms_raised());
         }
     } else {
-        result.body_response_flags = 0x10;
+        result.body_response_flags = crate::script::CollisionFlags::PREMETURE_JUMP_END;
         result.falling_state = JumpMotion::STANDING.with_arms_raised(queued.arms_raised());
         result.queued_motion = JumpMotion::NONE;
         result.fall_start = Some(ObstacleFallStart {
@@ -183,7 +183,7 @@ impl ScriptWorld {
         control.living_state = transition.living_state;
         control.falling_state = transition.falling_state;
         control.queued_motion = transition.queued_motion;
-        control.body_response_flags |= transition.body_response_flags;
+        control.last_collide |= transition.body_response_flags;
         if transition.clear_motion_vector {
             control.motion_vector = [0; 3];
         }
@@ -372,7 +372,7 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .context("ordinary obstacle wrapper control unavailable")?
-                        .body_response_flags |= 8;
+                        .last_collide |= crate::script::CollisionFlags::VALIDATE_FORWARD_FAILED;
                     ensure!(
                         !(environment.auto_grab && environment.selected_player == Some(id)),
                         "world {} instance {}: selected-player obstacle auto-grab service unavailable",

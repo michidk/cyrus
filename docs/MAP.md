@@ -155,6 +155,7 @@ module where it is defined and regenerate.
 - `src/script/attributes.rs` — Immediate attribute services. Runtime writes retain the actor byte; family/model
 - `src/script/bounce.rs` — `BounceObject`: the launch task that throws an actor up and forward and hands the descent to the
 - `src/script/camera.rs` — Retained logical camera records; pose correction and publication share this owner.
+- `src/script/collision_flags.rs` — An actor's collision-response word (`last_collide`): step-status, body-response and
 - `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
 - `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.

@@ -6109,7 +6109,7 @@ fn walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll(
         let control = world.actors()[id.index].control_state().unwrap();
         assert_eq!(control.motion_direction, 6);
         assert_eq!(control.movement_flags, ((index + 1).min(3) as u8) << 4);
-        assert_eq!(control.collision_response_auxiliary[0], 0);
+        assert_eq!(control.last_collide.bits() & 0xff, 0);
     }
     assert_eq!(
         world.actors()[id.index].runtime().unwrap().active_tasks(),

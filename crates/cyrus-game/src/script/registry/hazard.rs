@@ -16,10 +16,14 @@ pub enum OrdinaryStepDirection {
 impl OrdinaryStepDirection {
     pub(super) fn mark_blocked_response(self, control: &mut super::ActorControlState) {
         match self {
-            Self::Forward => control.body_response_flags |= 0x80,
-            Self::Left => control.body_response_flags |= 0x20,
-            Self::Right => control.body_response_flags |= 0x40,
-            Self::Backward => control.collision_transition_flags |= 0x01,
+            Self::Forward => {
+                control.last_collide |= crate::script::CollisionFlags::CHECK_FORWARD_FAIL
+            }
+            Self::Left => control.last_collide |= crate::script::CollisionFlags::CHECK_LEFT_FAIL,
+            Self::Right => control.last_collide |= crate::script::CollisionFlags::CHECK_RIGHT_FAIL,
+            Self::Backward => {
+                control.last_collide |= crate::script::CollisionFlags::CHECK_BACKWARD_FAIL
+            }
         }
     }
 }

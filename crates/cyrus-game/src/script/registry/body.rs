@@ -99,7 +99,7 @@ impl ScriptWorld {
 
     /// Apply residual normals after the primary and overlap stages. Uses the
     /// post-response horizontal distance with the installed push minimum.
-    /// A nonempty contact set marks bit four even when its horizontal normal
+    /// A nonempty contact set marks `POLYGON_PUSH_OUT` even when its horizontal normal
     /// cancels. This does not perform later support following or axis restoration.
     pub fn resolve_ordinary_residual_contacts(
         &mut self,
@@ -150,7 +150,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated ordinary control")
-                .body_response_flags |= 4;
+                .last_collide |= crate::script::CollisionFlags::POLYGON_PUSH_OUT;
         }
         Ok(())
     }
@@ -204,7 +204,7 @@ impl ScriptWorld {
             motion::displacement_heading(attempted[0] - previous[0], attempted[2] - previous[2])
         };
         let mut current = attempted;
-        let mut flags = control.body_response_flags;
+        let mut flags = control.last_collide;
         for body in contacts {
             if body.classification == 4
                 || contact::facing_difference(movement, body.normal).abs() >= 512
@@ -224,7 +224,7 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .expect("validated ordinary control")
-                    .body_response_flags;
+                    .last_collide;
             }
             let control = self.actors[index]
                 .control
@@ -244,16 +244,16 @@ impl ScriptWorld {
                 contact::WallResponse::Rollback(_) if sliding => {}
                 contact::WallResponse::Rollback(position) => {
                     current = position;
-                    flags |= 2;
+                    flags |= crate::script::CollisionFlags::HIT_WALL;
                 }
                 contact::WallResponse::Projected(position) => {
                     current = position;
                     if grounded && current != previous {
                         heading = contact::wall_heading(heading, movement, body.normal)
                             .rem_euclid(2048) as u16;
-                        flags |= 1;
+                        flags |= crate::script::CollisionFlags::SLIDE_OFF_WALL;
                     } else {
-                        flags |= 2;
+                        flags |= crate::script::CollisionFlags::HIT_WALL;
                     }
                 }
             }
@@ -278,7 +278,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated ordinary control")
-            .body_response_flags = flags;
+            .last_collide = flags;
         Ok(())
     }
 
