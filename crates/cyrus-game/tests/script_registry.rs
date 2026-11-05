@@ -4400,6 +4400,80 @@ fn kill_me_releases_the_receivers_light_and_flat_records() {
 }
 
 #[test]
+fn fresh_preparation_after_kill_me_leaks_no_killed_state_records_or_tasks() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts(Native::KillMe, vec![], Object::Me);
+    scripts.definition.functions.push(Function {
+        name: Native::Light,
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    let light_id = scripts.definition.functions.len() as u16 - 1;
+    let steps = &mut scripts.actors.get_mut("LOGIC").unwrap().program.steps;
+    let kill = steps.remove(&0).unwrap();
+    let end = steps.remove(&1).unwrap();
+    steps.insert(0, assign_call(1, light_id, Native::Light, &[50, 200]));
+    steps.insert(1, Step { next: 2, ..kill });
+    steps.insert(2, Step { next: 3, ..end });
+    scripts.definition.functions[1].param_count = 0;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let old = world.id(0).unwrap();
+    let mut sounds = Vec::new();
+    let mut record = |actor, sound| {
+        sounds.push((actor, sound));
+        Ok(())
+    };
+    world
+        .advance(
+            old,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut record),
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    assert!(world.actors()[0].light_state().is_none());
+
+    // Revisit: a new preparation of the same exported scripts starts from authored state.
+    // Stale-identity rejection belongs to the Bevy actor resource and has its own test.
+    let mut revisit = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let fresh = revisit.id(0).unwrap();
+    let control = revisit.actors()[0].control_state().unwrap();
+    assert!(!control.killed);
+    assert_ne!(control.ai_type, AiType::DEAD);
+    assert!(revisit.actors()[0].light_state().is_none());
+    assert!(revisit.actors()[0].flat_state().is_none());
+    assert_eq!(revisit.actors()[0].runtime().unwrap().active_tasks(), 0);
+    // The fresh actor runs its own script from the start and is killed only by that run.
+    let mut fresh_sounds = Vec::new();
+    let mut fresh_record = |actor, sound| {
+        fresh_sounds.push((actor, sound));
+        Ok(())
+    };
+    revisit
+        .advance(
+            fresh,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut fresh_record),
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(revisit.actors()[0].control_state().unwrap().killed);
+    assert!(matches!(fresh_sounds.as_slice(), [(actor, _)] if *actor == fresh));
+}
+
+#[test]
 fn automatic_world_updates_wait_for_effects_then_advance_and_pause_in_menu() {
     for browser_identity in [false, true] {
         automatic_world_updates_with_prepared_identity(browser_identity);
