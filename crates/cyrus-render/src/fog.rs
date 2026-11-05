@@ -2,7 +2,9 @@
 mod clipping;
 mod compositing;
 mod effects;
+mod observation;
 mod preparation;
+pub use observation::BoundSceneLightImage;
 mod texture;
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
@@ -1108,7 +1110,8 @@ mod tests {
                 scene_path: "MGUILD.glb".into(),
                 environment_path: "MGUILD.environment".into(),
             });
-        app.insert_resource(EnvironmentRequest(environment))
+        app.insert_resource(crate::ReadyScene(source.clone()))
+            .insert_resource(EnvironmentRequest(environment))
             .init_resource::<Assets<StandardMaterial>>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<Image>>()
@@ -1147,34 +1150,108 @@ mod tests {
         );
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let scene_root = app.world_mut().spawn(crate::SceneEntity).id();
         let entity = app.world_mut().spawn((
+            ChildOf(scene_root),
             MeshMaterial3d(material), Mesh3d(mesh),
             bevy::gltf::GltfExtras {
                 value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
             },
         )).id();
-        let rows = |app: &App| {
-            let material = &app
-                .world()
-                .get::<MeshMaterial3d<SceneMaterial>>(entity)
-                .unwrap()
-                .0;
-            let materials = app.world().resource::<Assets<SceneMaterial>>();
-            let image = &materials.get(material).unwrap().extension.lights;
-            let images = app.world().resource::<Assets<Image>>();
-            let image = images.get(image).unwrap();
-            let data = image.data.as_ref().unwrap();
-            data[256 * 8 * 4..]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|bytes| f32::from_le_bytes(*bytes))
-                .collect::<Vec<_>>()
-        };
+        let observe = |app: &App| BoundSceneLightImage::capture(app.world(), entity);
         app.update();
         assert_eq!(
-            rows(&app),
-            vec![9216.0, 0.0, 9728.0, 100.0, 255.0, 0.0, -255.0, 40.234375]
+            observe(&app)?.rows_after_lookup_256,
+            vec![[9216.0, 0.0, 9728.0, 100.0, 255.0, 0.0, -255.0, 40.234375]]
+        );
+        let first = observe(&app)?;
+        assert_eq!(first.world, scripts.world);
+        assert_eq!(first.generation, 10);
+        assert_eq!(first.environment, "MGUILD.environment");
+        assert_eq!(first.dimensions, [2, 257]);
+        assert_eq!(first.format, "Rgba32Float");
+        let bound_material = app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(entity)
+            .unwrap()
+            .0
+            .clone();
+        assert_eq!(first.material, format!("{:?}", bound_material.id()));
+        let bound_image = app
+            .world()
+            .resource::<Assets<SceneMaterial>>()
+            .get(&bound_material)
+            .unwrap()
+            .extension
+            .lights
+            .clone();
+        assert_eq!(first.image, format!("{:?}", bound_image.id()));
+
+        // A material with valid bytes is insufficient while its owner is staged.
+        app.world_mut()
+            .entity_mut(scene_root)
+            .insert(crate::persistence::StagedRenderRoot);
+        assert!(
+            observe(&app)
+                .unwrap_err()
+                .to_string()
+                .contains("staged hierarchy")
+        );
+        app.world_mut()
+            .entity_mut(scene_root)
+            .remove::<crate::persistence::StagedRenderRoot>();
+        app.world_mut()
+            .entity_mut(scene_root)
+            .remove::<crate::SceneEntity>();
+        assert!(
+            observe(&app)
+                .unwrap_err()
+                .to_string()
+                .contains("live scene root absent")
+        );
+        app.world_mut()
+            .entity_mut(scene_root)
+            .insert(crate::SceneEntity);
+
+        // Reject an ownership mismatch even when an old material remains available.
+        app.world_mut().resource_mut::<crate::ReadyScene>().0 = Handle::default();
+        assert!(
+            observe(&app)
+                .unwrap_err()
+                .to_string()
+                .contains("mismatched prepared ownership")
+        );
+        app.world_mut().resource_mut::<crate::ReadyScene>().0 = source.clone();
+        app.world_mut()
+            .resource_mut::<PreparedWorld>()
+            .environment_path = "START.environment".into();
+        assert!(
+            observe(&app)
+                .unwrap_err()
+                .to_string()
+                .contains("mismatched prepared ownership")
+        );
+        app.world_mut()
+            .resource_mut::<PreparedWorld>()
+            .environment_path = "MGUILD.environment".into();
+
+        // Read the bound asset, including changed bytes, rather than recomputing logical rows.
+        {
+            let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+            let mut image = images.get_mut(&bound_image).unwrap();
+            let data = image.data.as_mut().unwrap();
+            data[256 * 32 + 4 * 4..256 * 32 + 5 * 4].copy_from_slice(&123.0_f32.to_le_bytes());
+        }
+        assert_eq!(observe(&app)?.rows_after_lookup_256[0][4], 123.0);
+        {
+            let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+            let mut image = images.get_mut(&bound_image).unwrap();
+            let data = image.data.as_mut().unwrap();
+            data[256 * 32 + 4 * 4..256 * 32 + 5 * 4].copy_from_slice(&255.0_f32.to_le_bytes());
+        }
+        assert_eq!(
+            observe(&app)?.rows_after_lookup_256,
+            first.rows_after_lookup_256
         );
         let expected_pose = app
             .world()
@@ -1194,29 +1271,33 @@ mod tests {
             .replace(replacement);
         app.update();
         assert!(
-            rows(&app).is_empty(),
+            observe(&app)?.rows_after_lookup_256.is_empty(),
             "same-scene replacement cannot consume the previous camera publication"
         );
+        assert_eq!(observe(&app)?.generation, 11);
         app.world_mut().resource_mut::<ScriptActors>().current = original;
         // Source mismatch must not read a previous world's publication.
         app.world_mut().resource_mut::<ScriptView>().source = Handle::default();
         app.update();
-        assert!(rows(&app).is_empty());
+        assert!(observe(&app)?.rows_after_lookup_256.is_empty());
         app.world_mut().resource_mut::<ScriptView>().source = source;
         app.insert_resource(crate::camera::FlycamSettings {
             enabled: true,
             ..default()
         });
         app.update();
-        assert!(rows(&app).is_empty());
+        assert!(observe(&app)?.rows_after_lookup_256.is_empty());
         app.world_mut()
             .resource_mut::<crate::camera::FlycamSettings>()
             .enabled = false;
         app.update();
-        assert_eq!(rows(&app).len(), 8);
+        assert_eq!(
+            observe(&app)?.rows_after_lookup_256,
+            first.rows_after_lookup_256
+        );
         app.world_mut().resource_mut::<CameraDrive>().enabled = false;
         app.update();
-        assert!(rows(&app).is_empty());
+        assert!(observe(&app)?.rows_after_lookup_256.is_empty());
         Ok(())
     }
 

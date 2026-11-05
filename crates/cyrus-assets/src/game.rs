@@ -85,6 +85,10 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
     let mut files = BTreeMap::new();
     let output: &mut dyn Output = &mut files;
     match path.split('/').next().unwrap_or_default() {
+        "cursor" => output.publish(
+            Path::new(crate::cursor::ASSET_PATH),
+            &serde_json::to_vec(&crate::cursor::prepare(source)?)?,
+        )?,
         "console" => {
             let installed = source
                 .manifest()

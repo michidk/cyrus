@@ -190,6 +190,12 @@ model RGB each frame, including retained static colors, using preservation's
 Their signed colors, quantized falloff and original static transforms survive
 native/browser preparation. Re-export environments for the required object-light
 records. Active light scripts are explicitly unsupported during preparation.
+`fog::BoundSceneLightImage::capture` provides a read-only observation of the CPU
+light image referenced by a selected live scene mesh's material. It checks current
+prepared-world ownership and rejects staged hierarchies and malformed image data.
+Hosts call it after Update and record the frame, camera, source and capture
+identities separately. Its rows preserve signed values and image order; they do
+not establish GPU sampling, retired-owner absence or matched pixel parity.
 **Verified:** [actor prelighting](https://github.com/michidk/redguard-preservation/blob/d500b0e/docs/engine/actor-prelighting.md)
 requires nonzero `attr_non_moving`, the runtime static-model path, admitted map
 lights and static placements. Live actor materials wait for the logical entry
@@ -476,8 +482,13 @@ and logbook suspension pause capture.
 cover axis reversals, constant alpha and depth flags. **Inferred:** the normalized
 60 Hz presentation adapter follows the documented Glide retrace ceiling; it does
 not establish original cadence. **Unknown:** installed death playback, complete
-native/browser restored continuation and pixel parity. Special drawing flag
-`0x80` remains unsupported.
+native/browser restored continuation and pixel parity. Actor flats with special
+drawing flag `0x80` use constant RGB 200, full indexed texture alpha and disabled
+chroma rejection, while bypassing retained, directional and local lighting. Their
+source image and shared playback remain bound. Environmental-pool special colour
+inputs remain unsupported. **Verified:** package tests cover special actor-flat
+material inputs and shared playback. **Unknown:** native/browser visual acceptance
+and naturally reached special producers.
 
 Terrain playback retains source and animated heights in engine units before
 converting each final height to mesh coordinates. `WaterPlayback::camera_terrain`

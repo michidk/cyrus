@@ -24,6 +24,7 @@ module where it is defined and regenerate.
 - `src/collision.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/collision/visibility.rs` — Portable model-admission octree in original map coordinates, without render culling.
 - `src/console.rs` — Original console paper and configured monochrome font, decoded through preservation.
+- `src/cursor.rs` — Configured cursor archive bytes prepared on demand for both hosts.
 - `src/decode.rs` — In-memory presentation of preservation parser results, shared by both targets.
 - `src/disc.rs` — CD cue-sheet interpretation shared by both runtime targets.
 - `src/effects.rs` — Installed environmental effect textures and map-owned drawing attributes.
@@ -267,6 +268,7 @@ module where it is defined and regenerate.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
@@ -361,6 +363,7 @@ module where it is defined and regenerate.
 - `src/assets.rs` — Cache asset reads await original-file preparation in the browser worker.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/capture.rs` — Opt-in world/camera observation and captured sky phase for matched browser captures.
+- `src/capture/light_image.rs` — One-shot browser acquisition of the actual material-bound CPU light image.
 - `src/cheats.rs` — Browser CHT storage uses the same codec and startup rules as the native host.
 - `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
 - `src/debug.rs` — Platform world-picker sources and navigation.
@@ -390,6 +393,7 @@ module where it is defined and regenerate.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.

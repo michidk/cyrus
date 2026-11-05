@@ -145,7 +145,7 @@ fn bind(
         source.validate()?;
         for (id, image) in &source.images {
             anyhow::ensure!(
-                image.flags & 1 != 0 && image.flags & !0x363 == 0,
+                image.flags & 1 != 0 && image.flags & !0x3e3 == 0,
                 "effect texture {id}: drawing flags {:#x} unsupported",
                 image.flags
             );
@@ -163,6 +163,7 @@ fn bind(
                     brightness: 255,
                     alpha: 255,
                     flags: 1,
+                    constant_rgb: None,
                 };
                 let mesh = meshes.add(geometry::mesh(&placeholder)?);
                 let material =
@@ -495,6 +496,7 @@ fn draw(
                 brightness: 255,
                 alpha: 255,
                 flags: 1,
+                constant_rgb: None,
             };
             let mesh = meshes.add(geometry::mesh(&placeholder)?);
             let material =
@@ -573,7 +575,8 @@ mod tests {
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
-    fn installed_world_binding_waits_for_readiness_and_replaces_generation() -> anyhow::Result<()> {
+    fn installed_world_binding_admits_special_images_and_replaces_ready_generation()
+    -> anyhow::Result<()> {
         installed_binding_scenario(true)?;
         installed_binding_scenario(false)
     }
@@ -592,9 +595,22 @@ mod tests {
             return Ok(());
         };
         let files = Files::open(&install)?;
-        let environment: Environment = serde_json::from_slice(
+        let mut environment: Environment = serde_json::from_slice(
             &cyrus_assets::game::prepare(&files, "START.environment")?["START.environment"],
         )?;
+        // Generated special metadata exercises binding without claiming an installed producer.
+        environment.effects.as_mut().unwrap().images.insert(
+            0xfffe,
+            cyrus_assets::effects::EffectImage {
+                name: "SPECL0".into(),
+                size: [16, 8],
+                texture_scale: 256,
+                delay_ms: 100,
+                flags: 0x81,
+                alpha: 17,
+                frames: vec![vec![255; 16 * 8 * 4]],
+            },
+        );
         let mut scripts: Scripts = serde_json::from_slice(
             &cyrus_assets::game::prepare(&files, "START.scripts")?["START.scripts"],
         )?;
@@ -968,6 +984,7 @@ mod tests {
             brightness: 255,
             alpha: 255,
             flags: 1,
+            constant_rgb: None,
         };
         let mesh = app
             .world_mut()

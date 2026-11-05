@@ -63,6 +63,16 @@ const manifest = JSON.stringify({ files: [...originals].sort().map(([name, filen
 const game = new GameLibrary('https://example.test/original/', manifest, () => {});
 const worlds = JSON.parse(game.worlds());
 assert.ok(worlds.some(([, map]) => map === 'START') && worlds.some(([, map]) => map === 'ISLAND'));
+const cursorFiles = new Map(game.prepare('cursor/pointers.cursor').files);
+assert.deepEqual([...cursorFiles.keys()], ['cursor/pointers.cursor']);
+const cursor = JSON.parse(new TextDecoder().decode(cursorFiles.get('cursor/pointers.cursor')));
+assert.deepEqual(Object.keys(cursor).sort(), ['bytes', 'source', 'version']);
+assert.equal(cursor.version, 1);
+const cursorSource = originals.get(cursor.source);
+assert.ok(cursorSource, 'cursor preparation resolves an original manifest path');
+const originalCursor = Buffer.isBuffer(cursorSource) ? cursorSource : fs.readFileSync(cursorSource);
+assert.deepEqual(Buffer.from(cursor.bytes), originalCursor, 'worker retains exact original cursor bytes');
+assert.equal(originalCursor.subarray(0, 4).toString(), 'BMHD');
 let menuClock;
 for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 'logbook/reader.logbook', 'sounds/bank.sounds', 'START.scripts']) {
   console.log('Preparing ' + name);

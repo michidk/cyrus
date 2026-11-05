@@ -111,3 +111,20 @@ frame without replacing its deadline. `state.textures` reports loaded image
 names, frame counts, selected frames and holds. The requested world must be
 ready, and the image/frame must exist. World replacement clears holds. These
 inspection controls do not change ordinary playback or establish cadence parity.
+
+`bound_light_image {name, primitive}` selects an exact, unique Bevy node `Name`
+and a zero-based material-bearing child in its current `Children` order, then
+replies in `PostUpdate`, after ordinary material binding. Missing or duplicate
+names, staged entities, mismatched prepared ownership and unavailable image bytes
+return errors. The result contains the acquisition `frame`, `name`, `primitive` and
+`bound_light_image` record with runtime entity/material/image identities,
+world/generation/environment, dimensions and signed float rows after the 256
+lookup rows. The response preserves the control request ID. It reads the actual
+bound CPU asset and does not establish GPU sampling, mesh-generation ownership,
+retired-owner absence or visual parity. Record matching camera, package/source
+and screenshot identities separately.
+
+The selector index refers to the current runtime hierarchy, not an original face
+or material ID. A named material-bearing mesh itself accepts only index zero.
+Out-of-range indices fail. Authored placement node names and generated primitive
+names differ; global primitive names need not be unique across placed instances.

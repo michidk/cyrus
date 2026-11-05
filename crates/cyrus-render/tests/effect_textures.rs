@@ -406,3 +406,147 @@ fn invalid_effect_requests_do_not_change_playback_or_source_census() -> anyhow::
     assert!(owner.snapshot()[0].held);
     Ok(())
 }
+
+#[test]
+fn special_and_ordinary_actor_flats_share_playback_without_sharing_draw_properties()
+-> anyhow::Result<()> {
+    use cyrus_render::fog::EffectDrawView;
+    let mut world = World::new();
+    let (mut owner, root) = prepared(&mut world);
+    let mut source = source();
+    // Controlled metadata, not a naturally reached installed special producer.
+    let ordinary = source.images.get_mut(&0x2500).unwrap();
+    ordinary.size = [16, 8];
+    ordinary.frames = (0..3)
+        .map(|frame| [frame * 50, 20, 30, 255].repeat(16 * 8))
+        .collect();
+    let mut special = ordinary.clone();
+    special.name = "a00000".into();
+    special.flags = 0x81;
+    special.alpha = 17;
+    source.images.insert(0x2501, special);
+    owner.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    assert_eq!(world.resource::<Assets<Image>>().len(), 3);
+    assert_eq!(owner.snapshot().len(), 1);
+    let census = owner.snapshot_sources(&world, &[root])?;
+    let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+    let view = EffectDrawView {
+        center: [0.0, 0.0, 100.0],
+        projection_scale: Vec2::ONE,
+        clipping: [1.0, 1000.0],
+    };
+    let clipped = EffectDrawView {
+        center: [10000.0, 0.0, 100.0],
+        projection_scale: Vec2::ONE,
+        clipping: [1.0, 1000.0],
+    };
+    let first = owner
+        .request_actor_flat_draw(environment, 0x2500, None, &view, 100)?
+        .expect("ordinary flat admitted");
+    assert_eq!(first.frame, 0); // 100ms rounds to two ticks, deadline102.
+    let explicit = owner
+        .request_actor_flat_draw(environment, 0x2501, Some(1), &view, 101)?
+        .expect("special flat admitted");
+    assert_eq!(explicit.frame, 1);
+    assert_ne!(explicit.texture, first.texture);
+    assert_eq!(explicit.constant_rgb, Some([200; 3]));
+    assert_eq!(
+        (explicit.brightness, explicit.alpha, explicit.flags),
+        (255, 255, 0x281)
+    );
+    assert_eq!(explicit.half_extents, Vec2::new(8.0, 4.0));
+    let ordinary = owner
+        .request_actor_flat_draw(environment, 0x2500, None, &view, 101)?
+        .expect("ordinary record reuses selected shared frame");
+    assert_eq!(ordinary.frame, 1);
+    assert_eq!(ordinary.texture, explicit.texture);
+    assert_eq!(ordinary.constant_rgb, None);
+    assert_eq!(
+        (ordinary.brightness, ordinary.alpha, ordinary.flags),
+        (78, 151, 1)
+    );
+
+    let before = serde_json::to_value(owner.snapshot_playback()?)?;
+    // A clipped explicit request at the deadline must neither select nor advance.
+    assert!(
+        owner
+            .request_actor_flat_draw(environment, 0x2501, Some(0), &clipped, 102)?
+            .is_none()
+    );
+    assert_eq!(serde_json::to_value(owner.snapshot_playback()?)?, before);
+    assert!(
+        owner
+            .request_actor_flat_draw(environment, 0x2501, Some(3), &view, 102)
+            .is_err()
+    );
+    let wrong_environment = Assets::<cyrus_assets::environment::Environment>::default()
+        .reserve_handle()
+        .id();
+    assert!(
+        owner
+            .request_actor_flat_draw(wrong_environment, 0x2501, Some(0), &view, 102)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(owner.snapshot_playback()?)?, before);
+    let at_deadline = owner
+        .request_actor_flat_draw(environment, 0x2501, None, &view, 102)?
+        .expect("explicit selection preserved original deadline");
+    assert_eq!(at_deadline.frame, 2);
+    assert_eq!(at_deadline.constant_rgb, Some([200; 3]));
+    assert_eq!(
+        world
+            .resource::<Assets<Image>>()
+            .get(&at_deadline.texture)
+            .unwrap()
+            .data
+            .as_ref()
+            .unwrap()[0],
+        100
+    );
+
+    owner.hold("A00000", Some(1))?;
+    let held = serde_json::to_value(owner.snapshot_playback()?)?;
+    for (texture, explicit) in [(0x2500, None), (0x2501, Some(0))] {
+        let draw = owner
+            .request_actor_flat_draw(environment, texture, explicit, &view, 200)?
+            .expect("held shared image admitted");
+        assert_eq!(draw.frame, 1);
+        assert_eq!(draw.texture, ordinary.texture);
+        assert_eq!(draw.constant_rgb, (texture == 0x2501).then_some([200; 3]));
+    }
+    assert_eq!(serde_json::to_value(owner.snapshot_playback()?)?, held);
+    let (mut replacement, replacement_root) = prepared(&mut world);
+    replacement.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    census.validate(&replacement, &world, &[replacement_root])?;
+    let mut restored = TextureAnimations::from_snapshot(replacement, owner.snapshot_playback()?)?;
+    assert_eq!(serde_json::to_value(restored.snapshot_playback()?)?, held);
+    assert_eq!(
+        restored
+            .request_actor_flat_draw(environment, 0x2501, Some(0), &view, 200)?
+            .unwrap()
+            .frame,
+        1
+    );
+    restored.hold("a00000", None)?;
+    let resumed = restored
+        .request_actor_flat_draw(environment, 0x2500, None, &view, 200)?
+        .unwrap();
+    assert_eq!(resumed.frame, 2); // One overdue advance, without catching up.
+    assert_eq!(resumed.constant_rgb, None);
+    assert_ne!(resumed.texture, at_deadline.texture); // Restored owner has fresh image handles.
+    let same_epoch = restored
+        .request_actor_flat_draw(environment, 0x2501, None, &view, 200)?
+        .unwrap();
+    assert_eq!(same_epoch.frame, 2);
+    assert_eq!(same_epoch.texture, resumed.texture);
+    assert_eq!(same_epoch.constant_rgb, Some([200; 3]));
+    assert_eq!(
+        restored
+            .request_actor_flat_draw(environment, 0x2501, None, &view, 202)?
+            .unwrap()
+            .frame,
+        0
+    );
+    census.validate(&restored, &world, &[replacement_root])?;
+    Ok(())
+}

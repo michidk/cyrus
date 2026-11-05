@@ -98,7 +98,11 @@ fn vertex(raw: Vertex,
     out.retained_solid = u32(vertex.color.a);
 }
     // Prepared model RGB has already received source-corner lighting and clipping.
-    if vertex.uv_b.x >= 0.0 {
+    if model.compositing.z != 0.0 {
+        color = model.solid_color.rgb;
+        tint = vec3(1.0);
+        out.retained_solid = u32(model.solid_color.w);
+    } else if vertex.uv_b.x >= 0.0 {
         color = apply_local_lights(color, vertex.position, vertex.normal, transform);
     }
     // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.

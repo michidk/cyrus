@@ -1,4 +1,6 @@
 //! Opt-in world/camera observation and captured sky phase for matched browser captures.
+mod light_image;
+
 use bevy::prelude::*;
 use wasm_bindgen::JsValue;
 
@@ -9,6 +11,7 @@ pub fn register(app: &mut App) {
         .is_some_and(|query| query.has("capture"));
     super::session::register(app, enabled);
     if enabled {
+        app.add_systems(PostUpdate, light_image::respond);
         app.add_systems(
             Update,
             (sync_sky, sync_texture, sync_acceptance)

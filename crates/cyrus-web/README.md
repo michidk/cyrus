@@ -208,3 +208,19 @@ Set `window.__cyrusTextureFrameRequest` to a JSON string containing `id`, `world
 to resume automatic requests. The world must be ready and match the request.
 Unknown images and invalid frames leave playback unchanged. Holds clear on
 world replacement and do not establish animation cadence parity.
+
+In capture mode, `window.__cyrusBoundLightImageRequest` accepts one JSON string
+containing `id`, exact unique node `name`, zero-based material-bearing child
+`primitive` in current `Children` order, expected numeric logical `world` and
+`generation`. Obtain the owner identity from the current script inspection.
+The request is consumed once in `PostUpdate`, including an error response outside
+InGame. Read `window.__cyrusBoundLightImageResult` and match its `id` before
+submitting another request. Success returns `ok: true` and `result` with the
+acquisition `frame`, `name`, `primitive` and actual material-bound CPU `bound_light_image`.
+Malformed requests return `id: null` when their identity cannot be decoded.
+Missing or duplicate names, changed world/generation, staged or mismatched
+prepared ownership and unavailable bytes produce errors. The adapter does not
+copy images when no request is pending. Acquisition after Update is not GPU
+readback or visual acceptance. Record matched camera, source/package, capture
+and retired-owner evidence separately. The request/result globals are diagnostic
+and do not persist game state.

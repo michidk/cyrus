@@ -57,6 +57,10 @@ impl PreparedEffects {
         );
         let metadata = &self.metadata[&id];
         let alternate = descriptor & 0x20000 != 0;
+        ensure!(
+            alternate || metadata.flags & 0x80 == 0,
+            "effect texture {id}: special environmental-pool color inputs unsupported"
+        );
         let (half_extents, radius) = metadata.shape(descriptor);
         Ok(EffectDraw {
             texture: binding.frames[frame].clone(),
@@ -72,6 +76,7 @@ impl PreparedEffects {
             },
             alpha: if alternate { 140 } else { metadata.alpha },
             flags: if alternate { 0x201 } else { metadata.flags },
+            constant_rgb: None,
         })
     }
 }
@@ -94,6 +99,9 @@ pub struct EffectDraw {
     pub brightness: u8,
     pub alpha: u16,
     pub flags: u16,
+    /// Constant RGB, bypassing sampled texture RGB and model lighting for special actor flats.
+    /// The indexed image remains bound with full texture alpha and disabled chroma rejection.
+    pub constant_rgb: Option<[u8; 3]>,
 }
 
 impl TextureAnimations {
@@ -304,6 +312,7 @@ impl TextureAnimations {
     /// Request an actor flat record's image after its source bound is admitted. The sprite uses the
     /// texture's own flags and alpha, the world's `world_ambientfx` brightness and either an explicit
     /// frame (replacing the shared current frame, as for effects) or the automatic playback frame.
+    /// Special flag 0x80 selects opaque RGB 200 and disables depth writes instead.
     /// Verified: preservation SOUP 'Actor flat drawing'.
     pub fn request_actor_flat_draw(
         &mut self,
@@ -358,11 +367,16 @@ impl TextureAnimations {
                 binding.frames.len()
             );
         }
-        let brightness = prepared.ambient.ok_or_else(|| {
-            anyhow::anyhow!("actor flat texture {texture}: world ambient brightness absent")
-        })? as u8;
-        let alpha = metadata.alpha;
-        let flags = metadata.flags;
+        let special = metadata.flags & 0x80 != 0;
+        let brightness = if special {
+            255
+        } else {
+            prepared.ambient.ok_or_else(|| {
+                anyhow::anyhow!("actor flat texture {texture}: world ambient brightness absent")
+            })? as u8
+        };
+        let alpha = if special { 255 } else { metadata.alpha };
+        let flags = metadata.flags | if special { 0x200 } else { 0 };
         let state = self.states.get_mut(&binding.key).ok_or_else(|| {
             anyhow::anyhow!("actor flat texture {texture}: shared timeline absent")
         })?;
@@ -382,6 +396,7 @@ impl TextureAnimations {
             brightness,
             alpha,
             flags,
+            constant_rgb: special.then_some([200; 3]),
         }))
     }
 
@@ -434,6 +449,79 @@ impl TextureAnimations {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actor_flat_special_rgb_ignores_ambient_and_authored_alpha() -> Result<()> {
+        let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+        for (flags, ambient, alpha, expected_rgb, expected_flags, expected_brightness) in [
+            (1, Some(78), 151, None, 1, 78),
+            (0x81, None, 17, Some([200; 3]), 0x281, 255),
+            (0x181, Some(-1), 256, Some([200; 3]), 0x381, 255),
+        ] {
+            let source = Effects {
+                ambient_brightness: ambient,
+                capacity: 0,
+                disabled: false,
+                images: BTreeMap::from([(
+                    0x2500,
+                    cyrus_assets::effects::EffectImage {
+                        name: "SPC000".into(),
+                        size: [16, 8],
+                        texture_scale: 256,
+                        delay_ms: 100,
+                        flags,
+                        alpha,
+                        frames: vec![vec![255; 16 * 8 * 4]],
+                    },
+                )]),
+            };
+            let mut owner = TextureAnimations {
+                environment: Some(environment),
+                ..default()
+            };
+            owner.prepare_effects(&source, &mut Assets::default())?;
+            let packet = owner
+                .request_actor_flat_draw(
+                    environment,
+                    0x2500,
+                    Some(0),
+                    &EffectDrawView {
+                        center: [0.0, 0.0, 100.0],
+                        projection_scale: Vec2::ONE,
+                        clipping: [1.0, 1000.0],
+                    },
+                    0,
+                )?
+                .expect("synthetic actor flat admitted");
+            assert_eq!(packet.constant_rgb, expected_rgb);
+            assert_eq!(packet.flags, expected_flags);
+            assert_eq!(packet.brightness, expected_brightness);
+            assert_eq!(packet.alpha, if expected_rgb.is_some() { 255 } else { 151 });
+            assert_eq!(packet.half_extents, Vec2::new(8.0, 4.0));
+            assert_eq!(packet.frame, 0);
+            if expected_rgb.is_some() {
+                let before = serde_json::to_value(owner.snapshot_playback()?)?;
+                let error = owner
+                    .request_effect_draw(
+                        environment,
+                        0x2500,
+                        0,
+                        &EffectDrawView {
+                            center: [0.0, 0.0, 100.0],
+                            projection_scale: Vec2::ONE,
+                            clipping: [1.0, 1000.0],
+                        },
+                        200,
+                    )
+                    .err()
+                    .expect("pool special color inputs remain unsupported");
+                assert!(error.to_string().contains("effect texture 9472"));
+                assert!(error.to_string().contains("color inputs unsupported"));
+                assert_eq!(serde_json::to_value(owner.snapshot_playback()?)?, before);
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn failed_effect_preparation_rejects_capture_and_replacement() -> Result<()> {

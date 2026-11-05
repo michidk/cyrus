@@ -9,7 +9,9 @@ use bevy::{
 
 pub(super) fn mesh(draw: &EffectDraw) -> Result<Mesh> {
     ensure!(
-        draw.flags & 1 != 0 && draw.flags & !0x363 == 0,
+        draw.flags & 1 != 0
+            && draw.flags & !0x3e3 == 0
+            && (draw.flags & 0x80 != 0) == draw.constant_rgb.is_some(),
         "effect billboard drawing flags {:#x} unsupported",
         draw.flags
     );
@@ -78,6 +80,11 @@ pub(super) fn material(
         lights,
     );
     material.extension.compositing.y = f32::from(draw.flags);
+    if let Some(rgb) = draw.constant_rgb {
+        material.extension.solid_color = Vec3::from_array(rgb.map(f32::from)).extend(1.0);
+        material.extension.compositing.z = 1.0;
+        material.extension.lighting.z = 0.0;
+    }
     material
 }
 
@@ -87,21 +94,71 @@ mod tests {
     use bevy::mesh::VertexAttributeValues;
 
     #[test]
-    fn centered_geometry_reverses_axes_without_reversing_the_lighting_normal() -> Result<()> {
+    fn special_actor_constant_rgb_bypasses_texture_color_and_model_lighting() -> Result<()> {
+        let fog = FogExtension {
+            color: Vec4::ZERO,
+            clipping: Vec4::new(1.0, 1000.0, 0.0, 0.0),
+            table: [Vec4::ZERO; 16],
+            water: Vec4::ZERO,
+            ambient: Vec4::splat(71.0),
+            directional: Vec4::splat(137.0),
+            direction: Vec4::new(0.0, 0.0, -1.0, 0.0),
+        };
+        let mut draw = EffectDraw {
+            texture: Handle::default(),
+            frame: 0,
+            half_extents: Vec2::new(8.0, 4.0),
+            radius: 9.0,
+            brightness: 255,
+            alpha: 255,
+            flags: 0x281,
+            constant_rgb: Some([200; 3]),
+        };
+        mesh(&draw)?;
+        let special = material(&draw, &fog, &Handle::default());
+        assert_eq!(special.base.base_color_texture, Some(draw.texture.clone()));
+        assert_eq!(
+            special.extension.solid_color,
+            Vec4::new(200.0, 200.0, 200.0, 1.0)
+        );
+        assert_eq!(special.extension.compositing.x, 255.0);
+        assert_eq!(special.extension.compositing.z, 1.0);
+        assert_eq!(special.extension.lighting.z, 0.0);
+        assert!(!crate::fog::ModelKey::from(&special.extension).write_depth);
+        draw.constant_rgb = None;
+        assert!(mesh(&draw).is_err());
+        draw.flags = 1;
+        mesh(&draw)?;
+        let ordinary = material(&draw, &fog, &Handle::default());
+        assert_eq!(ordinary.extension.compositing.z, 0.0);
+        assert_eq!(ordinary.extension.lighting.z, 1.0);
+        assert!(ordinary.extension != special.extension);
+        Ok(())
+    }
+
+    #[test]
+    fn centered_special_and_ordinary_geometry_keep_axis_flips_and_lighting_normal() -> Result<()> {
         for (flags, x, y) in [
             (1, 2.0, 3.0),
             (0x21, -2.0, 3.0),
             (0x41, 2.0, -3.0),
             (0x61, -2.0, -3.0),
+            (0x281, 2.0, 3.0),
+            (0x2a1, -2.0, 3.0),
+            (0x2c1, 2.0, -3.0),
+            (0x2e1, -2.0, -3.0),
         ] {
+            let special = flags & 0x80 != 0;
+            let brightness = if special { 255 } else { 78 };
             let draw = EffectDraw {
                 texture: Handle::default(),
                 frame: 0,
                 half_extents: Vec2::new(40.0, 60.0),
                 radius: 70.0,
-                brightness: 78,
-                alpha: 140,
+                brightness,
+                alpha: if special { 255 } else { 140 },
                 flags,
+                constant_rgb: special.then_some([200; 3]),
             };
             let mesh = mesh(&draw)?;
             assert_eq!(
@@ -119,7 +176,13 @@ mod tests {
             );
             assert_eq!(
                 mesh.attribute(Mesh::ATTRIBUTE_UV_1),
-                Some(&VertexAttributeValues::Float32x2(vec![[78.0, 1.0]; 4]))
+                Some(&VertexAttributeValues::Float32x2(vec![
+                    [
+                        f32::from(brightness),
+                        1.0
+                    ];
+                    4
+                ]))
             );
         }
         Ok(())

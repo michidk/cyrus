@@ -1,6 +1,8 @@
 //! TCP control server (see `cyrus-control`). A thread accepts connections and
 //! forwards each request into the ECS; one system answers them in frame order.
 
+mod light_image;
+
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use cyrus_assets::loading::Preloaded;
@@ -46,6 +48,7 @@ impl Plugin for ControlPlugin {
                 std::sync::mpsc::channel().1
             }
         };
+        app.add_systems(PostUpdate, light_image::respond);
         app.insert_resource(Inbox(Mutex::new(rx)))
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
@@ -266,6 +269,11 @@ fn handle(
                     Some(Ok(cyrus_session::SessionBoundaryResult::Committed)) => Ok(json!({"pending":false,"committed":true})),
                 }
             })().map_err(|error| format!("{error:#}")),
+            Command::BoundLightImage { name, primitive } => {
+                commands.insert_resource(light_image::PendingLightImage { id, name, primitive, reply });
+                // Stop dispatch so later commands cannot change the selected world before capture.
+                break;
+            }
             Command::State => {
                 let scene_ready = ready_scene.as_ref().is_some_and(|ready| {
                     prepared.as_ref().is_some_and(|world| ready.0 == world.animations)
@@ -747,6 +755,54 @@ mod tests {
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
         app
+    }
+
+    #[test]
+    fn bound_light_request_observes_update_and_preserves_later_command_order() {
+        let mut app = app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 42,
+                cmd: Command::BoundLightImage {
+                    name: "selected-mesh".into(),
+                    primitive: 0,
+                },
+            },
+            reply: reply.clone(),
+        })
+        .unwrap();
+        tx.send(Pending {
+            request: Request {
+                id: 43,
+                cmd: Command::Ping,
+            },
+            reply,
+        })
+        .unwrap();
+        app.add_systems(Update, |mut commands: Commands| {
+            commands.spawn(Name::new("selected-mesh"));
+            commands.spawn(Name::new("selected-mesh"));
+        });
+        assert!(responses.try_recv().is_err());
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 42);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("ambiguous"));
+        assert!(responses.try_recv().is_err());
+        assert!(
+            !app.world()
+                .contains_resource::<light_image::PendingLightImage>()
+        );
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 43);
+        assert_eq!(response.result.unwrap(), json!("pong"));
+        assert!(responses.try_recv().is_err());
     }
 
     #[test]
