@@ -163,6 +163,7 @@ module where it is defined and regenerate.
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
+- `src/script/jump_motion.rs` — The code shared by an actor's queued-motion (`jump_flag`) and falling (`fall_flag`) bytes.
 - `src/script/lineup.rs` — The pickup and plain player-alignment movers, as decision logic over a port.
 - `src/script/living_state.rs` — The actor's living-state byte (`extra_flag`): its current special action. Names follow
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".

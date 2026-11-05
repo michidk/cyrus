@@ -1,5 +1,6 @@
 //! Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 //! The functions are pure: the caller owns the animation request, probe query and writes.
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::AnimationGroup;
 
@@ -8,8 +9,8 @@ use cyrus_script::AnimationGroup;
 pub struct BackwardState {
     pub rope_attached: bool,
     pub sliding_state: u8,
-    pub falling_state: u8,
-    pub queued_motion: u8,
+    pub falling_state: JumpMotion,
+    pub queued_motion: JumpMotion,
     pub living_state: LivingState,
     pub holding_weapon: bool,
     /// Combat flag `0x04`.
@@ -103,8 +104,8 @@ pub fn walk_backward_admitted(state: &BackwardState) -> bool {
 fn idle_admitted(state: &BackwardState) -> bool {
     !(state.rope_attached
         || state.sliding_state != 0
-        || state.falling_state != 0
-        || state.queued_motion != 0
+        || state.falling_state != JumpMotion::NONE
+        || state.queued_motion != JumpMotion::NONE
         || !matches!(
             state.living_state,
             LivingState::ORDINARY | LivingState::HANGING
@@ -278,8 +279,8 @@ pub const FORWARD_MOTION_DIRECTION: u8 = 2;
 pub fn forward_admitted(state: &BackwardState) -> bool {
     !(state.rope_attached
         || state.sliding_state != 0
-        || state.falling_state != 0
-        || state.queued_motion != 0)
+        || state.falling_state != JumpMotion::NONE
+        || state.queued_motion != JumpMotion::NONE)
 }
 
 /// What `MoveForward` does after its step check passed and the direction byte is stored.
@@ -440,11 +441,11 @@ mod tests {
                 ..ready()
             },
             BackwardState {
-                falling_state: 1,
+                falling_state: JumpMotion::STANDING,
                 ..ready()
             },
             BackwardState {
-                queued_motion: 24,
+                queued_motion: JumpMotion::ROPE,
                 ..ready()
             },
             BackwardState {
@@ -656,7 +657,7 @@ mod tests {
                 ..combat
             },
             BackwardState {
-                queued_motion: 1,
+                queued_motion: JumpMotion::STANDING,
                 ..combat
             },
             BackwardState {
@@ -1801,11 +1802,11 @@ mod tests {
                 ..base
             },
             BackwardState {
-                falling_state: 1,
+                falling_state: JumpMotion::STANDING,
                 ..base
             },
             BackwardState {
-                queued_motion: 8,
+                queued_motion: JumpMotion::RUNNING,
                 ..base
             },
         ] {

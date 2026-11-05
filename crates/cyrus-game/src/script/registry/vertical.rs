@@ -1,5 +1,6 @@
 //! Queued and falling vertical arithmetic retains the original byte timer.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -91,8 +92,8 @@ pub struct OrdinaryVerticalState {
     pub y: i32,
     pub origin_y: i32,
     pub timer: u8,
-    pub queued: u8,
-    pub falling: u8,
+    pub queued: JumpMotion,
+    pub falling: JumpMotion,
 }
 
 /// Apply one original ascending arithmetic stage, without animation dispatch.
@@ -112,7 +113,7 @@ pub fn ordinary_queued_vertical(
         .wrapping_add(input.fine_ticks.wrapping_add(input.additional_ticks) as u8);
     if input.advanced_factor > 255 {
         state.falling = state.queued;
-        state.queued = 0;
+        state.queued = JumpMotion::NONE;
     }
     state
 }
@@ -242,7 +243,7 @@ impl ScriptWorld {
             ordinary_queued_vertical(before, actor.attributes[Attribute::JumpHeight], input);
         let force = !input.model_controls_vertical
             && input.advanced_factor > 255
-            && before.queued & 128 != 0
+            && before.queued.arms_raised()
             && control.torch_burning == 0;
         let animated = match data.actor(actor.name())?["model_load_path"].as_str() {
             Some("animation_table") => true,

@@ -1,5 +1,6 @@
 //! Obstacle motion transitions follow preservation's ordinary forward wrapper.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -9,8 +10,8 @@ use cyrus_script::{AnimationGroup, Attribute};
 #[derive(Clone, Copy, Debug)]
 pub struct ObstacleTransitionInput {
     pub living_state: LivingState,
-    pub falling_state: u8,
-    pub queued_motion: u8,
+    pub falling_state: JumpMotion,
+    pub queued_motion: JumpMotion,
     pub logical_y: i32,
     pub fall_attribute: u8,
     pub holding_weapon: bool,
@@ -30,15 +31,15 @@ pub struct ObstacleFallStart {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ObstacleTransition {
     pub living_state: LivingState,
-    pub falling_state: u8,
-    pub queued_motion: u8,
+    pub falling_state: JumpMotion,
+    pub queued_motion: JumpMotion,
     pub body_response_flags: u8,
     pub clear_motion_vector: bool,
     pub fall_start: Option<ObstacleFallStart>,
 }
 
-fn interrupted(living: LivingState, queued: u8) -> bool {
-    living.is_bounce() || queued == 24
+fn interrupted(living: LivingState, queued: JumpMotion) -> bool {
+    living.is_bounce() || queued == JumpMotion::ROPE
 }
 
 /// Compute the original state transition. State fifteen does nothing. Ordinary
@@ -53,7 +54,11 @@ pub fn ordinary_obstacle_transition(input: ObstacleTransitionInput) -> Option<Ob
     } else {
         input.living_state
     };
-    let queued = if clear { 1 } else { input.queued_motion };
+    let queued = if clear {
+        JumpMotion::STANDING
+    } else {
+        input.queued_motion
+    };
     let mut result = ObstacleTransition {
         living_state: living,
         falling_state: input.falling_state,
@@ -62,21 +67,22 @@ pub fn ordinary_obstacle_transition(input: ObstacleTransitionInput) -> Option<Ob
         clear_motion_vector: clear,
         fall_start: None,
     };
-    if queued == 0 {
-        if input.falling_state != 0 {
+    if queued == JumpMotion::NONE {
+        if input.falling_state != JumpMotion::NONE {
             result.body_response_flags = 0x20;
-            result.falling_state = (input.falling_state & 0x80) | 1;
+            result.falling_state =
+                JumpMotion::STANDING.with_arms_raised(input.falling_state.arms_raised());
         }
     } else {
         result.body_response_flags = 0x10;
-        result.falling_state = (queued & 0x80) | 1;
-        result.queued_motion = 0;
+        result.falling_state = JumpMotion::STANDING.with_arms_raised(queued.arms_raised());
+        result.queued_motion = JumpMotion::NONE;
         result.fall_start = Some(ObstacleFallStart {
             origin_y: input
                 .logical_y
                 .wrapping_add(i32::from(input.fall_attribute) * 256),
             timer: 30,
-            force_group: if result.falling_state & 0x80 != 0 {
+            force_group: if result.falling_state.arms_raised() {
                 Some(AnimationGroup::FALL_UP_ARMS)
             } else if !input.holding_weapon {
                 Some(AnimationGroup::FALL)
@@ -347,7 +353,9 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .context("ordinary obstacle wrapper control unavailable")?;
-                if control.queued_motion == 0 && control.falling_state == 0 {
+                if control.queued_motion == JumpMotion::NONE
+                    && control.falling_state == JumpMotion::NONE
+                {
                     continue;
                 }
             }

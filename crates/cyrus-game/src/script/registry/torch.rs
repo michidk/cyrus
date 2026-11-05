@@ -5,6 +5,7 @@
 //! the actor's lighting or dousing frame threshold. Presentation of the held torch and its light
 //! belongs to the attachment owner and is not modelled here.
 use super::{GameHost, ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
@@ -53,8 +54,8 @@ impl ScriptWorld {
             || inputs.drawing
             || inputs.sheathing
             || inputs.holding
-            || control.falling_state != 0
-            || control.queued_motion != 0
+            || control.falling_state != JumpMotion::NONE
+            || control.queued_motion != JumpMotion::NONE
             || control.living_state == LivingState::HANGING
             || control.living_state.is_ledge();
         if refused {

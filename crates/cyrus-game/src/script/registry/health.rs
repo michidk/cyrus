@@ -1,5 +1,6 @@
 //! Selected-player health services retain distinct publication and death ordering.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
@@ -843,7 +844,7 @@ impl ScriptWorld {
                     .animation
                     .as_ref()
                     .context("selected death animation unavailable")?;
-                if control.falling_state != 0
+                if control.falling_state != JumpMotion::NONE
                     || matches!(
                         animation.playback.current_group(),
                         Some(

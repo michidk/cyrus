@@ -1,5 +1,6 @@
 //! Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -40,9 +41,9 @@ impl super::ScriptActor {
         if matches!(surface, 2 | 4)
             || control.living_state.is_ledge()
             || control.living_state.is_actor_bounce()
-            || control.falling_state != 0
+            || control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
-            || control.queued_motion != 0
+            || control.queued_motion != JumpMotion::NONE
             || self.attributes[Attribute::HoldingWeapon] != 0
         {
             return Ok(());
@@ -341,8 +342,8 @@ impl<'a> CombatReceiver<'a> {
             || drawing
             || sheathing
             || holding
-            || control.falling_state != 0
-            || control.queued_motion != 0
+            || control.falling_state != JumpMotion::NONE
+            || control.queued_motion != JumpMotion::NONE
             || control.living_state == LivingState::HANGING
         {
             return Ok(());
@@ -1044,9 +1045,9 @@ mod tests {
                 1 => control.living_state = LivingState::ENTERING_LEDGE,
                 2 => control.living_state = LivingState::LANDED_ON_ACTOR,
                 3 => control.living_state = LivingState::FALLING_FROM_ACTOR,
-                4 => control.falling_state = 1,
+                4 => control.falling_state = JumpMotion::STANDING,
                 5 => control.sliding_state = 1,
-                6 => control.queued_motion = 1,
+                6 => control.queued_motion = JumpMotion::STANDING,
                 7 => {
                     control.weapon_drawn = true;
                     control.combat_death_default = Some(1);
@@ -1071,10 +1072,30 @@ mod tests {
             index: 0,
         };
         for (falling, sliding, queued, expected) in [
-            (0, 0, 0, LivingState::DRAWING_SWORD),
-            (1, 0, 0, LivingState::ORDINARY),
-            (0, 1, 0, LivingState::DRAWING_SWORD),
-            (0, 0, 1, LivingState::ORDINARY),
+            (
+                JumpMotion::NONE,
+                0,
+                JumpMotion::NONE,
+                LivingState::DRAWING_SWORD,
+            ),
+            (
+                JumpMotion::STANDING,
+                0,
+                JumpMotion::NONE,
+                LivingState::ORDINARY,
+            ),
+            (
+                JumpMotion::NONE,
+                1,
+                JumpMotion::NONE,
+                LivingState::DRAWING_SWORD,
+            ),
+            (
+                JumpMotion::NONE,
+                0,
+                JumpMotion::STANDING,
+                LivingState::ORDINARY,
+            ),
         ] {
             let mut actor = actor();
             let control = actor.control.as_mut().unwrap();

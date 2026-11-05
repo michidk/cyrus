@@ -4,6 +4,7 @@
 //! class 3 record (catch, `CATCHING_HANG`); the edge service starts it from a fall, queued motion or the
 //! selected jump entry.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -577,8 +578,8 @@ impl ScriptWorld {
     fn clear_ledge_motion(&mut self, index: usize) {
         if let Some(control) = self.actors[index].control.as_mut() {
             control.sliding_state = 0;
-            control.falling_state = 0;
-            control.queued_motion = 0;
+            control.falling_state = JumpMotion::NONE;
+            control.queued_motion = JumpMotion::NONE;
         }
         self.actors[index].sync_falling_motion();
     }

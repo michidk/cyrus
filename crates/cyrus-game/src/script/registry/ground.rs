@@ -1,5 +1,6 @@
 //! Ordinary ground queries retain model ownership and selected-player fallback history.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::{
     actor_shape::{ActorBounds, BodySphere},
@@ -373,7 +374,7 @@ impl ScriptWorld {
                 .as_ref()
                 .context("ordinary ground control unavailable")?
                 .queued_motion
-                == 24)
+                == JumpMotion::ROPE)
                 .then_some(128),
         )?;
         let terrain = query
@@ -406,7 +407,7 @@ impl ScriptWorld {
                         .as_ref()
                         .expect("validated control")
                         .queued_motion
-                        == 24)
+                        == JumpMotion::ROPE)
                         .then_some(128),
                 )?;
             }

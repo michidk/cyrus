@@ -1,5 +1,6 @@
 //! Ordinary forward segment response retains the pre-script candidate list.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::collision_mesh::IntegerSegmentContact;
@@ -72,7 +73,7 @@ impl ScriptWorld {
             self.resolve_ordinary_bounds_obstacle(id, query)?;
             return Ok(false);
         }
-        let excluded = (control.queued_motion == 24).then_some(128);
+        let excluded = (control.queued_motion == JumpMotion::ROPE).then_some(128);
         let spatial = self.spatial(id)?;
         let current = spatial.query_pose()?.position;
         let previous = if spatial.parent.is_none() {

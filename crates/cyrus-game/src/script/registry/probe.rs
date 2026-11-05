@@ -1,5 +1,6 @@
 //! The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::{collision_mesh::BodyProbe, collision_world::ResidualBodyQuery};
@@ -66,7 +67,8 @@ impl ScriptWorld {
                             spheres: &[(Vec3::ZERO, 0.0)],
                             sidedness: false,
                         },
-                        excluded_candidate_type: (control.queued_motion == 24).then_some(128),
+                        excluded_candidate_type: (control.queued_motion == JumpMotion::ROPE)
+                            .then_some(128),
                     },
                 )?;
         Ok(!contacts.is_empty())

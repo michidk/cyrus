@@ -1,5 +1,6 @@
 //! Selected ordinary actor spheres remain separate from body-query working shapes.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
@@ -270,7 +271,7 @@ impl ScriptWorld {
             self.actors[other.index].control.is_some(),
             "ordinary other overlap control unavailable"
         );
-        let support_bypass = control.falling_state == 0
+        let support_bypass = control.falling_state == JumpMotion::NONE
             && control.living_state.is_bounce()
             && self.actors[id.index].model.support.actor == Some(other);
         let separation = self.query_ordinary_actor_overlap(id, other, data)?;
@@ -381,7 +382,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary overlap control unavailable")?;
-        if control.falling_state == 0
+        if control.falling_state == JumpMotion::NONE
             || self.actors[other.index].attributes[Attribute::BouncePower] == 0
         {
             return Ok(false);
@@ -434,8 +435,8 @@ impl ScriptWorld {
         control.body_response_flags |= 0x80;
         if admitted {
             control.sliding_state = 0;
-            control.falling_state = 0;
-            control.queued_motion = 0;
+            control.falling_state = JumpMotion::NONE;
+            control.queued_motion = JumpMotion::NONE;
             control.living_state = LivingState::LANDED_ON_ACTOR;
             actor.model.support.actor = Some(other);
         }

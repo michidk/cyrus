@@ -1,5 +1,6 @@
 //! The leap that a route link flagged `0x4000` starts, from preservation's SOUP.md phase twelve.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::AnimationGroup;
@@ -44,8 +45,8 @@ impl ScriptWorld {
             )
         ) || matches!(surface, 2 | 4)
             || control.rope_attached
-            || control.queued_motion != 0
-            || control.falling_state != 0
+            || control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || !matches!(
                 control.living_state,
@@ -68,7 +69,7 @@ impl ScriptWorld {
         control.fall_origin_y = origin;
         control.fall_timer = 0;
         control.sliding_distance = 0;
-        control.queued_motion = 2;
+        control.queued_motion = JumpMotion::FORWARD;
         if self.updates.animation_system {
             self.request_ordinary_group(
                 id,

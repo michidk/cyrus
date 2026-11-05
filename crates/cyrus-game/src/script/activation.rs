@@ -1,5 +1,6 @@
 //! Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 use super::ScriptActorId;
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
@@ -412,14 +413,14 @@ impl GameplayGlobals {
     pub fn begin_player_controller(
         &mut self,
         nominal_ticks: u32,
-        queued_motion: u8,
-        falling: u8,
+        queued_motion: JumpMotion,
+        falling: JumpMotion,
     ) -> Result<()> {
         let state = self
             .controller_prelude
             .as_mut()
             .context("player controller: explicit initialization unavailable")?;
-        if queued_motion == 0 && falling == 0 {
+        if queued_motion == JumpMotion::NONE && falling == JumpMotion::NONE {
             state.conditional_ticks = state.conditional_ticks.saturating_sub(nominal_ticks);
         }
         let waiting = if self.menu_state != 0 {
@@ -834,6 +835,7 @@ mod idle_tests {
     use super::GameplayGlobals;
     use super::{NativeSource, ScriptActorId};
     use crate::random::EngineRandom;
+    use crate::script::JumpMotion;
     use cyrus_script::AnimationGroup;
 
     impl GameplayGlobals {
@@ -841,8 +843,8 @@ mod idle_tests {
         fn prepare_player_controller(
             &mut self,
             nominal_ticks: u32,
-            queued_motion: u8,
-            falling: u8,
+            queued_motion: JumpMotion,
+            falling: JumpMotion,
             sliding: u8,
         ) -> anyhow::Result<bool> {
             self.begin_player_controller(nominal_ticks, queued_motion, falling)?;
@@ -1041,7 +1043,9 @@ mod idle_tests {
                 assert_eq!(restored.player_hit_inhibited(), Some(inhibited));
                 assert_eq!(restored.player_death_override_group(), Some(group));
                 assert_eq!(
-                    restored.prepare_player_controller(0, 0, 0, 0).unwrap(),
+                    restored
+                        .prepare_player_controller(0, JumpMotion::NONE, JumpMotion::NONE, 0)
+                        .unwrap(),
                     inhibited
                 );
                 restored.initialize_player_controller();
@@ -1083,17 +1087,23 @@ mod idle_tests {
     #[test]
     fn controller_prelude_requires_initializer_and_preserves_timer_order() {
         let mut globals = controller_globals();
-        assert!(globals.prepare_player_controller(1, 0, 0, 0).is_err());
+        assert!(
+            globals
+                .prepare_player_controller(1, JumpMotion::NONE, JumpMotion::NONE, 0)
+                .is_err()
+        );
         globals.initialize_player_controller();
         globals
-            .prepare_player_controller(u32::MAX, 0, 0, 0)
+            .prepare_player_controller(u32::MAX, JumpMotion::NONE, JumpMotion::NONE, 0)
             .unwrap();
         let state = globals.controller_prelude.as_mut().unwrap();
         state.conditional_ticks = 10;
         state.action_ticks = 7;
         state.secondary_ticks = u32::MAX;
         globals.selected_action_inhibition = Some(16);
-        globals.prepare_player_controller(4, 1, 0, 0).unwrap();
+        globals
+            .prepare_player_controller(4, JumpMotion::STANDING, JumpMotion::NONE, 0)
+            .unwrap();
         assert_eq!(globals.selected_action_inhibition, Some(12));
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(
@@ -1104,7 +1114,9 @@ mod idle_tests {
             ),
             (10, 3, u32::MAX - 4)
         );
-        globals.prepare_player_controller(4, 0, 1, 0).unwrap();
+        globals
+            .prepare_player_controller(4, JumpMotion::NONE, JumpMotion::STANDING, 0)
+            .unwrap();
         assert_eq!(
             globals
                 .controller_prelude
@@ -1113,7 +1125,9 @@ mod idle_tests {
                 .conditional_ticks,
             10
         );
-        globals.prepare_player_controller(4, 0, 0, 0).unwrap();
+        globals
+            .prepare_player_controller(4, JumpMotion::NONE, JumpMotion::NONE, 0)
+            .unwrap();
         assert_eq!(
             globals
                 .controller_prelude
@@ -1123,7 +1137,7 @@ mod idle_tests {
             6
         );
         globals
-            .prepare_player_controller(u32::MAX, 0, 0, 0)
+            .prepare_player_controller(u32::MAX, JumpMotion::NONE, JumpMotion::NONE, 0)
             .unwrap();
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(
@@ -1144,7 +1158,9 @@ mod idle_tests {
         globals.initialize_player_controller();
         assert!(!globals.player_pending_action());
         globals.raise_player_pending_action().unwrap();
-        globals.begin_player_controller(1, 0, 0).unwrap();
+        globals
+            .begin_player_controller(1, JumpMotion::NONE, JumpMotion::NONE)
+            .unwrap();
         globals.finish_player_controller(1).unwrap();
         assert!(globals.player_pending_action());
         globals.initialize_player_controller();
@@ -1175,7 +1191,7 @@ mod idle_tests {
         state.secondary_ticks = 9;
         assert!(
             globals
-                .prepare_player_controller(4, 0, 0, 0)
+                .prepare_player_controller(4, JumpMotion::NONE, JumpMotion::NONE, 0)
                 .unwrap_err()
                 .to_string()
                 .contains("action 74")
@@ -1189,7 +1205,11 @@ mod idle_tests {
             ),
             (5, 9, 9)
         );
-        assert!(globals.prepare_player_controller(4, 0, 0, 1).unwrap());
+        assert!(
+            globals
+                .prepare_player_controller(4, JumpMotion::NONE, JumpMotion::NONE, 1)
+                .unwrap()
+        );
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(
             (
@@ -1201,7 +1221,9 @@ mod idle_tests {
         );
         assert_eq!(globals.player_idle_counter(), Some(13));
         globals.initialize_player_controller();
-        globals.prepare_player_controller(4, 0, 0, 0).unwrap();
+        globals
+            .prepare_player_controller(4, JumpMotion::NONE, JumpMotion::NONE, 0)
+            .unwrap();
         assert_eq!(globals.player_idle_counter(), Some(13));
     }
 
@@ -1217,7 +1239,11 @@ mod idle_tests {
         );
         globals.menu_state = 2;
         globals.controller_prelude.as_mut().unwrap().pending_action = true;
-        assert!(globals.prepare_player_controller(1, 0, 0, 0).is_err());
+        assert!(
+            globals
+                .prepare_player_controller(1, JumpMotion::NONE, JumpMotion::NONE, 0)
+                .is_err()
+        );
         assert!(
             !globals
                 .sound_maintenance
@@ -1228,7 +1254,9 @@ mod idle_tests {
         );
         globals.menu_state = 0;
         globals.controller_prelude.as_mut().unwrap().pending_action = false;
-        globals.prepare_player_controller(1, 0, 0, 0).unwrap();
+        globals
+            .prepare_player_controller(1, JumpMotion::NONE, JumpMotion::NONE, 0)
+            .unwrap();
         let mut stages = 0;
         assert!(
             globals

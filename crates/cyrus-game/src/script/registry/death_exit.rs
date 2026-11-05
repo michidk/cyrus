@@ -1,5 +1,6 @@
 //! End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 use super::ScriptWorld;
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -74,8 +75,8 @@ impl ScriptWorld {
         }
         if let Some(control) = self.actors[index].control.as_mut() {
             control.living_state = LivingState::ORDINARY;
-            control.falling_state = 0;
-            control.queued_motion = 0;
+            control.falling_state = JumpMotion::NONE;
+            control.queued_motion = JumpMotion::NONE;
             control.sliding_state = 0;
             control.rope_attached = false;
             // A retained stable position would otherwise undo a placement the ground probe rejects.
@@ -109,7 +110,7 @@ impl ScriptWorld {
                     .as_ref()
                     .context("selected falling state unavailable")?
                     .falling_state
-                    != 0;
+                    != JumpMotion::NONE;
                 let health = self
                     .globals
                     .selected_health

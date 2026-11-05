@@ -1,6 +1,7 @@
 //! Automatic ordinary map stages share the installed clock and logical actor state.
 use super::{ScriptActorId, ScriptActors, ScriptInputs, ScriptStage, ScriptWorld};
 use crate::clock::{ClockStep, SimulationClock, bios_tick};
+use crate::script::JumpMotion;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
@@ -321,12 +322,12 @@ impl ScriptWorld {
                         .control
                         .as_ref()
                         .is_some_and(|control| {
-                            let motion = if control.queued_motion != 0 {
+                            let motion = if control.queued_motion != JumpMotion::NONE {
                                 control.queued_motion
                             } else {
                                 control.falling_state
                             };
-                            motion & 127 == 3 && !control.rope_attached
+                            motion.kind() == JumpMotion::BACKWARD && !control.rope_attached
                         });
                     let backward_query = if backward {
                         scene
@@ -355,11 +356,11 @@ impl ScriptWorld {
                     .as_ref()
                     .expect("admitted ordinary control");
                 anyhow::ensure!(
-                    (control.queued_motion == 0 && control.falling_state == 0)
+                    (control.queued_motion == JumpMotion::NONE && control.falling_state == JumpMotion::NONE)
                         || self.actors[id.index].attributes[Attribute::Collide] & 4 != 0
                         // The selected-player edge service runs while falling and
                         // deliberately hands the actor back to the controller.
-                        || (selected_player && control.falling_state != 0),
+                        || (selected_player && control.falling_state != JumpMotion::NONE),
                     "ordinary queued motion stage unsupported"
                 );
                 // A selected player without a controller sample still owns the

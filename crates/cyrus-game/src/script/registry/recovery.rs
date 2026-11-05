@@ -1,5 +1,6 @@
 //! Ordinary collision rollback restores separately owned position and receiver state.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result, ensure};
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{
@@ -167,7 +168,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated stable recovery control");
-        control.falling_state = 0;
+        control.falling_state = JumpMotion::NONE;
         control.sliding_state = 0;
         control.collision_transition_flags |= 1;
         let heading_delta = input.random.rnd(turn * 4)? - turn * 2;
@@ -205,7 +206,7 @@ impl ScriptWorld {
         input: &OrdinaryStableRecoveryInputs<'_>,
         snapshot: &OrdinaryRollbackSnapshot,
         sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
-    ) -> Result<Option<([i32; 3], u8)>> {
+    ) -> Result<Option<([i32; 3], JumpMotion)>> {
         let index = self.resolve(id)?;
         let control = self.actors[index]
             .control
@@ -234,7 +235,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated stable recovery control");
-        control.falling_state = 0;
+        control.falling_state = JumpMotion::NONE;
         control.sliding_state = 0;
         control.collision_transition_flags |= 1;
         self.spatial
@@ -253,7 +254,7 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         attempted: [i32; 3],
-        falling: u8,
+        falling: JumpMotion,
     ) -> Result<()> {
         let index = self.resolve(id)?;
         self.spatial
@@ -319,7 +320,7 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary water position control unavailable")?
             .falling_state
-            != 0;
+            != JumpMotion::NONE;
         if matches!(self.actor_surface(id)?, 1..=4) && !falling {
             return Ok(false);
         }
@@ -350,7 +351,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary water rollback control unavailable")?;
-        if control.falling_state != 0 || control.queued_motion != 0 {
+        if control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE {
             return Ok(false);
         }
         if !matches!(self.actor_surface(id)?, 1..=4) {

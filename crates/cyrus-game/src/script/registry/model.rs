@@ -11,6 +11,7 @@
 //! [engine contract]: https://michidk.github.io/redguard-preservation/engine/SOUP.html#current-model-presentation
 use super::super::Pose;
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
@@ -798,7 +799,7 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .expect("validated control");
-                if control.queued_motion != 0
+                if control.queued_motion != JumpMotion::NONE
                     || control.directional_state.iter().any(|state| state & 3 != 0)
                 {
                     continue;

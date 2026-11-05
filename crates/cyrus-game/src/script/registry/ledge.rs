@@ -2,6 +2,7 @@
 //! and the entry transition. The ledge living states live in `ledge_states`; the entry selects
 //! a class 1, 2 or 3 record (states 12, 10 and 14) as player.md specifies.
 use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge_states::LedgeTiming};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
@@ -72,8 +73,8 @@ impl ScriptWorld {
         if control.living_state != LivingState::ORDINARY {
             self.globals.selected_action_inhibition = Some(16);
         } else if control.action_transition_counter != 0 {
-            control.queued_motion &= !0x80;
-            control.falling_state &= !0x80;
+            control.queued_motion = control.queued_motion.with_arms_raised(false);
+            control.falling_state = control.falling_state.with_arms_raised(false);
         }
         self.actors[index].sync_falling_motion();
         Ok(result != 0)
@@ -140,8 +141,8 @@ impl ScriptWorld {
                 .as_mut()
                 .expect("validated ledge control");
             control.sliding_state = 0;
-            control.falling_state = 0;
-            control.queued_motion = 0;
+            control.falling_state = JumpMotion::NONE;
+            control.queued_motion = JumpMotion::NONE;
         }
         Ok(result)
     }
@@ -260,7 +261,8 @@ impl ScriptWorld {
             .context("ledge scan post_collide_height exceeds signed range")?;
         let standing = settings.standing_height;
         let y = pose.position[1] >> 8;
-        let airborne = control.falling_state != 0 || control.queued_motion != 0;
+        let airborne =
+            control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE;
         // The wrapping step product uses the first vertical factor.
         let step = (post.wrapping_mul(512).wrapping_sub(256)).min(
             i32::from(actor.attributes[Attribute::JumpHeight])

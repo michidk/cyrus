@@ -2,6 +2,7 @@
 use super::{
     ScriptActorId, ScriptWorld, ground::OrdinaryCollisionShape, obstacle::OrdinaryObstacleQuery,
 };
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_collision::collision_mesh::IntegerSegmentContact;
 use cyrus_world::transform::Matrix;
@@ -86,7 +87,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary bounds obstacle control unavailable")?;
-        let excluded = (control.queued_motion == 24).then_some(128);
+        let excluded = (control.queued_motion == JumpMotion::ROPE).then_some(128);
         let spatial = self.spatial(id)?;
         let segments = ordinary_bounds_segments(
             self.ordinary_collision_shape(id)?,

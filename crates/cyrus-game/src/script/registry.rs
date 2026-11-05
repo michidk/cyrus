@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
@@ -317,8 +318,8 @@ pub struct ActorControlState {
     pub motion_companion: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
-    pub falling_state: u8,
-    pub queued_motion: u8,
+    pub falling_state: JumpMotion,
+    pub queued_motion: JumpMotion,
     pub motion_direction: u8,
     /// Retained movement-helper classification, distinct from displacement direction.
     pub motion_classification: u8,
@@ -493,7 +494,7 @@ impl ScriptActor {
         let active = self
             .control
             .as_ref()
-            .is_some_and(|control| control.falling_state != 0);
+            .is_some_and(|control| control.falling_state != JumpMotion::NONE);
         if let Some(animation) = self.animation.as_mut() {
             animation.playback.set_motion_active(active);
         }
@@ -670,7 +671,7 @@ impl ScriptWorld {
 
     /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
     #[doc(hidden)]
-    pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: u8, origin_y: i32) {
+    pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: JumpMotion, origin_y: i32) {
         let control = self.actors[id.index]
             .control
             .as_mut()
@@ -4565,15 +4566,13 @@ pub(super) fn raex_word(
 
 /// Script properties that name actor motion bytes. The engine's property descriptors (preservation
 /// engine/SOUPPROPS.md) place `rope_wait` at +0x1b0 (the companion motion byte), `slide_flag` at
-/// +0x1b1 (sliding), `fall_flag` at +0x1b2 (falling) and `jump_flag` at +0x1b3 (queued motion);
-/// `extra_flag` at +0x1b4 is the typed living state. `extra_time` (+0x1b5) has no cyrus field and
-/// stays unsupported.
+/// +0x1b1 (sliding); `fall_flag` (+0x1b2, falling), `jump_flag` (+0x1b3, queued motion) and
+/// `extra_flag` (+0x1b4, living state) are typed and converted in the property handlers.
+/// `extra_time` (+0x1b5) has no cyrus field and stays unsupported.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
         Property::RopeWait => &mut control.motion_companion,
         Property::SlideFlag => &mut control.sliding_state,
-        Property::FallFlag => &mut control.falling_state,
-        Property::JumpFlag => &mut control.queued_motion,
         _ => return None,
     })
 }
@@ -4699,13 +4698,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 control.hidden
             }));
         }
-        if name == Property::ExtraFlag {
+        if matches!(
+            name,
+            Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+        ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_ref()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            return Ok(i32::from(control.living_state.byte()));
+            return Ok(i32::from(match name {
+                Property::ExtraFlag => control.living_state.byte(),
+                Property::FallFlag => control.falling_state.byte(),
+                _ => control.queued_motion.byte(),
+            }));
         }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
@@ -4743,13 +4749,21 @@ impl Host for GameHost<'_, '_, '_, '_> {
             control.torch_burning = value as u8;
             return Ok(());
         }
-        if name == Property::ExtraFlag {
+        if matches!(
+            name,
+            Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+        ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            control.living_state = LivingState::from_byte(value as u8);
+            let byte = value as u8;
+            match name {
+                Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
+                Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
+                _ => control.queued_motion = JumpMotion::from_byte(byte),
+            }
             return Ok(());
         }
         if motion_property(&mut ActorControlState::default(), name).is_some() {
@@ -4888,8 +4902,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .context("SetAction: current group unavailable")?;
                 if (AnimationGroup::FIRST_LAND_GROUP..=AnimationGroup::LAST_LAND_GROUP)
                     .contains(&group)
-                    || control.queued_motion != 0
-                    || control.falling_state != 0
+                    || control.queued_motion != JumpMotion::NONE
+                    || control.falling_state != JumpMotion::NONE
                 {
                     control
                         .directional_state
@@ -6845,8 +6859,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             Native::IsInAir => Some(|control| {
                 i32::from(
                     control.sliding_state != 0
-                        || control.falling_state != 0
-                        || control.queued_motion != 0
+                        || control.falling_state != JumpMotion::NONE
+                        || control.queued_motion != JumpMotion::NONE
                         || control.living_state.is_actor_bounce(),
                 )
             }),

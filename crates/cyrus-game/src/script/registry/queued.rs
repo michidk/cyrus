@@ -1,11 +1,12 @@
 //! Queued motion admission precedes its request and vertical writer.
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// Current receiver state and established edge-service outcome.
 #[derive(Clone, Copy, Debug)]
 pub struct OrdinaryQueuedInputs {
-    pub queued: u8,
+    pub queued: JumpMotion,
     pub torch_burning: u8,
     pub current_group: Option<AnimationGroup>,
     pub pending_group: Option<AnimationGroup>,
@@ -29,13 +30,13 @@ pub struct OrdinaryQueuedAction {
 /// Edge admission must be established by its owner, not inferred here.
 pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedAction {
     let mut action = OrdinaryQueuedAction::default();
-    if input.queued == 0 {
+    if input.queued == JumpMotion::NONE {
         return action;
     }
-    let low = input.queued & 127;
-    let high = input.queued & 128 != 0;
+    let low = input.queued.kind();
+    let high = input.queued.arms_raised();
     let torch = input.torch_burning != 0;
-    if low == 3 {
+    if low == JumpMotion::BACKWARD {
         let available = if torch {
             input.has_group_50
         } else {
@@ -68,7 +69,7 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
         return action;
     }
     action.request_group = match low {
-        1 => Some(if torch {
+        JumpMotion::STANDING => Some(if torch {
             AnimationGroup::JUMP_TORCH
         } else if high {
             AnimationGroup::JUMP_UP_ARMS
@@ -77,26 +78,26 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
         } else {
             AnimationGroup::JUMP
         }),
-        2 => Some(if torch {
+        JumpMotion::FORWARD => Some(if torch {
             AnimationGroup::JUMP_FORWARD_TORCH
         } else if high {
             AnimationGroup::JUMP_FORWARD_ARMS
         } else {
             AnimationGroup::JUMP_FORWARD
         }),
-        3 => Some(if torch {
+        JumpMotion::BACKWARD => Some(if torch {
             AnimationGroup::JUMP_BACKWARD_TORCH
         } else {
             AnimationGroup::JUMP_BACKWARD
         }),
-        8 | 24 => Some(if torch {
+        JumpMotion::RUNNING | JumpMotion::ROPE => Some(if torch {
             AnimationGroup::JUMP_RIGHT_TORCH
         } else if high {
             AnimationGroup::JUMP_RUN_ARMS
         } else {
             AnimationGroup::JUMP_RUN
         }),
-        9 => Some(if torch {
+        JumpMotion::RUNNING_LEFT_LEAD => Some(if torch {
             AnimationGroup::JUMP_LEFT_TORCH
         } else if high {
             AnimationGroup::JUMP_RUN_ARMS
@@ -137,8 +138,8 @@ impl super::ScriptWorld {
             .as_ref()
             .context("ordinary jump control unavailable")?;
         if native_task_active
-            || control.queued_motion != 0
-            || control.falling_state != 0
+            || control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || !matches!(
                 control.living_state,
@@ -188,8 +189,8 @@ impl super::ScriptWorld {
             .context("player jump control unavailable")?;
         if self.globals.conditional_ticks()? != 0
             || control.rope_attached
-            || control.queued_motion != 0
-            || control.falling_state != 0
+            || control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || !matches!(
                 control.living_state,
@@ -231,8 +232,8 @@ impl super::ScriptWorld {
         if (selected && self.globals.conditional_ticks()? != 0)
             || matches!(surface, 2 | 4)
             || actor.tasks.is_active()
-            || control.queued_motion != 0
-            || control.falling_state != 0
+            || control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || !matches!(
                 control.living_state,
@@ -320,21 +321,21 @@ impl super::ScriptWorld {
             .control
             .as_ref()
             .context("pre-script displacement control unavailable")?;
-        let motion = if control.queued_motion != 0 {
+        let motion = if control.queued_motion != JumpMotion::NONE {
             control.queued_motion
         } else {
             control.falling_state
         };
-        if motion & 127 == 3 {
+        if motion.kind() == JumpMotion::BACKWARD {
             return self.run_backward_jump_displacement(id, frame_scale, inputs, query);
         }
-        if motion & 127 == 24 {
+        if motion.kind() == JumpMotion::ROPE {
             return self.run_rope_jump_displacement(id, frame_scale);
         }
         // Per tick distance numerator and the cap of the accumulated distance, both in Q8.
-        let (rate, cap) = match motion & 127 {
-            8 | 9 => (0x10000, 0x18000),
-            2 => (0xb400, 0x10000),
+        let (rate, cap) = match motion.kind() {
+            JumpMotion::RUNNING | JumpMotion::RUNNING_LEFT_LEAD => (0x10000, 0x18000),
+            JumpMotion::FORWARD => (0xb400, 0x10000),
             _ => return Ok(()),
         };
         if control.rope_attached {
@@ -461,7 +462,8 @@ impl super::ScriptWorld {
             actor.attributes[Attribute::StepType],
             length,
         );
-        let retained = (control.queued_motion == 3).then_some(control.motion_vector[1]);
+        let retained =
+            (control.queued_motion == JumpMotion::BACKWARD).then_some(control.motion_vector[1]);
         let pose = self.spatial(id)?.local;
         let movement = super::super::locomotion::backward_translation(
             retained.map_or(pose.angles[1], |heading| heading as u16),
@@ -606,28 +608,34 @@ impl super::ScriptWorld {
         let force = control.jump_selector != 0;
         let selected = environment.selected_player == Some(id);
         let (queued, request) = if force {
-            (24, AnimationGroup::ROPE_JUMP)
+            (JumpMotion::ROPE, AnimationGroup::ROPE_JUMP)
         } else {
             match group {
                 AnimationGroup::RUN => {
                     if requested_motion == 9 {
-                        (9, AnimationGroup::JUMP_LEFT_START)
+                        (
+                            JumpMotion::RUNNING_LEFT_LEAD,
+                            AnimationGroup::JUMP_LEFT_START,
+                        )
                     } else {
-                        (8, AnimationGroup::JUMP_RUN_START)
+                        (JumpMotion::RUNNING, AnimationGroup::JUMP_RUN_START)
                     }
                 }
                 AnimationGroup::RUN_TORCH => {
                     if requested_motion == 9 {
-                        (9, AnimationGroup::JUMP_LEFT_START_TORCH)
+                        (
+                            JumpMotion::RUNNING_LEFT_LEAD,
+                            AnimationGroup::JUMP_LEFT_START_TORCH,
+                        )
                     } else {
-                        (8, AnimationGroup::JUMP_RIGHT_START_TORCH)
+                        (JumpMotion::RUNNING, AnimationGroup::JUMP_RIGHT_START_TORCH)
                     }
                 }
                 AnimationGroup::RUN_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH
                     if script_native || selected =>
                 {
                     (
-                        3,
+                        JumpMotion::BACKWARD,
                         if group == AnimationGroup::RUN_BACKWARD {
                             AnimationGroup::JUMP_BACKWARD
                         } else {
@@ -635,7 +643,9 @@ impl super::ScriptWorld {
                         },
                     )
                 }
-                AnimationGroup::FIGHT_RUN if script_native => (8, AnimationGroup::JUMP_RUN_START),
+                AnimationGroup::FIGHT_RUN if script_native => {
+                    (JumpMotion::RUNNING, AnimationGroup::JUMP_RUN_START)
+                }
                 _ if script_native => {
                     let holding = super::super::activation::weapon_predicates(
                         control.living_state,
@@ -648,7 +658,7 @@ impl super::ScriptWorld {
                     )
                     .0;
                     (
-                        1,
+                        JumpMotion::STANDING,
                         if script_native
                             && (holding
                                 || control
@@ -665,7 +675,7 @@ impl super::ScriptWorld {
                     )
                 }
                 _ => (
-                    1,
+                    JumpMotion::STANDING,
                     if control.torch_burning == 0 {
                         AnimationGroup::JUMP_START
                     } else {
@@ -785,7 +795,7 @@ impl super::ScriptWorld {
             .control
             .as_ref()
             .context("ordinary queued handler control unavailable")?;
-        if control.queued_motion == 0 {
+        if control.queued_motion == JumpMotion::NONE {
             return Ok(false);
         }
         let animation = actor
@@ -820,7 +830,7 @@ impl super::ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated queued control")
-                .queued_motion = 0;
+                .queued_motion = JumpMotion::NONE;
         }
         if !action.advance_vertical {
             return Ok(action.handled);
@@ -836,7 +846,7 @@ impl super::ScriptWorld {
                     .control
                     .as_mut()
                     .expect("validated queued control");
-                control.queued_motion = 0;
+                control.queued_motion = JumpMotion::NONE;
                 return Ok(true);
             }
         }
@@ -916,7 +926,7 @@ impl super::ScriptWorld {
             .as_ref()
             .expect("validated queued control")
             .queued_motion
-            != 0
+            != JumpMotion::NONE
         {
             let clearance = self.query_ordinary_queued_clearance(id, query)?;
             let threshold = self.ordinary_collision_shape(id)?.positive_extent[1]
@@ -928,7 +938,7 @@ impl super::ScriptWorld {
                     .control
                     .as_mut()
                     .expect("validated queued control")
-                    .queued_motion = 0;
+                    .queued_motion = JumpMotion::NONE;
                 self.spatial
                     .as_mut()
                     .context("ordinary queued rollback spatial unavailable")?
@@ -949,7 +959,7 @@ impl super::ActorControlState {
             self.directional_state[0] = 0;
             self.jump_window = 0;
         }
-        if self.queued_motion != 0
+        if self.queued_motion != JumpMotion::NONE
             || !matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
         {
             self.directional_state
@@ -1010,7 +1020,13 @@ mod action_word_tests {
 
     #[test]
     fn queued_or_other_group_clears_only_low_bits_after_promotion() {
-        for (queued, group) in [(1, AnimationGroup::RUN), (0, AnimationGroup::RUN_BACKWARD)] {
+        for (queued, group) in [
+            (crate::script::JumpMotion::STANDING, AnimationGroup::RUN),
+            (
+                crate::script::JumpMotion::NONE,
+                AnimationGroup::RUN_BACKWARD,
+            ),
+        ] {
             let mut control = ActorControlState {
                 directional_state: [0x123, 0x202],
                 queued_motion: queued,

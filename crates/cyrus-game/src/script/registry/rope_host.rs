@@ -7,6 +7,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
@@ -15,7 +16,6 @@ use cyrus_script::{AnimationGroup, Attribute};
 /// Links searched below the requested one start this many before it.
 const HAND_SEARCH_BACK: i32 = 8;
 /// The ordinary jump entry's queued motion after a rope release.
-const QUEUED_ROPE_JUMP: u8 = 24;
 /// The live world data the hand-height link choice reads for its floor probe. Absent when the
 /// host has no collision scene; the clamp is then skipped.
 #[derive(Clone, Copy)]
@@ -219,7 +219,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("rope attach control unavailable")?;
-        if control.falling_state == 0 && control.queued_motion == 0 {
+        if control.falling_state == JumpMotion::NONE && control.queued_motion == JumpMotion::NONE {
             return Ok(None);
         }
         if control.jump_selector != 0 {
@@ -304,11 +304,12 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("rope attach control unavailable")?;
-        let airborne = control.queued_motion > 1 || control.falling_state > 1;
+        let airborne = control.queued_motion > JumpMotion::STANDING
+            || control.falling_state > JumpMotion::STANDING;
         let backward = matches!(control.motion_classification, 3 | 7);
         control.rope_attached = true;
-        control.falling_state = 0;
-        control.queued_motion = 0;
+        control.falling_state = JumpMotion::NONE;
+        control.queued_motion = JumpMotion::NONE;
         control.sliding_state = 0;
         control.living_state = LivingState::ORDINARY;
         control.directional_state = [0; 2];
@@ -768,7 +769,7 @@ impl ScriptWorld {
         control.fall_origin_y = origin_y;
         control.fall_timer = 0;
         control.sliding_distance = 0;
-        control.queued_motion = QUEUED_ROPE_JUMP;
+        control.queued_motion = JumpMotion::ROPE;
         control.motion_classification = 2;
         self.player_rope.latch = true;
         self.player_rope.turn_rate = 0;

@@ -8,6 +8,7 @@ use crate::player::{
     turn,
     walk::WalkingStartup,
 };
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
@@ -150,10 +151,10 @@ impl ScriptWorld {
                     animation.playback.current_group() == Some(animation.playback.default_group())
                 });
                 if let Some(control) = actor.control.as_mut()
-                    && control.queued_motion == 3
+                    && control.queued_motion == JumpMotion::BACKWARD
                     && at_default
                 {
-                    control.queued_motion = 0;
+                    control.queued_motion = JumpMotion::NONE;
                 }
             }
             let lockout = world
@@ -191,7 +192,8 @@ impl ScriptWorld {
             // (preservation player.md, controller under sliding motion).
             let sliding = control.sliding_state != 0;
 
-            let airborne = control.queued_motion != 0 || control.falling_state != 0;
+            let airborne = control.queued_motion != JumpMotion::NONE
+                || control.falling_state != JumpMotion::NONE;
             // Holding a weapon or the combat flag selects the armed movement dispatch.
             let holding = {
                 let actor = &world.actors[id.index];
@@ -379,8 +381,8 @@ impl ScriptWorld {
         }
         if group.is_some_and(|group| {
             (AnimationGroup::FIRST_LAND_GROUP..=AnimationGroup::LAST_LAND_GROUP).contains(&group)
-        }) || control.queued_motion != 0
-            || control.falling_state != 0
+        }) || control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
         {
             control
                 .directional_state
@@ -480,8 +482,8 @@ impl ScriptWorld {
             .context("ledge controller control unavailable")?;
         if held.jump
             && control.living_state == LivingState::HANGING
-            && control.queued_motion == 0
-            && control.falling_state == 0
+            && control.queued_motion == JumpMotion::NONE
+            && control.falling_state == JumpMotion::NONE
             && self.globals.conditional_ticks()? == 0
         {
             self.ledge_hang_release(id, query, environment, timing, sounds)?;
@@ -667,8 +669,8 @@ impl ScriptWorld {
             .context("player turn control unavailable")?;
         let torch = control.torch_burning != 0;
         // Actor bytes +0x1b2 and +0x1b3: the falling and queued-motion bytes.
-        let eligible = control.falling_state == 0
-            && control.queued_motion == 0
+        let eligible = control.falling_state == JumpMotion::NONE
+            && control.queued_motion == JumpMotion::NONE
             && (held.walk
                 || matches!(
                     control.living_state,
@@ -929,8 +931,8 @@ impl ScriptWorld {
             .as_ref()
             .context("player forward control unavailable")?;
         ensure!(
-            control.queued_motion == 0
-                && control.falling_state == 0
+            control.queued_motion == JumpMotion::NONE
+                && control.falling_state == JumpMotion::NONE
                 && control.sliding_state == 0
                 && control.living_state == LivingState::ORDINARY
                 && control.directional_state.iter().all(|flags| flags & 3 == 0),
@@ -1447,18 +1449,18 @@ fn steer_airborne(
     held: &crate::player::input::PlayerInput,
 ) {
     if held.forward
-        && control.queued_motion & 127 == 1
+        && control.queued_motion.kind() == JumpMotion::STANDING
         && matches!(
             group,
             Some(AnimationGroup::JUMP_START | AnimationGroup::JUMP_START_TORCH)
         )
     {
-        control.queued_motion = 2;
+        control.queued_motion = JumpMotion::FORWARD;
     }
     if held.jump {
         // shortcut: the two retained rope-release flags are not modelled (ropes #21);
         // upgrade when the rope owner retains them.
-        if control.falling_state != 0 {
+        if control.falling_state != JumpMotion::NONE {
             control.motion_companion = 0;
         }
         if control.directional_state.iter().all(|byte| byte & 1 == 0) {
@@ -1481,13 +1483,13 @@ mod airborne_tests {
             ..Default::default()
         };
         let mut control = super::super::ActorControlState {
-            queued_motion: 0x81,
+            queued_motion: JumpMotion::from_byte(0x81),
             ..Default::default()
         };
         steer_airborne(&mut control, Some(AnimationGroup::RUN_TORCH), &held);
-        assert_eq!(control.queued_motion, 0x81);
+        assert_eq!(control.queued_motion, JumpMotion::from_byte(0x81));
         steer_airborne(&mut control, Some(AnimationGroup::JUMP_START), &held);
-        assert_eq!(control.queued_motion, 2);
+        assert_eq!(control.queued_motion, JumpMotion::FORWARD);
     }
 
     #[test]
@@ -1518,7 +1520,7 @@ mod airborne_tests {
             ..Default::default()
         };
         let mut control = super::super::ActorControlState {
-            falling_state: 1,
+            falling_state: JumpMotion::STANDING,
             motion_companion: 5,
             directional_state: [6, 0x82],
             ..Default::default()

@@ -1,5 +1,6 @@
 //! Falling continuation requests precede the shared vertical writer.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -21,32 +22,36 @@ pub struct OrdinaryFallingRequest {
 /// Resolve preservation's falling continuation animation rules. The distance
 /// uses wrapping local Q8 subtraction, followed by signed absolute magnitude.
 pub fn ordinary_falling_request(
-    falling: u8,
+    falling: JumpMotion,
     torch_burning: u8,
     holding_weapon: bool,
     current_group: Option<AnimationGroup>,
     local_y: i32,
     origin_y: i32,
 ) -> Option<OrdinaryFallingRequest> {
-    if falling == 0 {
+    if falling == JumpMotion::NONE {
         return None;
     }
     let torch = torch_burning != 0;
-    let group = if falling & 127 == 3 {
+    let group = if falling.kind() == JumpMotion::BACKWARD {
         if torch {
             AnimationGroup::FALL_BACKWARD_TORCH
         } else {
             AnimationGroup::FALL_BACKWARD
         }
-    } else if falling & 128 != 0 && !torch {
+    } else if falling.arms_raised() && !torch {
         AnimationGroup::FALL_UP_ARMS
-    } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768 && falling == 8 {
+    } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768
+        && falling == JumpMotion::RUNNING
+    {
         if torch {
             AnimationGroup::FALL_RIGHT_TORCH
         } else {
             AnimationGroup::FALL_RUN
         }
-    } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768 && falling == 9 {
+    } else if local_y.wrapping_sub(origin_y).wrapping_abs() < 32768
+        && falling == JumpMotion::RUNNING_LEFT_LEAD
+    {
         if torch {
             AnimationGroup::FALL_LEFT_TORCH
         } else {
@@ -175,7 +180,10 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary stable control unavailable")?;
-        if control.queued_motion != 0 || control.falling_state != 0 || control.sliding_state != 0 {
+        if control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
+            || control.sliding_state != 0
+        {
             return Ok(false);
         }
         let position = self.spatial(id)?.local.position;
@@ -262,7 +270,7 @@ impl ScriptWorld {
             return Ok(true);
         }
         let health = ordinary_health_value(actor.attributes[Attribute::Health], change);
-        let death_group = if control.falling_state != 0
+        let death_group = if control.falling_state != JumpMotion::NONE
             || matches!(
                 group,
                 Some(
@@ -382,7 +390,7 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary landing damage control unavailable")?;
         anyhow::ensure!(
-            control.falling_state != 0,
+            control.falling_state != JumpMotion::NONE,
             "world {} instance {index}: landing damage without falling state",
             self.world
         );
@@ -483,7 +491,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated landing control")
-            .falling_state = 0;
+            .falling_state = JumpMotion::NONE;
         self.actors[index].sync_falling_motion();
         Ok(decision)
     }
@@ -572,7 +580,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated landing control")
-            .falling_state = 0;
+            .falling_state = JumpMotion::NONE;
         self.actors[index].sync_falling_motion();
         Ok(())
     }
@@ -656,7 +664,7 @@ impl ScriptWorld {
             .as_ref()
             .context("animated fall entry control unavailable")?;
         anyhow::ensure!(
-            control.falling_state == 0,
+            control.falling_state == JumpMotion::NONE,
             "world {} instance {index}: animated fall entry already falling",
             self.world
         );
@@ -715,7 +723,7 @@ impl ScriptWorld {
                     .expect("validated fall entry control");
                 control.fall_origin_y = origin;
                 control.fall_timer = timer;
-                control.falling_state = 1;
+                control.falling_state = JumpMotion::STANDING;
                 self.actors[index].sync_falling_motion();
                 force_group
             }
@@ -779,11 +787,11 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary fall entry control unavailable")?;
-        if control.falling_state != 0 {
+        if control.falling_state != JumpMotion::NONE {
             return Ok(false);
         }
         anyhow::ensure!(
-            control.queued_motion == 0 && control.sliding_state == 0,
+            control.queued_motion == JumpMotion::NONE && control.sliding_state == 0,
             "world {} instance {index}: static fall entry motion admission unavailable",
             self.world
         );
@@ -815,7 +823,7 @@ impl ScriptWorld {
             .expect("validated fall entry control");
         control.fall_origin_y = origin;
         control.fall_timer = timer;
-        control.falling_state = 1;
+        control.falling_state = JumpMotion::STANDING;
         self.actors[index].sync_falling_motion();
         Ok(true)
     }
@@ -842,7 +850,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary falling control unavailable")?;
-        if control.falling_state == 0 {
+        if control.falling_state == JumpMotion::NONE {
             return Ok(false);
         }
         let path = data.actor(actor.name())?["model_load_path"]
@@ -1024,20 +1032,20 @@ pub fn ordinary_landing_decision(
 /// and nine read the selected player's weapon predicate, not the landing actor's.
 /// A missing selected-player predicate is unsupported only in those branches.
 pub fn ordinary_landing_request(
-    falling: u8,
+    falling: JumpMotion,
     torch_burning: u8,
     holding_weapon: bool,
     selected_player_holding_weapon: Option<bool>,
     current_group: Option<AnimationGroup>,
 ) -> Result<Option<AnimationGroup>> {
-    if falling == 0 {
+    if falling == JumpMotion::NONE {
         return Ok(None);
     }
     let torch = torch_burning != 0;
-    Ok(match falling & 127 {
-        8 => Some(
+    Ok(match falling.kind() {
+        JumpMotion::RUNNING => Some(
             if selected_player_holding_weapon
-                .context("landing state 8 selected-player weapon predicate unavailable")?
+                .context("running-jump landing selected-player weapon predicate unavailable")?
             {
                 AnimationGroup::FIGHT_LAND_RIGHT
             } else if torch {
@@ -1046,9 +1054,9 @@ pub fn ordinary_landing_request(
                 AnimationGroup::LAND_RUN
             },
         ),
-        9 => Some(
+        JumpMotion::RUNNING_LEFT_LEAD => Some(
             if selected_player_holding_weapon
-                .context("landing state 9 selected-player weapon predicate unavailable")?
+                .context("left-lead landing selected-player weapon predicate unavailable")?
             {
                 AnimationGroup::FIGHT_LAND_LEFT
             } else if torch {

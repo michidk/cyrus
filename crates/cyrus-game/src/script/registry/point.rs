@@ -11,6 +11,7 @@
 //! outside phase zero, the shared held-target exclusion switch (always off in play) and the
 //! selected player's ledge direction; supported phases do not imply complete combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -370,7 +371,10 @@ impl ScriptWorld {
             .as_ref()
             .expect("admitted point control");
         let shared = &mut self.globals.native_command;
-        if control.falling_state != 0 || control.queued_motion != 0 || ledge_direction {
+        if control.falling_state != JumpMotion::NONE
+            || control.queued_motion != JumpMotion::NONE
+            || ledge_direction
+        {
             shared.point_phase = u8::from(control.navigation.next != -1);
             let actor = &mut self.actors[index];
             actor.attributes[Attribute::Collide] = 13;

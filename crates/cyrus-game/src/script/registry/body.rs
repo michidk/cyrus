@@ -1,5 +1,6 @@
 //! Ordinary primary body queries use the actor's initial shape and current pose.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use bevy::math::{Mat3, Vec3};
@@ -54,9 +55,9 @@ impl ScriptWorld {
             .radius;
         let radius = if control.living_state == LivingState::HANGING {
             initial >> 1
-        } else if (control.falling_state != 0 && control.motion_direction == 3)
-            || control.falling_state & 127 != 0
-            || control.queued_motion & 127 != 0
+        } else if (control.falling_state != JumpMotion::NONE && control.motion_direction == 3)
+            || control.falling_state.kind() != JumpMotion::NONE
+            || control.queued_motion.kind() != JumpMotion::NONE
         {
             initial.wrapping_mul(200) >> 8
         } else {
@@ -91,7 +92,7 @@ impl ScriptWorld {
                     spheres: &spheres,
                     sidedness: query.sidedness,
                 },
-                excluded_candidate_type: (control.queued_motion == 24).then_some(128),
+                excluded_candidate_type: (control.queued_motion == JumpMotion::ROPE).then_some(128),
             },
         )
     }
@@ -215,8 +216,8 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("validated ordinary control");
             let grounded = control.living_state == LivingState::ORDINARY
-                && control.falling_state == 0
-                && control.queued_motion == 0;
+                && control.falling_state == JumpMotion::NONE
+                && control.queued_motion == JumpMotion::NONE;
             if !grounded && control.living_state != LivingState::HANGING {
                 transition(self)?;
                 flags |= self.actors[index]
@@ -230,8 +231,8 @@ impl ScriptWorld {
                 .as_ref()
                 .expect("validated ordinary control");
             let grounded = control.living_state == LivingState::ORDINARY
-                && control.falling_state == 0
-                && control.queued_motion == 0;
+                && control.falling_state == JumpMotion::NONE
+                && control.queued_motion == JumpMotion::NONE;
             match contact::resolve_wall(
                 previous,
                 attempted,
@@ -325,7 +326,7 @@ impl ScriptWorld {
                 spheres: &spheres,
                 sidedness: false,
             },
-            (control.queued_motion == 24).then_some(128),
+            (control.queued_motion == JumpMotion::ROPE).then_some(128),
         )?)
     }
 

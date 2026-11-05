@@ -2,6 +2,7 @@
 //! Rules follow preservation's engine/player.md "Armed attack input".
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::player::input::PlayerInput;
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, bail};
 use cyrus_script::Attribute;
@@ -213,7 +214,7 @@ impl ScriptWorld {
         let falling = self.actors[id.index]
             .control
             .as_ref()
-            .is_some_and(|control| control.falling_state == 1);
+            .is_some_and(|control| control.falling_state == JumpMotion::STANDING);
         if falling && latches.jump_attack_pending {
             let started = self.begin_player_move(id, 6, inputs, random, sounds)?;
             let latches = &mut self.actors[id.index]
@@ -512,9 +513,10 @@ impl ScriptWorld {
         if !matches!(combat.action, -1..=1) {
             return Ok(());
         }
-        let airborne = control.queued_motion != 0 || control.falling_state == 1;
+        let airborne = control.queued_motion != JumpMotion::NONE
+            || control.falling_state == JumpMotion::STANDING;
         let walking_jump = control.directional_state[0] & 3 != 0;
-        let falling = control.falling_state == 1;
+        let falling = control.falling_state == JumpMotion::STANDING;
         let mut latches = self.actors[id.index]
             .player_movement
             .as_ref()

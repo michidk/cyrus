@@ -7,6 +7,7 @@
 //! its default animation group and completes. Any other phase restarts from 0. Falling or queued
 //! motion interrupts every phase.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
@@ -66,7 +67,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("direct point control unavailable")?;
-        if control.falling_state != 0 || control.queued_motion != 0 {
+        if control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE {
             self.globals.native_command.point_phase = 0;
             self.actors[index].attributes[Attribute::Collide] = 13;
             self.mark_direct_point_active(index);

@@ -1,5 +1,6 @@
 //! Automatic late collision composes retained candidates and logical actor response.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
@@ -36,12 +37,12 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("support surface control unavailable")?;
-        if control.queued_motion != 0
+        if control.queued_motion != JumpMotion::NONE
             || control.directional_state.iter().any(|flags| flags & 3 != 0)
         {
             return Ok(0);
         }
-        let keep_stored = control.falling_state != 0
+        let keep_stored = control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || control.living_state.is_actor_bounce();
         if keep_stored && !selected {
@@ -396,7 +397,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("edge service fall control unavailable")?
-            .falling_state = 0;
+            .falling_state = JumpMotion::NONE;
         self.actors[id.index].sync_falling_motion();
         Ok(())
     }
@@ -421,7 +422,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("support miss control unavailable")?;
-        if control.falling_state != 0 {
+        if control.falling_state != JumpMotion::NONE {
             if self.selected_edge_service(id, query, environment, timing, sounds)? {
                 self.end_ordinary_fall(id)?;
                 return Ok(());
@@ -691,7 +692,7 @@ impl ScriptWorld {
             ) {
                 return Ok(support_found);
             }
-            if control.queued_motion != 0
+            if control.queued_motion != JumpMotion::NONE
                 && !matches!(
                     control.living_state,
                     LivingState::DRAWING_SWORD | LivingState::SHEATHING_SWORD
@@ -785,7 +786,7 @@ impl ScriptWorld {
                             .control
                             .as_mut()
                             .expect("admitted ground control");
-                        control.falling_state = 0;
+                        control.falling_state = JumpMotion::NONE;
                         let (holding, combat_active) =
                             self.slope_stance(id, environment, weapon)?;
                         self.actors[id.index].sync_falling_motion();
@@ -814,7 +815,7 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .expect("admitted ground control")
-                        .falling_state = 0;
+                        .falling_state = JumpMotion::NONE;
                 } else {
                     self.miss_ordinary_support(
                         id,
@@ -875,7 +876,7 @@ impl ScriptWorld {
             .as_ref()
             .context("late collision control unavailable")?;
         let special = control.living_state.is_ledge();
-        let falling = control.falling_state != 0;
+        let falling = control.falling_state != JumpMotion::NONE;
         ensure!(
             !falling || !special,
             "world {} instance {}: falling in a special state is unsupported",
@@ -977,7 +978,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .expect("admitted recovery control");
-        let moving = control.falling_state != 0 || control.sliding_state != 0;
+        let moving = control.falling_state != JumpMotion::NONE || control.sliding_state != 0;
         let recover = if self.actors[id.index].attributes[Attribute::StickToSurface] != 0 && moving
         {
             true

@@ -1,5 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
+use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -7257,7 +7258,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
                 control.body_response_flags,
                 control.collision_transition_flags
             ),
-            (0, 0, 0, 0, 0)
+            (0, JumpMotion::NONE, JumpMotion::NONE, 0, 0)
         );
         world.prepare_spatial().unwrap();
         world.snapshot_spatial(id).unwrap();
@@ -7277,7 +7278,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             .unwrap();
         assert_eq!(
             world.actors()[0].control_state().unwrap().falling_state,
-            0x81
+            JumpMotion::from_byte(0x81)
         );
         let contacts = [RuntimeBodyContact {
             source: SupportSource::Model { model: 0, face: 0 },
@@ -7399,7 +7400,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 control.body_response_flags,
                 control.collision_transition_flags
             ),
-            (0, 0, 0, 0, 0)
+            (0, JumpMotion::NONE, JumpMotion::NONE, 0, 0)
         );
         world.prepare_spatial().unwrap();
         world.snapshot_spatial(id).unwrap();
@@ -8481,7 +8482,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     world.refresh_model_presentations(&data, &ids).unwrap();
     world.set_actor_surface(ids[0], 0).unwrap();
     let y = world.spatial(ids[0]).unwrap().local.position[1];
-    world.set_falling_for_test(ids[0], 1, y - 101 * 256);
+    world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -8501,12 +8502,16 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
             control.falling_state,
             control.queued_motion
         ),
-        (LivingState::LANDED_ON_ACTOR, 0, 0)
+        (
+            LivingState::LANDED_ON_ACTOR,
+            JumpMotion::NONE,
+            JumpMotion::NONE
+        )
     );
     assert_eq!(control.body_response_flags & 0x80, 0x80);
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
     // Living state 27 refuses a second landing; the pass still ends, and nothing else changes.
-    world.set_falling_for_test(ids[0], 1, y - 101 * 256);
+    world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -8519,9 +8524,12 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
             admitted: false
         }
     );
-    assert_eq!(world.actors()[0].control_state().unwrap().falling_state, 1);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().falling_state,
+        JumpMotion::STANDING
+    );
     // A shorter fall than the installed bounce height takes the weighted response instead.
-    world.set_falling_for_test(ids[0], 1, y - 99 * 256);
+    world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 99 * 256);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -8904,8 +8912,8 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     };
     let base = ObstacleTransitionInput {
         living_state: LivingState::ORDINARY,
-        falling_state: 0,
-        queued_motion: 0,
+        falling_state: JumpMotion::NONE,
+        queued_motion: JumpMotion::NONE,
         logical_y: 2560,
         fall_attribute: 7,
         holding_weapon: false,
@@ -8915,8 +8923,8 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
         ordinary_obstacle_transition(base),
         Some(ObstacleTransition {
             living_state: LivingState::ORDINARY,
-            falling_state: 0,
-            queued_motion: 0,
+            falling_state: JumpMotion::NONE,
+            queued_motion: JumpMotion::NONE,
             body_response_flags: 0,
             clear_motion_vector: false,
             fall_start: None,
@@ -8925,8 +8933,8 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
             living_state: LivingState::HANGING,
-            falling_state: 0x88,
-            queued_motion: 24,
+            falling_state: JumpMotion::from_byte(0x88),
+            queued_motion: JumpMotion::ROPE,
             ..base
         }),
         None
@@ -8939,8 +8947,8 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
             }),
             Some(ObstacleTransition {
                 living_state: LivingState::ORDINARY,
-                falling_state: 1,
-                queued_motion: 0,
+                falling_state: JumpMotion::STANDING,
+                queued_motion: JumpMotion::NONE,
                 body_response_flags: 0x10,
                 clear_motion_vector: true,
                 fall_start: Some(ObstacleFallStart {
@@ -8952,18 +8960,46 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
         );
     }
     for (queued, holding, current, falling, group, clear) in [
-        (24, false, None, 1, Some(AnimationGroup::FALL), true),
-        (5, false, None, 1, Some(AnimationGroup::FALL), false),
         (
-            0x85,
+            JumpMotion::ROPE,
             false,
             None,
-            0x81,
+            JumpMotion::STANDING,
+            Some(AnimationGroup::FALL),
+            true,
+        ),
+        (
+            JumpMotion::from_byte(5),
+            false,
+            None,
+            JumpMotion::STANDING,
+            Some(AnimationGroup::FALL),
+            false,
+        ),
+        (
+            JumpMotion::from_byte(0x85),
+            false,
+            None,
+            JumpMotion::from_byte(0x81),
             Some(AnimationGroup::FALL_UP_ARMS),
             false,
         ),
-        (5, true, None, 1, Some(AnimationGroup::FIGHT_FALL), false),
-        (5, true, Some(AnimationGroup::FIGHT_FALL), 1, None, false),
+        (
+            JumpMotion::from_byte(5),
+            true,
+            None,
+            JumpMotion::STANDING,
+            Some(AnimationGroup::FIGHT_FALL),
+            false,
+        ),
+        (
+            JumpMotion::from_byte(5),
+            true,
+            Some(AnimationGroup::FIGHT_FALL),
+            JumpMotion::STANDING,
+            None,
+            false,
+        ),
     ] {
         assert_eq!(
             ordinary_obstacle_transition(ObstacleTransitionInput {
@@ -8975,7 +9011,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
             Some(ObstacleTransition {
                 living_state: LivingState::ORDINARY,
                 falling_state: falling,
-                queued_motion: 0,
+                queued_motion: JumpMotion::NONE,
                 body_response_flags: 0x10,
                 clear_motion_vector: clear,
                 fall_start: Some(ObstacleFallStart {
@@ -8988,13 +9024,13 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     }
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
-            falling_state: 0x8f,
+            falling_state: JumpMotion::from_byte(0x8f),
             ..base
         }),
         Some(ObstacleTransition {
             living_state: LivingState::ORDINARY,
-            falling_state: 0x81,
-            queued_motion: 0,
+            falling_state: JumpMotion::from_byte(0x81),
+            queued_motion: JumpMotion::NONE,
             body_response_flags: 0x20,
             clear_motion_vector: false,
             fall_start: None
@@ -9020,7 +9056,7 @@ fn ordinary_obstacle_transition_preserves_grounded_and_state_fifteen_and_restart
     );
     assert_eq!(
         ordinary_obstacle_transition(ObstacleTransitionInput {
-            queued_motion: 1,
+            queued_motion: JumpMotion::STANDING,
             logical_y: i32::MAX,
             fall_attribute: 255,
             ..base
@@ -9331,16 +9367,16 @@ fn ordinary_vertical_motion_retains_byte_timer_signed_limit_and_q8_origin() {
         y: 9000,
         origin_y: 10000,
         timer: 30,
-        queued: 129,
-        falling: 0,
+        queued: JumpMotion::from_byte(129),
+        falling: JumpMotion::NONE,
     };
     assert_eq!(
         ordinary_queued_vertical(state, 32, input),
         OrdinaryVerticalState {
             y: 1808,
             timer: 38,
-            queued: 0,
-            falling: 129,
+            queued: JumpMotion::NONE,
+            falling: JumpMotion::from_byte(129),
             ..state
         }
     );
@@ -9429,7 +9465,7 @@ fn ordinary_vertical_motion_retains_byte_timer_signed_limit_and_q8_origin() {
             }
         )
         .queued,
-        129
+        JumpMotion::from_byte(129)
     );
     assert_eq!(
         ordinary_falling_vertical(OrdinaryVerticalState { timer: 1, ..state }, 32, input).timer,
@@ -9581,7 +9617,7 @@ fn ordinary_queued_clearance_uses_strict_terrain_height_and_retained_model_order
 fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     use cyrus_game::script::{OrdinaryQueuedAction, OrdinaryQueuedInputs, ordinary_queued_action};
     let input = OrdinaryQueuedInputs {
-        queued: 0,
+        queued: JumpMotion::NONE,
         torch_burning: 0,
         current_group: Some(AnimationGroup::PANIC),
         pending_group: None,
@@ -9595,24 +9631,24 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
         OrdinaryQueuedAction::default()
     );
     for (queued, torch_burning, holding, group) in [
-        (1, 0, false, 39),
-        (1, 0, true, 112),
-        (129, 0, true, 40),
-        (129, 1, false, 38),
-        (2, 0, false, 42),
-        (130, 0, false, 43),
-        (130, 1, false, 41),
-        (3, 0, false, 49),
-        (131, 1, false, 50),
-        (8, 0, false, 44),
-        (136, 0, false, 48),
-        (136, 1, false, 45),
-        (24, 0, false, 44),
-        (152, 0, false, 48),
-        (152, 1, false, 45),
-        (9, 0, false, 46),
-        (137, 0, false, 48),
-        (137, 1, false, 47),
+        (JumpMotion::STANDING, 0, false, 39),
+        (JumpMotion::STANDING, 0, true, 112),
+        (JumpMotion::from_byte(129), 0, true, 40),
+        (JumpMotion::from_byte(129), 1, false, 38),
+        (JumpMotion::FORWARD, 0, false, 42),
+        (JumpMotion::from_byte(130), 0, false, 43),
+        (JumpMotion::from_byte(130), 1, false, 41),
+        (JumpMotion::BACKWARD, 0, false, 49),
+        (JumpMotion::from_byte(131), 1, false, 50),
+        (JumpMotion::RUNNING, 0, false, 44),
+        (JumpMotion::from_byte(136), 0, false, 48),
+        (JumpMotion::from_byte(136), 1, false, 45),
+        (JumpMotion::ROPE, 0, false, 44),
+        (JumpMotion::from_byte(152), 0, false, 48),
+        (JumpMotion::from_byte(152), 1, false, 45),
+        (JumpMotion::RUNNING_LEFT_LEAD, 0, false, 46),
+        (JumpMotion::from_byte(137), 0, false, 48),
+        (JumpMotion::from_byte(137), 1, false, 47),
     ] {
         assert_eq!(
             ordinary_queued_action(OrdinaryQueuedInputs {
@@ -9637,7 +9673,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     for pending in [32, 33, 34, 35, 36, 37, 111] {
         assert_eq!(
             ordinary_queued_action(OrdinaryQueuedInputs {
-                queued: 1,
+                queued: JumpMotion::STANDING,
                 pending_group: Some(AnimationGroup::from_index(pending)),
                 edge_handled: true,
                 ..input
@@ -9647,7 +9683,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     }
     assert_eq!(
         ordinary_queued_action(OrdinaryQueuedInputs {
-            queued: 3,
+            queued: JumpMotion::BACKWARD,
             has_group_49: false,
             pending_group: Some(AnimationGroup::JUMP_START),
             edge_handled: true,
@@ -9659,12 +9695,15 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
         }
     );
     assert_eq!(
-        ordinary_queued_action(OrdinaryQueuedInputs { queued: 3, ..input }),
+        ordinary_queued_action(OrdinaryQueuedInputs {
+            queued: JumpMotion::BACKWARD,
+            ..input
+        }),
         OrdinaryQueuedAction::default()
     );
     assert_eq!(
         ordinary_queued_action(OrdinaryQueuedInputs {
-            queued: 3,
+            queued: JumpMotion::BACKWARD,
             torch_burning: 1,
             ..input
         }),
@@ -9675,7 +9714,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     );
     assert_eq!(
         ordinary_queued_action(OrdinaryQueuedInputs {
-            queued: 1,
+            queued: JumpMotion::STANDING,
             edge_handled: true,
             ..input
         }),
@@ -9687,7 +9726,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     );
     assert_eq!(
         ordinary_queued_action(OrdinaryQueuedInputs {
-            queued: 128,
+            queued: JumpMotion::from_byte(128),
             ..input
         }),
         OrdinaryQueuedAction {
@@ -9754,7 +9793,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
             .control_state()
             .unwrap()
             .queued_motion,
-        0
+        JumpMotion::NONE
     );
     assert!(
         world.actors()[id.index]
@@ -9789,7 +9828,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
             control.fall_origin_y,
             control.motion_direction
         ),
-        (1, 0, origin[1], 2)
+        (JumpMotion::STANDING, 0, origin[1], 2)
     );
     assert!(
         !world
@@ -9811,10 +9850,10 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     // Replacing the current default starts the requested group immediately.
     assert_eq!(world.animation_frame(id).unwrap(), Some(32));
     for (timer, offset, queued, falling) in [
-        (8, -512, 1, 0),
-        (16, -4160, 1, 0),
-        (24, -6624, 1, 0),
-        (32, -7936, 0, 1),
+        (8, -512, JumpMotion::STANDING, JumpMotion::NONE),
+        (16, -4160, JumpMotion::STANDING, JumpMotion::NONE),
+        (24, -6624, JumpMotion::STANDING, JumpMotion::NONE),
+        (32, -7936, JumpMotion::NONE, JumpMotion::STANDING),
     ] {
         assert!(
             world
@@ -9842,7 +9881,10 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert_eq!(world.animation_frame(id).unwrap(), Some(32));
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!((control.fall_timer, control.falling_state), (24, 1));
+    assert_eq!(
+        (control.fall_timer, control.falling_state),
+        (24, JumpMotion::STANDING)
+    );
     assert_eq!(
         world.spatial(id).unwrap().local.position[1],
         origin[1] - 8192
@@ -9858,41 +9900,72 @@ fn ordinary_falling_requests_preserve_priority_and_short_distance_boundary() {
             force: false,
         })
     };
-    assert_eq!(ordinary_falling_request(0, 0, false, None, 0, 0), None);
     assert_eq!(
-        ordinary_falling_request(131, 0, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
-        requested(AnimationGroup::FALL_BACKWARD)
-    );
-    assert_eq!(
-        ordinary_falling_request(131, 1, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
-        requested(AnimationGroup::FALL_BACKWARD_TORCH)
-    );
-    assert_eq!(
-        ordinary_falling_request(136, 0, true, None, 0, 0),
-        requested(AnimationGroup::FALL_UP_ARMS)
-    );
-    assert_eq!(
-        ordinary_falling_request(8, 0, true, None, 32767, 0),
-        requested(AnimationGroup::FALL_RUN)
-    );
-    assert_eq!(
-        ordinary_falling_request(9, 1, false, None, -32767, 0),
-        requested(AnimationGroup::FALL_LEFT_TORCH)
-    );
-    assert_eq!(
-        ordinary_falling_request(8, 0, false, None, 32768, 0),
-        requested(AnimationGroup::FALL)
-    );
-    assert_eq!(
-        ordinary_falling_request(9, 1, false, None, -32768, 0),
-        requested(AnimationGroup::FALL_TORCH)
-    );
-    assert_eq!(
-        ordinary_falling_request(1, 0, true, Some(AnimationGroup::FIGHT_FALL_ATTACK), 0, 0),
+        ordinary_falling_request(JumpMotion::NONE, 0, false, None, 0, 0),
         None
     );
     assert_eq!(
-        ordinary_falling_request(1, 0, true, Some(AnimationGroup::FIGHT_LAND), 0, 0),
+        ordinary_falling_request(
+            JumpMotion::from_byte(131),
+            0,
+            true,
+            Some(AnimationGroup::FIGHT_FALL_ATTACK),
+            0,
+            0
+        ),
+        requested(AnimationGroup::FALL_BACKWARD)
+    );
+    assert_eq!(
+        ordinary_falling_request(
+            JumpMotion::from_byte(131),
+            1,
+            true,
+            Some(AnimationGroup::FIGHT_FALL_ATTACK),
+            0,
+            0
+        ),
+        requested(AnimationGroup::FALL_BACKWARD_TORCH)
+    );
+    assert_eq!(
+        ordinary_falling_request(JumpMotion::from_byte(136), 0, true, None, 0, 0),
+        requested(AnimationGroup::FALL_UP_ARMS)
+    );
+    assert_eq!(
+        ordinary_falling_request(JumpMotion::RUNNING, 0, true, None, 32767, 0),
+        requested(AnimationGroup::FALL_RUN)
+    );
+    assert_eq!(
+        ordinary_falling_request(JumpMotion::RUNNING_LEFT_LEAD, 1, false, None, -32767, 0),
+        requested(AnimationGroup::FALL_LEFT_TORCH)
+    );
+    assert_eq!(
+        ordinary_falling_request(JumpMotion::RUNNING, 0, false, None, 32768, 0),
+        requested(AnimationGroup::FALL)
+    );
+    assert_eq!(
+        ordinary_falling_request(JumpMotion::RUNNING_LEFT_LEAD, 1, false, None, -32768, 0),
+        requested(AnimationGroup::FALL_TORCH)
+    );
+    assert_eq!(
+        ordinary_falling_request(
+            JumpMotion::STANDING,
+            0,
+            true,
+            Some(AnimationGroup::FIGHT_FALL_ATTACK),
+            0,
+            0
+        ),
+        None
+    );
+    assert_eq!(
+        ordinary_falling_request(
+            JumpMotion::STANDING,
+            0,
+            true,
+            Some(AnimationGroup::FIGHT_LAND),
+            0,
+            0
+        ),
         Some(OrdinaryFallingRequest {
             group: AnimationGroup::FIGHT_FALL,
             force: true
@@ -9940,7 +10013,7 @@ fn ordinary_falling_caller_obeys_the_live_animation_vertical_marker() {
                 .unwrap()
         );
         let control = world.actors()[id.index].control_state().unwrap();
-        assert_eq!(control.falling_state, 1);
+        assert_eq!(control.falling_state, JumpMotion::STANDING);
         assert_eq!(control.fall_origin_y, 10000);
         assert_eq!(control.fall_timer, if suppressed { 30 } else { 22 });
         let after = world.spatial(id).unwrap().local.position;
@@ -10027,7 +10100,7 @@ fn ordinary_falling_reads_the_replacement_groups_vertical_marker() {
             AnimationGroup::FALL.index()
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.falling_state, 1);
+        assert_eq!(control.falling_state, JumpMotion::STANDING);
         assert_eq!(control.fall_origin_y, 10000);
         assert_eq!(
             control.fall_timer,
@@ -10062,7 +10135,7 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
             control.fall_timer,
             control.falling_state
         ),
-        (y.wrapping_add(8192), 30, 1)
+        (y.wrapping_add(8192), 30, JumpMotion::STANDING)
     );
     assert!(!world.begin_static_ordinary_fall(id, &data).unwrap());
     let environment = ObstacleEnvironment {
@@ -10214,7 +10287,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             control.fall_timer,
             control.fall_origin_y
         ),
-        (1, 30, y.wrapping_add(8192))
+        (JumpMotion::STANDING, 30, y.wrapping_add(8192))
     );
     assert_eq!(world.animation_frame(id).unwrap(), Some(56));
     assert!(
@@ -10255,7 +10328,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .control_state()
             .unwrap()
             .falling_state,
-        0
+        JumpMotion::NONE
     );
     world
         .complete_ordinary_landing(id, &data, environment, None, &mut |_, _| Ok(()))
@@ -10265,7 +10338,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .control_state()
             .unwrap()
             .falling_state,
-        0
+        JumpMotion::NONE
     );
     assert_eq!(world.animation_frame(id).unwrap(), Some(56));
     assert!(
@@ -10366,10 +10439,16 @@ fn ordinary_landing_decision_uses_strict_installed_thresholds_and_water() {
 #[test]
 fn ordinary_landing_requests_keep_selected_player_weapon_state_separate() {
     use cyrus_game::script::ordinary_landing_request as request;
-    assert_eq!(request(0, 0, false, None, None).unwrap(), None);
-    for (motion, dry, torch, armed) in [(8, 67, 68, 130), (9, 69, 70, 131)] {
+    assert_eq!(
+        request(JumpMotion::NONE, 0, false, None, None).unwrap(),
+        None
+    );
+    for (motion, dry, torch, armed) in [
+        (JumpMotion::RUNNING, 67, 68, 130),
+        (JumpMotion::RUNNING_LEFT_LEAD, 69, 70, 131),
+    ] {
         assert_eq!(
-            request(motion | 128, 0, true, Some(false), None).unwrap(),
+            request(motion.with_arms_raised(true), 0, true, Some(false), None).unwrap(),
             Some(AnimationGroup::from_index(dry))
         );
         assert_eq!(
@@ -10388,23 +10467,44 @@ fn ordinary_landing_requests_keep_selected_player_weapon_state_separate() {
         );
     }
     assert_eq!(
-        request(1, 0, false, None, None).unwrap(),
+        request(JumpMotion::STANDING, 0, false, None, None).unwrap(),
         Some(AnimationGroup::FIRST_LAND_GROUP)
     );
     assert_eq!(
-        request(1, 1, false, None, None).unwrap(),
+        request(JumpMotion::STANDING, 1, false, None, None).unwrap(),
         Some(AnimationGroup::LAND_TORCH)
     );
     assert_eq!(
-        request(1, 0, true, None, Some(AnimationGroup::FIGHT_LAND)).unwrap(),
+        request(
+            JumpMotion::STANDING,
+            0,
+            true,
+            None,
+            Some(AnimationGroup::FIGHT_LAND)
+        )
+        .unwrap(),
         Some(AnimationGroup::FIGHT_LAND)
     );
     assert_eq!(
-        request(1, 0, true, None, Some(AnimationGroup::FIGHT_FALL_ATTACK)).unwrap(),
+        request(
+            JumpMotion::STANDING,
+            0,
+            true,
+            None,
+            Some(AnimationGroup::FIGHT_FALL_ATTACK)
+        )
+        .unwrap(),
         None
     );
     assert_eq!(
-        request(1, 0, true, None, Some(AnimationGroup::FIGHT_LAND_ATTACK)).unwrap(),
+        request(
+            JumpMotion::STANDING,
+            0,
+            true,
+            None,
+            Some(AnimationGroup::FIGHT_LAND_ATTACK)
+        )
+        .unwrap(),
         None
     );
 }
@@ -11573,7 +11673,7 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
             state.sliding_state,
             state.collision_transition_flags
         ),
-        (0, 0, 0, 1)
+        (0, JumpMotion::NONE, 0, 1)
     );
     assert_eq!(
         events,
@@ -14777,7 +14877,7 @@ fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
     // the controller cooldown; the unarmed standing jump (`anim_jump_start`, queued 1) is wrong here.
     assert_eq!(
         world.actors()[index].control_state().unwrap().queued_motion,
-        3
+        JumpMotion::BACKWARD
     );
 }
 
@@ -35110,13 +35210,13 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
     };
     step(&mut world, &scene);
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!(control.falling_state, 1);
+    assert_eq!(control.falling_state, JumpMotion::STANDING);
     assert_eq!(control.fall_origin_y, start_y + 32 * 256);
     if model_vertical {
         // Both entry and subsequent host updates must retain the model's vertical ownership.
         for _ in 0..3 {
             let control = world.actors()[id.index].control_state().unwrap();
-            assert_eq!(control.falling_state, 1);
+            assert_eq!(control.falling_state, JumpMotion::STANDING);
             assert_eq!(control.fall_timer, 30);
             assert_eq!(control.fall_origin_y, start_y + 32 * 256);
             assert_eq!(world.spatial(id).unwrap().local.position[1], start_y);
@@ -35156,7 +35256,7 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
     assert_eq!(world.actor_surface(id).unwrap(), 0);
     step(&mut world, &scene);
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!(control.falling_state, 0);
+    assert_eq!(control.falling_state, JumpMotion::NONE);
     assert_eq!(world.actor_surface(id).unwrap(), if water { 4 } else { 0 });
     assert_eq!(
         world.actors()[id.index].attributes()[Attribute::Health],
@@ -35262,7 +35362,7 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     let control = actor.control_state().unwrap();
     assert_eq!(control.directional_state, [0, 0]);
     // The jump entry's queued state ran one arbitration and survived to the next update.
-    assert_ne!(queued_before, 0);
+    assert_ne!(queued_before, JumpMotion::NONE);
     assert_eq!(world.spatial(id).unwrap().local.position[0], stable[0]);
     // The running jump carries the actor forward along its heading, a rate of 0x10000 / attribute 31.
     assert_ne!(world.spatial(id).unwrap().local.position[2], stable[2]);
@@ -35272,12 +35372,12 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
 fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both_jump_rows() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     for (group, bit, queued, request) in [
-        (18, 1, 8, 34),
-        (18, 2, 9, 36),
-        (30, 1, 8, 35),
-        (30, 2, 9, 37),
-        (18, 3, 8, 34),
-        (30, 3, 8, 35),
+        (18, 1, JumpMotion::RUNNING, 34),
+        (18, 2, JumpMotion::RUNNING_LEFT_LEAD, 36),
+        (30, 1, JumpMotion::RUNNING, 35),
+        (30, 2, JumpMotion::RUNNING_LEFT_LEAD, 37),
+        (18, 3, JumpMotion::RUNNING, 34),
+        (30, 3, JumpMotion::RUNNING, 35),
     ] {
         for (initial_timer, first_timer, second_ticks) in [(35, 36, 1), (255, 0, 37)] {
             let mut scripts = cache();
@@ -35362,7 +35462,7 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
                 } else {
                     assert_eq!(control.jump_window, first_timer);
                     assert_eq!(control.directional_state, [0x100 | bit, 0x200]);
-                    assert_eq!(control.queued_motion, 0);
+                    assert_eq!(control.queued_motion, JumpMotion::NONE);
                 }
             }
         }
@@ -35373,10 +35473,10 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
 fn ordinary_update_consumes_both_authored_jump_masks_before_the_fallback() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     for (group, mask, queued, request) in [
-        (18, 1, 8, 34),
-        (18, 2, 9, 36),
-        (30, 1, 8, 35),
-        (30, 2, 9, 37),
+        (18, 1, JumpMotion::RUNNING, 34),
+        (18, 2, JumpMotion::RUNNING_LEFT_LEAD, 36),
+        (30, 1, JumpMotion::RUNNING, 35),
+        (30, 2, JumpMotion::RUNNING_LEFT_LEAD, 37),
     ] {
         let mut scripts = cache();
         let attributes = &mut scripts.actors.get_mut("LOGIC").unwrap().attributes;
@@ -36040,15 +36140,15 @@ fn script_jump_fixture(
 fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
     use cyrus_game::script::{ScriptInputs, WorldSnapshotSources};
     for (group, torch, holding, selector, queued, request, heading_write) in [
-        (0, 0, 0, 0, 1, 32, false),
-        (0, 1, 0, 0, 1, 33, false),
-        (0, 1, 1, 0, 1, 111, false),
-        (18, 0, 0, 0, 8, 34, false),
-        (30, 0, 0, 0, 8, 35, false),
-        (19, 0, 0, 0, 3, 49, true),
-        (23, 0, 0, 0, 3, 50, true),
-        (31, 0, 0, 0, 8, 34, true),
-        (19, 1, 1, 1, 24, 85, false),
+        (0, 0, 0, 0, JumpMotion::STANDING, 32, false),
+        (0, 1, 0, 0, JumpMotion::STANDING, 33, false),
+        (0, 1, 1, 0, JumpMotion::STANDING, 111, false),
+        (18, 0, 0, 0, JumpMotion::RUNNING, 34, false),
+        (30, 0, 0, 0, JumpMotion::RUNNING, 35, false),
+        (19, 0, 0, 0, JumpMotion::BACKWARD, 49, true),
+        (23, 0, 0, 0, JumpMotion::BACKWARD, 50, true),
+        (31, 0, 0, 0, JumpMotion::RUNNING, 34, true),
+        (19, 1, 1, 1, JumpMotion::ROPE, 85, false),
     ] {
         let (mut world, scripts, data) = script_jump_fixture(group, |saved| {
             saved["actors"][0]["control"]["torch_burning"] = torch.into();
@@ -36347,7 +36447,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
         )
         .unwrap();
     let control = world.actors()[player_index].control_state().unwrap();
-    assert_eq!(control.queued_motion, 3);
+    assert_eq!(control.queued_motion, JumpMotion::BACKWARD);
     assert_eq!(control.motion_vector[1], i32::from(before_heading));
     assert_eq!(
         serde_json::to_value(world.globals()).unwrap()["controller_prelude"]["conditional_ticks"],
@@ -36480,8 +36580,8 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
         .unwrap();
     let control = world.actors()[player_index].control_state().unwrap();
     assert!(!control.stable_position_valid);
-    assert_eq!(control.queued_motion, 0);
-    assert_eq!(control.falling_state, 0);
+    assert_eq!(control.queued_motion, JumpMotion::NONE);
+    assert_eq!(control.falling_state, JumpMotion::NONE);
     assert_eq!(control.living_state, LivingState::ORDINARY);
     assert_eq!(control.action_transition_counter, 6);
     assert_eq!(
@@ -38058,7 +38158,10 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             tick(live, first_jump);
             assert!(live.selected_player_on_rope());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!((control.queued_motion, control.jump_selector), (0, 0));
+            assert_eq!(
+                (control.queued_motion, control.jump_selector),
+                (JumpMotion::NONE, 0)
+            );
             assert_ne!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]
@@ -38070,7 +38173,10 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(!live.selected_player_on_rope());
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!((control.queued_motion, control.jump_selector), (24, 24));
+            assert_eq!(
+                (control.queued_motion, control.jump_selector),
+                (JumpMotion::ROPE, 24)
+            );
             assert_eq!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]
@@ -39096,8 +39202,8 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
     assert!(actor.failure().is_none(), "{:?}", actor.failure());
     let control = actor.control_state().unwrap();
     assert_eq!(control.directional_state, [0, 0]);
-    assert_eq!(control.queued_motion, 8);
-    assert_eq!(control.falling_state, 0);
+    assert_eq!(control.queued_motion, JumpMotion::RUNNING);
+    assert_eq!(control.falling_state, JumpMotion::NONE);
     assert_eq!(control.fall_origin_y, stable[1]);
     assert_eq!(control.fall_timer, 8);
     assert!(!control.stable_position_valid);

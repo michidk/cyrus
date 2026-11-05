@@ -172,7 +172,9 @@ pub use sound::ScriptSound;
 pub mod alignment;
 /// `BounceObject`'s launch state machine.
 pub mod bounce;
+mod jump_motion;
 mod living_state;
+pub use jump_motion::JumpMotion;
 pub use living_state::LivingState;
 mod group_sync;
 /// The player-alignment movers of `PlayerPickupLineUp` and its fallback.

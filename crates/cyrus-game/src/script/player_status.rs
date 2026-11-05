@@ -1,5 +1,6 @@
 //! `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 //! current animation group and movement this update.
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -34,8 +35,8 @@ pub enum PlayerStatus {
 /// The selected player's state as `PlayerStatus` reads it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PlayerStatusInput {
-    pub queued_motion: u8,
-    pub falling_state: u8,
+    pub queued_motion: JumpMotion,
+    pub falling_state: JumpMotion,
     pub sliding_state: u8,
     pub living_state: LivingState,
     pub group: Option<AnimationGroup>,
@@ -54,13 +55,37 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
         moved,
     } = input;
     let by_motion = [
-        (queued_motion, 1, PlayerStatus::Jump),
-        (queued_motion, 2, PlayerStatus::JumpForward),
-        (queued_motion, 8, PlayerStatus::JumpRunForward),
-        (queued_motion, 3, PlayerStatus::JumpBackward),
-        (falling_state, 2, PlayerStatus::FallForward),
-        (falling_state, 8, PlayerStatus::FallRunForward),
-        (falling_state, 3, PlayerStatus::FallBackward),
+        (queued_motion, JumpMotion::STANDING, PlayerStatus::Jump),
+        (
+            queued_motion,
+            JumpMotion::FORWARD,
+            PlayerStatus::JumpForward,
+        ),
+        (
+            queued_motion,
+            JumpMotion::RUNNING,
+            PlayerStatus::JumpRunForward,
+        ),
+        (
+            queued_motion,
+            JumpMotion::BACKWARD,
+            PlayerStatus::JumpBackward,
+        ),
+        (
+            falling_state,
+            JumpMotion::FORWARD,
+            PlayerStatus::FallForward,
+        ),
+        (
+            falling_state,
+            JumpMotion::RUNNING,
+            PlayerStatus::FallRunForward,
+        ),
+        (
+            falling_state,
+            JumpMotion::BACKWARD,
+            PlayerStatus::FallBackward,
+        ),
     ];
     if let Some((_, _, class)) = by_motion.into_iter().find(|(byte, value, _)| byte == value) {
         return class;
@@ -184,17 +209,17 @@ mod tests {
         assert_eq!(status(|_| {}), PlayerStatus::Idle);
         assert_eq!(status(|i| i.moved = true), PlayerStatus::Moving);
         for (value, class) in [
-            (1, PlayerStatus::Jump),
-            (2, PlayerStatus::JumpForward),
-            (8, PlayerStatus::JumpRunForward),
-            (3, PlayerStatus::JumpBackward),
+            (JumpMotion::STANDING, PlayerStatus::Jump),
+            (JumpMotion::FORWARD, PlayerStatus::JumpForward),
+            (JumpMotion::RUNNING, PlayerStatus::JumpRunForward),
+            (JumpMotion::BACKWARD, PlayerStatus::JumpBackward),
         ] {
             assert_eq!(status(|i| i.queued_motion = value), class);
         }
         for (value, class) in [
-            (2, PlayerStatus::FallForward),
-            (8, PlayerStatus::FallRunForward),
-            (3, PlayerStatus::FallBackward),
+            (JumpMotion::FORWARD, PlayerStatus::FallForward),
+            (JumpMotion::RUNNING, PlayerStatus::FallRunForward),
+            (JumpMotion::BACKWARD, PlayerStatus::FallBackward),
         ] {
             assert_eq!(status(|i| i.falling_state = value), class);
         }
@@ -231,8 +256,8 @@ mod tests {
         // Earlier rules shadow later ones.
         assert_eq!(
             status(|i| {
-                i.queued_motion = 3;
-                i.falling_state = 2;
+                i.queued_motion = JumpMotion::BACKWARD;
+                i.falling_state = JumpMotion::FORWARD;
                 i.moved = true;
             }),
             PlayerStatus::JumpBackward

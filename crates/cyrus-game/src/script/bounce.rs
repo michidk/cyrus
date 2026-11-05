@@ -4,6 +4,7 @@
 //!
 //! The call takes a power (how quickly the lift decays), a forward-speed scalar and a steering
 //! flag. Installed content calls it once, on the selected player, as `BounceObject(160, 40, 1)`.
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::AnimationGroup;
@@ -52,7 +53,7 @@ pub trait BouncePort {
     fn jump_height(&self) -> u8;
     /// Clear the falling, queued and sliding bytes and the first two motion-vector words.
     fn clear_motion(&mut self);
-    fn falling_state(&self) -> u8;
+    fn falling_state(&self) -> JumpMotion;
     /// Start an ordinary fall at the current height: origin, timer and falling state one.
     fn begin_fall(&mut self);
     /// The lift speed, held in the fall-origin word while the actor rises.
@@ -170,7 +171,7 @@ pub fn step<P: BouncePort + ?Sized>(
         }
         return Ok(false);
     }
-    if port.falling_state() == 0 {
+    if port.falling_state() == JumpMotion::NONE {
         port.set_living_state(LivingState::ORDINARY);
         return Ok(true);
     }
@@ -190,7 +191,7 @@ mod tests {
         drawn: bool,
         torch: bool,
         jump_height: u8,
-        falling: u8,
+        falling: JumpMotion,
         lift: i32,
         position: [i32; 3],
         heading: u16,
@@ -232,14 +233,14 @@ mod tests {
         }
         fn clear_motion(&mut self) {
             self.cleared += 1;
-            self.falling = 0;
+            self.falling = JumpMotion::NONE;
         }
-        fn falling_state(&self) -> u8 {
+        fn falling_state(&self) -> JumpMotion {
             self.falling
         }
         fn begin_fall(&mut self) {
             self.fall_started = true;
-            self.falling = 1;
+            self.falling = JumpMotion::STANDING;
         }
         fn lift(&self) -> i32 {
             self.lift
@@ -372,7 +373,7 @@ mod tests {
             living: LivingState::BOUNCE_RISING,
             lift: 1000,
             group: Some(AnimationGroup::FIRST_LAND_GROUP),
-            falling: 0,
+            falling: JumpMotion::NONE,
             ..ready()
         };
         let mut state = BounceState { started: true };
@@ -382,7 +383,7 @@ mod tests {
         assert_eq!(actor.requests, [(AnimationGroup::FALL, true)]);
         // Falling continues until the ordinary landing clears the falling byte.
         assert!(!step(&mut actor, &mut state, ARGS).unwrap());
-        actor.falling = 0;
+        actor.falling = JumpMotion::NONE;
         assert!(step(&mut actor, &mut state, ARGS).unwrap());
         assert_eq!(actor.living, LivingState::ORDINARY);
     }
@@ -422,7 +423,7 @@ mod tests {
     fn only_the_selected_player_steers() {
         let mut steered = Actor {
             living: LivingState::BOUNCE_FALLING,
-            falling: 1,
+            falling: JumpMotion::STANDING,
             heading: 100,
             selected: true,
             turn: 30,

@@ -1,6 +1,7 @@
 //! The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 //! `script::bounce`'s; a missing input fails the native instead of continuing on a guess.
 use super::{GameHost, ScriptActorId};
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
@@ -119,14 +120,14 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     }
     fn clear_motion(&mut self) {
         let control = self.control_mut();
-        control.falling_state = 0;
-        control.queued_motion = 0;
+        control.falling_state = JumpMotion::NONE;
+        control.queued_motion = JumpMotion::NONE;
         control.sliding_state = 0;
         control.motion_vector[0] = 0;
         control.motion_vector[1] = 0;
         self.host.registry.actors[self.id.index].sync_falling_motion();
     }
-    fn falling_state(&self) -> u8 {
+    fn falling_state(&self) -> JumpMotion {
         self.control().falling_state
     }
     fn begin_fall(&mut self) {
@@ -136,7 +137,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
         let control = self.control_mut();
         control.fall_origin_y = origin;
         control.fall_timer = timer;
-        control.falling_state = 1;
+        control.falling_state = JumpMotion::STANDING;
         self.host.registry.actors[self.id.index].sync_falling_motion();
     }
     fn lift(&self) -> i32 {

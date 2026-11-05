@@ -1,5 +1,6 @@
 //! Supporting actor motion runs after collision and before ordinary axis locks.
 use super::{ScriptActorId, ScriptWorld};
+use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::collision_mesh::BodyProbe;
@@ -217,7 +218,7 @@ impl ScriptWorld {
             models,
             &poses,
             &body,
-            (queued == 24).then_some(128),
+            (queued == JumpMotion::ROPE).then_some(128),
         )? {
             return Ok(true);
         }

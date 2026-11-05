@@ -1,5 +1,6 @@
 //! Complete actor and world replacements are assembled away from live execution.
 use super::*;
+use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::ensure;
 use serde::{Deserialize, Serialize};
@@ -15,8 +16,8 @@ struct ControlSnapshot {
     living_state: LivingState,
     motion_companion: u8,
     sliding_state: u8,
-    falling_state: u8,
-    queued_motion: u8,
+    falling_state: JumpMotion,
+    queued_motion: JumpMotion,
     motion_direction: u8,
     motion_classification: u8,
     directional_state: [u32; 2],
