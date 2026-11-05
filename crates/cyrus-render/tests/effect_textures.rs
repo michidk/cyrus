@@ -14,7 +14,7 @@ fn source() -> Effects {
                 name: "A00000".into(),
                 size: [1, 2],
                 texture_scale: 256,
-                delay_ms: 100,
+                delay_ms: 142,
                 flags: 1,
                 alpha: 151,
                 frames: vec![

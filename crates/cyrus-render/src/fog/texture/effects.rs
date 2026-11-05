@@ -653,7 +653,7 @@ mod tests {
                     name: "A00000".into(),
                     size: [1, 1],
                     texture_scale: 256,
-                    delay_ms: 100,
+                    delay_ms: 142,
                     flags: 1,
                     alpha: 151,
                     frames: vec![vec![10, 20, 30, 255], vec![40, 50, 60, 255]],

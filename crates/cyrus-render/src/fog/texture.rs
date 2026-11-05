@@ -785,9 +785,7 @@ impl TextureAnimations {
             delay_ms >= 0,
             "texture {name} has unsupported negative delay {delay_ms}"
         );
-        let delay = (f64::from(delay_ms) * 18.2 / 1000.0)
-            .round_ties_even()
-            .max(1.0) as u32;
+        let delay = (f64::from(delay_ms) * 18.2 / 1000.0).trunc().max(1.0) as u32;
         if let Some(existing) = self.states.get(&name.to_ascii_lowercase()) {
             ensure!(
                 existing.count == count && existing.delay == delay,
@@ -944,6 +942,20 @@ impl TextureAnimations {
 #[cfg(test)]
 mod preparation_tests {
     use super::*;
+
+    #[test]
+    fn header_delay_keeps_the_observed_two_tick_waterfall_cadence() {
+        // Preservation's texture-animation contract truncates milliseconds to ticks.
+        // The installed 142 ms waterfall distinguishes truncation from rounding.
+        let images = TextureAnimations::default();
+        let delay = images.validate_image("D02000", 8, 142).unwrap();
+        let mut playback = Playback::default();
+        assert_eq!(playback.request(100, 8, delay), 0);
+        assert_eq!(playback.request(101, 8, delay), 0);
+        assert_eq!(playback.request(102, 8, delay), 1);
+        assert_eq!(playback.deadline, 104);
+        assert_eq!(images.validate_image("D54000", 4, 0).unwrap(), 1);
+    }
 
     #[test]
     fn preparation_rejects_whole_forest_before_installing_any_binding() {
