@@ -6195,6 +6195,36 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if function == Native::CheckPlayerWeapon {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            // The supplied receiver is replaced by the selected player; a closed item system is a
+            // no-op. The original's return register is residual state, not a result.
+            let hud = self
+                .inputs
+                .hud
+                .with_context(|| format!("{function}: inventory owner unavailable"))?;
+            if hud.inventory_ready()? {
+                let player = self
+                    .selected_player()
+                    .with_context(|| format!("{function}: selected player unavailable"))?;
+                let shell = self
+                    .inputs
+                    .shell_execution
+                    .with_context(|| format!("{function}: shell context unavailable"))?;
+                let ticks = self
+                    .inputs
+                    .nominal_ticks
+                    .with_context(|| format!("{function}: nominal ticks unavailable"))?;
+                let sounds = self
+                    .sounds
+                    .as_mut()
+                    .with_context(|| format!("{function}: script sound handler absent"))?;
+                self.registry
+                    .check_player_weapon(player, hud, shell, ticks, &mut **sounds)
+                    .with_context(|| function.to_string())?;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::IsCarryingWeapon {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             return Ok(CallResult::Complete(i32::from(

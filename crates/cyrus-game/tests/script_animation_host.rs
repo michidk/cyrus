@@ -4012,6 +4012,101 @@ fn inventory_snapshot_rejects_content_census_and_selection_mismatches() {
 }
 
 #[test]
+fn routed_check_player_weapon_validates_the_selected_players_item_not_the_receivers() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    // (animation bound, shell execution, item is a weapon, count, assigned item, expected item)
+    for (bound, shell, weapon, count, assigned, expected) in [
+        (true, false, true, 1, 1, 1),
+        (true, false, true, 0, 1, 0),
+        (true, false, false, 1, 1, 0),
+        (false, false, true, 1, 1, 0),
+        (true, true, true, 1, 1, 0),
+        (true, false, true, 1, 0, 0),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Named { string: 0 },
+                            function: Native::CheckPlayerWeapon,
+                            arguments: vec![],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: Native::CheckPlayerWeapon,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut player = data.actors["OTHER"].clone();
+        player.namespace = Some("CYRUS".into());
+        player.code_origin = 200;
+        player.attributes[Attribute::Weapon] = assigned;
+        data.actors.insert("CYRUS".into(), player);
+        // The named receiver keeps its own assignment: the native acts on the selected player.
+        data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Weapon] = 7;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let selected = world.id(2).unwrap();
+        if bound {
+            let mut animation = animations(&data, false);
+            animation.metadata["actors"][0]["script_name"] = json!("CYRUS");
+            world
+                .bind_animation(selected, &animation, AnimationGroup::IDLE1)
+                .unwrap();
+        }
+        let mut asset = inventory_fixture(&[(1, count)]);
+        asset.inventory.get_mut(&1).unwrap().weapon = weapon;
+        asset.inventory.get_mut(&1).unwrap().hidden = true;
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut record = |_, _| Ok(());
+        world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(shell),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut record),
+                None,
+                30,
+            )
+            .unwrap();
+        let context = format!(
+            "bound {bound}, shell {shell}, weapon {weapon}, count {count}, assigned {assigned}"
+        );
+        assert!(world.actors()[0].failure().is_none(), "{context}");
+        assert_eq!(
+            world.actors()[selected.index].attributes()[Attribute::Weapon],
+            expected,
+            "{context}"
+        );
+        assert_eq!(
+            world.actors()[1].attributes()[Attribute::Weapon],
+            7,
+            "{context}"
+        );
+        assert_eq!(world.flags(), [0], "{context}");
+    }
+}
+
+#[test]
 fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute() {
     use cyrus_game::{
         preferences::Preferences,

@@ -5459,19 +5459,22 @@
     },
     {
       "native": "CheckPlayerWeapon",
-      "status": "missing",
+      "status": "partial",
       "owner": 30,
-      "scope": "Direct named state/action/weapon dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed selected-player weapon validation: ownership, type, animation and shell gates",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> check_player_weapon",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::routed_check_player_weapon_validates_the_selected_players_item_not_the_receivers",
+        "crates/cyrus-game/tests/script_animation_host.rs::selected_player_weapon_validation_uses_type_ownership_animation_and_shell"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603026770",
         "https://github.com/michidk/redguard-preservation/pull/274"
       ],
-      "limits": "Verified independent installed function parms0/exact mapping/full173-byte native/117-byte ordered lookup/205-byte reset/58-byte model helper. Enable0/null receiver no-op; otherwise global player replaces receiver. Retain selected byte only with player control pointer/global mode0/nonzero ID/found type1/signed quantity>0; unsigned lookup stops at first greater ID. Failure clears selected byte and executes original reset action20/21 byte pair/active-byte/shared feedback25/model-bit2 clear. Motion129/91 request uses signed upper-word/zero argument. Residual return caller/item/player/model pointer, not Boolean.3840 original contexts/19 effective controls;3 receiver tokens/2 enables/2 modes/4 keys/8 lists/5 reset tuples/2 patterns. Full both-actor/item/model/global memory/write order/domain/calls/return/six regs/stack/canary. Only motion request controlled no-op exact IO, full393-byte original helper retained/static inspected/not executed. Motion effects/global producers/item-player-model lifecycle/malformed-cyclic lists/VM/natural original/native/browser/exhaustive domain Unknown. Production missing; no gameplay/render/Cargo/game runtime.",
-      "reviewed_revision": "8bf6e549a7f81f70a983a0a332e2e0aeac6d4788"
+      "limits": "Verified independent installed function parms0/exact mapping/full173-byte native/117-byte ordered lookup/205-byte reset/58-byte model helper. Enable0/null receiver no-op; otherwise global player replaces receiver. Retain selected byte only with player control pointer/global mode0/nonzero ID/found type1/signed quantity>0; unsigned lookup stops at first greater ID. Failure clears selected byte and executes original reset action20/21 byte pair/active-byte/shared feedback25/model-bit2 clear. Motion129/91 request uses signed upper-word/zero argument. Residual return caller/item/player/model pointer, not Boolean.3840 original contexts/19 effective controls;3 receiver tokens/2 enables/2 modes/4 keys/8 lists/5 reset tuples/2 patterns. Full both-actor/item/model/global memory/write order/domain/calls/return/six regs/stack/canary. Only motion request controlled no-op exact IO, full393-byte original helper retained/static inspected/not executed. Motion effects/global producers/item-player-model lifecycle/malformed-cyclic lists/VM/natural original/native/browser/exhaustive domain Unknown. Production missing; no gameplay/render/Cargo/game runtime. Verified public routed dispatch: the native replaces the supplied receiver with the selected player and applies the shared validity check; an owned type-one item with positive quantity, receiver animation and no shell execution is retained, otherwise the assignment is cleared and the shared cleanup runs; the named receiver is untouched. The return value is residual state in the original, so zero is returned (Unknown). Unknown: installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "0d17bda34508fc9d55f83b7305666a0ac56906e1"
     },
     {
       "native": "IsCarryingWeapon",
