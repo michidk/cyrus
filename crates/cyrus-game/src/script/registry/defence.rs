@@ -4,6 +4,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
@@ -550,8 +551,15 @@ impl ScriptWorld {
                     animation.playback.set_loop_count(1)
                 },
             )?;
-            if step.effect.taunt_kind_one {
-                self.request_timed_combat_taunt(id, 1, frame_value, inputs, random, sounds)?;
+            if step.effect.attack_taunt {
+                self.request_timed_combat_taunt(
+                    id,
+                    TauntType::ATTACK,
+                    frame_value,
+                    inputs,
+                    random,
+                    sounds,
+                )?;
             }
             Ok(step.active)
         })();

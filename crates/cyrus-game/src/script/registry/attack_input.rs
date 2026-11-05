@@ -9,6 +9,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, bail};
+use cyrus_assets::script::TauntType;
 use cyrus_script::Attribute;
 
 /// One key's quick-press counter. The release timer counts frames since the last release; a press
@@ -394,11 +395,12 @@ impl ScriptWorld {
     }
 
     /// The reach test before a combo move starts. A start proceeds when an actor with a combat
-    /// record in the move's arc and range is attackable (`attr_npc` zero, or lifecycle selector 6),
+    /// record in the move's arc and range is attackable (`attr_npc` zero, or AI type combat),
     /// and otherwise unless an actor in that arc and range is a protected one (`attr_npc` nonzero,
-    /// selector neither 6 nor 8): then the player speaks the opponent-unarmed taunt (type 11 when the
-    /// target's `attr_woman` is nonzero, else 10) and the move does not start. The forward move (3)
-    /// tests the protected actor against an arc six times as wide. Arc and range come from the first
+    /// AI type neither combat nor dead): then the player speaks the opponent-unarmed taunt (the
+    /// female variant when the target's `attr_woman` is nonzero, else the male one) and the move
+    /// does not start. The forward move (3) tests the protected actor against an arc six times as
+    /// wide. Arc and range come from the first
     /// motion of the move's own attack slot; the receiver itself is not excluded.
     fn attack_reach_admits(
         &mut self,
@@ -478,9 +480,9 @@ impl ScriptWorld {
                 continue;
             }
             let trigger = if actor.attributes[Attribute::Woman] != 0 {
-                11
+                TauntType::UNARMED_FEMALE_OPPONENT
             } else {
-                10
+                TauntType::UNARMED_MALE_OPPONENT
             };
             self.request_combat_taunt(id, trigger, 0, inputs, random, sounds)?;
             return Ok(false);

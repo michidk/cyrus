@@ -5,6 +5,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::Attribute;
 
 /// The original branch remains selected for the pass even when coordination changes its state.
@@ -68,7 +69,7 @@ impl ScriptWorld {
     }
 
     /// Consume a direct-damage message and respond: positional `attr_hit_sound` effect at volume
-    /// zero with a drawn pitch offset, receiver taunt category two, the direct-damage response,
+    /// zero with a drawn pitch offset, receiver hurt-by-opponent taunt, the direct-damage response,
     /// then the coordinator tail without a death query: a nonselected receiver in coordination
     /// state zero sends `SENDER_COORDINATES` to the first waiting coordinator, or takes coordination one when
     /// none matches. Neither actor's intent bits are cleared.
@@ -440,7 +441,7 @@ impl ScriptWorld {
                         )?;
                         self.request_timed_combat_taunt(
                             id,
-                            9,
+                            TauntType::WANT_SWITCH_IN,
                             sample.frame_value,
                             inputs,
                             random,
@@ -461,7 +462,7 @@ impl ScriptWorld {
                         )?;
                         self.request_timed_combat_taunt(
                             id,
-                            8,
+                            TauntType::WANT_SWITCH_OUT,
                             sample.frame_value,
                             inputs,
                             random,

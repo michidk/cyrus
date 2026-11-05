@@ -5,6 +5,7 @@ use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_assets::animation::Animations;
+use cyrus_assets::script::TauntType;
 use cyrus_collision::{actor_models::ActorModelCollision, distance::rounded_distance};
 use cyrus_script::Attribute;
 
@@ -126,7 +127,14 @@ impl ScriptWorld {
             let clock = inputs
                 .combat_clock_sample
                 .context("combat clock sample unavailable")? as i32;
-            self.request_timed_combat_taunt(defender, 4, clock, inputs, random, sounds)?;
+            self.request_timed_combat_taunt(
+                defender,
+                TauntType::DEFEND,
+                clock,
+                inputs,
+                random,
+                sounds,
+            )?;
             for index in [defender_index, attacker_index] {
                 self.actors[index]
                     .control

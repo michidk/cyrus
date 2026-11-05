@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{AnimationGroup, Attribute};
 use serde::{Deserialize, Serialize};
 
@@ -756,7 +757,7 @@ impl ScriptWorld {
             {
                 self.request_combat_taunt(
                     id,
-                    6,
+                    TauntType::DEATH,
                     0,
                     inputs,
                     random.context("selected death random stream unavailable")?,

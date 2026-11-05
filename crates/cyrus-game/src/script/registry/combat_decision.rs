@@ -1,6 +1,7 @@
 //! Ordinary combat composes live services in the original decision order.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 
 impl ScriptWorld {
     /// Run one admitted nonplayer decision using the session random and sound owners.
@@ -107,7 +108,8 @@ impl ScriptWorld {
                 )?;
             }
             // Both engaged branches end with one random draw that admits a chance taunt. The active
-            // branch always requests type 5; the waiting branch picks 5 or 8 from the parity of the
+            // branch always requests a move taunt; the waiting branch picks move or want-to-switch-out
+            // from the parity of the
             // allocation index plus the world-loop frame (preservation SOUP.md, decision stage).
             if matches!(
                 branch,
@@ -115,7 +117,7 @@ impl ScriptWorld {
             ) && random.draw() * 100 / 32767 < 2
             {
                 let trigger = if branch == super::OrdinaryCombatBranch::Active {
-                    5
+                    TauntType::MOVE
                 } else {
                     let allocation = self.actors[self.resolve(id)?]
                         .control
@@ -124,9 +126,9 @@ impl ScriptWorld {
                         .context("receiver combat unavailable")?
                         .allocation_index;
                     if (allocation as u32).wrapping_add(self.globals.world_loop_frame) & 1 == 0 {
-                        5
+                        TauntType::MOVE
                     } else {
-                        8
+                        TauntType::WANT_SWITCH_OUT
                     }
                 };
                 self.request_timed_combat_taunt(id, trigger, clock, inputs, random, sounds)?;

@@ -5,6 +5,7 @@ use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// Shared engine gates for a caller-admitted weapon operation.
@@ -477,10 +478,12 @@ impl<'a> CombatReceiver<'a> {
                 .actor
                 .combat_taunts
                 .iter()
-                .any(|taunt| taunt.trigger == 0 && taunt.label != [0; 4])
+                .any(|taunt| taunt.trigger == TauntType::BEGIN_COMBAT && taunt.label != [0; 4])
         {
             let random = random.context("combat entry shared RNG unavailable")?;
-            if let Some(taunt) = super::select_combat_taunt(self.actor, 0, random).cloned() {
+            if let Some(taunt) =
+                super::select_combat_taunt(self.actor, TauntType::BEGIN_COMBAT, random).cloned()
+            {
                 source
                     .context("combat entry prepared taunt source unavailable")?
                     .with_playback(&mut |playback| {

@@ -1,4 +1,5 @@
 //! Logical actors execute independently of geometry through explicit public stages.
+use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
 use cyrus_game::script::AiType;
 use cyrus_game::script::CollisionFlags;
@@ -13138,12 +13139,12 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
     let mut scripts = cache();
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.combat_taunts = [
-        (2, *b"H000"),
-        (0, *b"A000"),
-        (0, [0; 4]),
-        (0, *b"B000"),
-        (0, *b"C000"),
-        (0, *b"D000"),
+        (TauntType::HURT_BY_OPPONENT, *b"H000"),
+        (TauntType::BEGIN_COMBAT, *b"A000"),
+        (TauntType::BEGIN_COMBAT, [0; 4]),
+        (TauntType::BEGIN_COMBAT, *b"B000"),
+        (TauntType::BEGIN_COMBAT, *b"C000"),
+        (TauntType::BEGIN_COMBAT, *b"D000"),
     ]
     .into_iter()
     .map(|(trigger, label)| CombatTaunt {
@@ -13158,21 +13159,21 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
     let id = world.id(0).unwrap();
     let mut random = EngineRandom::default();
     let selected = world
-        .select_ordered_combat_taunt(id, 0, &mut random)
+        .select_ordered_combat_taunt(id, TauntType::BEGIN_COMBAT, &mut random)
         .unwrap()
         .unwrap();
     assert_eq!(selected.label, *b"C000");
     assert_eq!(random.state(), 662824084);
     assert!(
         world
-            .select_ordered_combat_taunt(id, 10, &mut random)
+            .select_ordered_combat_taunt(id, TauntType::UNARMED_MALE_OPPONENT, &mut random)
             .unwrap()
             .is_none()
     );
     assert_eq!(random.state(), 662824084);
     assert_eq!(
         world
-            .select_ordered_combat_taunt(id, 6, &mut random)
+            .select_ordered_combat_taunt(id, TauntType::DEATH, &mut random)
             .unwrap()
             .unwrap()
             .label,
@@ -13181,7 +13182,7 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
     assert_eq!(random.state(), 3295386429);
     assert!(
         world
-            .select_ordered_combat_taunt(id, 1, &mut random)
+            .select_ordered_combat_taunt(id, TauntType::ATTACK, &mut random)
             .unwrap_err()
             .to_string()
             .contains("requires timed selection")
@@ -13190,7 +13191,7 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
     let replacement = ScriptWorld::prepare(&scripts, 2).unwrap();
     assert!(
         replacement
-            .select_ordered_combat_taunt(id, 0, &mut random)
+            .select_ordered_combat_taunt(id, TauntType::BEGIN_COMBAT, &mut random)
             .is_err()
     );
     assert_eq!(random.state(), 3295386429);
@@ -13260,7 +13261,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             .unwrap()
             .combat_taunts
             .push(CombatTaunt {
-                trigger: 0,
+                trigger: TauntType::BEGIN_COMBAT,
                 label: *b"TEST",
                 animation: 159,
             });
@@ -13307,12 +13308,12 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
         (world, id)
     };
     let taunt = CombatTaunt {
-        trigger: 0,
+        trigger: TauntType::BEGIN_COMBAT,
         label: *b"TEST",
         animation: 159,
     };
     let empty = CombatTaunt {
-        trigger: 0,
+        trigger: TauntType::BEGIN_COMBAT,
         label: [0; 4],
         animation: 159,
     };
@@ -20259,7 +20260,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             (Attribute::NumTaunts, 1),
         ]);
         actor.combat_taunts = vec![CombatTaunt {
-            trigger: 9,
+            trigger: TauntType::WANT_SWITCH_IN,
             label: *b"TEST",
             animation: 0,
         }];
@@ -20397,7 +20398,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             blocked
                 .request_timed_combat_taunt(
                     blocked.id(0).unwrap(),
-                    9,
+                    TauntType::WANT_SWITCH_IN,
                     1,
                     ScriptInputs::default(),
                     &mut random,
@@ -20438,7 +20439,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         let error = world
             .request_timed_combat_taunt(
                 id,
-                9,
+                TauntType::WANT_SWITCH_IN,
                 1,
                 ScriptInputs::default(),
                 &mut endpoint,
@@ -20459,7 +20460,14 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         let initial = random.state();
         // Allocation index -1 is off-period; action and attack state zero must not admit it.
         world
-            .request_timed_combat_taunt(id, 9, 0, inputs, &mut random, &mut |_, _| Ok(()))
+            .request_timed_combat_taunt(
+                id,
+                TauntType::WANT_SWITCH_IN,
+                0,
+                inputs,
+                &mut random,
+                &mut |_, _| Ok(()),
+            )
             .unwrap();
         assert!(source.0.borrow().events.is_empty());
         let mut expected = cyrus_game::random::EngineRandom::from_state(initial);
@@ -20467,8 +20475,14 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             expected.draw();
         }
         assert_eq!(random.state(), expected.state());
-        let result =
-            world.request_timed_combat_taunt(id, 9, 1, inputs, &mut random, &mut |_, _| Ok(()));
+        let result = world.request_timed_combat_taunt(
+            id,
+            TauntType::WANT_SWITCH_IN,
+            1,
+            inputs,
+            &mut random,
+            &mut |_, _| Ok(()),
+        );
         for _ in 0..15 {
             expected.draw();
         }
@@ -20495,7 +20509,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             world
                 .request_timed_combat_taunt(
                     id,
-                    9,
+                    TauntType::WANT_SWITCH_IN,
                     1,
                     ScriptInputs::default(),
                     &mut random,
@@ -20531,7 +20545,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         (Attribute::NumTaunts, 1),
     ]);
     scripts.actors.get_mut("LOGIC").unwrap().combat_taunts = vec![CombatTaunt {
-        trigger: 1,
+        trigger: TauntType::ATTACK,
         label: *b"TEST",
         animation: 0,
     }];
@@ -24133,7 +24147,7 @@ fn coordination_keeps_queued_message_and_prior_state_when_taunt_service_fails() 
             actor.instance_variables = vec![vec![4]; 3];
             actor.attributes[Attribute::NumTaunts] = 1;
             actor.combat_taunts = vec![CombatTaunt {
-                trigger: 9,
+                trigger: TauntType::WANT_SWITCH_IN,
                 label: *b"TEST",
                 animation: 0,
             }];
@@ -31079,7 +31093,7 @@ fn hurt_taunt_uses_ordered_selection_without_clock_or_target_distance() {
             let actor = scripts.actors.get_mut("LOGIC").unwrap();
             actor.attributes[Attribute::NumTaunts] = 1;
             actor.combat_taunts = vec![CombatTaunt {
-                trigger: 2,
+                trigger: TauntType::HURT_BY_OPPONENT,
                 label: *b"HURT",
                 animation: 0,
             }];

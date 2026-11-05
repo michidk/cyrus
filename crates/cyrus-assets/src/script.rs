@@ -435,11 +435,70 @@ impl DialogueSettings {
     }
 }
 
+/// COMBAT.INI taunt `type`: the event that triggers a combat voice line, numbered after
+/// preservation `docs/config/combat-ini.md`. Codes outside the documented set are retained.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TauntType(u8);
+
+impl TauntType {
+    pub const BEGIN_COMBAT: Self = Self(0);
+    pub const ATTACK: Self = Self(1);
+    pub const HURT_BY_OPPONENT: Self = Self(2);
+    pub const HIT_OPPONENT: Self = Self(3);
+    pub const DEFEND: Self = Self(4);
+    /// Miscellaneous, during a move.
+    pub const MOVE: Self = Self(5);
+    pub const DEATH: Self = Self(6);
+    pub const KILLED_OPPONENT: Self = Self(7);
+    pub const WANT_SWITCH_OUT: Self = Self(8);
+    pub const WANT_SWITCH_IN: Self = Self(9);
+    pub const UNARMED_MALE_OPPONENT: Self = Self(10);
+    pub const UNARMED_FEMALE_OPPONENT: Self = Self(11);
+
+    pub const fn from_byte(code: u8) -> Self {
+        Self(code)
+    }
+
+    pub const fn byte(self) -> u8 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for TauntType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl TryFrom<rgpre::import::combat_ini::TauntTrigger> for TauntType {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(trigger: rgpre::import::combat_ini::TauntTrigger) -> Result<Self, Self::Error> {
+        use rgpre::import::combat_ini::TauntTrigger;
+        Ok(match trigger {
+            TauntTrigger::BeginCombat => Self::BEGIN_COMBAT,
+            TauntTrigger::Attack => Self::ATTACK,
+            TauntTrigger::HurtByOpponent => Self::HURT_BY_OPPONENT,
+            TauntTrigger::HitOpponent => Self::HIT_OPPONENT,
+            TauntTrigger::Defend => Self::DEFEND,
+            TauntTrigger::Move => Self::MOVE,
+            TauntTrigger::Death => Self::DEATH,
+            TauntTrigger::KilledOpponent => Self::KILLED_OPPONENT,
+            TauntTrigger::WantSwitchOut => Self::WANT_SWITCH_OUT,
+            TauntTrigger::WantSwitchIn => Self::WANT_SWITCH_IN,
+            TauntTrigger::UnarmedMaleOpponent => Self::UNARMED_MALE_OPPONENT,
+            TauntTrigger::UnarmedFemaleOpponent => Self::UNARMED_FEMALE_OPPONENT,
+            TauntTrigger::Unknown(code) => Self(u8::try_from(code)?),
+        })
+    }
+}
+
 /// One authored combat voice candidate, in the actor's original list order.
 /// Labels retain their literal spelling, including numeric-reference forms.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CombatTaunt {
-    pub trigger: u8,
+    pub trigger: TauntType,
     pub label: [u8; 4],
     /// Resolved animation group, with zero retaining no-animation semantics.
     pub animation: i32,

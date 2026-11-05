@@ -1,4 +1,5 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
+use cyrus_assets::script::TauntType;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
 use cyrus_script::{AnimationGroup, Attribute, Native};
@@ -923,14 +924,24 @@ fn installed_map_taunts_reach_logical_actors_before_explicit_ordered_selection()
             let Some(authored) = scripts.actors.get(actor.name()) else {
                 continue;
             };
-            for trigger in [0, 2, 6, 10, 11] {
+            for trigger in [
+                TauntType::BEGIN_COMBAT,
+                TauntType::HURT_BY_OPPONENT,
+                TauntType::DEATH,
+                TauntType::UNARMED_MALE_OPPONENT,
+                TauntType::UNARMED_FEMALE_OPPONENT,
+            ] {
                 let has = |trigger| {
                     authored
                         .combat_taunts
                         .iter()
                         .any(|taunt| taunt.trigger == trigger && taunt.label != [0; 4])
                 };
-                let expected_type = if trigger == 6 && !has(6) { 2 } else { trigger };
+                let expected_type = if trigger == TauntType::DEATH && !has(TauntType::DEATH) {
+                    TauntType::HURT_BY_OPPONENT
+                } else {
+                    trigger
+                };
                 let selected = world
                     .select_ordered_combat_taunt(world.id(index).unwrap(), trigger, &mut random)
                     .unwrap();

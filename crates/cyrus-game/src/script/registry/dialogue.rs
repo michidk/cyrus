@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{AnimationGroup, Attribute};
 
 struct Effects<'a> {
@@ -99,14 +100,21 @@ impl ScriptWorld {
     pub fn request_timed_combat_taunt(
         &mut self,
         id: ScriptActorId,
-        trigger: u8,
+        trigger: TauntType,
         frame_value: i32,
         inputs: super::ScriptInputs<'_>,
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         anyhow::ensure!(
-            !matches!(trigger, 0 | 2 | 6 | 10 | 11),
+            !matches!(
+                trigger,
+                TauntType::BEGIN_COMBAT
+                    | TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ),
             "type {trigger} requires ordered selection"
         );
         self.request_combat_taunt(id, trigger, frame_value, inputs, random, sounds)
@@ -121,13 +129,13 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        self.request_combat_taunt(id, 2, 0, inputs, random, sounds)
+        self.request_combat_taunt(id, TauntType::HURT_BY_OPPONENT, 0, inputs, random, sounds)
     }
 
     pub(super) fn request_combat_taunt(
         &mut self,
         id: ScriptActorId,
-        trigger: u8,
+        trigger: TauntType,
         frame_value: i32,
         inputs: super::ScriptInputs<'_>,
         random: &mut crate::random::EngineRandom,
@@ -145,7 +153,9 @@ impl ScriptWorld {
                 .combat
                 .as_ref()
                 .context("receiver combat unavailable")?;
-            if trigger == 9 && combat.flags.contains(CombatFlags::TAUNT_NINE_PRESENTED) {
+            if trigger == TauntType::WANT_SWITCH_IN
+                && combat.flags.contains(CombatFlags::WANT_SWITCH_IN_PRESENTED)
+            {
                 return Ok(());
             }
             let selected = inputs.activation.map(|input| input.player).or_else(|| {
@@ -164,7 +174,7 @@ impl ScriptWorld {
             {
                 return Ok(());
             }
-            if !matches!(trigger, 2 | 6)
+            if !matches!(trigger, TauntType::HURT_BY_OPPONENT | TauntType::DEATH)
                 && let Some(target) = combat.target
             {
                 let target = self.resolve(target)?;
@@ -180,10 +190,19 @@ impl ScriptWorld {
             // Opponent-unarmed taunts wait on the sample slot of the retained cache entry, which
             // is not retained per actor here.
             anyhow::ensure!(
-                !(matches!(trigger, 10 | 11) && combat.taunt_cache.is_some()),
+                !(matches!(
+                    trigger,
+                    TauntType::UNARMED_MALE_OPPONENT | TauntType::UNARMED_FEMALE_OPPONENT
+                ) && combat.taunt_cache.is_some()),
                 "opponent-unarmed taunt gate over the retained cache sample is unsupported"
             );
-            let taunt = if matches!(trigger, 2 | 6 | 10 | 11) {
+            let taunt = if matches!(
+                trigger,
+                TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ) {
                 super::select_combat_taunt(actor, trigger, random).cloned()
             } else {
                 let chosen = super::super::combat::select_timed_combat_taunt(
@@ -220,7 +239,7 @@ impl ScriptWorld {
                     )
                     .map(|_| ())
                 })?;
-            if trigger == 9 {
+            if trigger == TauntType::WANT_SWITCH_IN {
                 self.actors[index]
                     .control
                     .as_mut()
@@ -229,12 +248,18 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("admitted combat")
                     .flags
-                    .insert(CombatFlags::TAUNT_NINE_PRESENTED);
+                    .insert(CombatFlags::WANT_SWITCH_IN_PRESENTED);
             }
             Ok(())
         };
         request().with_context(|| {
-            let selection = if matches!(trigger, 2 | 6 | 10 | 11) {
+            let selection = if matches!(
+                trigger,
+                TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ) {
                 "ordered"
             } else {
                 "timed"

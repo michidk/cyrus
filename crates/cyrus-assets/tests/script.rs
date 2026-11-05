@@ -1,4 +1,5 @@
 //! Script cache contracts use authored data and optional read-only installed extraction.
+use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Attributes, Native};
@@ -1096,7 +1097,7 @@ fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_l
             },
             native_hook: None,
             combat_taunts: vec![CombatTaunt {
-                trigger: 0,
+                trigger: TauntType::BEGIN_COMBAT,
                 label: *b"AbCd",
                 animation: 0,
             }],

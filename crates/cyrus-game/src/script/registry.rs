@@ -5,6 +5,7 @@ use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
+use cyrus_assets::script::TauntType;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
@@ -2007,12 +2008,19 @@ impl ScriptWorld {
     pub fn select_ordered_combat_taunt(
         &self,
         id: ScriptActorId,
-        trigger: u8,
+        trigger: TauntType,
         random: &mut crate::random::EngineRandom,
     ) -> Result<Option<&CombatTaunt>> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
-            matches!(trigger, 0 | 2 | 6 | 10 | 11),
+            matches!(
+                trigger,
+                TauntType::BEGIN_COMBAT
+                    | TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ),
             "world {} instance {index}: combat taunt type {trigger} requires timed selection",
             self.world
         );
@@ -7636,7 +7644,7 @@ pub(super) fn clear_unprepared(
 
 fn select_combat_taunt<'a>(
     actor: &'a ScriptActor,
-    trigger: u8,
+    trigger: TauntType,
     random: &mut crate::random::EngineRandom,
 ) -> Option<&'a CombatTaunt> {
     let mut requested = trigger;
@@ -7651,10 +7659,10 @@ fn select_combat_taunt<'a>(
                 break;
             }
         }
-        if selected.is_some() || requested != 6 {
+        if selected.is_some() || requested != TauntType::DEATH {
             return selected;
         }
-        requested = 2;
+        requested = TauntType::HURT_BY_OPPONENT;
     }
 }
 

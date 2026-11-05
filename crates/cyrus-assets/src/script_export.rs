@@ -1,5 +1,7 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
-use crate::script::{Actor, ClockSettings, CombatTaunt, Instance, Scripts, UpdateSettings};
+use crate::script::{
+    Actor, ClockSettings, CombatTaunt, Instance, Scripts, TauntType, UpdateSettings,
+};
 use anyhow::{Context, Result};
 use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
 use cyrus_script::{Attribute, Attributes, Native, Property};
@@ -369,7 +371,6 @@ fn prepare_combat_taunts(
     combat: &rgpre::import::combat_ini::CombatIni,
     context: &str,
 ) -> Result<Vec<CombatTaunt>> {
-    use rgpre::import::combat_ini::TauntTrigger;
     let count = attributes[Attribute::NumTaunts];
     if count == 0 {
         return Ok(vec![]);
@@ -397,31 +398,17 @@ fn prepare_combat_taunts(
             );
             let Some(taunt) = combat.taunts.get(&index).filter(|_| index != maximum) else {
                 return Ok(CombatTaunt {
-                    trigger: 0,
+                    trigger: TauntType::default(),
                     label: [0; 4],
                     animation: 0,
                 });
             };
-            let trigger = match taunt
+            let code = taunt
                 .trigger
-                .with_context(|| format!("{context}: COMBAT.INI [taunt{index}] type absent"))?
-            {
-                TauntTrigger::BeginCombat => 0,
-                TauntTrigger::Attack => 1,
-                TauntTrigger::HurtByOpponent => 2,
-                TauntTrigger::HitOpponent => 3,
-                TauntTrigger::Defend => 4,
-                TauntTrigger::Move => 5,
-                TauntTrigger::Death => 6,
-                TauntTrigger::KilledOpponent => 7,
-                TauntTrigger::WantSwitchOut => 8,
-                TauntTrigger::WantSwitchIn => 9,
-                TauntTrigger::UnarmedMaleOpponent => 10,
-                TauntTrigger::UnarmedFemaleOpponent => 11,
-                TauntTrigger::Unknown(code) => u8::try_from(code).with_context(|| {
-                    format!("{context}: COMBAT.INI [taunt{index}] type {code} outside byte range")
-                })?,
-            };
+                .with_context(|| format!("{context}: COMBAT.INI [taunt{index}] type absent"))?;
+            let trigger = TauntType::try_from(code).with_context(|| {
+                format!("{context}: COMBAT.INI [taunt{index}] type {code:?} outside byte range")
+            })?;
             let label = taunt.rtx_label.as_ref().with_context(|| {
                 format!("{context}: COMBAT.INI [taunt{index}] rtx_label absent")
             })?;
@@ -490,12 +477,12 @@ mod combat_tests {
             taunts,
             [
                 CombatTaunt {
-                    trigger: 0,
+                    trigger: TauntType::BEGIN_COMBAT,
                     label: *b"AbCd",
                     animation: 159
                 },
                 CombatTaunt {
-                    trigger: 6,
+                    trigger: TauntType::DEATH,
                     label: *b"&123",
                     animation: 0
                 }
@@ -507,7 +494,7 @@ mod combat_tests {
         assert_eq!(
             sparse[2],
             CombatTaunt {
-                trigger: 0,
+                trigger: TauntType::BEGIN_COMBAT,
                 label: [0; 4],
                 animation: 0
             }
@@ -535,7 +522,7 @@ mod combat_tests {
         let mut attributes = Attributes::default();
         attributes[Attribute::NumTaunts] = 1;
         let empty = CombatTaunt {
-            trigger: 0,
+            trigger: TauntType::BEGIN_COMBAT,
             label: [0; 4],
             animation: 0,
         };

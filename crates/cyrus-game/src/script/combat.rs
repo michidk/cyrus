@@ -3,6 +3,7 @@ use super::ScriptActorId;
 use crate::script::AiType;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{Attribute, Attributes};
 use serde::Serialize;
 
@@ -264,13 +265,20 @@ impl CombatControlState {
 /// An invalid period rejects only if a matching nonempty record was selected.
 pub fn select_timed_combat_taunt(
     taunts: &[cyrus_assets::script::CombatTaunt],
-    trigger: u8,
+    trigger: TauntType,
     pacing_sum: i32,
     period: i32,
     draw: &mut dyn FnMut() -> i32,
 ) -> Result<Option<usize>> {
     anyhow::ensure!(
-        !matches!(trigger, 0 | 2 | 6 | 10 | 11),
+        !matches!(
+            trigger,
+            TauntType::BEGIN_COMBAT
+                | TauntType::HURT_BY_OPPONENT
+                | TauntType::DEATH
+                | TauntType::UNARMED_MALE_OPPONENT
+                | TauntType::UNARMED_FEMALE_OPPONENT
+        ),
         "combat taunt type {trigger} requires ordered selection"
     );
     anyhow::ensure!(taunts.len() <= 255, "combat taunt count exceeds actor byte");
@@ -356,8 +364,8 @@ impl CombatFlags {
     pub const ATTACKED: Self = Self(0x10);
     /// Set once an attack's collision window has admitted a contact test.
     pub const CONTACT_TESTED: Self = Self(0x20);
-    /// Set when a type-9 taunt is presented; further type-9 requests are ignored.
-    pub const TAUNT_NINE_PRESENTED: Self = Self(0x40);
+    /// Set when a want-to-switch-in taunt is presented; further such requests are ignored.
+    pub const WANT_SWITCH_IN_PRESENTED: Self = Self(0x40);
 
     pub const fn from_bits(bits: u8) -> Self {
         Self(bits)
@@ -1057,38 +1065,40 @@ mod constructor_tests {
 #[cfg(test)]
 mod timed_taunt_tests {
     use super::select_timed_combat_taunt;
-    use cyrus_assets::script::CombatTaunt;
+    use cyrus_assets::script::{CombatTaunt, TauntType};
 
     #[test]
     fn timed_selection_consumes_fifteen_draws_and_uses_signed_pacing() {
         let records = [11u32, 22, 33].map(|label| CombatTaunt {
-            trigger: 1,
+            trigger: TauntType::ATTACK,
             label: label.to_le_bytes(),
             animation: 0,
         });
         for (sum, period, expected) in [(0, -5, Some(2)), (1, 1, Some(0)), (1, 5, None)] {
             let mut draws = 0;
-            let got = select_timed_combat_taunt(&records, 1, sum, period, &mut || {
-                let result = [0, 16384, 32766][draws % 3];
-                draws += 1;
-                result
-            })
-            .unwrap();
+            let got =
+                select_timed_combat_taunt(&records, TauntType::ATTACK, sum, period, &mut || {
+                    let result = [0, 16384, 32766][draws % 3];
+                    draws += 1;
+                    result
+                })
+                .unwrap();
             assert_eq!((got, draws), (expected, 15));
         }
         for (sum, period) in [(0, 0), (i32::MIN, -1)] {
             let mut draws = 0;
-            let error = select_timed_combat_taunt(&records, 1, sum, period, &mut || {
-                draws += 1;
-                0
-            })
-            .unwrap_err();
+            let error =
+                select_timed_combat_taunt(&records, TauntType::ATTACK, sum, period, &mut || {
+                    draws += 1;
+                    0
+                })
+                .unwrap_err();
             assert!(error.to_string().contains("invalid signed period"));
             assert_eq!(draws, 15);
         }
         let mut draws = 0;
         assert_eq!(
-            select_timed_combat_taunt(&records, 3, 0, 0, &mut || {
+            select_timed_combat_taunt(&records, TauntType::HIT_OPPONENT, 0, 0, &mut || {
                 draws += 1;
                 0
             })
@@ -1101,12 +1111,12 @@ mod timed_taunt_tests {
     #[test]
     fn one_past_draw_rejects_instead_of_clamping_or_inventing_a_record() {
         let records = [CombatTaunt {
-            trigger: 1,
+            trigger: TauntType::ATTACK,
             label: *b"TEST",
             animation: 0,
         }];
         let mut draws = 0;
-        let error = select_timed_combat_taunt(&records, 1, 0, 1, &mut || {
+        let error = select_timed_combat_taunt(&records, TauntType::ATTACK, 0, 1, &mut || {
             draws += 1;
             32767
         })
@@ -1114,13 +1124,17 @@ mod timed_taunt_tests {
         assert!(error.to_string().contains("one-past access unsupported"));
         assert_eq!(draws, 1);
         assert!(
-            select_timed_combat_taunt(&[], 1, 0, 0, &mut || panic!("empty list draws"))
-                .unwrap()
-                .is_none()
+            select_timed_combat_taunt(&[], TauntType::ATTACK, 0, 0, &mut || panic!(
+                "empty list draws"
+            ))
+            .unwrap()
+            .is_none()
         );
         assert!(
-            select_timed_combat_taunt(&records, 0, 0, 1, &mut || panic!("ordered request draws"))
-                .is_err()
+            select_timed_combat_taunt(&records, TauntType::BEGIN_COMBAT, 0, 1, &mut || panic!(
+                "ordered request draws"
+            ))
+            .is_err()
         );
     }
 }

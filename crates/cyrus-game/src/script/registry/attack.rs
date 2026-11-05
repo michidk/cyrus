@@ -7,6 +7,7 @@ use crate::script::CombatMessageCode;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
 use cyrus_script::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
@@ -224,8 +225,15 @@ impl ScriptWorld {
             self.apply_nonplayer_contact_health(receiver, change, environment)?;
         }
         if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
-            self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
-            self.request_timed_combat_taunt(sender, 7, 0, inputs, random, sounds)?;
+            self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
+            self.request_timed_combat_taunt(
+                sender,
+                TauntType::KILLED_OPPONENT,
+                0,
+                inputs,
+                random,
+                sounds,
+            )?;
             let motion_kind = self.current_combat_motion(sender)?.kind;
             self.dispatch_combat_death(
                 receiver,
@@ -299,7 +307,7 @@ impl ScriptWorld {
     /// combat record), else 132 or 133. The selected player's health response is skipped while the
     /// damage-suppression cheat is on. Otherwise the sender's `attr_damage` is subtracted from the
     /// receiver's health (the selected player through its shared additive health), and below one
-    /// a nonplayer requests taunt category six and either identity runs contact death with
+    /// a nonplayer requests a death taunt and either identity runs contact death with
     /// selector zero.
     pub(super) fn process_direct_damage_response(
         &mut self,
@@ -399,7 +407,7 @@ impl ScriptWorld {
         }
         if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
             if !selected {
-                self.request_combat_taunt(receiver, 6, 0, inputs, random, sounds)?;
+                self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
             }
             self.dispatch_combat_death(receiver, 0, inputs, random, sounds)?;
         }
@@ -582,7 +590,14 @@ impl ScriptWorld {
             let clock = inputs
                 .combat_clock_sample
                 .context("combat clock sample unavailable")? as i32;
-            self.request_timed_combat_taunt(id, 3, clock, inputs, random, sounds)?;
+            self.request_timed_combat_taunt(
+                id,
+                TauntType::HIT_OPPONENT,
+                clock,
+                inputs,
+                random,
+                sounds,
+            )?;
             return Ok(());
         }
         for candidate in &ground.prepared.candidates.faces {

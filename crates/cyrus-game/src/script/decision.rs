@@ -541,8 +541,8 @@ pub struct DefenceEffect {
     pub request_group: Option<i32>,
     /// Set the animation interpreter's finite loop countdown to one.
     pub mark_animation: bool,
-    /// The taunt request of kind one follows a defence start.
-    pub taunt_kind_one: bool,
+    /// An attack taunt request follows a defence start.
+    pub attack_taunt: bool,
 }
 
 /// Receiver and move-table facts the defence executor reads. The closures answer for a move
@@ -622,7 +622,7 @@ pub(crate) fn defence_step_with_animation(
         effect = DefenceEffect {
             request_group: Some(group),
             mark_animation: true,
-            taunt_kind_one: false,
+            attack_taunt: false,
         };
         flags.remove(CombatFlags::ATTACKED | CombatFlags::CONTACT_TESTED);
         flags.insert(CombatFlags::MOVE_INTENT);
@@ -636,7 +636,7 @@ pub(crate) fn defence_step_with_animation(
                 request_animation(group)?;
                 start(decision, flags, group);
                 decision.attack_state = 1;
-                effect.taunt_kind_one = true;
+                effect.attack_taunt = true;
             }
         }
     } else if *defence_selector != -1 {
@@ -1703,7 +1703,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(step.effect.request_group, Some(130));
-        assert!(step.effect.mark_animation && step.effect.taunt_kind_one);
+        assert!(step.effect.mark_animation && step.effect.attack_taunt);
         assert_eq!(decision.attack_state, 1);
         assert_eq!(decision.move_selector, 0);
         assert_eq!(decision.aggression, 40);
@@ -1756,7 +1756,7 @@ mod tests {
         .unwrap();
         assert_eq!(decision.move_selector, 1);
         assert_eq!(step.effect.request_group, Some(131));
-        assert!(!step.effect.taunt_kind_one);
+        assert!(!step.effect.attack_taunt);
         assert_eq!(flags.bits(), 0x01);
         assert!(step.active);
     }
