@@ -179,7 +179,7 @@ fn drive_view_camera(
     }
 }
 
-// shortcut: the player view uses its pose directly until the original follow camera is implemented.
+// With the camera drive disabled (tests and diagnostics), the view takes the player pose directly.
 fn follow_player(
     player: Query<&Transform, (With<Player>, Without<ViewCamera>)>,
     mut camera: Query<&mut Transform, With<ViewCamera>>,
