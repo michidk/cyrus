@@ -72,6 +72,12 @@ Verified: refusal ordering and wrapping time-scaled thresholds follow preservati
 [MovePos contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#movepos).
 This predicate alone does not admit automatic selector-four progress.
 
+Verified: the public AI destination-clearance query consumes retained collision
+candidates with polygon sidedness disabled, following preservation's
+[clearance contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#ai-destination-clearance).
+It leaves AI state and node reservations to its caller. The point-movement
+visibility query keeps its separate polygon-sidedness behavior.
+
 Verified: `GetMovementSpeed` reads the receiving actor's current animation group
 and returns its unscaled movement attribute byte, following preservation's
 [query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getmovementspeed).

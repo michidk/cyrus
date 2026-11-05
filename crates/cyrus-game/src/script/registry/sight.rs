@@ -30,6 +30,31 @@ impl ScriptWorld {
         destination: [i32; 3],
         query: OrdinaryObstacleQuery<'_>,
     ) -> Result<bool> {
+        self.destination_visible(id, selected_player, destination, query, true)
+    }
+
+    /// Test AI destination clearance against the receiver's retained candidates.
+    /// Follows preservation's `SOUP.md#ai-destination-clearance`: Q8 endpoints,
+    /// inclusive distance limit, and disabled polygon sidedness. This query leaves
+    /// AI state and node reservations unchanged; its caller owns those transitions.
+    pub fn ai_destination_clear(
+        &self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        destination: [i32; 3],
+        query: OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        self.destination_visible(id, selected_player, destination, query, false)
+    }
+
+    fn destination_visible(
+        &self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        destination: [i32; 3],
+        query: OrdinaryObstacleQuery<'_>,
+        sidedness: bool,
+    ) -> Result<bool> {
         use cyrus_collision::candidates::{CandidateOwner, CollisionCandidates, ModelInstance};
         let result: Result<bool> = (|| {
             let from = self.query_position(id)?;
@@ -68,7 +93,7 @@ impl ScriptWorld {
                         &poses,
                         from.map(|value| value >> 8),
                         destination.map(|value| value >> 8),
-                        true,
+                        sidedness,
                         None,
                     )?;
                 if !hits.is_empty() && !receiver {

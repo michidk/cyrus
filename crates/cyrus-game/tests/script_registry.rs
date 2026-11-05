@@ -28752,15 +28752,16 @@ fn point_route_completion_releases_claims_and_retains_phase_and_history() {
 }
 
 #[test]
-fn point_direct_visibility_obeys_distance_and_one_sided_static_geometry() {
+fn point_and_ai_destination_queries_preserve_their_polygon_sidedness() {
     use cyrus_assets::collision::{CollisionScene, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_game::script::OrdinaryObstacleQuery;
-    for (wall, facing, distance, expected) in [
-        (false, true, 131072, true),
-        (false, true, 131073, false),
-        (true, true, 131072, false),
-        (true, false, 131072, true),
+    for (wall, facing, distance, point_visible, ai_clear) in [
+        (false, true, 131072, true, true),
+        (false, true, 131073, false, false),
+        (true, true, 131072, false, false),
+        (true, false, 131072, true, false),
+        (true, false, 131073, false, false),
     ] {
         let (mut world, data) = overlap_response_fixture(128, 0, 1024);
         let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
@@ -28797,6 +28798,7 @@ fn point_direct_visibility_obeys_distance_and_one_sided_static_geometry() {
             vertical_offset: 0,
             respond: false,
         };
+        let before = world.inspect(0, ids.len());
         assert_eq!(
             world
                 .point_direct_visible(
@@ -28806,9 +28808,22 @@ fn point_direct_visibility_obeys_distance_and_one_sided_static_geometry() {
                     query
                 )
                 .unwrap(),
-            expected,
+            point_visible,
             "wall {wall}, facing {facing}, distance {distance}"
         );
+        assert_eq!(
+            world
+                .ai_destination_clear(
+                    ids[0],
+                    ids[1],
+                    [from[0] + distance, from[1], from[2]],
+                    query
+                )
+                .unwrap(),
+            ai_clear,
+            "AI wall {wall}, facing {facing}, distance {distance}"
+        );
+        assert_eq!(world.inspect(0, ids.len()), before);
     }
 }
 
