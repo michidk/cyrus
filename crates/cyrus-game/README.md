@@ -46,6 +46,12 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: armed attacks blocked by a protected actor suppress opponent-unarmed
+taunts while the retained shared dialogue-cache entry remembers a sample,
+including a stopped channel. Clearing that sample allows ordered taunt selection
+again. The check precedes random selection and presentation, following
+preservation's `engine/player.md` armed attack input contract.
+
 Public property dispatch routes motion, action, response and AI fields to the
 receiver's owning state. Byte writes retain the low eight bits; signed word
 properties retain the low sixteen bits. `LastCollide` accesses only the response

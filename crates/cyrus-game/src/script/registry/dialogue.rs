@@ -187,15 +187,23 @@ impl ScriptWorld {
                     return Ok(());
                 }
             }
-            // Opponent-unarmed taunts wait on the sample slot of the retained cache entry, which
-            // is not retained per actor here.
-            anyhow::ensure!(
-                !(matches!(
-                    trigger,
-                    TauntType::UNARMED_MALE_OPPONENT | TauntType::UNARMED_FEMALE_OPPONENT
-                ) && combat.taunt_cache.is_some()),
-                "opponent-unarmed taunt gate over the retained cache sample is unsupported"
-            );
+            if matches!(
+                trigger,
+                TauntType::UNARMED_MALE_OPPONENT | TauntType::UNARMED_FEMALE_OPPONENT
+            ) && let Some(cache_index) = combat.taunt_cache
+            {
+                let mut remembered = false;
+                inputs
+                    .combat_taunts
+                    .context("playback source unavailable")?
+                    .with_playback(&mut |playback| {
+                        remembered = playback.remembered_sample(cache_index)?.is_some();
+                        Ok(())
+                    })?;
+                if remembered {
+                    return Ok(());
+                }
+            }
             let taunt = if matches!(
                 trigger,
                 TauntType::HURT_BY_OPPONENT

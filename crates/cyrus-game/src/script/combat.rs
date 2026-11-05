@@ -332,6 +332,8 @@ pub fn select_timed_combat_taunt(
 /// Preparation must check all payload and playback dependencies before release.
 /// A failure after release retains the last completed ownership transition.
 pub trait CombatTauntPlayback {
+    /// Remembered cache sample, including a channel whose playback has stopped.
+    fn remembered_sample(&self, cache_index: usize) -> Result<Option<u8>>;
     fn prepare(&mut self, label: [u8; 4], speech: bool, text_width: Option<u32>) -> Result<()>;
     fn release(&mut self, retained: &mut Option<usize>) -> Result<()>;
     fn load(&mut self, label: [u8; 4]) -> Result<usize>;

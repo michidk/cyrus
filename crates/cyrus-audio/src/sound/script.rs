@@ -1023,6 +1023,9 @@ struct PreparedCombatTaunt<'a, 'w, 's> {
 }
 
 impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_> {
+    fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
+        Ok(self.cache.sample(cache_index))
+    }
     fn prepare(
         &mut self,
         label: [u8; 4],
@@ -1142,6 +1145,14 @@ impl CatalogueCombatTaunt<'_, '_, '_, '_> {
     }
 }
 impl cyrus_game::script::CombatTauntPlayback for CatalogueCombatTaunt<'_, '_, '_, '_> {
+    fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
+        let state = self
+            .source
+            .state
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("combat taunt audio source already borrowed"))?;
+        Ok(state.1.sample(cache_index))
+    }
     fn prepare(&mut self, label: [u8; 4], speech: bool, width: Option<u32>) -> anyhow::Result<()> {
         self.clip = Some(
             self.source
@@ -1275,6 +1286,14 @@ impl CachedCombatTaunt<'_, '_, '_, '_> {
     }
 }
 impl cyrus_game::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '_> {
+    fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
+        let state = self
+            .source
+            .state
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("combat taunt audio source already borrowed"))?;
+        Ok(state.1.sample(cache_index))
+    }
     fn prepare(&mut self, label: [u8; 4], speech: bool, width: Option<u32>) -> anyhow::Result<()> {
         self.clip = Some(
             self.source

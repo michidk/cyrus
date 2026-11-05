@@ -13289,6 +13289,9 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
         }
     }
     impl CombatTauntPlayback for Playback {
+        fn remembered_sample(&self, _: usize) -> anyhow::Result<Option<u8>> {
+            Ok(None)
+        }
         fn prepare(
             &mut self,
             label: [u8; 4],
@@ -13655,6 +13658,9 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
     use cyrus_game::script::{CombatEntryInputs, CombatTauntPlayback, DialogueLine, WeaponInputs};
     struct NoTaunt;
     impl CombatTauntPlayback for NoTaunt {
+        fn remembered_sample(&self, _: usize) -> anyhow::Result<Option<u8>> {
+            Ok(None)
+        }
         fn prepare(&mut self, _: [u8; 4], _: bool, _: Option<u32>) -> anyhow::Result<()> {
             anyhow::bail!("unexpected taunt")
         }
@@ -20325,6 +20331,9 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         fail: bool,
     }
     impl CombatTauntPlayback for Playback {
+        fn remembered_sample(&self, _: usize) -> anyhow::Result<Option<u8>> {
+            Ok(None)
+        }
         fn prepare(&mut self, label: [u8; 4], _: bool, _: Option<u32>) -> anyhow::Result<()> {
             assert_eq!(label, *b"TEST");
             self.events.push("prepare");
@@ -43231,4 +43240,193 @@ fn console_marker_dispatch_restores_placement_and_preserves_failed_operations() 
             .unwrap(),
         saved
     );
+}
+#[test]
+fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
+    use cyrus_game::script::{
+        CombatTauntPlayback, CombatTauntSource, DialogueLine, OrdinaryGroundQuery,
+        PlayerControllerInput, ScriptActorSource, ScriptInputs, WorldRestoreContext,
+        WorldSnapshotSources,
+    };
+    #[derive(Debug)]
+    struct Source(std::cell::RefCell<(Option<u8>, Vec<&'static str>)>);
+    impl CombatTauntPlayback for Source {
+        fn remembered_sample(&self, index: usize) -> anyhow::Result<Option<u8>> {
+            assert_eq!(index, 4);
+            self.0.borrow_mut().1.push("sample");
+            Ok(self.0.borrow().0)
+        }
+        fn prepare(&mut self, label: [u8; 4], _: bool, _: Option<u32>) -> anyhow::Result<()> {
+            assert_eq!(label, *b"TEST");
+            self.0.borrow_mut().1.push("prepare");
+            Ok(())
+        }
+        fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+            assert_eq!(retained.take(), Some(4));
+            self.0.borrow_mut().1.push("release");
+            Ok(())
+        }
+        fn load(&mut self, _: [u8; 4]) -> anyhow::Result<usize> {
+            self.0.borrow_mut().1.push("load");
+            Ok(4)
+        }
+        fn present(&mut self, _: usize, _: bool, _: Option<u32>) -> anyhow::Result<DialogueLine> {
+            self.0.borrow_mut().1.push("present");
+            Ok(DialogueLine {
+                text: "Voice".into(),
+                sample: None,
+                lifetime: 210,
+            })
+        }
+    }
+    #[derive(Debug)]
+    struct Playback(std::cell::RefCell<Source>);
+    impl CombatTauntSource for Playback {
+        fn with_playback(
+            &self,
+            update: &mut dyn FnMut(&mut dyn CombatTauntPlayback) -> anyhow::Result<()>,
+        ) -> anyhow::Result<()> {
+            update(&mut *self.0.borrow_mut())
+        }
+    }
+    for woman in [0, 1] {
+        let (scripts, mut world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .attributes
+                .extend([(Attribute::Npc, 1), (Attribute::Woman, woman)]);
+            let player = scripts.actors.get_mut("CYRUS").unwrap();
+            player.attributes.extend([
+                (Attribute::AttackSingle, 1),
+                (Attribute::Chatty, 127),
+                (Attribute::NumTaunts, 1),
+            ]);
+            player.combat_taunts = vec![CombatTaunt {
+                trigger: if woman == 0 {
+                    TauntType::UNARMED_MALE_OPPONENT
+                } else {
+                    TauntType::UNARMED_FEMALE_OPPONENT
+                },
+                label: *b"TEST",
+                animation: 0,
+            }];
+            scripts.combat_attacks = vec![
+                combat::Attack {
+                    is_combo: false,
+                    motions: vec![],
+                    min_range: 0,
+                    max_range: 0,
+                },
+                combat::Attack {
+                    is_combo: false,
+                    motions: vec![serde_json::from_value(serde_json::json!({
+                    "section":0,"kind":0,"animation_group":0,"min_range":0,"max_range":10000,
+                    "arc":4096,"arc_center":0,"first_collide_frame":0,"collide_duration":0
+                })).unwrap()],
+                    min_range: 0,
+                    max_range: 10000,
+                },
+            ];
+        });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        scene.source_identity = Some("protected-actor-taunt-fixture".into());
+        scene.settings.tap_time = Some(6);
+        scene.settings.sheath_sword_delay = Some(100);
+        scene.settings.defend_interval = Some(100);
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: Some(&scene),
+            scripts: &scripts,
+            animations: &data,
+            collision: &scene.collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][index]["control"]["weapon_drawn"] = true.into();
+        saved["actors"][index]["control"]["combat"]["taunt_cache"] = 4.into();
+        let globals = std::mem::take(world.globals_mut());
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals,
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        world.ordinary_actors([10, 30]).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        hud.configure(&inventory_asset(&[]), &Default::default());
+        let held = cyrus_game::player::input::PlayerInput {
+            action: true,
+            ..Default::default()
+        };
+        let playback = Playback(std::cell::RefCell::new(Source(std::cell::RefCell::new((
+            Some(3),
+            vec![],
+        )))));
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        for remembered in [true, false] {
+            playback.0.borrow().0.borrow_mut().0 = remembered.then_some(3);
+            world.begin_player_movement_update(player, 0).unwrap();
+            let before = random.state();
+            world
+                .advance_player_controller(
+                    player,
+                    OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 4,
+                        sidedness: false,
+                    },
+                    cyrus_game::clock::ClockStep {
+                        frame_scale: 256,
+                        nominal_ticks: 0,
+                        fine_ticks: 0,
+                    },
+                    ScriptInputs {
+                        hud: Some(&hud),
+                        player_controller: Some(PlayerControllerInput {
+                            held: &held,
+                            walk_mode: false,
+                            auto_defend: false,
+                            steer: None,
+                        }),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        shell_execution: Some(false),
+                        combat_taunts: Some(&playback),
+                        ..Default::default()
+                    },
+                    &mut random,
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap();
+            world.finish_player_movement_update(player).unwrap();
+            if remembered {
+                assert_eq!(playback.0.borrow().0.borrow().1, ["sample"]);
+                assert_eq!(random.state(), before);
+            } else {
+                assert_eq!(
+                    playback.0.borrow().0.borrow().1,
+                    ["sample", "sample", "prepare", "release", "load", "present"]
+                );
+            }
+        }
+    }
 }
