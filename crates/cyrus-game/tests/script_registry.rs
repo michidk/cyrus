@@ -3802,6 +3802,76 @@ fn in_circle_compares_the_rounded_horizontal_distance_inclusively_and_ignores_he
 }
 
 #[test]
+fn change_group_and_user_store_the_low_byte_and_reject_divergent_membership() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    // The attribute after one call by an actor created with `creation` and, optionally, a direct
+    // attribute write between creation and the call.
+    let run = |function: Native,
+               argument: i32,
+               attribute: Attribute,
+               creation: u8,
+               direct_write: Option<u8>| {
+        let mut scripts = random_scripts(
+            function,
+            vec![Value::Integer { value: argument }],
+            Object::Me,
+        );
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[attribute] = creation;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        if let Some(value) = direct_write {
+            world.set_attribute_for_test(id, attribute, value);
+        }
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .map(|_| world.actors()[0].attributes()[attribute])
+    };
+    for (function, attribute) in [
+        (Native::ChangeGroup, Attribute::Group),
+        (Native::ChangeUser, Attribute::User),
+    ] {
+        let context = format!("{function}");
+        assert_eq!(
+            run(function, 7, attribute, 5, None).unwrap(),
+            7,
+            "{context}"
+        );
+        assert_eq!(
+            run(function, 0x105, attribute, 0, None).unwrap(),
+            5,
+            "{context}: only the low eight bits are stored"
+        );
+        assert_eq!(
+            run(function, 0, attribute, 5, None).unwrap(),
+            0,
+            "{context}"
+        );
+        assert_eq!(
+            run(function, 5, attribute, 5, None).unwrap(),
+            5,
+            "{context}: the same group stays"
+        );
+        let error = run(function, 7, attribute, 5, Some(9)).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("differs from its recorded membership 5"),
+            "{context}: {error:#}"
+        );
+    }
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {

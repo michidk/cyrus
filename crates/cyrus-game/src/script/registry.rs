@@ -6745,6 +6745,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             return Ok(CallResult::Complete(0));
         }
+        // ChangeGroup(group) and ChangeUser(user) move the receiver between the synchronization
+        // memberships and store the low eight bits of the argument in its group or user byte. The
+        // membership move runs first, so a rejected change leaves the byte untouched. Group-list
+        // management is always enabled here. Returns zero.
+        if function == Native::ChangeGroup || function == Native::ChangeUser {
+            let [value] = arguments else {
+                anyhow::bail!("{function} requires one argument")
+            };
+            let value = value.integer()? as u8;
+            let attribute = if function == Native::ChangeGroup {
+                Attribute::Group
+            } else {
+                Attribute::User
+            };
+            let old = self.registry.actors[self.index].attributes[attribute];
+            let sync = &mut self.registry.globals.group_sync;
+            if function == Native::ChangeGroup {
+                sync.change_group(self.index, old, value)?;
+            } else {
+                sync.change_user(self.index, old, value)?;
+            }
+            self.registry.actors[self.index].attributes[attribute] = value;
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::TrueFunction {
             anyhow::ensure!(arguments.len() == 2, "TrueFunction: wrong argument count");
             return Ok(CallResult::Complete(1));

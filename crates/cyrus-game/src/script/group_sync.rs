@@ -4,6 +4,7 @@
 //! `SyncWithGroup(group)` posts a group for the calling actor and waits until the channel releases that
 //! group; the channel is updated once per world-loop iteration after the family update.
 use super::ScriptActor;
+use anyhow::{Result, ensure};
 use cyrus_script::Attribute;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -14,8 +15,9 @@ const POSTED: u8 = 0x80;
 /// Retained channel state. Cleared when a world is entered, as the engine reinitializes its tables.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GroupSync {
-    /// Channel membership is sampled when an actor record is created.  Later writes to attribute
-    /// 29 do not move the actor between rendezvous tables.
+    /// Channel membership is sampled when an actor record is created and moved only by
+    /// `ChangeGroup`.  Direct writes to attribute 29 do not move the actor between rendezvous
+    /// tables.
     #[serde(default)]
     channels: BTreeMap<usize, u8>,
     /// Released value per channel: the current group in the low seven bits, `POSTED` when every
@@ -44,6 +46,34 @@ impl GroupSync {
             self.register(index, actor.attributes()[Attribute::Group]);
             self.register_user(index, actor.attributes()[Attribute::User]);
         }
+    }
+
+    /// `ChangeGroup`: move `actor` from its current group's membership to `new`. `old` is the
+    /// group byte the native read before the change. Membership is exact only while that byte
+    /// still names the list the actor joined (at creation or by an earlier change): a script that
+    /// wrote the attribute directly leaves the original's lists in a state this table cannot
+    /// hold, so that divergence is reported instead of guessed. Group zero joins no list.
+    pub(super) fn change_group(&mut self, actor: usize, old: u8, new: u8) -> Result<()> {
+        let recorded = self.channels.get(&actor).copied().unwrap_or(0);
+        ensure!(
+            recorded == old,
+            "ChangeGroup: actor {actor} group byte {old} differs from its recorded membership {recorded}; \
+             the original's list state for that divergence is not modelled"
+        );
+        self.channels.insert(actor, new);
+        Ok(())
+    }
+
+    /// `ChangeUser`: the same membership move on the independent user channels.
+    pub(super) fn change_user(&mut self, actor: usize, old: u8, new: u8) -> Result<()> {
+        let recorded = self.user.channels.get(&actor).copied().unwrap_or(0);
+        ensure!(
+            recorded == old,
+            "ChangeUser: actor {actor} user byte {old} differs from its recorded membership {recorded}; \
+             the original's list state for that divergence is not modelled"
+        );
+        self.user.channels.insert(actor, new);
+        Ok(())
     }
 
     pub(super) fn register_user(&mut self, actor: usize, channel: u8) {
@@ -232,6 +262,60 @@ mod tests {
         sync.update_members(MEMBERS);
         assert_eq!(sync.released[&1], 5 | POSTED);
         assert!(sync.post(0, 1, 5) && sync.post(1, 1, 5));
+    }
+
+    #[test]
+    fn changing_group_moves_membership_and_group_zero_joins_no_channel() {
+        let mut sync = GroupSync::default();
+        sync.register(0, 3);
+        sync.register(1, 0);
+        assert!(sync.contains_member(0, 3) && !sync.contains_member(0, 4));
+        sync.change_group(0, 3, 4).unwrap();
+        assert!(!sync.contains_member(0, 3), "the old channel is left");
+        assert!(sync.contains_member(0, 4), "the new channel is joined");
+        // Changing to the same nonzero group keeps the membership.
+        sync.change_group(0, 4, 4).unwrap();
+        assert!(sync.contains_member(0, 4));
+        // Group zero leaves the channel and joins none.
+        sync.change_group(0, 4, 0).unwrap();
+        assert!(!sync.contains_member(0, 4) && !sync.contains_member(0, 0));
+        // An actor with no group joins a channel from zero.
+        sync.change_group(1, 0, 9).unwrap();
+        assert!(sync.contains_member(1, 9));
+        // A moved member is counted by the new channel's rendezvous only.
+        sync.update_members([(1, 9, false)]);
+        assert!(sync.released.contains_key(&9));
+    }
+
+    #[test]
+    fn changing_group_or_user_rejects_a_byte_that_differs_from_the_recorded_membership() {
+        let mut sync = GroupSync::default();
+        sync.register(0, 3);
+        sync.register_user(0, 6);
+        let error = sync.change_group(0, 5, 7).unwrap_err().to_string();
+        assert!(
+            error.contains("differs from its recorded membership 3"),
+            "{error}"
+        );
+        let error = sync.change_user(0, 0, 7).unwrap_err().to_string();
+        assert!(
+            error.contains("differs from its recorded membership 6"),
+            "{error}"
+        );
+        assert!(
+            sync.contains_member(0, 3),
+            "a rejected change leaves membership alone"
+        );
+    }
+
+    #[test]
+    fn changing_user_moves_membership_on_the_user_channels() {
+        let mut sync = GroupSync::default();
+        sync.register_user(0, 2);
+        sync.change_user(0, 2, 5).unwrap();
+        assert_eq!(sync.user.channels.get(&0), Some(&5));
+        sync.change_user(0, 5, 0).unwrap();
+        assert_eq!(sync.user.channels.get(&0), Some(&0));
     }
 
     #[test]
