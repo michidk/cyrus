@@ -6,6 +6,16 @@ use anyhow::ensure;
 use cyrus_assets::script::PlacementType;
 use serde::{Deserialize, Serialize};
 
+/// The AI record fields beyond the location word.
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+struct AiRecordSnapshot {
+    var2: i16,
+    length: i32,
+    node: i32,
+    dnode: i32,
+    fdnode: i32,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct ControlSnapshot {
     #[serde(default)]
@@ -18,6 +28,9 @@ struct ControlSnapshot {
     ai_delay: u8,
     #[serde(default)]
     ai_location: i16,
+    /// The remaining AI record fields; older saves restore the allocation defaults.
+    #[serde(default)]
+    ai_record: Option<AiRecordSnapshot>,
     living_state: LivingState,
     motion_companion: u8,
     #[serde(default)]
@@ -106,7 +119,14 @@ impl ControlSnapshot {
             death_selector: control.ai_type.byte(),
             death_response: control.ai_mode,
             ai_delay: control.ai_delay,
-            ai_location: control.ai_location,
+            ai_location: control.ai.var1,
+            ai_record: Some(AiRecordSnapshot {
+                var2: control.ai.var2,
+                length: control.ai.length,
+                node: control.ai.node,
+                dnode: control.ai.dnode,
+                fdnode: control.ai.fdnode,
+            }),
             living_state: control.living_state,
             motion_companion: control.motion_companion,
             extra_time: control.extra_time,
@@ -171,7 +191,18 @@ impl ControlSnapshot {
             ai_type: crate::script::AiType::from_byte(self.death_selector),
             ai_mode: self.death_response,
             ai_delay: self.ai_delay,
-            ai_location: self.ai_location,
+            ai: {
+                let defaults = super::AiRecord::default();
+                let saved = self.ai_record;
+                super::AiRecord {
+                    var1: self.ai_location,
+                    var2: saved.map_or(defaults.var2, |saved| saved.var2),
+                    length: saved.map_or(defaults.length, |saved| saved.length),
+                    node: saved.map_or(defaults.node, |saved| saved.node),
+                    dnode: saved.map_or(defaults.dnode, |saved| saved.dnode),
+                    fdnode: saved.map_or(defaults.fdnode, |saved| saved.fdnode),
+                }
+            },
             living_state: self.living_state,
             motion_companion: self.motion_companion,
             extra_time: self.extra_time,

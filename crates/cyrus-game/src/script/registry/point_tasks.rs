@@ -49,7 +49,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .as_mut()
             .expect("admitted GotoLocation control");
         control.ai_type = crate::script::AiType::FIND_LOCATION;
-        control.ai_location = location as i16;
+        control.ai.var1 = location as i16;
         if control.ai_delay != 0 && control.ai_delay != 255 {
             let ticks = self
                 .inputs
@@ -58,7 +58,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             control.ai_delay = u32::from(control.ai_delay).saturating_sub(ticks) as u8;
         }
         actor.attributes[Attribute::Collide] = 4;
-        Ok(i32::from(control.ai_location != -1))
+        Ok(i32::from(control.ai.var1 != -1))
     }
 
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {

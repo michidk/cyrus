@@ -48989,3 +48989,6 @@ mod native_source_order_tests;
 
 #[path = "script_registry/parameter_diagnostics.rs"]
 mod parameter_diagnostics_tests;
+
+#[path = "script_registry/header_hook.rs"]
+mod header_hook_tests;

@@ -630,3 +630,16 @@ state. The contract follows preservation's
 [parameter diagnostics](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#parameter-diagnostics).
 The original's unresolved-handle text and 255-byte line bound have no representation here;
 natural installed gameplay parity remains Unknown.
+
+Verified: the receiver's AI record is script-readable and writable as the properties `ai_var1` (the
+location word `GotoLocation` stores), `ai_var2`, `ai_length`, `node`, `dnode` and `fdnode`: the two
+words read sign-extended and keep the low sixteen bits of a write, the dwords are whole, a fresh
+actor reads -1 for `ai_var1` and the node fields and zero for the rest, and the record is saved with
+the actor (older saves restore those defaults). `HeaderHook()` prints the banner, a description line
+(identifier, object name, script) and the node/AI line on the console and returns one without
+changing the receiver. The record address in the description line is the pool slot here, the
+object name is the actor's namespace, and the navigation and AI natives that own these fields do
+not write them yet; `node_map` stays unsupported. The contract follows preservation's
+[AI record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#ai-record-properties)
+and [HeaderHook diagnostics](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#headerhook-diagnostics).
+Natural installed gameplay parity remains Unknown.

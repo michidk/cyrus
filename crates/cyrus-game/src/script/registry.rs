@@ -371,6 +371,32 @@ impl From<ActionWords> for [u32; 2] {
     }
 }
 
+/// The receiver's AI scratch fields: `ai_var1` (the signed location word `GotoLocation` stores),
+/// `ai_var2`, `ai_length` and the three node fields. Allocation zeroes the record and then sets the
+/// first variable and the node fields to minus one; reads of the word fields sign-extend them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AiRecord {
+    /// `ai_var1`: the location word `GotoLocation` retains independently of AI mode and delay.
+    pub var1: i16,
+    pub var2: i16,
+    pub length: i32,
+    pub node: i32,
+    pub dnode: i32,
+    pub fdnode: i32,
+}
+impl Default for AiRecord {
+    fn default() -> Self {
+        Self {
+            var1: -1,
+            var2: 0,
+            length: 0,
+            node: -1,
+            dnode: -1,
+            fdnode: -1,
+        }
+    }
+}
+
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
     pub navigation: super::ActorNavigation,
@@ -383,8 +409,8 @@ pub struct ActorControlState {
     pub ai_mode: u8,
     /// Receiver-owned unsigned AI delay, retained independently of mode and ordinary countdown.
     pub ai_delay: u8,
-    /// Signed low-word location retained by GotoLocation independently of AI mode and delay.
-    pub ai_location: i16,
+    /// The AI scratch fields scripts read and write by property.
+    pub ai: AiRecord,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
     /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
@@ -5109,6 +5135,24 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
     })
 }
 
+/// An AI-record field a script property names: the word fields read sign-extended and keep the low
+/// sixteen bits of a write, the dword fields keep all of it.
+enum AiField<'a> {
+    Word(&'a mut i16),
+    Dword(&'a mut i32),
+}
+fn ai_record_property(control: &mut ActorControlState, name: Property) -> Option<AiField<'_>> {
+    Some(match name {
+        Property::AiVar1 => AiField::Word(&mut control.ai.var1),
+        Property::AiVar2 => AiField::Word(&mut control.ai.var2),
+        Property::AiLength => AiField::Dword(&mut control.ai.length),
+        Property::Node => AiField::Dword(&mut control.ai.node),
+        Property::Dnode => AiField::Dword(&mut control.ai.dnode),
+        Property::Fdnode => AiField::Dword(&mut control.ai.fdnode),
+        _ => return None,
+    })
+}
+
 fn pose_property(name: Property) -> Option<PoseProperty> {
     use Property::{AngleVx, AngleVy, AngleVz, PosVx, PosVy, PosVz};
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
@@ -5338,6 +5382,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 *motion_property(control, name).expect("named motion byte"),
             ));
         }
+        if ai_record_property(&mut ActorControlState::default(), name).is_some() {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            return Ok(
+                match ai_record_property(control, name).expect("named AI field") {
+                    AiField::Word(word) => i32::from(*word),
+                    AiField::Dword(dword) => *dword,
+                },
+            );
+        }
         let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} unsupported"))?;
         let index = self.property_receiver(target)?;
@@ -5454,6 +5511,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             *motion_property(control, name).expect("named motion byte") = value as u8;
+            return Ok(());
+        }
+        if ai_record_property(&mut ActorControlState::default(), name).is_some() {
+            let index = self.property_receiver(target)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_mut()
+                .with_context(|| format!("property {name} control owner unavailable"))?;
+            match ai_record_property(control, name).expect("named AI field") {
+                AiField::Word(word) => *word = value as i16,
+                AiField::Dword(dword) => *dword = value,
+            }
             return Ok(());
         }
         let scabbard = [Property::Scabbard0, Property::Scabbard1]
@@ -8479,6 +8548,53 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let name = self.registry.actors[self.index].name().to_owned();
             self.registry.globals.print_line(format!("{name} {value}"));
             return Ok(CallResult::Complete(0));
+        }
+        // HeaderHook writes three console lines about the receiver and returns one: a banner, its
+        // identifier, object name (the namespace named objects resolve through) and script, and its
+        // node and AI record. It changes nothing and
+        // does not run the receiver's RAHK hook. `%p` of the original has no portable value, so
+        // the pool slot stands in for the record address.
+        if function == Native::HeaderHook {
+            anyhow::ensure!(arguments.is_empty(), "HeaderHook requires no arguments");
+            let actor = &self.registry.actors[self.index];
+            let control = actor
+                .control
+                .as_ref()
+                .context("HeaderHook: receiver AI record unavailable")?;
+            let address = format!("0x{:08x}", self.index);
+            let identifier = actor.runtime_identifier.map_or(0, i32::from);
+            let script = actor.name();
+            let described = match (actor.namespace.as_deref(), actor.unavailable.is_none()) {
+                (None, false) => {
+                    format!("Unnamed object (id {identifier}) at {address} no script attached")
+                }
+                (None, true) => {
+                    format!("Unnamed object (id {identifier}) at {address} using \"{script}\"")
+                }
+                (Some(name), false) => {
+                    format!("Object \"{name}\"(id {identifier}) at {address} no script attached")
+                }
+                (Some(name), true) => {
+                    format!("Object \"{name}\"(id {identifier}) at {address} using \"{script}\"")
+                }
+            };
+            let ai = control.ai;
+            let record = format!(
+                "Node {}, dnode {}, ai_type {}, ai_mode {}, ai_delay {}, ai_length {}, ai_var1 {}, ai_var2 {}",
+                ai.node,
+                ai.dnode,
+                control.ai_type.byte(),
+                control.ai_mode,
+                control.ai_delay,
+                ai.length,
+                ai.var1,
+                ai.var2
+            );
+            let globals = &mut self.registry.globals;
+            globals.print_line("\nHeader Hook:".to_owned());
+            globals.print_line(described);
+            globals.print_line(record);
+            return Ok(CallResult::Complete(1));
         }
         // PrintParms and LogParms format the receiver's script name and all eight arguments as signed
         // decimals; PrintParms takes the first free console line, LogParms goes to the diagnostic log.

@@ -315,11 +315,7 @@ fn self_nonarrival_refreshes_on_initial_call_and_poll_without_running_continuati
         advance(&mut world, ScriptStage::Body(Thread::Main), Some(ticks)).unwrap();
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (
-                control.ai_type.byte(),
-                control.ai_location,
-                control.ai_delay
-            ),
+            (control.ai_type.byte(), control.ai.var1, control.ai_delay),
             (4, 1, after_call)
         );
         assert_eq!(control.ai_mode, 11);
@@ -390,7 +386,8 @@ fn arrival_completes_before_refresh_while_equal_speed_threshold_stays_pending() 
         assert_eq!(world.flags(), [12]);
         assert_eq!(control.ai_type.byte(), if arrives { 0 } else { 4 });
         assert_eq!(control.ai_delay, if arrives { 8 } else { 5 });
-        assert_eq!(control.ai_location, if arrives { 0 } else { 1 });
+        // Arrival leaves the location word at its allocation default, minus one.
+        assert_eq!(control.ai.var1, if arrives { -1 } else { 1 });
         assert_eq!(control.ai_mode, 11);
         assert_eq!(
             world.actors()[0].attributes()[Attribute::Collide],
@@ -430,11 +427,7 @@ fn low_word_minus_one_completes_only_after_selector_delay_and_collide_writes() {
         advance(&mut world, ScriptStage::Body(Thread::Main), Some(3)).unwrap();
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (
-                control.ai_type.byte(),
-                control.ai_location,
-                control.ai_delay
-            ),
+            (control.ai_type.byte(), control.ai.var1, control.ai_delay),
             (4, -1, 5)
         );
         assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 4);
@@ -451,19 +444,15 @@ fn low_word_minus_one_completes_only_after_selector_delay_and_collide_writes() {
 #[test]
 fn unsupported_lookup_and_shape_failures_do_not_fabricate_native_success() {
     for (location, shape, ticks, error_text, selector, index) in [
-        (2, true, Some(3), "selector equals location count", 6, 0),
-        (1, false, Some(3), "collision", 6, 0),
+        (2, true, Some(3), "selector equals location count", 6, -1),
+        (1, false, Some(3), "collision", 6, -1),
     ] {
         let mut world = fixture(location, 8, 0, shape);
         let error = advance(&mut world, ScriptStage::Body(Thread::Main), ticks).unwrap_err();
         assert!(format!("{error:#}").contains(error_text), "{error:#}");
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (
-                control.ai_type.byte(),
-                control.ai_location,
-                control.ai_delay
-            ),
+            (control.ai_type.byte(), control.ai.var1, control.ai_delay),
             (selector, index, 8)
         );
         assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 129);
@@ -533,11 +522,7 @@ fn missing_public_stage_clock_refuses_before_script_writes_and_allows_retry() {
     advance(&mut world, ScriptStage::Body(Thread::Main), Some(3)).unwrap();
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
-        (
-            control.ai_type.byte(),
-            control.ai_location,
-            control.ai_delay
-        ),
+        (control.ai_type.byte(), control.ai.var1, control.ai_delay),
         (4, 1, 5)
     );
     assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 4);

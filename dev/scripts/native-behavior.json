@@ -3594,17 +3594,22 @@
     },
     {
       "native": "HeaderHook",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Receiver diagnostics, separate from RAHK native-hook execution",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Production named receiver diagnostic: three console lines and result one",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> GameplayGlobals::print_line",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_with_an_argument_is_rejected_when_the_world_is_prepared"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/179",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604021792"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604021792",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
       ],
-      "limits": "Verified original contract: zero-argument function reports receiver identity/name, resolved script association and node/AI diagnostics, returning one without receiver mutation or RAHK callback dispatch. Complete handler/name-lookup witnesses cover eight constructed cases with observed diagnostic IO; logger buffers/presentation and naturally reached gameplay are not accepted. Current named handler remains absent; the separate RAHK hook path does not implement this function. No dedicated public rejection assertion or native/browser production acceptance located. Missing means named implementation, not all hook services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun.",
+      "limits": "Verified original handler flow: the banner '\\nHeader Hook:', one object line chosen by whether the receiver has an object name and a script (Unnamed object/Object \"name\", 'no script attached' or 'using \"script\"') with its identifier, then 'Node, dnode, ai_type, ai_mode, ai_delay, ai_length, ai_var1, ai_var2' from the AI record; all three through the console writer PrintSingleParm uses; result one; no receiver change and no RAHK hook. Implemented with the AI record state recovered from the actor allocator. The record address (%p) has no portable value: the pool slot stands in. The object name is inferred to be the namespace named objects resolve through; a script is attached when its program is available. The original's console only prints when the final-version switch is off; the 255-byte line bound is not applied. Natural gameplay parity remains Unknown.",
       "reviewed_revision": "f0ce6826e096c97801fb7f42d3b558c1dc779c28"
     },
     {
@@ -7245,6 +7250,114 @@
       ],
       "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.living_state equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
+    },
+    {
+      "property": "ai_var1",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver AI location word (the signed 16-bit location GotoLocation stores)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads sign-extend the stored word (a fresh actor reads -1); writes keep the low sixteen bits. GotoLocation stores its location argument here and its sentinel test reads it back. Saved with the actor. The receiver needs a control record (explicit error otherwise). Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "ai_var2",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver second AI word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads sign-extend the stored word (a fresh actor reads zero); writes keep the low sixteen bits. Saved with the actor. No native writes it yet: its original producers (AI behaviours) are other owners' work. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "ai_length",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver AI length dword",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads zero. Saved with the actor. No native writes it yet. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "node",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver current-node dword",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives keep their own route state and do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "dnode",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver destination-node dword",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "fdnode",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver final-destination-node dword",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+      ],
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
     }
   ],
   "property_groups": [
@@ -7671,9 +7784,6 @@
       "properties": [
         "action",
         "action_flag",
-        "ai_length",
-        "dnode",
-        "fdnode",
         "grid",
         "hand_angle.vx",
         "hand_angle.vy",
@@ -7700,7 +7810,6 @@
         "move.vx",
         "move.vy",
         "move.vz",
-        "node",
         "origin",
         "origin_accum",
         "ov.vx",
@@ -7782,8 +7891,6 @@
     },
     {
       "properties": [
-        "ai_var1",
-        "ai_var2",
         "frame",
         "fspheres",
         "handle",
