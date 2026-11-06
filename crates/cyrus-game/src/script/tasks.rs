@@ -613,6 +613,9 @@ enum Task {
     PlayerFaceTalk,
     /// `ObjectLineUp(angle, x_offset, z_offset)`: walks the receiver to the source actor's frame.
     ObjectLineUp,
+    /// `ObjectParallelLineUp(angle, x_offset, z_offset)`: the plain mover on the receiver, toward
+    /// the source actor's frame with unrotated offsets.
+    ObjectParallelLineUp,
     /// `LineUp(angle, x_offset, z_offset)`: the close mover on the receiver toward the reference
     /// actor retained from the first invocation's shared native-command source.
     ReceiverLineUp {
@@ -1672,6 +1675,26 @@ impl Task {
                     return Err(error);
                 }
                 result? == 0
+            }
+            Self::ObjectParallelLineUp => {
+                let [angle, x_offset, z_offset] = arguments else {
+                    anyhow::bail!("ObjectParallelLineUp takes three arguments");
+                };
+                let port = services
+                    .lineup
+                    .context("ObjectParallelLineUp receiver alignment state unavailable")?;
+                let reference = port.source_reference("ObjectParallelLineUp")?;
+                let angle = wrap(i32::from(reference.heading) + angle.integer()?);
+                let target = [
+                    reference.position[0].wrapping_add(x_offset.integer()?),
+                    reference.position[1],
+                    reference.position[2].wrapping_add(z_offset.integer()?),
+                ];
+                let result = super::lineup::plain_mover(&mut *port, angle, target);
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                result == 0
             }
             Self::ObjectLineUp => {
                 let [angle, x_offset, z_offset] = arguments else {
@@ -3153,6 +3176,12 @@ impl NativeTasks {
                 fallback: false,
                 reference: None,
             }
+        } else if function == Native::ObjectParallelLineUp {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "ObjectParallelLineUp requires task encoding"
+            );
+            Task::ObjectParallelLineUp
         } else if function == Native::BounceObject {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -3371,6 +3400,7 @@ impl NativeTasks {
             Native::PlayerLineUp,
             Native::PlayerFaceTalk,
             Native::LineUp,
+            Native::ObjectParallelLineUp,
             Native::ObjectLineUp,
             Native::ObjectPickupLineUp,
         ]
@@ -3392,6 +3422,7 @@ impl NativeTasks {
                     | Task::LineUp { .. }
                     | Task::PlayerFaceTalk
                     | Task::ReceiverLineUp { .. }
+                    | Task::ObjectParallelLineUp
                     | Task::ObjectLineUp
                     | Task::ObjectPickupLineUp { .. }
             )
@@ -3408,7 +3439,10 @@ impl NativeTasks {
         matches!(
             self.tasks.get(&token),
             Some(
-                Task::ReceiverLineUp { .. } | Task::ObjectLineUp | Task::ObjectPickupLineUp { .. }
+                Task::ReceiverLineUp { .. }
+                    | Task::ObjectParallelLineUp
+                    | Task::ObjectLineUp
+                    | Task::ObjectPickupLineUp { .. }
             )
         )
     }

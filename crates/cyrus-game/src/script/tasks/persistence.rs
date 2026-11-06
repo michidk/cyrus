@@ -277,6 +277,7 @@ impl Task {
             Self::PlayerFaceTalk => (Native::PlayerFaceTalk, 1, Some(CallKind::Task)),
             Self::ReceiverLineUp { .. } => (Native::LineUp, 3, Some(CallKind::Task)),
             Self::ObjectLineUp => (Native::ObjectLineUp, 3, Some(CallKind::Task)),
+            Self::ObjectParallelLineUp => (Native::ObjectParallelLineUp, 3, Some(CallKind::Task)),
             Self::ObjectPickupLineUp { .. } => {
                 (Native::ObjectPickupLineUp, 3, Some(CallKind::Task))
             }

@@ -4942,17 +4942,19 @@
     },
     {
       "native": "ObjectParallelLineUp",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named task-target-relative parallel alignment wrapper; production dispatch missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Three-argument task running the plain mover on the receiver toward the shared source actor's frame with unrotated offsets",
+      "caller": "ScriptWorld::advance -> Runtime object task call -> GameHost::lineup_call/lineup_poll -> Task::ObjectParallelLineUp -> lineup::plain_mover",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::object_parallel_lineup_arrives_completes_and_the_caller_continues",
+        "crates/cyrus-game/tests/script_registry.rs::object_parallel_lineup_abandons_on_a_stale_collision_response_without_moving"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
         "https://github.com/michidk/redguard-preservation/pull/288"
       ],
-      "limits": "Verified: installed task3 declaration and independently mapped complete118-byte wrapper. Static41-instruction dataflow plus22 operand/call-identity refusal controls establish shared task-target position/orientation access, unrotated X/Z offsets, unchanged Y, heading+angle masked2047, receiving actor forwarded to parallel mover and mover result returned unchanged. No wrapper unavailable-target fallback or shared player-lineup-result write. Existing published shared mover facts reused without execution. Unknown: target constructor/retirement/save-load/world replacement ownership, unsafe accessor inputs, full mover/VM/production continuation and original/native/browser parity. Missing status/tests retained; no production implementation or execution acceptance. Next owner5/root task-lifecycle agreement before isolated public task implementation; no selected-player or zero-coordinate substitute.",
+      "limits": "Verified: installed task3 declaration and independently mapped complete118-byte wrapper. Static41-instruction dataflow plus22 operand/call-identity refusal controls establish shared task-target position/orientation access, unrotated X/Z offsets, unchanged Y, heading+angle masked2047, receiving actor forwarded to parallel mover and mover result returned unchanged. No wrapper unavailable-target fallback or shared player-lineup-result write. Existing published shared mover facts reused without execution. Unknown: target constructor/retirement/save-load/world replacement ownership, unsafe accessor inputs, full mover/VM/production continuation and original/native/browser parity. Missing status/tests retained; no production implementation or execution acceptance. Next owner5/root task-lifecycle agreement before isolated public task implementation; no selected-player or zero-coordinate substitute. Implementation (current): Verified (the original 118-byte wrapper re-read from the native table entry): it reads the shared native-command source actor (the same pointer ObjectLineUp and ObjectPickupLineUp read), builds angle = source heading + argument masked to 2048 and target = source X/Z plus the unrotated offsets with the source Y, and calls the plain mover on the receiver with no path test and no prelude. Routed tests (walking-player fixture, Player.ObjectParallelLineUp(1024, 0, 2048) from the map actor, production scheduler polling): the caller continues in round 0, the receiver's slot holds the task and it completes at the caller's X/Z plus offsets; a restored snapshot with a stale collision response abandons at once without moving. Unknown: rejected-step branch under live geometry (unit rows only); source departure; no native-run or browser comparison.",
       "reviewed_revision": "638fff564de25d4aea441db9bc20abc8d7dc225f"
     },
     {

@@ -617,7 +617,10 @@ impl GameHost<'_, '_, '_, '_> {
     ) -> Result<Option<super::CallResult>> {
         let mut port = if matches!(
             function,
-            Native::LineUp | Native::ObjectLineUp | Native::ObjectPickupLineUp
+            Native::LineUp
+                | Native::ObjectParallelLineUp
+                | Native::ObjectLineUp
+                | Native::ObjectPickupLineUp
         ) {
             PlayerLineup::for_receiver(self)?
         } else {

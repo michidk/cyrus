@@ -35920,10 +35920,48 @@ fn line_up_walks_the_receiver_to_the_retained_source_frame_and_the_caller_contin
 }
 
 #[test]
+fn object_parallel_lineup_arrives_completes_and_the_caller_continues() {
+    // The plain mover on the receiver toward the caller's frame: angle 1024 puts the final
+    // heading on the player's own, so it steps (no path test) and finishes at caller X/Z + offsets.
+    let (_, mut world, data, scene, index) =
+        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024);
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut finished = false;
+    for round in 0..600 {
+        scheduler_round_with(&mut world, &data, &scene, round, true, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        if round == 0 {
+            assert_eq!(world.flags(), [7], "the caller continues at once");
+            assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 1);
+        }
+        if world.actors()[index].runtime().unwrap().active_tasks() == 0 {
+            finished = true;
+            break;
+        }
+    }
+    let caller = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    let end = world.spatial(player).unwrap().local.position;
+    assert!(
+        finished,
+        "the task completes; player at {end:?}, caller {caller:?}"
+    );
+    assert_eq!([end[0], end[2]], [caller[0], caller[2] + 2048]);
+}
+
+#[test]
 fn object_pickup_lineup_abandons_on_a_stale_collision_response_without_moving() {
+    assert_stale_response_abandons(Native::ObjectPickupLineUp);
+}
+
+#[test]
+fn object_parallel_lineup_abandons_on_a_stale_collision_response_without_moving() {
+    assert_stale_response_abandons(Native::ObjectParallelLineUp);
+}
+
+fn assert_stale_response_abandons(native: Native) {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
-    let (scripts, mut world, data, scene, index) =
-        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024);
+    let (scripts, mut world, data, scene, index) = lineup_receiver_fixture(native, 1024);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let start = world.spatial(player).unwrap().local.position;
