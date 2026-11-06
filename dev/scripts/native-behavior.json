@@ -2637,18 +2637,20 @@
     },
     {
       "native": "IsMessageWaiting",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original direct-entry message-availability predicate",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Zero-argument Boolean query: the receiver has a selected class message",
+      "caller": "ScriptWorld::advance -> Runtime function value (direct or object-routed) -> GameHost::call (IsMessageWaiting)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::is_message_waiting_reports_a_selection_without_reading_or_changing_the_queue"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/2d51706",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6613025482"
       ],
-      "limits": "Verified installed zero-argument declaration/exact named binding/full native, also previously identified sender-query helper. 90,624 direct original-instruction contexts and 10 effective semantic controls cover full selection/sentinel byte pairs at one channel, every channel with selected fields/receivers/context tokens, Boolean inequality, diagnostic IO and preserved state. Nonzero unmapped context pointer only presence-tested; no queue/entry/sender reads or state mutation. Missing-context formatter/runtime-error services controlled returning with/without explicit repair. Unknown null/malformed receiver/subrecord, channel producers/admission, queue lifetime/consumption, natural diagnostics, concurrency, VM/original/native/browser and full joint domain. Production named call remains absent; no implementation or dedicated public-call Rust assertion established. Historical usage counts do not prove hidden-body absence.",
-      "reviewed_revision": "04b38acab5db447d424ff5107ecdde14b57b2eeb"
+      "limits": "Verified installed zero-argument declaration/exact named binding/full native, also previously identified sender-query helper. 90,624 direct original-instruction contexts and 10 effective semantic controls cover full selection/sentinel byte pairs at one channel, every channel with selected fields/receivers/context tokens, Boolean inequality, diagnostic IO and preserved state. Nonzero unmapped context pointer only presence-tested; no queue/entry/sender reads or state mutation. Missing-context formatter/runtime-error services controlled returning with/without explicit repair. Unknown null/malformed receiver/subrecord, channel producers/admission, queue lifetime/consumption, natural diagnostics, concurrency, VM/original/native/browser and full joint domain. Production named call remains absent; no implementation or dedicated public-call Rust assertion established. Historical usage counts do not prove hidden-body absence. Verified (routed ScriptWorld test; preservation SOUP.md IsMessageWaiting and the shared-context facts in 6c20fd1): the result is one exactly when the receiver's selection differs from its class channel's no-selection index, no entry is read (an entry addressed to someone else still counts) and nothing is consumed or advanced; direct and object-routed calls query the right receiver. Inferred: the context is always present in the logical world, so the missing-context diagnostic has no case. Unknown: no native-run or browser comparison of a script calling it; broadcast availability (SOUP3) is separate.",
+      "reviewed_revision": "f1ee0188ee9e0a81b52a0c4006c8b9932a6726de"
     },
     {
       "native": "ReceiveBroadcast",

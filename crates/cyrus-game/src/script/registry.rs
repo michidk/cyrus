@@ -7132,6 +7132,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .send_combat_message(sender, recipient, value.integer()?.into())?;
             return Ok(CallResult::Complete(0));
         }
+        // IsMessageWaiting is one when the receiver's selection differs from its channel's
+        // no-selection index; it scans nothing and changes nothing.
+        if function == Native::IsMessageWaiting {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "IsMessageWaiting requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            return Ok(CallResult::Complete(i32::from(
+                self.registry.selected_message_entry(receiver)?.is_some(),
+            )));
+        }
         // ReceiveMessage returns the value word of the first entry addressed to the receiver.
         if function == Native::ReceiveMessage {
             anyhow::ensure!(arguments.is_empty(), "ReceiveMessage requires no arguments");

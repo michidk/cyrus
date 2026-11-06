@@ -19285,6 +19285,66 @@ fn send_message_zero_value_returns_before_reading_the_recipient_and_other_forms_
 }
 
 #[test]
+fn is_message_waiting_reports_a_selection_without_reading_or_changing_the_queue() {
+    use cyrus_game::script::CombatMessageCode;
+    use cyrus_script::ScriptValue;
+    // Direct: actor 1 asks about itself. Object: actor 1 asks about actor 0.
+    for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
+        let scripts = message_call_scripts(Native::IsMessageWaiting, target.clone());
+        for (send, expected) in [(false, 0), (true, 1)] {
+            let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+            let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+            let (receiver, other) = if receiver_index == 0 { (a, b) } else { (b, a) };
+            if send {
+                // An entry addressed to someone else still counts: the query reads no entry.
+                world
+                    .send_combat_message(receiver, other, CombatMessageCode::HIT)
+                    .unwrap();
+                world
+                    .send_combat_message(other, receiver, CombatMessageCode::BLOCK)
+                    .unwrap();
+            }
+            actor_reference_step(&mut world, b).unwrap();
+            actor_reference_step(&mut world, b).unwrap();
+            assert_eq!(
+                world.actors()[1].runtime().unwrap().variables()[2],
+                ScriptValue::Integer(expected),
+                "target {target:?} send {send}"
+            );
+            if send {
+                // Nothing was consumed or advanced.
+                assert_eq!(
+                    world
+                        .consume_combat_message(receiver)
+                        .unwrap()
+                        .unwrap()
+                        .code,
+                    CombatMessageCode::BLOCK
+                );
+                assert_eq!(
+                    world.consume_combat_message(other).unwrap().unwrap().code,
+                    CombatMessageCode::HIT
+                );
+            }
+        }
+    }
+    // A consumed queue has no selection again.
+    let scripts = message_call_scripts(Native::IsMessageWaiting, Object::Me);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(a, b, CombatMessageCode::HIT)
+        .unwrap();
+    world.consume_combat_message(b).unwrap().unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    assert_eq!(
+        world.actors()[1].runtime().unwrap().variables()[2],
+        ScriptValue::Integer(0)
+    );
+}
+
+#[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};
     for (object, expected) in [
