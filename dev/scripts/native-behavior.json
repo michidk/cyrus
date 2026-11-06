@@ -4999,19 +4999,23 @@
     },
     {
       "native": "IsWithinView",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named AI/spatial-view/camera dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed horizontal camera-distance test against the installed view distance",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) with Scripts.view_distance from SYSTEM.INI",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::is_within_view_compares_the_horizontal_camera_distance_with_the_installed_distance",
+        "crates/cyrus-assets/src/script_export.rs::the_distance_is_the_absolute_plane_difference_in_map_units",
+        "crates/cyrus-assets/src/script_export.rs::q8_overflow_wraps_like_the_original_arithmetic"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
         "https://github.com/michidk/redguard-preservation/blob/8bcdba1/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: independent installed function0/exact native binding/full153-byte handler/predicate60/metric101/sqrt48. Original CPU instructions check gate bypass0, metadata position selection, separate signed coordinate shifts, wrapped horizontal camera deltas, zero Y, directed floating distance and signed inclusive threshold result. Full actor/metadata arena and touched globals retained; six preserved registers/stack/canary/CW/TOP checked. Nine effective original-byte result mutations and original reexecution. Unknown: natural view gate/threshold/position producers, pointer lifecycle/full joint domain/exceptional float conversion/VM/production parity. Named production support remains missing. Rust/game runtime NOT RUN.",
-      "reviewed_revision": "81e5e0e5c027afab4910d9ae4144016fe745847d"
+      "limits": "Verified: independent installed function0/exact native binding/full153-byte handler/predicate60/metric101/sqrt48. Original CPU instructions check gate bypass0, metadata position selection, separate signed coordinate shifts, wrapped horizontal camera deltas, zero Y, directed floating distance and signed inclusive threshold result. Full actor/metadata arena and touched globals retained; six preserved registers/stack/canary/CW/TOP checked. Nine effective original-byte result mutations and original reexecution. Unknown: natural view gate/threshold/position producers, pointer lifecycle/full joint domain/exceptional float conversion/VM/production parity. Named production support remains missing. Rust/game runtime NOT RUN. Verified (static reading of the handler and of the single store to the threshold; preservation 814c777): position-selection byte is attr_slave (attached uses the effective position), camera X/Z are the shared view origin, the threshold is |back_plane - front_plane| from SYSTEM.INI [xngine] in map units (3793 by default). Verified public routed dispatch: 3-4-5 boundary inclusive, direction, rounded distance, zero limit, vertical difference ignored, missing installed distance gives a contextual error; unit tests pin the plane arithmetic and its 32-bit wrap. Inferred: the shared enable word is always set, the camera's current position is the original's shared view origin, and the planes are loaded before the actor system computes the threshold. Unknown: an attached receiver before the first family refresh is rejected rather than read, installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "83383fceec344f0d592a5033b6031eed696e622a"
     },
     {
       "native": "lookCyrus",

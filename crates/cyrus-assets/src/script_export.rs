@@ -251,6 +251,11 @@ pub fn prepare_source(
             .game
             .lineup_distance
             .map(|value| value.wrapping_shl(8)),
+        view_distance: system
+            .xngine
+            .back_plane
+            .zip(system.xngine.front_plane)
+            .map(|(back, front)| view_distance(back, front)),
         texture_frames: texture_frames(source)?,
         node_timer: combat.as_ref().and_then(|combat| combat.misc.node_timer),
         non_engaged_spacing: combat
@@ -537,5 +542,40 @@ mod combat_tests {
         let absent =
             prepare_combat_taunts(&serde_json::json!({}), &attributes, &ini, "TEST").unwrap();
         assert_eq!(absent, [empty]);
+    }
+}
+
+/// `IsWithinView`'s distance in map units: the original stores each plane in Q8, subtracts, takes
+/// the absolute value (the negation wraps) and shifts the result back.
+fn view_distance(back_plane: i32, front_plane: i32) -> i32 {
+    let difference = back_plane
+        .wrapping_shl(8)
+        .wrapping_sub(front_plane.wrapping_shl(8));
+    (if difference < 0 {
+        difference.wrapping_neg()
+    } else {
+        difference
+    }) >> 8
+}
+
+#[cfg(test)]
+mod view_distance_tests {
+    use super::view_distance;
+
+    #[test]
+    fn the_distance_is_the_absolute_plane_difference_in_map_units() {
+        // The documented defaults, front plane 7 and back plane 3800.
+        assert_eq!(view_distance(3800, 7), 3793);
+        assert_eq!(view_distance(7, 3800), 3793, "the order does not matter");
+        assert_eq!(view_distance(7, 7), 0);
+        assert_eq!(view_distance(8_388_607, 0), 8_388_607);
+    }
+
+    #[test]
+    fn q8_overflow_wraps_like_the_original_arithmetic() {
+        // 2^24 in Q8 is 2^32, which wraps to zero.
+        assert_eq!(view_distance(1 << 24, 0), 0);
+        // The signed minimum negates to itself and then shifts arithmetically.
+        assert_eq!(view_distance(-(1 << 23), 0), i32::MIN >> 8);
     }
 }

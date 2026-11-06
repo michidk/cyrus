@@ -23,6 +23,7 @@ fn cache() -> Scripts {
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        view_distance: None,
         texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],

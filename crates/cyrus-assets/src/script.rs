@@ -565,6 +565,11 @@ pub struct Scripts {
     /// player-to-receiver distance above which `PlayerLineUp` approaches rather than aligns closely.
     #[serde(default)]
     pub lineup_distance: Option<i32>,
+    /// Installed view-test distance in map units, as `IsWithinView` compares it: the absolute
+    /// difference of the `SYSTEM.INI` `[xngine]` `back_plane` and `front_plane` settings, each
+    /// held in Q8 units and shifted back after the subtraction. `None` when either is absent.
+    #[serde(default)]
+    pub view_distance: Option<i32>,
     /// Animation frame count of every installed `TEXBSI` bank image, by bank number then
     /// image index: what `FlatAnimate` and `FlatSetTexture` size their playback from.
     #[serde(default)]
@@ -604,7 +609,11 @@ impl Scripts {
         let bytes = serde_json::to_vec(&(
             self.version,
             (&self.combat_attacks, &self.combat_defenses, &self.weapons),
-            (self.in_combat_threshold, self.lineup_distance),
+            (
+                self.in_combat_threshold,
+                self.lineup_distance,
+                self.view_distance,
+            ),
             &self.texture_frames,
             (
                 self.non_engaged_spacing,

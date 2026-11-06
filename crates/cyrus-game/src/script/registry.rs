@@ -658,6 +658,7 @@ pub struct ScriptWorld {
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
     lineup_distance: Option<i32>,
+    view_distance: Option<i32>,
     texture_frames: flat::TextureFrames,
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
@@ -1360,6 +1361,7 @@ impl ScriptWorld {
             combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             lineup_distance: scripts.lineup_distance,
+            view_distance: scripts.view_distance,
             texture_frames: scripts.texture_frames.clone(),
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
@@ -7156,6 +7158,41 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .any(|actor| matches!(actor.source, ScriptActorSource::Shell(_)));
             return Ok(CallResult::Complete(i32::from(context && has_shell)));
         }
+        // IsWithinView(): the receiver's position (the effective one while it has a slave byte, its
+        // local one otherwise) and the shared camera origin, each shifted to map units, go through
+        // the shared rounded distance helper with a zero vertical difference; the result is one
+        // when the distance is at most the installed view distance. The shared enable word is
+        // treated as always set.
+        if function == Native::IsWithinView {
+            anyhow::ensure!(arguments.is_empty(), "IsWithinView requires no arguments");
+            let threshold = self
+                .registry
+                .view_distance
+                .context("IsWithinView: installed view distance unavailable")?;
+            let id = self.registry.id(self.index)?;
+            let spatial = self.registry.spatial(id)?;
+            let position = if self.registry.actors[self.index].attributes[Attribute::Slave] != 0 {
+                spatial
+                    .effective
+                    .context("IsWithinView: attached pose requires an explicit family refresh")?
+                    .position
+            } else {
+                spatial.local.position
+            };
+            let camera = self
+                .registry
+                .camera
+                .as_ref()
+                .context("IsWithinView: camera state unavailable")?
+                .current
+                .position;
+            let distance = cyrus_collision::distance::rounded_distance([
+                (camera[0] >> 8).wrapping_sub(position[0] >> 8),
+                0,
+                (camera[2] >> 8).wrapping_sub(position[2] >> 8),
+            ])?;
+            return Ok(CallResult::Complete(i32::from(distance <= threshold)));
+        }
         // InCircle(x, z, radius): the receiver's query position (attached, linked or local) minus
         // (x, z) with 32-bit wrapping and a zero vertical difference goes through the shared rounded
         // distance helper; the result is one when it is at most the signed radius.
@@ -8185,6 +8222,7 @@ mod fighting_tests {
             combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
             lineup_distance: None,
+            view_distance: None,
             texture_frames: Default::default(),
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],

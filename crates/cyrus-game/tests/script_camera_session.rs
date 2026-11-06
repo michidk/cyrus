@@ -82,6 +82,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        view_distance: None,
         texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
@@ -562,6 +563,94 @@ fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
     assert_eq!(flags(&world, 0), 0x40, "showObjPan marked the old record");
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
     assert_eq!(world.flags(), [9], "the script continues after the pan");
+}
+
+#[test]
+fn is_within_view_compares_the_horizontal_camera_distance_with_the_installed_distance() {
+    use cyrus_game::script::camera::CameraPose;
+    // The camera sits `offset` map units (x, z) and `height` Q8 units (y) from the receiver.
+    let run_case = |offset: [i32; 2], height: i32, threshold: Option<i32>| -> anyhow::Result<i32> {
+        let mut data = scripts_calling(Native::IsWithinView, &[]);
+        data.definition.functions[1] = Function {
+            name: Native::IsWithinView,
+            param_count: 0,
+            kind: CallKind::Function,
+        };
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: Native::IsWithinView,
+                        target: Object::Me,
+                        kind: CallKind::Function,
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        };
+        // The fixture's own later steps overwrite flag zero, so the result goes to a local.
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        actor.program.variables = vec![4];
+        actor.instance_variables = vec![vec![0]];
+        data.view_distance = threshold;
+        let mut world = prepared(&mut data);
+        let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+        world.initialize_camera_pose(CameraPose {
+            position: [
+                receiver[0] + offset[0] * 256,
+                receiver[1] + height,
+                receiver[2] + offset[1] * 256,
+            ],
+            angles: [0; 3],
+        })?;
+        run(&mut world, 0, BODY, Some(&ScriptHud::default()))?;
+        Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    };
+    // A 3-4-5 offset: the boundary is inclusive and one less excludes it.
+    assert_eq!(
+        run_case([3, 4], 0, Some(5)).unwrap(),
+        1,
+        "distance equals the limit"
+    );
+    assert_eq!(
+        run_case([3, 4], 0, Some(4)).unwrap(),
+        0,
+        "distance exceeds the limit"
+    );
+    assert_eq!(
+        run_case([-3, -4], 0, Some(5)).unwrap(),
+        1,
+        "direction does not matter"
+    );
+    // The rounded distance of 3-5 is 6 (5.83), above a limit of 5.
+    assert_eq!(run_case([3, 5], 0, Some(5)).unwrap(), 0);
+    assert_eq!(run_case([3, 5], 0, Some(6)).unwrap(), 1);
+    assert_eq!(
+        run_case([0, 0], 0, Some(0)).unwrap(),
+        1,
+        "the same point is within zero"
+    );
+    assert_eq!(run_case([1, 0], 0, Some(0)).unwrap(), 0);
+    assert_eq!(
+        run_case([3, 4], 1_000_000 * 256, Some(5)).unwrap(),
+        1,
+        "the vertical difference does not contribute"
+    );
+    let error = run_case([3, 4], 0, None).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("IsWithinView: installed view distance unavailable"),
+        "{error:#}"
+    );
 }
 
 #[test]
