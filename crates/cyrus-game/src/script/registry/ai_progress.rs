@@ -77,11 +77,13 @@ impl ScriptWorld {
         if threshold <= 0 {
             return Ok(1);
         }
-        let distance = cyrus_collision::distance::rounded_distance([
+        // The helper converts under masked exceptions, so a length that does not fit a signed
+        // 32-bit integer is the integer-indefinite value, never above a positive threshold.
+        let distance = cyrus_collision::distance::rounded_distance_or_indefinite([
             destination[0].wrapping_sub(origin[0]),
             0,
             destination[2].wrapping_sub(origin[2]),
-        ])?;
+        ]);
         Ok(i32::from(distance > threshold))
     }
 

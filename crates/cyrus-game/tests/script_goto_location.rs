@@ -756,6 +756,16 @@ fn move_pos_uses_literal_horizontal_boundaries_and_continues_without_moving() {
 }
 
 #[test]
+fn move_pos_treats_an_out_of_range_distance_as_the_integer_indefinite_value() {
+    // The horizontal length of these wrapped differences does not fit a signed 32-bit integer, so
+    // the helper's masked conversion yields the signed minimum, which is not above the threshold.
+    let mut world = move_pos_fixture([i32::MAX, 0, i32::MAX], false, 4, true, false);
+    advance(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [73]);
+}
+
+#[test]
 fn move_pos_routes_named_receiver_and_retains_navigation_early_refusal() {
     for (named, selector, expected) in [(false, 4, 1), (true, 4, 0), (true, 7, 1)] {
         let mut world = move_pos_fixture([513, 0, 0], named, selector, true, false);

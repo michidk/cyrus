@@ -3839,16 +3839,21 @@
     },
     {
       "native": "MovePos",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "caller": "GameHost::call -> ScriptWorld::move_position_pending",
+      "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::move_pos_uses_literal_horizontal_boundaries_and_continues_without_moving",
+        "crates/cyrus-game/tests/script_goto_location.rs::move_pos_routes_named_receiver_and_retains_navigation_early_refusal",
+        "crates/cyrus-game/tests/script_goto_location.rs::move_pos_missing_position_fails_before_result_and_continuation_and_stays_failed",
+        "crates/cyrus-game/tests/script_goto_location.rs::move_pos_treats_an_out_of_range_distance_as_the_integer_indefinite_value"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/252"
       ],
-      "limits": "Verified installed3-argument native/full181-byte read-only proximity function. Resolves receiver before state7 returns1; original GetMovementSpeed call target/hash confirmed and executed. Speed<<8 zero returns1; threshold is wrapping low32((2*scaled_speed-1)*time_factor) arithmetic>>8; nonpositive returns1. Positive threshold compares signed horizontal metric(targetX-resolvedX,0,targetZ-resolvedZ): greater1/equal-or-less0; targetY ignored.10800 original contexts/14 effective mutations, no nonstack writes/movement scheduling. Position/predicates/speed execute; metric result controlled with exact inputs, prior independent numerical evidence not integrated acceptance. Selected domains only; producers/x87 init/malformed admission/VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "limits": "Verified published contract through public routed callers: the receiver position resolves before the state-7 early return of one; zero scaled speed or a nonpositive threshold ((2 * scaled speed - 1) * movement-time factor, low 32 bits, arithmetic >> 8) return one without a distance query; a positive threshold compares the horizontal helper result (target Y ignored) with greater returning one; an out-of-range length converts to the integer-indefinite value and returns zero instead of failing; no coordinate writes or task scheduling; a missing position fails before the result and continuation. Unknown: natural authored callers, x87 control-word state at the call, rendered movement parity.",
       "reviewed_revision": "22b85b3eb6fc8edf6418ba92067948837a853fe4"
     },
     {
