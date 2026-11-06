@@ -44779,6 +44779,97 @@ fn fx_phase_tasks_keep_independent_colour_progress_and_resume_after_snapshot() {
     }
 }
 
+fn animate_gxa_scripts(first: i32, cycle: i32, count: i32) -> Scripts {
+    let mut scripts = random_scripts(Native::AnimateGXA, vec![], Object::Me);
+    scripts.definition.functions[1].kind = CallKind::Task;
+    scripts.definition.functions[1].param_count = 4;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.strings = vec!["logic".into(), "system\\stmap01.gxa".into()];
+    actor.program.steps.get_mut(&0).unwrap().operation = wait(
+        1,
+        Native::AnimateGXA,
+        CallKind::Task,
+        vec![
+            Value::String { index: 1 },
+            Value::Integer { value: first },
+            Value::Integer { value: cycle },
+            Value::Integer { value: count },
+        ],
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn animate_gxa_keeps_its_loaded_image_and_progress_in_the_task_slot_across_a_restore() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = animate_gxa_scripts(2, 5, 100);
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    // Each step: the second slot's offset is the progress before the update; the progress then
+    // gains the ticks and wraps by the cycle of 5 while above it.
+    for (step, (stage, ticks, offset)) in [
+        (ScriptStage::OrdinaryMain, 3, 1),
+        (ScriptStage::Tasks, 3, 4),
+        (ScriptStage::Tasks, 1, 2),
+        (ScriptStage::Tasks, 4, 3),
+        (ScriptStage::Tasks, 1, 2),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let inputs = |nominal_ticks| ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(nominal_ticks),
+            ..Default::default()
+        };
+        // A restored world has no retained native source until an interpreter entry runs, as
+        // in the original, so the frame's ordinary entry precedes the task stage.
+        if step > 0 {
+            world
+                .advance(
+                    world.id(0).unwrap(),
+                    ScriptStage::OrdinaryMain,
+                    inputs(0),
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+        }
+        world
+            .advance(world.id(0).unwrap(), stage, inputs(ticks), None, None, 20)
+            .unwrap();
+        let overlay = world.gxa_overlay().unwrap();
+        assert_eq!(overlay.name, "system\\stmap01.gxa");
+        assert_eq!((overlay.frame, overlay.second_offset), (2, Some(offset)));
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        // The drawn slots are cleared by the main loop each frame, so they are not saved; the
+        // task slot's words are.
+        let snapshot = world.snapshot(&sources).unwrap();
+        world = ScriptWorld::from_snapshot(
+            snapshot,
+            &sources,
+            WorldRestoreContext {
+                generation: world.generation() + 1,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )
+        .unwrap();
+        assert!(world.gxa_overlay().is_none());
+    }
+}
+
 #[test]
 fn fx_phase_updates_the_authored_light_projection_through_world_dispatch() {
     let mut scripts = phase_scripts([0, 100, -100, 80, 20, 60, 4]);

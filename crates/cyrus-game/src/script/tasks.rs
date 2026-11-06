@@ -150,7 +150,7 @@ pub(super) struct NativeServices<'a> {
     pub point: Option<&'a mut (dyn PointHost + 'a)>,
     /// The image `ViewGXA` has the host draw over the world.
     pub gxa_overlay: Option<&'a mut Option<GxaOverlay>>,
-    /// The shared progress `AnimateGXA` advances.
+    /// The task-slot state `AnimateGXA` keeps its loaded image and progress in.
     pub gxa_animation: Option<GxaAnimation<'a>>,
 }
 
@@ -166,8 +166,12 @@ pub struct GxaOverlay {
     pub second_offset: Option<i32>,
 }
 
-/// `AnimateGXA`'s shared animation progress and the whole nominal-tick increment of this update.
+/// `AnimateGXA`'s task-slot words and the whole nominal-tick increment of this update.
 pub(super) struct GxaAnimation<'a> {
+    /// The loaded-image word of the task slot's native state: zero until the image is loaded.
+    /// The original keeps a resource pointer here; only whether it is set is observable.
+    pub resource: &'a mut u32,
+    /// The animation progress word of the task slot's native state.
     pub progress: &'a mut i32,
     pub ticks: u32,
 }
@@ -2507,12 +2511,18 @@ impl Task {
                     .elapsed
                     .context("AnimateGXA requires explicit elapsed input")?;
                 let (first, cycle, count) = (first.integer()?, cycle.integer()?, count.integer()?);
-                // The first invocation loads the image and restarts the shared progress.
-                if elapsed == 0 && overlay.is_none() {
+                // The first invocation loads the image and restarts the progress.
+                if elapsed == 0 && *animation.resource == 0 {
+                    *animation.resource = 1;
                     *animation.progress = 0;
                 }
+                anyhow::ensure!(
+                    *animation.resource != 0,
+                    "AnimateGXA {name:?} used before its image was loaded"
+                );
                 if elapsed >= count.wrapping_sub(1) {
                     // Releasing the image clears both image slots and completes the task.
+                    *animation.resource = 0;
                     *overlay = None;
                     return Ok(true);
                 }
@@ -3370,7 +3380,7 @@ mod animate_gxa_tests {
         args: &[Argument],
         elapsed: u32,
         overlay: &mut Option<GxaOverlay>,
-        progress: &mut i32,
+        slot: &mut (u32, i32),
         ticks: u32,
     ) -> anyhow::Result<(Option<u64>, bool)> {
         let invocation = Invocation {
@@ -3380,7 +3390,11 @@ mod animate_gxa_tests {
         };
         let services = NativeServices {
             gxa_overlay: Some(overlay),
-            gxa_animation: Some(GxaAnimation { progress, ticks }),
+            gxa_animation: Some(GxaAnimation {
+                resource: &mut slot.0,
+                progress: &mut slot.1,
+                ticks,
+            }),
             ..Default::default()
         };
         match token {
@@ -3405,7 +3419,7 @@ mod animate_gxa_tests {
     #[test]
     fn animate_gxa_cycles_its_second_slot_and_clears_both_when_the_count_elapses() {
         let mut tasks = NativeTasks::default();
-        let (mut overlay, mut progress) = (None, 99);
+        let (mut overlay, mut slot) = (None, (0, 99));
         let args = [
             Argument::String("system\\stmap01.gxa".into()),
             Argument::Integer(4),
@@ -3414,8 +3428,7 @@ mod animate_gxa_tests {
         ];
         // The first invocation restarts the shared progress, then shows frame 4 with the second
         // slot at progress 0 plus one; the update adds the three ticks.
-        let (token, done) =
-            run(&mut tasks, None, &args, 0, &mut overlay, &mut progress, 3).unwrap();
+        let (token, done) = run(&mut tasks, None, &args, 0, &mut overlay, &mut slot, 3).unwrap();
         assert!(!done);
         let shown = |offset| {
             Some(GxaOverlay {
@@ -3425,38 +3438,42 @@ mod animate_gxa_tests {
             })
         };
         assert_eq!(overlay, shown(1));
-        assert_eq!(progress, 3);
+        assert_eq!(slot, (1, 3), "the load marks the image resident");
         // Progress 3 plus 3 ticks is 6, above the cycle of 5, so it wraps to 1.
-        let (_, done) = run(&mut tasks, token, &args, 1, &mut overlay, &mut progress, 3).unwrap();
+        let (_, done) = run(&mut tasks, token, &args, 1, &mut overlay, &mut slot, 3).unwrap();
         assert!(!done);
         assert_eq!(
             overlay,
             shown(4),
             "the slot used the progress before the update"
         );
-        assert_eq!(progress, 1);
+        assert_eq!(slot.1, 1);
         // Equality with the cycle is kept: 1 + 4 is 5, not above 5.
-        let (_, done) = run(&mut tasks, token, &args, 2, &mut overlay, &mut progress, 4).unwrap();
+        let (_, done) = run(&mut tasks, token, &args, 2, &mut overlay, &mut slot, 4).unwrap();
         assert!(!done);
-        assert_eq!(progress, 5);
+        assert_eq!(slot.1, 5);
         // At counter count - 1 the image is released: both slots clear and the task completes.
-        let (_, done) = run(&mut tasks, token, &args, 4, &mut overlay, &mut progress, 3).unwrap();
+        let (_, done) = run(&mut tasks, token, &args, 4, &mut overlay, &mut slot, 3).unwrap();
         assert!(done);
         assert_eq!(overlay, None);
-        assert_eq!(progress, 5, "release leaves the progress alone");
+        assert_eq!(
+            slot,
+            (0, 5),
+            "release unloads the image and leaves the progress alone"
+        );
     }
 
     #[test]
     fn animate_gxa_rejects_a_cycle_that_would_never_end_and_a_missing_owner() {
         let mut tasks = NativeTasks::default();
-        let (mut overlay, mut progress) = (None, 0);
+        let (mut overlay, mut slot) = (None, (0, 0));
         let bad = [
             Argument::String("system\\stmap01.gxa".into()),
             Argument::Integer(0),
             Argument::Integer(0),
             Argument::Integer(9),
         ];
-        let error = run(&mut tasks, None, &bad, 0, &mut overlay, &mut progress, 1).unwrap_err();
+        let error = run(&mut tasks, None, &bad, 0, &mut overlay, &mut slot, 1).unwrap_err();
         assert!(
             format!("{error:#}").contains("cycle 0 must be positive"),
             "{error:#}"
@@ -3476,5 +3493,16 @@ mod animate_gxa_tests {
             )
             .unwrap_err();
         assert!(format!("{error:#}").contains("AnimateGXA overlay owner unavailable"));
+        // A later invocation whose image was never loaded would dereference nothing.
+        let good = [
+            bad[0].clone(),
+            Argument::Integer(0),
+            Argument::Integer(4),
+            Argument::Integer(9),
+        ];
+        let (token, _) = run(&mut tasks, None, &good, 0, &mut overlay, &mut slot, 1).unwrap();
+        slot.0 = 0;
+        let error = run(&mut tasks, token, &good, 3, &mut overlay, &mut slot, 1).unwrap_err();
+        assert!(format!("{error:#}").contains("before its image was loaded"));
     }
 }

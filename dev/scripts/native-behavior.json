@@ -4701,19 +4701,22 @@
       "native": "AnimateGXA",
       "status": "partial",
       "owner": 11,
-      "scope": "Task-owned cycling GXA image request: counter lifetime, shared progress and second-slot offset",
+      "scope": "Task-owned cycling GXA image request: task-slot loaded-image and progress words, second slot drawn by the startup overlay",
       "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (Task::AnimateGxa) on the ViewGXA overlay owner",
       "tests": [
         "crates/cyrus-game/src/script/tasks.rs::animate_gxa_cycles_its_second_slot_and_clears_both_when_the_count_elapses",
-        "crates/cyrus-game/src/script/tasks.rs::animate_gxa_rejects_a_cycle_that_would_never_end_and_a_missing_owner"
+        "crates/cyrus-game/src/script/tasks.rs::animate_gxa_rejects_a_cycle_that_would_never_end_and_a_missing_owner",
+        "crates/cyrus-game/tests/script_registry.rs::animate_gxa_keeps_its_loaded_image_and_progress_in_the_task_slot_across_a_restore",
+        "crates/cyrus-assets/src/overlay.rs::second_slot_paths_carry_the_first_frame_and_offset_and_pick_a_frame_by_count",
+        "crates/cyrus-startup/src/overlay.rs::installed_images_export_as_full_screen_frames_for_every_script_name"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
         "https://github.com/michidk/redguard-preservation/commit/9c3f7ea"
       ],
-      "limits": "Verified independent installed four-argument task/exact native binding/full367-byte handler.11728 original CPU contexts PASS:3888 active result1 returns/7776 exact resource-release entry stops/64 loader entry stops.13 effective original-byte controls require normal exit and complete output; final original reexecution PASS. Two receivers/two filename pointers/two first-frame indices/three positive cycles/counts/counters/progress/update increments/three packed-resource profiles/two patterns. Receiver unused; signed dimensions center both slots in640x480; table first and first+progress+1 with frame-count fallback first+1. Progress then adds shared increment and subtracts positive cycle while strictly greater, retaining equality. Full actor/string arena/resource/shared state/output region, service entry arguments/canary/stack/preserved regs checked. Synthetic resource/table memory; no installed decoding or drawing claim. Unknown loader/release/reset effects/continuation, nonpositive cycle/overflow/malformed pointers/unchecked frame bounds/natural lifecycle/concurrency/full joint domain/VM/native/browser/gameplay parity. Production remains missing; no implementation acceptance. Verified (static reading of the handler; unit tests in the task layer): the first invocation with no cached image restarts the shared progress; at counter count - 1 the image is released, both slots clear and the task completes; otherwise the overlay requests the first frame and a second-slot offset of progress + 1, the progress then gains the update's nominal ticks and is reduced by the cycle while it exceeds it (equality kept); a cycle of zero or less is an explicit error (the original never leaves its loop). Inferred: the cached image is represented by the overlay being present (the host loads by name when drawing). Unknown: the host does not yet draw the second slot (cyrus-startup draws only the first frame, so the second slot's blending is not reproduced), a restored world restarts the progress at zero, and installed original/native/browser outputs and natural script callers.",
-      "reviewed_revision": "68c632a8f3089737d60cf8a3826d2e36387b8ec4"
+      "limits": "Verified (static reading of the handler, the task-slot load/store routines and the main loop's image draw, published in preservation; task-layer and routed tests): the loaded-image and progress words belong to the task slot's native state and are saved with the task; the first invocation with no image loaded restarts the progress; at counter count - 1 the image is released, both slots clear and the task completes; otherwise the overlay requests the first frame and a second-slot offset of progress + 1, the progress then gains the update's nominal ticks and is reduced by the cycle while it exceeds it (equality kept); a cycle of zero or less is an explicit error (the original never leaves its loop); a later invocation with no loaded image is an explicit error (the original dereferences nothing). The startup overlay draws slot 1 then slot 2, each centred by its own frame size, over the world frame, and the exporter picks the second frame by the file's frame count. Inferred: the loaded image is a nonzero marker rather than a resource pointer. Unknown: no installed script calls AnimateGXA, so no original, native-run or browser comparison of the animation exists; the drawn result is covered by placement and export tests only.",
+      "reviewed_revision": "19401571fa9454788bc37b07703e3f8a79536143"
     },
     {
       "native": "LineUp",

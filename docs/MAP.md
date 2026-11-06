@@ -348,7 +348,7 @@ module where it is defined and regenerate.
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
-- `src/overlay.rs` — Installed GXA images that a running `ViewGXA` task draws over the world frame.
+- `src/overlay.rs` — Installed GXA images that a running `ViewGXA` or `AnimateGXA` task draws over the world frame.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.

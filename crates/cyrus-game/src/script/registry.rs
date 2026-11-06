@@ -701,7 +701,6 @@ pub struct ScriptWorld {
     /// The image the running `ViewGXA` task has the host draw over the world frame.
     gxa_overlay: Option<super::tasks::GxaOverlay>,
     /// `AnimateGXA`'s shared animation progress. Not saved: a restored world restarts the cycle.
-    gxa_progress: i32,
     /// The selected player's placement raised by `MovePlayerAboveMe`, applied at the end of the
     /// frame loop.
     pending_player_placement: Option<([i32; 3], u16)>,
@@ -1388,7 +1387,6 @@ impl ScriptWorld {
             camera_settings: scripts.camera.clone(),
             standing_height: None,
             gxa_overlay: None,
-            gxa_progress: 0,
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),
@@ -3660,6 +3658,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
+        let mut gxa_words = {
+            let command = &self.registry.globals.native_command;
+            (command.continuation, command.continuation_direction as i32)
+        };
+        let gxa_before = gxa_words;
         let mut light_effect = |function, arguments: &[Argument]| {
             light::LightState::effect(
                 &mut actor.light,
@@ -3733,7 +3736,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .inputs
                 .nominal_ticks
                 .map(|ticks| super::tasks::GxaAnimation {
-                    progress: &mut self.registry.gxa_progress,
+                    resource: &mut gxa_words.0,
+                    progress: &mut gxa_words.1,
                     ticks,
                 }),
         };
@@ -3757,6 +3761,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 )
             }
         };
+        if gxa_words != gxa_before {
+            let command = &mut self.registry.globals.native_command;
+            command.continuation = gxa_words.0;
+            command.continuation_direction = gxa_words.1 as u32;
+        }
         self.finish_camera_update(result.is_ok())?;
         if result.is_ok() && player_face_requested {
             self.apply_player_face(player_face_outcome)?;
@@ -8123,6 +8132,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
+        let mut gxa_words = {
+            let command = &self.registry.globals.native_command;
+            (command.continuation, command.continuation_direction as i32)
+        };
+        let gxa_before = gxa_words;
         let mut light_effect = |function, arguments: &[Argument]| {
             light::LightState::effect(
                 &mut actor.light,
@@ -8202,11 +8216,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .inputs
                     .nominal_ticks
                     .map(|ticks| super::tasks::GxaAnimation {
-                        progress: &mut self.registry.gxa_progress,
+                        resource: &mut gxa_words.0,
+                        progress: &mut gxa_words.1,
                         ticks,
                     }),
             },
         );
+        if gxa_words != gxa_before {
+            let command = &mut self.registry.globals.native_command;
+            command.continuation = gxa_words.0;
+            command.continuation_direction = gxa_words.1 as u32;
+        }
         self.finish_camera_update(result.is_ok())?;
         if result.is_ok() && player_face_requested {
             self.apply_player_face(player_face_outcome)?;
@@ -8459,7 +8479,6 @@ mod fighting_tests {
             camera_settings: Default::default(),
             standing_height: None,
             gxa_overlay: None,
-            gxa_progress: 0,
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),

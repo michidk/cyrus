@@ -319,7 +319,9 @@ native HUD preparation exports the same validated record.
 `overlay/<name>-<frame>.png` holds one frame of an installed `system` GXA image, decoded with
 the palette the file carries. The `overlay` group prepares it on demand for the images a
 `ViewGXA` script task names, in native and browser workers; `overlay::cache_path` maps the
-script's file name and frame to the path.
+script's file name and frame to the path. `AnimateGXA`'s second image slot is
+`overlay/<name>-<first>+<offset>.png` (`overlay::second_slot_cache_path`): frame `first + offset`
+when the file has it, else `first + 1`.
 
 Script caches retain contiguous combat attack definitions, ordered combo motions,
 resolved animation groups and runtime numeric fields. Motion preparation applies

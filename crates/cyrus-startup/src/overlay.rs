@@ -1,13 +1,17 @@
-//! Installed GXA images that a running `ViewGXA` task draws over the world frame.
+//! Installed GXA images that a running `ViewGXA` or `AnimateGXA` task draws over the world frame.
 use bevy::prelude::*;
 use cyrus_game::{AppState, script::ScriptActors};
 
 #[derive(Component)]
 struct Panel;
+/// The 640 by 480 screen the slots are placed on.
 #[derive(Component)]
-struct Picture;
+struct Screen;
+/// One of the two image slots; the second is drawn after, so over, the first.
+#[derive(Component)]
+struct Picture(usize);
 
-/// Draws the image the script world currently asks for, centered on the 640 by 480 screen.
+/// Draws the images the script world currently asks for, each centered on the 640 by 480 screen.
 pub struct OverlayPlugin;
 impl Plugin for OverlayPlugin {
     fn build(&self, app: &mut App) {
@@ -32,17 +36,30 @@ fn setup(mut commands: Commands) {
                 ..default()
             },
         ))
-        .with_children(|parent| {
-            parent.spawn((
-                Picture,
-                ImageNode::new(Handle::default()),
-                Node {
-                    height: percent(100),
-                    max_width: percent(100),
-                    aspect_ratio: Some(640. / 480.),
-                    ..default()
-                },
-            ));
+        .with_children(|panel| {
+            panel
+                .spawn((
+                    Screen,
+                    Node {
+                        height: percent(100),
+                        max_width: percent(100),
+                        aspect_ratio: Some(640. / 480.),
+                        ..default()
+                    },
+                ))
+                .with_children(|screen| {
+                    for slot in 0..2 {
+                        screen.spawn((
+                            Picture(slot),
+                            ImageNode::new(Handle::default()),
+                            Visibility::Hidden,
+                            Node {
+                                position_type: PositionType::Absolute,
+                                ..default()
+                            },
+                        ));
+                    }
+                });
         });
 }
 
@@ -52,41 +69,101 @@ fn cleanup(mut commands: Commands, panels: Query<Entity, With<Panel>>) {
     }
 }
 
+/// An image of the given pixel size centered on the 640 by 480 screen, as fractions of the screen:
+/// `(left, top, width, height)`. Odd differences round down, as the original's halving does.
+fn placement(width: u32, height: u32) -> (f32, f32, f32, f32) {
+    let (left, top) = (
+        (640 - width as i32).div_euclid(2),
+        (480 - height as i32).div_euclid(2),
+    );
+    (
+        left as f32 / 640.,
+        top as f32 / 480.,
+        width as f32 / 640.,
+        height as f32 / 480.,
+    )
+}
+
+/// The cache paths of the two slots the script world asks for; an unsupported image is `None`.
+fn wanted(overlay: &cyrus_game::script::GxaOverlay) -> [Option<Option<String>>; 2] {
+    let first = cyrus_assets::overlay::cache_path(&overlay.name, overlay.frame);
+    let second = overlay.second_offset.map(|offset| {
+        cyrus_assets::overlay::second_slot_cache_path(&overlay.name, overlay.frame, offset)
+    });
+    [Some(first), second]
+}
+
 fn draw(
     server: Res<AssetServer>,
+    images: Res<Assets<Image>>,
     actors: Option<Res<ScriptActors>>,
-    mut panels: Query<&mut Visibility, With<Panel>>,
-    mut pictures: Query<&mut ImageNode, With<Picture>>,
-    mut shown: Local<Option<(String, i32)>>,
+    mut panels: Query<(&mut Visibility, &mut BackgroundColor), With<Panel>>,
+    mut pictures: Query<(&Picture, &mut ImageNode, &mut Node, &mut Visibility), Without<Panel>>,
+    mut shown: Local<[Option<Option<String>>; 2]>,
 ) {
-    let wanted = actors
+    let overlay = actors
         .as_deref()
         .and_then(|actors| actors.current.as_ref())
-        .and_then(|world| world.gxa_overlay())
-        .map(|overlay| (overlay.name.clone(), overlay.frame));
-    let (Ok(mut visibility), Ok(mut picture)) = (panels.single_mut(), pictures.single_mut()) else {
+        .and_then(|world| world.gxa_overlay());
+    let Ok((mut panel, mut background)) = panels.single_mut() else {
         return;
     };
-    let Some(wanted) = wanted else {
-        *visibility = Visibility::Hidden;
-        *shown = None;
+    let Some(overlay) = overlay else {
+        *panel = Visibility::Hidden;
+        *shown = [None, None];
         return;
     };
-    if shown.as_ref() != Some(&wanted) {
-        match cyrus_assets::overlay::cache_path(&wanted.0, wanted.1) {
-            Some(path) => picture.image = server.load(format!("cache://{path}")),
-            None => {
-                error!(
-                    "ViewGXA: unsupported image {:?} frame {}",
-                    wanted.0, wanted.1
-                );
-                picture.image = Handle::default();
-            }
+    // `ViewGXA` shows one full-screen image on black; `AnimateGXA` draws over the world frame.
+    background.0 = if overlay.second_offset.is_some() {
+        Color::NONE
+    } else {
+        Color::BLACK
+    };
+    let wanted = wanted(overlay);
+    let mut any_visible = false;
+    for (picture, mut node_image, mut node, mut visibility) in &mut pictures {
+        let want = &wanted[picture.0];
+        if shown[picture.0] != *want {
+            node_image.image = match want {
+                Some(Some(path)) => server.load(format!("cache://{path}")),
+                Some(None) => {
+                    error!(
+                        "{}: unsupported image {:?} frame {} slot {}",
+                        if overlay.second_offset.is_some() {
+                            "AnimateGXA"
+                        } else {
+                            "ViewGXA"
+                        },
+                        overlay.name,
+                        overlay.frame,
+                        picture.0 + 1
+                    );
+                    Handle::default()
+                }
+                None => Handle::default(),
+            };
+            shown[picture.0] = want.clone();
         }
-        *shown = Some(wanted);
+        // The original loads synchronously; wait for the cache rather than flash an empty slot.
+        let size = want
+            .as_ref()
+            .and_then(|_| server.is_loaded(&node_image.image).then_some(()))
+            .and_then(|()| images.get(&node_image.image))
+            .map(Image::size);
+        *visibility = match size {
+            Some(size) => {
+                let (left, top, width, height) = placement(size.x, size.y);
+                node.left = percent(left * 100.);
+                node.top = percent(top * 100.);
+                node.width = percent(width * 100.);
+                node.height = percent(height * 100.);
+                any_visible = true;
+                Visibility::Visible
+            }
+            None => Visibility::Hidden,
+        };
     }
-    // The original loads synchronously; wait for the cache rather than flash an empty panel.
-    *visibility = if server.is_loaded(&picture.image) {
+    *panel = if any_visible {
         Visibility::Visible
     } else {
         Visibility::Hidden
@@ -95,6 +172,18 @@ fn draw(
 
 #[cfg(test)]
 mod tests {
+    use super::placement;
+
+    #[test]
+    fn images_are_centered_on_the_screen_rounding_down() {
+        assert_eq!(placement(640, 480), (0., 0., 1., 1.));
+        assert_eq!(placement(320, 240), (0.25, 0.25, 0.5, 0.5));
+        assert_eq!(
+            placement(63, 41),
+            (288. / 640., 219. / 480., 63. / 640., 41. / 480.)
+        );
+    }
+
     #[test]
     fn installed_images_export_as_full_screen_frames_for_every_script_name() {
         let root = std::env::var_os("REDGUARD_DIR")
@@ -117,5 +206,17 @@ mod tests {
             let image = image::load_from_memory(&files[&path]).unwrap();
             assert_eq!((image.width(), image.height()), (640, 480), "{name}");
         }
+
+        // The second slot shows frame first + offset when the file has it, else first + 1.
+        let name = "system\\compass2.gxa";
+        let exported =
+            |path: String| cyrus_assets::game::prepare(&source, &path).unwrap()[&path].clone();
+        let frame = |frame| exported(cyrus_assets::overlay::cache_path(name, frame).unwrap());
+        let second = |offset| {
+            exported(cyrus_assets::overlay::second_slot_cache_path(name, 3, offset).unwrap())
+        };
+        assert_eq!(second(2), frame(5));
+        assert_eq!(second(100), frame(4));
+        assert_ne!(frame(5), frame(4));
     }
 }
