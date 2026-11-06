@@ -23,6 +23,15 @@ use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld, sound::
 
 #[test]
 fn installed_island_keyboard_walk_and_release() -> Result<()> {
+    installed_keyboard_route(false)
+}
+
+#[test]
+fn installed_modern_jump_returns_to_ground_after_release() -> Result<()> {
+    installed_keyboard_route(true)
+}
+
+fn installed_keyboard_route(modern_jump: bool) -> Result<()> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
@@ -61,6 +70,11 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         .add_message::<SoundCue>()
         .add_message::<cyrus_world::animation::AnimationTick>()
         .add_plugins((PlayerPlugin, ScriptPlugin));
+    if modern_jump {
+        app.world_mut()
+            .resource_mut::<cyrus_game::fidelity::Fidelity>()
+            .player_controller = cyrus_game::fidelity::Mode::Modern;
+    }
     app.insert_resource(hud);
     app.insert_resource(PlayerBindings::from_codes(codes).map_err(anyhow::Error::msg)?);
     app.insert_resource(PlayerToggles {
@@ -139,8 +153,9 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         let actor = &world.actors()[index];
         ensure!(
             actor.failure().is_none(),
-            "selected player: {:?}",
-            actor.failure()
+            "selected player: {:?}, control: {:?}",
+            actor.failure(),
+            actor.control_state()
         );
         let position = world.spatial(world.id(index)?)?.local.position;
         let entity = app
@@ -166,6 +181,76 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
         position(&mut app)? == idle,
         "idle player moved before input"
     );
+    if modern_jump {
+        let ground = position(&mut app)?;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Space);
+        for _ in 0..4 {
+            app.update();
+            position(&mut app)?;
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Space);
+        let mut highest = ground[1];
+        for _ in 0..120 {
+            app.update();
+            let current = position(&mut app)?;
+            highest = highest.min(current[1]);
+        }
+        ensure!(highest < ground[1], "Space did not start a jump");
+        ensure!(
+            position(&mut app)?[1] == ground[1],
+            "released jump did not return to ground"
+        );
+        for running in [false, true] {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::KeyW);
+            if running {
+                app.world_mut()
+                    .resource_mut::<ButtonInput<KeyCode>>()
+                    .press(KeyCode::ShiftLeft);
+            }
+            for _ in 0..12 {
+                app.update();
+                position(&mut app)?;
+            }
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Space);
+            let mut entered_airborne = false;
+            for _ in 0..12 {
+                app.update();
+                position(&mut app)?;
+                let actors = app.world().resource::<ScriptActors>();
+                let world = actors.current.as_ref().unwrap();
+                let id = world.selected_player().unwrap();
+                let control = world.actors()[id.index].control_state().unwrap();
+                entered_airborne |= control.queued_motion != cyrus_game::script::JumpMotion::NONE
+                    || control.falling_state != cyrus_game::script::JumpMotion::NONE;
+            }
+            ensure!(entered_airborne, "moving Space input did not start a jump");
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .release_all();
+            for _ in 0..120 {
+                app.update();
+                position(&mut app)?;
+            }
+            let actors = app.world().resource::<ScriptActors>();
+            let world = actors.current.as_ref().unwrap();
+            let id = world.selected_player().unwrap();
+            let control = world.actors()[id.index].control_state().unwrap();
+            ensure!(
+                control.queued_motion == cyrus_game::script::JumpMotion::NONE
+                    && control.falling_state == cyrus_game::script::JumpMotion::NONE,
+                "moving jump did not land"
+            );
+        }
+        return Ok(());
+    }
     let initial = position(&mut app)?;
     let key = match cyrus_game::player::input::Input::try_from(codes[0]) {
         Ok(cyrus_game::player::input::Input::Key(scan)) => scan.key(),

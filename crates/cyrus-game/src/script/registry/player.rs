@@ -1078,6 +1078,13 @@ impl ScriptWorld {
             self.updates.animation_system,
             "walking stage requires enabled animation system"
         );
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("walking control unavailable")?;
+        if control.queued_motion != JumpMotion::NONE || control.falling_state != JumpMotion::NONE {
+            return Ok(false);
+        }
         let mut definition = query
             .scene
             .definition

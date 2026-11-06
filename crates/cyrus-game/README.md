@@ -405,6 +405,10 @@ movement after key release until the movement marker or idle transition stops it
 following preservation's [release continuation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#continuation-after-input-release).
 The per-update called flag prevents a second movement step when the controller
 already moved the player.
+Grounded forward walking does not continue while queued jump or falling motion is
+active; the ordinary airborne response retains ownership until landing.
+The installed Modern keyboard regression checks standing, walking and running
+jumps through release and landing.
 
 Ordinary simulation restores axis locks without publishing unattached matrix changes.
 The next model-presentation phase refreshes the retained matrix; explicit orientation
