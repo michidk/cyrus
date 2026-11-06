@@ -8034,6 +8034,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.unoffset_actor(self.index)?;
             return Ok(CallResult::Complete(0));
         }
+        // TurnToAngle takes one ordinary turn step toward a heading and returns the signed
+        // difference (zero when it arrived). An argument equal to the stored yaw returns first,
+        // before any weapon query; the ordinary turn clamps the step to eight itself, so unlike
+        // the FaceAngle task there is no zero-turn-rate completion.
+        if kind == CallKind::Function && function == Native::TurnToAngle {
+            let [angle] = arguments else {
+                anyhow::bail!("TurnToAngle requires one argument")
+            };
+            let angle = angle.integer()?;
+            let id = self.registry.id(self.index)?;
+            if self.registry.spatial(id)?.local.angles[1] == angle {
+                return Ok(CallResult::Complete(0));
+            }
+            let inputs = self.registry.point_facing_inputs(id, self.inputs)?;
+            let sounds = self
+                .sounds
+                .as_mut()
+                .context("TurnToAngle requires synchronous sounds")?;
+            // Truncation keeps the heading modulo 2048, which is all the turn reads.
+            let difference =
+                self.registry
+                    .face_ordinary_angle(id, angle as u16, inputs, &mut **sounds)?;
+            return Ok(CallResult::Complete(difference));
+        }
         if kind == CallKind::Function && function == Native::PlayerForceTalk {
             let [distance] = arguments else {
                 anyhow::bail!("PlayerForceTalk requires one argument")

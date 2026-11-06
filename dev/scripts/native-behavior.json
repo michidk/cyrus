@@ -3661,17 +3661,19 @@
     },
     {
       "native": "TurnToAngle",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "One-argument function taking one ordinary turn step toward a heading and returning the signed difference",
+      "caller": "ScriptWorld::advance -> Runtime function value -> GameHost::call (TurnToAngle) -> face_ordinary_angle",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::turn_to_angle_takes_one_ordinary_step_and_returns_the_signed_difference"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/blob/ae16e6342dd23c918e96935f10f568ad80642819/docs/engine/SOUP.md#turntoangle-native-boundary"
       ],
-      "limits": "Verified independent installed one-argument declaration/exact binding/full502-byte native/original holding184/sheathing122/model130/weapon76/angle90/abs7-byte dependencies:8064 original-instruction contexts/17 effective semantic controls PASS,3458 returns/2108 animation-entry stops/2498 selected-player matrix-entry stops. Selected raw current/target angles/four attribute bytes/three scale words/eight receiver states/two receiver identities/selected-player modes, not full joint domain. Prior holding/model/sheathing exact identity audited once; new native chain executes original instructions. Exact equality/attribute choice/wrapped scaled minimum8 step/11-bit shortest difference/half-turn signs/snap/incremental yaw and return evidenced. Stops exactly at animation or matrix service entry; no substituted return values/effects/continuation or full animation/matrix parity claim. Full mapped memory/nonstack write order/domain/five preserved registers on returns/stack-canary checked; partial-register/negation interpreter check PASS. Production named dispatch missing; no acceptance inferred. Unknown dependency effects/continuation/producers/lifecycle/malformed metadata/VM/natural original/native/browser/full joint domain.",
-      "reviewed_revision": "4e4bb346cfbf5a2d37fc60b97660987725ab7784"
+      "limits": "Verified independent installed one-argument declaration/exact binding/full502-byte native/original holding184/sheathing122/model130/weapon76/angle90/abs7-byte dependencies:8064 original-instruction contexts/17 effective semantic controls PASS,3458 returns/2108 animation-entry stops/2498 selected-player matrix-entry stops. Selected raw current/target angles/four attribute bytes/three scale words/eight receiver states/two receiver identities/selected-player modes, not full joint domain. Prior holding/model/sheathing exact identity audited once; new native chain executes original instructions. Exact equality/attribute choice/wrapped scaled minimum8 step/11-bit shortest difference/half-turn signs/snap/incremental yaw and return evidenced. Stops exactly at animation or matrix service entry; no substituted return values/effects/continuation or full animation/matrix parity claim. Full mapped memory/nonstack write order/domain/five preserved registers on returns/stack-canary checked; partial-register/negation interpreter check PASS. Production named dispatch missing; no acceptance inferred. Unknown dependency effects/continuation/producers/lifecycle/malformed metadata/VM/natural original/native/browser/full joint domain. Verified (routed ScriptWorld test; preservation SOUP.md TurnToAngle native boundary): an argument equal to the stored yaw returns zero without a weapon query; a gap larger than the step turns one step (rate attribute scaled by the movement scale, minimum eight) and returns the target minus the yaw (32 and -32 in the test); within the step it snaps onto the masked target and returns zero; the argument is compared whole, so a full turn more masks to the same heading; a zero turn rate still turns by the clamped step of eight. Reuses the ordinary turn owner of the FaceAngle task. Unknown: the selected player as receiver is an explicit error (camera feedback unavailable); no native-run or browser comparison; the armed-turn variant and style flag are covered by the shared owner, not this test.",
+      "reviewed_revision": "fa70a29455b6e7a54622801dc19f79c35541fc65"
     },
     {
       "native": "TurnToPos",
@@ -5298,7 +5300,7 @@
     },
     {
       "native": "GetMovementSpeed",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Original zero-argument receiver animation-group speed query; named implementation missing",
       "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
@@ -5309,8 +5311,8 @@
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602950868",
         "https://github.com/michidk/redguard-preservation/pull/238"
       ],
-      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Receiver animation group selects an unsigned attribute byte without scaling; absent animation/attribute records and unmapped groups return zero. Groups18/30/142 select8;19/143 select9;20/21 select12;22/23 select13;24..27 select10;31 selects19;92/93 select17. No model or selected-player lookup, calls/intercepted services/nonstack writes. 73794 original instruction contexts/15 effective controls pass: all65536 group words with one fixture, each mapped group across all256 selected byte values and two receivers,66 missing-record cases. Actor/global/animation/attribute bytes, saved registers/stack/canary checked. No PlayerMovementSpeed equivalence inferred. Unknown: null/malformed pointers, animation/attribute producers, VM decoding and natural original/native/browser acceptance. Individual group/byte coverage is not every combination of actor state. Named implementation remains missing.",
-      "reviewed_revision": "abb683f6912710a249eeb655542aa416258fed45"
+      "limits": "Verified: independent installed zero-argument declaration/native/full handler. Receiver animation group selects an unsigned attribute byte without scaling; absent animation/attribute records and unmapped groups return zero. Groups18/30/142 select8;19/143 select9;20/21 select12;22/23 select13;24..27 select10;31 selects19;92/93 select17. No model or selected-player lookup, calls/intercepted services/nonstack writes. 73794 original instruction contexts/15 effective controls pass: all65536 group words with one fixture, each mapped group across all256 selected byte values and two receivers,66 missing-record cases. Actor/global/animation/attribute bytes, saved registers/stack/canary checked. No PlayerMovementSpeed equivalence inferred. Unknown: null/malformed pointers, animation/attribute producers, VM decoding and natural original/native/browser acceptance. Individual group/byte coverage is not every combination of actor state. Named implementation remains missing. Catalogue correction: the native is dispatched since e20c83c6 (main, game README) with public-caller coverage in crates/cyrus-game/tests/script_goto_location.rs, so the entry is no longer missing.",
+      "reviewed_revision": "fa70a29455b6e7a54622801dc19f79c35541fc65"
     },
     {
       "native": "IsBouncing",

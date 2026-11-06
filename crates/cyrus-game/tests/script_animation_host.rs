@@ -5406,6 +5406,78 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
     }
 }
 
+#[test]
+fn turn_to_angle_takes_one_ordinary_step_and_returns_the_signed_difference() {
+    let hud = cyrus_game::script::ScriptHud::default();
+    // (start yaw, argument, turn rate, yaw after, returned value)
+    for (start, target, rate, after, returned) in [
+        // Exact equality returns zero and leaves the yaw.
+        (400, 400, 16u8, 400, 0),
+        // A gap larger than the step turns one step and returns the target minus the yaw.
+        (400, 432, 16, 416, 32),
+        (432, 400, 16, 416, -32),
+        // Within the step it snaps onto the target and returns zero.
+        (416, 432, 16, 432, 0),
+        // The argument is compared whole, so a full turn more is not equal; the helper masks it.
+        (1000, 3048, 16, 1000, 0),
+        // A zero turn rate still turns: the step is clamped to eight.
+        (400, 432, 0, 408, 32),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Me,
+                            function: Native::TurnToAngle,
+                            arguments: vec![Value::Integer { value: target }],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::Yield,
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: Native::TurnToAngle,
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::TurnSpeed] = rate;
+        data.instances[0].angles[1] = start as u32;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let inputs = cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            ..Default::default()
+        };
+        let mut sounds =
+            |_: cyrus_game::script::ScriptActorId, _: cyrus_game::script::ScriptSound| Ok(());
+        world
+            .advance(id, BODY, inputs, Some(&mut sounds), None, 30)
+            .unwrap();
+        assert_eq!(
+            world.spatial(id).unwrap().local.angles[1],
+            after,
+            "start {start} target {target} rate {rate}"
+        );
+        assert_eq!(
+            world.flags()[0],
+            returned,
+            "start {start} target {target} rate {rate}"
+        );
+    }
+}
+
 fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {
