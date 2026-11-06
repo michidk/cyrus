@@ -13,6 +13,7 @@ use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
 use cyrus_world::heading::wrap;
 mod activation;
 mod actor_bounce;
+mod ai_progress;
 mod attack;
 mod attack_input;
 mod camera;
@@ -6647,39 +6648,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 arguments[1].integer()?,
                 arguments[2].integer()?,
             ];
-            let origin = self
-                .registry
-                .query_position(id)
-                .context("MovePos receiver position unavailable")?;
-            let control = self.registry.actors[self.index]
-                .control
-                .as_ref()
-                .context("MovePos receiver control unavailable")?;
-            if control.ai_type == AiType::POINT_NAVIGATION {
-                return Ok(CallResult::Complete(1));
-            }
-            let speed = i32::from(self.registry.ordinary_group_speed(self.index)).wrapping_shl(8);
-            if speed == 0 {
-                return Ok(CallResult::Complete(1));
-            }
-            let scale = self
-                .inputs
-                .frame_scale
-                .context("MovePos requires frame_scale")?;
-            let threshold = speed
-                .wrapping_mul(2)
-                .wrapping_sub(1)
-                .wrapping_mul(scale as i32)
-                >> 8;
-            if threshold <= 0 {
-                return Ok(CallResult::Complete(1));
-            }
-            let distance = cyrus_collision::distance::rounded_distance([
-                destination[0].wrapping_sub(origin[0]),
-                0,
-                destination[2].wrapping_sub(origin[2]),
-            ])?;
-            return Ok(CallResult::Complete(i32::from(distance > threshold)));
+            return Ok(CallResult::Complete(self.registry.move_position_pending(
+                id,
+                destination,
+                self.inputs,
+            )?));
         }
         // PlayerTurned, PlayerTurnedDirection and PlayerMovementSpeed read the selected player; the
         // original also returns zero for an actor without its model handle, assumed present here.

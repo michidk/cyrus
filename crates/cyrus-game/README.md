@@ -135,6 +135,14 @@ Verified: refusal ordering and wrapping time-scaled thresholds follow preservati
 [MovePos contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#movepos).
 This predicate alone does not admit automatic selector-four progress.
 
+Verified: the explicit mode-eleven progress service composes point facing, the
+strict heading boundary, the shared `MovePos` predicate, synchronous forward
+movement and pending-position registration before retained-candidate clearance.
+Slide state and the full collision-response word control mode/delay reset, per
+preservation's [progress contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#ai-mode-eleven-progress).
+Unknown: automatic selector-four admission and scheduling. The explicit service
+requires an already admitted mode-eleven receiver and does not complete its task.
+
 Verified: the public AI destination-clearance query consumes retained collision
 candidates with polygon sidedness disabled. Ordinary collection uses local actor
 position even when clearance resolves an attached or linked position, following preservation's
