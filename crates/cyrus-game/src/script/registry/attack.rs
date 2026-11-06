@@ -1071,8 +1071,8 @@ impl ScriptWorld {
                 .and_then(|control| control.combat.as_ref())
                 .context("receiver combat unavailable")?;
             let pending = combat.retained_action_indices[0];
-            if combat.decision.attack_state == 0 && requested == -1
-                || combat.decision.attack_state != 0 && pending == -1
+            if combat.decision.attack_state.is_idle() && requested == -1
+                || !combat.decision.attack_state.is_idle() && pending == -1
             {
                 return Ok(false);
             }
@@ -1096,7 +1096,7 @@ impl ScriptWorld {
                 .playback
                 .current_group()
                 .map(i32::from);
-            let starting = combat.decision.attack_state == 0 && current != Some(group);
+            let starting = combat.decision.attack_state.is_idle() && current != Some(group);
             let timing = if starting {
                 Some(inputs.nominal_ticks.context("nominal ticks unavailable")?)
             } else {

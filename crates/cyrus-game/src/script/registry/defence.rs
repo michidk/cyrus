@@ -463,8 +463,8 @@ impl ScriptWorld {
                 .and_then(|control| control.combat.as_ref())
                 .context("receiver combat unavailable")?;
             let selector = combat.retained_action_indices[1];
-            if combat.decision.attack_state == 0 && requested == -1
-                || combat.decision.attack_state != 0 && selector == -1
+            if combat.decision.attack_state.is_idle() && requested == -1
+                || !combat.decision.attack_state.is_idle() && selector == -1
             {
                 return Ok(false);
             }

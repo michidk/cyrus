@@ -28,12 +28,29 @@ const DEFENSE_SLOTS: [Attribute; 4] = [
     Attribute::DefendHigh,
 ];
 
+/// Attack and defence executor state (preservation SOUP.md "Attack executor"): a defence start
+/// sets it to one, an attack start to two, and ending either clears it. Selected-player combat
+/// processing reads it as its phase.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct ExecutorState(i32);
+
+impl ExecutorState {
+    pub const IDLE: Self = Self(0);
+    pub const DEFENDING: Self = Self(1);
+    pub const ATTACKING: Self = Self(2);
+
+    pub const fn is_idle(self) -> bool {
+        self.0 == Self::IDLE.0
+    }
+}
+
 /// Retained values of the nonplayer decision stage, set by combat construction (see preservation's
 /// engine/SOUP.md "Combat maintenance") and changed by the stage and its attack and defence helpers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct CombatDecision {
-    /// Attack and defence executor state: 0 idle, 1 defending, 2 attacking.
-    pub attack_state: i32,
+    /// Attack and defence executor state.
+    pub attack_state: ExecutorState,
     /// First move-table selector (the attack list index of the current move).
     pub move_selector: i32,
     /// Aggression budget: starts at 50, refilled by the stage and spent by each attack.
@@ -48,7 +65,7 @@ pub struct CombatDecision {
 impl Default for CombatDecision {
     fn default() -> Self {
         Self {
-            attack_state: 0,
+            attack_state: ExecutorState::IDLE,
             move_selector: 0,
             aggression: 50,
             attack_pacing: 0,
@@ -894,7 +911,7 @@ mod constructor_tests {
             CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
                 .unwrap()
                 .unwrap();
-        record.decision.attack_state = 2;
+        record.decision.attack_state = ExecutorState::ATTACKING;
         record.spacing_ranges = [-1; 3];
         record.spacing_period = -1;
         record.close_distance_passes = 123;
@@ -919,7 +936,7 @@ mod constructor_tests {
                 record.decision.attack_state,
                 record.taunt_period
             ),
-            (7, 8, 0, 5)
+            (7, 8, ExecutorState::IDLE, 5)
         );
         assert_eq!(record.spacing_ranges, [10000, 30000, 20000]);
         assert_eq!(record.spacing_period, 3);
@@ -1070,7 +1087,7 @@ mod constructor_tests {
                 decision.attack_state,
                 decision.move_selector
             ),
-            (50, 120, 100, 29, 0, 0)
+            (50, 120, 100, 29, ExecutorState::IDLE, 0)
         );
     }
 }

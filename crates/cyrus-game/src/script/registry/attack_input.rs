@@ -5,6 +5,7 @@ use crate::player::input::PlayerInput;
 use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::CombatFlags;
+use crate::script::ExecutorState;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::registry::ActionWords;
@@ -292,7 +293,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.decision.attack_state == 1);
+                .is_some_and(|combat| combat.decision.attack_state == ExecutorState::DEFENDING);
             if striking
                 && crate::script::decision::ordinary_defence_forward_arc(
                     own.position,
@@ -341,7 +342,7 @@ impl ScriptWorld {
                 other.position,
                 i32::from(own.angles[1]),
             ) || !combat.flags.contains(CombatFlags::MOVE_INTENT)
-                || combat.decision.attack_state != 1
+                || combat.decision.attack_state != ExecutorState::DEFENDING
             {
                 continue;
             }

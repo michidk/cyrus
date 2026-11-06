@@ -1064,7 +1064,7 @@ impl ScriptWorld {
                 .and_then(|control| control.combat.as_ref())
                 .map(|combat| combat.decision.attack_state)
                 .expect("admitted combat");
-            if phase == 0 {
+            if phase.is_idle() {
                 let combat = self.actors[index]
                     .control
                     .as_mut()
@@ -7811,7 +7811,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.decision.attack_state == 1);
+                .is_some_and(|combat| {
+                    combat.decision.attack_state == super::ExecutorState::DEFENDING
+                });
             if !holding || actor.attributes[Attribute::PlayerType] == 1 || !swinging {
                 return Ok(CallResult::Complete(0));
             }

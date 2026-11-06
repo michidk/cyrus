@@ -1,6 +1,6 @@
 //! Nonplayer decision-stage executors. The pure state machines follow the original's attack
 //! executor; callers own the animation request and the combat record fields they pass in.
-use super::combat::{CombatDecision, CombatFlags};
+use super::combat::{CombatDecision, CombatFlags, ExecutorState};
 use anyhow::{Context, Result, ensure};
 use cyrus_script::AnimationGroup;
 use cyrus_world::heading::{FULL_TURN, HALF_TURN, wrap};
@@ -508,7 +508,7 @@ pub(crate) fn attack_step_with_animation(
     request_animation: &mut dyn FnMut(i32) -> Result<()>,
 ) -> Result<AttackStep> {
     let mut effect = AttackEffect::None;
-    if decision.attack_state == 0 {
+    if decision.attack_state.is_idle() {
         if requested != -1 {
             let group = pending_group();
             ensure!(
@@ -520,7 +520,7 @@ pub(crate) fn attack_step_with_animation(
                     group: group.expect("checked"),
                 };
                 request_animation(group.expect("checked"))?;
-                decision.attack_state = 2;
+                decision.attack_state = ExecutorState::ATTACKING;
                 decision.aggression = decision.aggression.wrapping_sub(10);
             }
         }
@@ -531,7 +531,7 @@ pub(crate) fn attack_step_with_animation(
             "attack executor: pending move {pending} has no attack record"
         );
         if current_group != group {
-            decision.attack_state = 0;
+            decision.attack_state = ExecutorState::IDLE;
             if *selected == 9 {
                 *selected = -1;
             }
@@ -539,7 +539,7 @@ pub(crate) fn attack_step_with_animation(
         }
     }
     Ok(AttackStep {
-        active: decision.attack_state != 0 && *pending != -1,
+        active: !decision.attack_state.is_idle() && *pending != -1,
         effect,
     })
 }
@@ -579,7 +579,7 @@ pub struct DefenceStep {
 
 /// Ends a defence: state 0, the defence selector -1 and a selected index other than 9 reset.
 fn end_defence(decision: &mut CombatDecision, selected: &mut i32, defence_selector: &mut i32) {
-    decision.attack_state = 0;
+    decision.attack_state = ExecutorState::IDLE;
     *defence_selector = -1;
     if *selected != 9 {
         *selected = -1;
@@ -638,14 +638,14 @@ pub(crate) fn defence_step_with_animation(
         flags.insert(CombatFlags::MOVE_INTENT);
         decision.aggression = decision.aggression.wrapping_sub(10);
     };
-    if decision.attack_state == 0 {
+    if decision.attack_state.is_idle() {
         if requested != -1 {
             decision.move_selector = 0;
             let group = group_for(0)?;
             if view.current_group != Some(group) {
                 request_animation(group)?;
                 start(decision, flags, group);
-                decision.attack_state = 1;
+                decision.attack_state = ExecutorState::DEFENDING;
                 effect.attack_taunt = true;
             }
         }
@@ -672,7 +672,7 @@ pub(crate) fn defence_step_with_animation(
         }
     }
     Ok(DefenceStep {
-        active: decision.attack_state != 0 && *defence_selector != -1 && *selected != 9,
+        active: !decision.attack_state.is_idle() && *defence_selector != -1 && *selected != 9,
         effect,
     })
 }
@@ -1050,7 +1050,7 @@ mod tests {
                 decision.aggression,
                 flags.bits()
             ),
-            (3, 3, 1, 40, 1)
+            (3, 3, ExecutorState::DEFENDING, 40, 1)
         );
         assert_eq!(effect.unwrap().request_group, Some(97));
         assert!(
@@ -1592,7 +1592,10 @@ mod tests {
         let step = run(&mut decision, &mut selected, &mut pending, 0, Some(1), 120);
         assert_eq!(step.effect, AttackEffect::Start { group: 120 });
         assert!(step.active);
-        assert_eq!((decision.attack_state, decision.aggression), (2, 40));
+        assert_eq!(
+            (decision.attack_state, decision.aggression),
+            (ExecutorState::ATTACKING, 40)
+        );
         assert_eq!((selected, pending), (0, 3));
     }
 
@@ -1610,7 +1613,10 @@ mod tests {
         );
         assert_eq!(step.effect, AttackEffect::None);
         assert!(!step.active);
-        assert_eq!((decision.attack_state, decision.aggression), (0, 50));
+        assert_eq!(
+            (decision.attack_state, decision.aggression),
+            (ExecutorState::IDLE, 50)
+        );
     }
 
     #[test]
@@ -1627,7 +1633,7 @@ mod tests {
     #[test]
     fn an_attack_continues_while_the_actor_stays_in_the_move_group() {
         let mut decision = CombatDecision {
-            attack_state: 2,
+            attack_state: ExecutorState::ATTACKING,
             ..Default::default()
         };
         let (mut selected, mut pending) = (9, 3);
@@ -1640,22 +1646,28 @@ mod tests {
             120,
         );
         assert!(step.active);
-        assert_eq!((decision.attack_state, selected, pending), (2, 9, 3));
+        assert_eq!(
+            (decision.attack_state, selected, pending),
+            (ExecutorState::ATTACKING, 9, 3)
+        );
     }
 
     #[test]
     fn leaving_the_move_group_ends_the_attack_and_clears_the_selection() {
         let mut decision = CombatDecision {
-            attack_state: 2,
+            attack_state: ExecutorState::ATTACKING,
             ..Default::default()
         };
         let (mut selected, mut pending) = (9, 3);
         let step = run(&mut decision, &mut selected, &mut pending, -1, Some(1), 120);
         assert!(!step.active);
-        assert_eq!((decision.attack_state, selected, pending), (0, -1, -1));
+        assert_eq!(
+            (decision.attack_state, selected, pending),
+            (ExecutorState::IDLE, -1, -1)
+        );
         // Another selected index survives the end of the attack.
         let mut decision = CombatDecision {
-            attack_state: 2,
+            attack_state: ExecutorState::ATTACKING,
             ..Default::default()
         };
         let (mut selected, mut pending) = (4, 3);
@@ -1714,7 +1726,7 @@ mod tests {
         .unwrap();
         assert_eq!(step.effect.request_group, Some(130));
         assert!(step.effect.mark_animation && step.effect.attack_taunt);
-        assert_eq!(decision.attack_state, 1);
+        assert_eq!(decision.attack_state, ExecutorState::DEFENDING);
         assert_eq!(decision.move_selector, 0);
         assert_eq!(decision.aggression, 40);
         // The target mark clears and the intent field gains bit one: 0x13 -> 0x03.
@@ -1742,13 +1754,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(step.effect, DefenceEffect::default());
-        assert_eq!((decision.attack_state, decision.move_selector), (0, 0));
+        assert_eq!(
+            (decision.attack_state, decision.move_selector),
+            (ExecutorState::IDLE, 0)
+        );
     }
 
     #[test]
     fn an_active_defence_follows_the_chain_to_the_next_group() {
         let mut decision = CombatDecision {
-            attack_state: 1,
+            attack_state: ExecutorState::DEFENDING,
             move_selector: 0,
             ..Default::default()
         };
@@ -1774,7 +1789,7 @@ mod tests {
     #[test]
     fn being_attacked_in_the_last_chain_groups_ends_the_defence() {
         let mut decision = CombatDecision {
-            attack_state: 1,
+            attack_state: ExecutorState::DEFENDING,
             move_selector: 0,
             ..Default::default()
         };
@@ -1791,7 +1806,10 @@ mod tests {
         )
         .unwrap();
         assert!(!step.active);
-        assert_eq!((decision.attack_state, selector, selected), (0, -1, -1));
+        assert_eq!(
+            (decision.attack_state, selector, selected),
+            (ExecutorState::IDLE, -1, -1)
+        );
         assert_eq!(step.effect.request_group, None);
     }
 
@@ -1799,7 +1817,7 @@ mod tests {
     fn a_defence_without_a_chain_ends_when_the_pending_group_differs() {
         for (pending, ends) in [(Some(130), false), (Some(5), true)] {
             let mut decision = CombatDecision {
-                attack_state: 1,
+                attack_state: ExecutorState::DEFENDING,
                 move_selector: 2,
                 ..Default::default()
             };
@@ -1815,7 +1833,7 @@ mod tests {
                 &view(Some(7), pending, &groups, &chain),
             )
             .unwrap();
-            assert_eq!(decision.attack_state == 0, ends);
+            assert_eq!(decision.attack_state.is_idle(), ends);
             // A selected index of 9 is never reset by ending a defence.
             assert_eq!(selected, 9);
             assert!(!step.active);
@@ -2280,12 +2298,15 @@ mod tests {
                 },
                 open: &mut |_, _| panic!("open pick is not admitted"),
                 paced: &mut |decision, flags| {
-                    assert_eq!((decision.attack_state, flags.bits()), (1, 0xb1));
+                    assert_eq!(
+                        (decision.attack_state, flags.bits()),
+                        (ExecutorState::DEFENDING, 0xb1)
+                    );
                     Some(4)
                 },
                 in_reach: &mut |_| true,
                 start: &mut |decision, flags, kind| {
-                    decision.attack_state = 1;
+                    decision.attack_state = ExecutorState::DEFENDING;
                     flags.insert(CombatFlags::ATTACKED);
                     starts.push(kind);
                 },
@@ -2422,7 +2443,10 @@ mod tests {
             anyhow::bail!("unadmitted open")
         }
         fn paced(&mut self, d: &mut CombatDecision, flags: CombatFlags) -> Result<Option<i32>> {
-            assert_eq!((d.attack_state, flags.bits()), (3, 0xb1));
+            assert_eq!(
+                (d.attack_state, flags.bits()),
+                (ExecutorState::DEFENDING, 0xb1)
+            );
             d.defence_counter = 7;
             self.visit("paced".into())?;
             Ok(Some(4))
@@ -2440,7 +2464,7 @@ mod tests {
             if kind == 4 {
                 assert_eq!(d.defence_counter, 7);
             }
-            d.attack_state = kind;
+            d.attack_state = ExecutorState::DEFENDING;
             flags.insert(CombatFlags::ATTACKED);
             self.visit(format!("start{kind}"))
         }
@@ -2484,7 +2508,7 @@ mod tests {
                 d.aggression,
                 flags.bits()
             ),
-            (4, 7, 11, 0xb1)
+            (ExecutorState::DEFENDING, 7, 11, 0xb1)
         );
     }
     #[test]
@@ -2508,12 +2532,10 @@ mod tests {
             assert_eq!(flags.bits(), if index >= 2 { 0xb1 } else { 0xa1 });
             assert_eq!(
                 d.attack_state,
-                if index >= 5 {
-                    4
-                } else if index >= 2 {
-                    3
+                if index >= 2 {
+                    ExecutorState::DEFENDING
                 } else {
-                    0
+                    ExecutorState::IDLE
                 }
             );
         }
@@ -2545,6 +2567,9 @@ mod tests {
             .is_err()
         );
         assert_eq!(owner.events, ["start2"]);
-        assert_eq!((d.attack_state, flags.bits()), (2, 0xb1));
+        assert_eq!(
+            (d.attack_state, flags.bits()),
+            (ExecutorState::DEFENDING, 0xb1)
+        );
     }
 }

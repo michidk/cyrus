@@ -10,7 +10,7 @@ use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::PointPhase;
 use cyrus_game::script::StepDirection;
-use cyrus_game::script::{ScriptStage, ScriptWorld};
+use cyrus_game::script::{ExecutorState, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_script::{Attribute, Attributes};
@@ -17119,7 +17119,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         .unwrap();
     assert_eq!(
         (combat.decision.attack_state, combat.action, combat.cooldown),
-        (0, -1, 0)
+        (ExecutorState::IDLE, -1, 0)
     );
     assert_eq!(combat.retained_action_indices, [-1; 2]);
     let released = cyrus_game::player::input::PlayerInput::default();
@@ -22993,7 +22993,11 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         assert_eq!(cues, usize::from(expected));
         assert_eq!(
             combat.decision.attack_state,
-            i32::from(expected && !fail_sound)
+            if expected && !fail_sound {
+                ExecutorState::DEFENDING
+            } else {
+                ExecutorState::IDLE
+            }
         );
     }
     // The live selection owner must reload executor writes even after a sound error.
@@ -23081,7 +23085,14 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             .unwrap();
         assert_eq!((combat.action, combat.retained_action_indices[1]), (1, 1));
         assert_eq!(combat.decision.move_selector, 0);
-        assert_eq!(combat.decision.attack_state, i32::from(!fail_sound));
+        assert_eq!(
+            combat.decision.attack_state,
+            if fail_sound {
+                ExecutorState::IDLE
+            } else {
+                ExecutorState::DEFENDING
+            }
+        );
         assert_eq!(combat.decision.aggression, if fail_sound { 50 } else { 40 });
         assert_eq!(cues, 1);
         assert_eq!(random.state(), if fail_sound { 42 } else { 1974836613 });
@@ -23224,7 +23235,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         .unwrap();
     assert_eq!((combat.action, combat.retained_action_indices[1]), (0, 0));
     assert_eq!(combat.decision.move_selector, 0);
-    assert_eq!(combat.decision.attack_state, 1);
+    assert_eq!(combat.decision.attack_state, ExecutorState::DEFENDING);
     assert_eq!(combat.decision.aggression, 40);
     assert_eq!(combat.decision.defence_counter, 100);
     assert_eq!(combat.flags.bits(), 1);
@@ -25931,7 +25942,7 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
             .unwrap();
         assert_eq!(
             (combat.decision.attack_state, combat.decision.aggression),
-            (0, 50)
+            (ExecutorState::IDLE, 50)
         );
         if missing == "animation" {
             assert!(
@@ -25944,12 +25955,12 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
         }
     }
     for (state, current, ticks, fail, expected_state, expected_budget, expected_pending) in [
-        (0, 0, Some(1), false, 2, 40, 0),
-        (0, 0, Some(1), true, 0, 50, 0),
-        (0, 0, None, false, 0, 50, 0),
-        (0, 100, None, false, 0, 50, 0),
-        (2, 100, None, false, 2, 50, 0),
-        (2, 0, None, false, 0, 50, -1),
+        (0, 0, Some(1), false, ExecutorState::ATTACKING, 40, 0),
+        (0, 0, Some(1), true, ExecutorState::IDLE, 50, 0),
+        (0, 0, None, false, ExecutorState::IDLE, 50, 0),
+        (0, 100, None, false, ExecutorState::IDLE, 50, 0),
+        (2, 100, None, false, ExecutorState::ATTACKING, 50, 0),
+        (2, 0, None, false, ExecutorState::IDLE, 50, -1),
     ] {
         let mut snapshot = saved.clone();
         snapshot["actors"][0]["control"]["combat"]["decision"]["attack_state"] = state.into();
@@ -25995,7 +26006,7 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
         } else {
             assert_eq!(
                 result.unwrap(),
-                expected_state != 0 && expected_pending != -1
+                !expected_state.is_idle() && expected_pending != -1
             );
         }
         let combat = world.actors()[0]
@@ -26022,7 +26033,7 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
         );
         let after = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
         assert_eq!(after["actors"][0]["tasks"], before["actors"][0]["tasks"]);
-        if expected_state == 2 && state == 0 {
+        if expected_state == ExecutorState::ATTACKING && state == 0 {
             assert_eq!(
                 after["actors"][0]["animation"]["playback"]["current"][0],
                 100
@@ -26553,7 +26564,7 @@ fn live_counter_starts_receiver_animation_then_marks_target_without_a_task() {
             own.decision.attack_state,
             own.decision.aggression
         ),
-        (0xa3, 9, 0, 2, 40)
+        (0xa3, 9, 0, ExecutorState::ATTACKING, 40)
     );
     assert_eq!(target.flags.bits(), 0x10);
     assert_eq!(
@@ -26603,7 +26614,7 @@ fn live_counter_preserves_intent_pending_and_action_before_executor_failure() {
             own.decision.attack_state,
             own.decision.aggression
         ),
-        (0xa3, 0, 9, 0, 50)
+        (0xa3, 0, 9, ExecutorState::IDLE, 50)
     );
     assert_eq!(
         world.actors()[1]
@@ -26861,7 +26872,11 @@ fn live_counter_sound_failure_retains_start_action_but_does_not_mark_target() {
         );
         assert_eq!(
             (own.decision.attack_state, own.decision.aggression),
-            if fail { (0, 50) } else { (2, 40) }
+            if fail {
+                (ExecutorState::IDLE, 50)
+            } else {
+                (ExecutorState::ATTACKING, 40)
+            }
         );
         assert_eq!(
             world.actors()[1]
@@ -31315,7 +31330,7 @@ fn ordinary_defence_selected_starter_reuses_live_executor_without_target_queries
             combat.retained_action_indices[1],
             combat.decision.attack_state
         ),
-        (1, 1, 0)
+        (1, 1, ExecutorState::IDLE)
     );
     assert_eq!(random.state(), 42);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
