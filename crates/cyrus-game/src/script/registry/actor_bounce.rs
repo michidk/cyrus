@@ -119,9 +119,7 @@ impl BouncePort for BouncingActor<'_, '_> {
             .actor_mut(index)?
             .local
             .position = position;
-        if !self.world.map_updates.contains(&index) {
-            self.world.map_updates.push(index);
-        }
+        self.world.map_updates.register(index)?;
         Ok(())
     }
     fn heading(&self) -> u16 {

@@ -21,7 +21,7 @@ struct NativeHost {
     native: NativeTasks,
     position: [i32; 3],
     angles: [i32; 3],
-    updates: Vec<usize>,
+    updates: crate::script::map_updates::MapUpdates,
     calls: usize,
     polls: usize,
     frame_progress: u8,
@@ -1125,7 +1125,7 @@ fn player_face(receiver: [i32; 3], player: PlayerFaceState) -> PlayerFaceOutcome
     let mut tasks = NativeTasks::default();
     let mut position = receiver;
     let mut angles = [0; 3];
-    let mut updates = vec![];
+    let mut updates = crate::script::map_updates::MapUpdates::default();
     let mut spatial = Some(SpatialCall {
         tick: None,
         position: &mut position,
@@ -1212,7 +1212,7 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
     let args = [Argument::Integer(1), Argument::Integer(4)];
     let mut position = [0; 3];
     let mut angles = [0; 3];
-    let mut updates = vec![];
+    let mut updates = crate::script::map_updates::MapUpdates::default();
     let locations = [[0, 0, 0], [0, 0, 10240]];
     let mut step = |tasks: &mut NativeTasks, position: &mut [i32; 3], token| {
         let invocation = Invocation {
@@ -1274,7 +1274,7 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
     assert_eq!(position, [0, 0, 7680]);
     assert!(step(&mut tasks, &mut position, Some(1)));
     assert_eq!(position, [0, 0, 10240]);
-    assert_eq!(updates, vec![5]);
+    assert_eq!(updates.as_slice(), [5]);
 }
 
 #[test]
@@ -1377,7 +1377,7 @@ fn move_to_marker_matches_the_original_routine() {
         let markers = crate::script::markers::Markers::prepare(&metadata).unwrap();
         let mut position = [v[1], v[2], v[3]];
         let mut angles = [0; 3];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         let mut spatial = Some(SpatialCall {
             tick: None,
             position: &mut position,
@@ -1409,7 +1409,7 @@ fn move_to_marker_matches_the_original_routine() {
             .unwrap();
         assert_eq!(i32::from(!done), v[13], "{row}");
         assert_eq!(position, [v[14], v[15], v[16]], "{row}");
-        assert_eq!(updates.len() as i32, v[17], "{row}");
+        assert_eq!(updates.as_slice().len() as i32, v[17], "{row}");
     }
 }
 
@@ -1433,7 +1433,7 @@ fn move_along_axis_matches_the_original_routine() {
         let mut tasks = NativeTasks::default();
         let mut position = [1000, 2000, 3000];
         let mut angles_state = angles;
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (elapsed, step) in row[5].as_array().unwrap().iter().enumerate() {
             let invocation = Invocation {
                 elapsed: Some(elapsed as i32),
@@ -1515,7 +1515,7 @@ fn control_animation_turns_the_receiver_only_while_its_group_plays() {
     let args = [Argument::Integer(7), Argument::Integer(2)];
     let mut position = [0; 3];
     let mut angles = [0, 100, 0];
-    let mut updates = vec![];
+    let mut updates = crate::script::map_updates::MapUpdates::default();
     let mut step = |tasks: &mut NativeTasks,
                     animation: &mut ActorAnimation,
                     angles: &mut [i32; 3],
@@ -2036,7 +2036,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
         let mut classification = MotionDirection::NONE;
         let mut called = 0;
         let mut frame = None;
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (elapsed, z) in expected.into_iter().enumerate() {
             let done = task
                 .complete(
@@ -2259,7 +2259,7 @@ fn face_player_matches_the_original_routine() {
         let mut task = Task::FacePlayer;
         let mut position = [0; 3];
         let mut angles = [0, heading as i32, 0];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         let done = task
             .complete(
                 &[Argument::Integer(duration as i32)],
@@ -2436,7 +2436,7 @@ fn face_player_inertia_matches_the_original_routine() {
         let mut task = Task::FacePlayerInertia;
         let mut position = [0; 3];
         let mut angles = [0, heading as i32, 0];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         let done = task
             .complete(
                 &[Argument::Integer(duration as i32)],
@@ -2590,7 +2590,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
             };
             let mut position = [1000, 2000, 3000];
             let mut angles = [100, 300, 50];
-            let mut updates = vec![];
+            let mut updates = crate::script::map_updates::MapUpdates::default();
             for (elapsed, (expected_position, expected_angles, report)) in
                 steps.into_iter().enumerate()
             {
@@ -2968,7 +2968,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
         let mut task = task;
         let mut position = [1000, 2000, 3000];
         let mut angles = [100, 300, 50];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (elapsed, expected_position, expected_angles, report) in rows {
             let done = task
                 .complete(
@@ -3103,7 +3103,7 @@ fn scaled_axis_movement_rotates_the_step_like_the_original_routine() {
     .unwrap();
     for (axis, delta, duration, scale, elapsed, mut angles, mut position, expected, report) in rows
     {
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         let done = Task::ScaledAxisMovement
             .complete(
                 &[
@@ -3256,7 +3256,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
             };
             let mut position = [1000, 2000, 3000];
             let mut angles = [100, 300, 50];
-            let mut updates = vec![];
+            let mut updates = crate::script::map_updates::MapUpdates::default();
             for (elapsed, (expected_position, expected_angles, report)) in
                 steps.into_iter().enumerate()
             {
@@ -3366,7 +3366,7 @@ fn move_to_location_matches_the_original_routine() {
         let mut task = Task::Location;
         let mut position = start;
         let mut angles = [0; 3];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (elapsed, (expected, report)) in steps.into_iter().enumerate() {
             let done = task
                 .complete(
@@ -3472,7 +3472,7 @@ fn wander_to_location_matches_the_original_routine() {
         };
         let mut position = start;
         let mut angles = [0; 3];
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (call, (expected, report)) in steps.into_iter().enumerate() {
             let done = task
                 .complete(
@@ -3674,7 +3674,7 @@ fn move_object_axis_matches_the_original_routine() {
         };
         let mut position = [1000, 2000, 3000];
         let mut current = angles;
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         for (elapsed, (expected, report)) in steps.into_iter().enumerate() {
             let done = task
                 .complete(
@@ -4141,7 +4141,7 @@ fn walk_backward_matches_the_original_routine() {
         let mut classification = MotionDirection::NONE;
         let mut called = 0;
         let mut frame = None;
-        let mut updates = vec![];
+        let mut updates = crate::script::map_updates::MapUpdates::default();
         let done = task
             .complete(
                 &[Argument::Integer(1)],

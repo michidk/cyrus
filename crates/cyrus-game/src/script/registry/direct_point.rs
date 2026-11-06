@@ -279,9 +279,7 @@ impl ScriptWorld {
                             .context("direct point facing requires synchronous sounds")?,
                     )?;
                 }
-                if !self.map_updates.contains(&index) {
-                    self.map_updates.push(index);
-                }
+                self.map_updates.register(index)?;
             }
             PointPhase::IDLE_PAUSE => self.advance_point_delay(id, inputs, random, sounds)?,
             PointPhase::DIRECT_ARRIVE => {

@@ -730,9 +730,7 @@ impl ScriptWorld {
                     .context("yeahbaby vertical keys need the prepared spatial state")?
                     .actor_mut(id.index)?;
                 spatial.local.position[1] = spatial.local.position[1].wrapping_add(delta);
-                if !self.map_updates.contains(&id.index) {
-                    self.map_updates.push(id.index);
-                }
+                self.map_updates.register(id.index)?;
             }
             if keys.home_pressed {
                 self.ground_bypass_toggle = !self.ground_bypass_toggle;
@@ -764,9 +762,7 @@ impl ScriptWorld {
                 spatial.local.wrapped_angles()[1],
                 distance,
             )?;
-            if !self.map_updates.contains(&id.index) {
-                self.map_updates.push(id.index);
-            }
+            self.map_updates.register(id.index)?;
         } else if self.insert_camera_flag {
             self.insert_camera_flag = false;
             if let Some(camera) = self.camera.as_mut() {

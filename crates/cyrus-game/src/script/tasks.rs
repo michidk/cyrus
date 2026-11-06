@@ -103,7 +103,7 @@ pub(super) struct SpatialCall<'a> {
     /// Selected player's local position, when the caller supplies the player query.
     pub player_position: Option<[i32; 3]>,
     pub actor_index: usize,
-    pub map_updates: &'a mut Vec<usize>,
+    pub map_updates: &'a mut super::map_updates::MapUpdates,
 }
 
 /// Explicit playback service and receiver state for one native ambient invocation.
@@ -2174,9 +2174,7 @@ impl Task {
                 }
                 let direction = super::spatial::normalized_direction(differences);
                 let step = speed.wrapping_mul(input.frame_scale as i32) >> 8;
-                if !input.map_updates.contains(&input.actor_index) {
-                    input.map_updates.push(input.actor_index);
-                }
+                input.map_updates.register(input.actor_index)?;
                 if distance > step {
                     for (axis, component) in direction.into_iter().enumerate() {
                         input.position[axis] = input.position[axis]
@@ -2233,9 +2231,7 @@ impl Task {
                 for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
                     *coordinate = coordinate.wrapping_add(amount);
                 }
-                if !input.map_updates.contains(&input.actor_index) {
-                    input.map_updates.push(input.actor_index);
-                }
+                input.map_updates.register(input.actor_index)?;
                 !(duration.wrapping_sub(1) > elapsed)
             }
             Self::Marker => {
@@ -2262,9 +2258,7 @@ impl Task {
                     .position(marker)?;
                 if !(duration.wrapping_sub(1) > elapsed) {
                     *input.position = target;
-                    if !input.map_updates.contains(&input.actor_index) {
-                        input.map_updates.push(input.actor_index);
-                    }
+                    input.map_updates.register(input.actor_index)?;
                     return Ok(true);
                 }
                 let source = if input.slave {
@@ -2288,9 +2282,7 @@ impl Task {
                         input.position[axis] = input.position[axis]
                             .wrapping_add(((component >> 10).wrapping_mul(step >> 2)) >> 4);
                     }
-                    if !input.map_updates.contains(&input.actor_index) {
-                        input.map_updates.push(input.actor_index);
-                    }
+                    input.map_updates.register(input.actor_index)?;
                 }
                 false
             }
@@ -2317,9 +2309,7 @@ impl Task {
                 };
                 if elapsed > duration {
                     *input.position = *target;
-                    if !input.map_updates.contains(&input.actor_index) {
-                        input.map_updates.push(input.actor_index);
-                    }
+                    input.map_updates.register(input.actor_index)?;
                     return Ok(true);
                 }
                 let source = if input.slave {
@@ -2346,9 +2336,7 @@ impl Task {
                     input.position[axis] = input.position[axis]
                         .wrapping_add(((component >> 8).wrapping_mul(movement)) >> 8);
                 }
-                if !input.map_updates.contains(&input.actor_index) {
-                    input.map_updates.push(input.actor_index);
-                }
+                input.map_updates.register(input.actor_index)?;
                 false
             }
             Self::ObjectMovement { target, traveled } => {
@@ -2394,9 +2382,7 @@ impl Task {
                     *input.position =
                         std::array::from_fn(|i| input.position[i].wrapping_add(transformed[i]));
                 }
-                if !input.map_updates.contains(&input.actor_index) {
-                    input.map_updates.push(input.actor_index);
-                }
+                input.map_updates.register(input.actor_index)?;
                 elapsed >= duration.wrapping_sub(1)
             }
             Self::Movement { target } => {

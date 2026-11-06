@@ -114,6 +114,7 @@ pub use journal::{Journal, JournalSnapshot};
 pub mod locomotion;
 pub use locomotion::{MotionDirection, StepDirection};
 mod maintenance;
+mod map_updates;
 mod markers;
 mod menu;
 pub use maintenance::{SoundMaintenance, SoundResetStage};

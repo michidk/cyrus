@@ -161,9 +161,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
             .context("BounceObject spatial state not prepared")?
             .actor_mut(index)?;
         spatial.local.position = position;
-        if !self.host.registry.map_updates.contains(&index) {
-            self.host.registry.map_updates.push(index);
-        }
+        self.host.registry.map_updates.register(index)?;
         Ok(())
     }
     fn heading(&self) -> u16 {

@@ -684,7 +684,7 @@ pub struct ScriptWorld {
     /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
     retained_candidates: cyrus_collision::candidates::CollisionCandidates,
     model_admission: Option<model::AdmissionState>,
-    map_updates: Vec<usize>,
+    map_updates: super::map_updates::MapUpdates,
     /// Shared surface-query veto; absent until an assigning query establishes it.
     surface_veto: Option<bool>,
     /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
@@ -704,9 +704,6 @@ pub struct ScriptWorld {
     camera_settings: cyrus_assets::script::CameraSettings,
     /// Installed `[system]` `standing_height`, learned when collision shapes are prepared.
     standing_height: Option<i32>,
-    /// Installed `[system]` `max_remap_objects`, the changed-actor list capacity, learned from the
-    /// scene when collision shapes are prepared; not saved, and unknown until then.
-    map_update_capacity: Option<usize>,
     /// The image the running `ViewGXA` task has the host draw over the world frame.
     gxa_overlay: Option<super::tasks::GxaOverlay>,
     /// `AnimateGXA`'s shared animation progress. Not saved: a restored world restarts the cycle.
@@ -1506,7 +1503,7 @@ impl ScriptWorld {
             })
             .transpose()?;
         Ok(Self {
-            map_updates: Vec::new(),
+            map_updates: Default::default(),
             updates: scripts.updates,
             player_distance_override: scripts.player_distance_override,
             world: scripts.world,
@@ -1553,7 +1550,6 @@ impl ScriptWorld {
             camera_limits: scripts.camera.limits,
             camera_settings: scripts.camera.clone(),
             standing_height: None,
-            map_update_capacity: None,
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
@@ -2035,47 +2031,14 @@ impl ScriptWorld {
 
     /// Actors registered as moved and awaiting regional selection, in registration order.
     pub fn pending_map_updates(&self) -> &[usize] {
-        &self.map_updates
+        self.map_updates.as_slice()
     }
 
     /// Consume movement registrations before regional selection, in first-registration order.
     /// View coordinates use Q8 units. The caller supplies the original VM map-exclusion state.
     /// Excluded passes consume registrations without changing cell membership.
-    ///
-    /// The original's list holds the installed `max_remap_objects` actors (at least 32) and raises
-    /// runtime error 196 when another distinct actor registers. Registration sites that append
-    /// without the capacity check surface the overflow here: the actors past the capacity are not
-    /// kept, the rest are consumed, and the error is reported after the consumption.
     pub fn flush_map_updates(&mut self, view: [i32; 3], excluded: bool) -> Result<()> {
-        let overflow = self.cap_map_updates()?;
-        self.consume_map_updates(view, excluded)?;
-        match overflow {
-            Some(limit) => anyhow::bail!(
-                "world {}: changed-actor list is full ({limit} actors): original runtime error 196",
-                self.world
-            ),
-            None => Ok(()),
-        }
-    }
-
-    /// Drop registrations beyond the installed capacity, returning it when any were dropped. A list
-    /// longer than the capacity floor without a known capacity cannot be judged.
-    fn cap_map_updates(&mut self) -> Result<Option<usize>> {
-        if self.map_updates.len() <= slope::MAP_UPDATE_CAPACITY_FLOOR {
-            return Ok(None);
-        }
-        let limit = self.map_update_capacity.with_context(|| {
-            format!(
-                "world {}: changed-actor list holds {} actors and its installed capacity is unavailable; re-export",
-                self.world,
-                self.map_updates.len()
-            )
-        })?;
-        if self.map_updates.len() <= limit {
-            return Ok(None);
-        }
-        self.map_updates.truncate(limit);
-        Ok(Some(limit))
+        self.consume_map_updates(view, excluded)
     }
 
     fn consume_map_updates(&mut self, view: [i32; 3], excluded: bool) -> Result<()> {
@@ -2085,7 +2048,7 @@ impl ScriptWorld {
         if self.actor_lists.is_none() {
             self.actor_lists = Some(super::order::ActorLists::new(&self.actors)?);
         }
-        let pending = std::mem::take(&mut self.map_updates);
+        let pending = self.map_updates.take();
         if excluded {
             return Ok(());
         }
@@ -3702,18 +3665,6 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         }
     }
 
-    /// The changed-actor list capacity for a registration: the installed value from the scene the
-    /// caller supplied, or unknown without one.
-    fn map_update_capacity(&self) -> slope::MapUpdateCapacity {
-        slope::MapUpdateCapacity::Installed(
-            self.inputs
-                .player_collision
-                .and_then(|source| source.scene.settings.max_remap_objects)
-                .and_then(|capacity| usize::try_from(capacity).ok())
-                .or(self.registry.map_update_capacity),
-        )
-    }
-
     /// Mask 2 of the flag byte of `WaitLineUp`'s argument actor. An actor without a control
     /// record never had the flag set, since only a lineup sets it, so it reads clear.
     fn argument_alignment_flag(&self, arguments: &[Argument]) -> Result<bool> {
@@ -4322,9 +4273,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         }
         if let Some(position) = outcome.position {
             spatial.local.position = position;
-            if !self.registry.map_updates.contains(&index) {
-                self.registry.map_updates.push(index);
-            }
+            self.registry.map_updates.register(index)?;
         }
         if refresh {
             spatial.refresh_transform()?;
@@ -5568,6 +5517,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             target == &Target::Me,
             "inspection target {target:?} unsupported"
         );
+        // The installed changed-actor list capacity travels with the scene the host supplies.
+        if let Some(source) = self.inputs.player_collision {
+            self.registry.map_updates.learn_capacity(
+                source
+                    .scene
+                    .settings
+                    .max_remap_objects
+                    .and_then(|capacity| usize::try_from(capacity).ok()),
+            );
+        }
         let id = ScriptActorId {
             generation: self.generation,
             index: self.index,
@@ -6523,9 +6482,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 && spatial.actor_mut(self.index)?.detach_from_family()?
             {
                 self.registry.actors[self.index].attributes[Attribute::Slave] = 0;
-                if !self.registry.map_updates.contains(&self.index) {
-                    self.registry.map_updates.push(self.index);
-                }
+                self.registry.map_updates.register(self.index)?;
             }
             let mut targets =
                 self.registry
@@ -6570,9 +6527,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .detach_from_family()?;
             if detached {
                 self.registry.actors[self.index].attributes[Attribute::Slave] = 0;
-                if !self.registry.map_updates.contains(&self.index) {
-                    self.registry.map_updates.push(self.index);
-                }
+                self.registry.map_updates.register(self.index)?;
             }
             return Ok(CallResult::Complete(0));
         }
@@ -6595,8 +6550,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("SetObjectLocation: spatial state not prepared")?
                 .actor_mut(self.index)?
                 .set_location_axes(location.integer()?, flags)?;
-            let capacity = self.map_update_capacity();
-            self.registry.register_map_update(self.index, capacity)?;
+            self.registry.map_updates.register(self.index)?;
             return Ok(CallResult::Complete(0));
         }
         if function == Native::SetPosition || function == Native::SetLocation {
@@ -6634,8 +6588,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         camera.current.position[axis].wrapping_add(delta);
                 }
             }
-            let capacity = self.map_update_capacity();
-            self.registry.register_map_update(self.index, capacity)?;
+            self.registry.map_updates.register(self.index)?;
             return Ok(CallResult::Complete(0));
         }
         // PlayerSnap(angle, x_offset, z_offset): the selected player's local X and Z are copied
@@ -6814,7 +6767,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
             if self.registry.selected_player_index() == Some(self.index) {
                 self.registry.pending_player_placement = Some((target, wrap(angle) as u16));
             } else {
-                let capacity = self.map_update_capacity();
                 let receiver = self
                     .registry
                     .spatial
@@ -6823,7 +6775,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .actor_mut(self.index)?;
                 receiver.local.position = target;
                 receiver.local.angles[1] = angle & 2047;
-                self.registry.register_map_update(self.index, capacity)?;
+                self.registry.map_updates.register(self.index)?;
             }
             return Ok(CallResult::Complete(0));
         }
@@ -8572,10 +8524,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("AtPos requires three arguments")
             };
             let point = [x.integer()?, y.integer()?, z.integer()?];
-            let capacity = self.map_update_capacity();
             return Ok(CallResult::Complete(i32::from(
-                self.registry
-                    .arrive_ordinary_point_bounded(id, point, capacity)?,
+                self.registry.arrive_ordinary_point(id, point)?,
             )));
         }
         if function == Native::DistanceFromLocation {
@@ -9189,7 +9139,7 @@ mod fighting_tests {
             actor_prelighting: None,
             retained_candidates: Default::default(),
             model_admission: None,
-            map_updates: Vec::new(),
+            map_updates: Default::default(),
             surface_veto: None,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
@@ -9198,7 +9148,6 @@ mod fighting_tests {
             camera_limits: Default::default(),
             camera_settings: Default::default(),
             standing_height: None,
-            map_update_capacity: None,
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,

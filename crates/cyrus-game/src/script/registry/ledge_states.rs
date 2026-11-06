@@ -620,9 +620,7 @@ impl ScriptWorld {
                 position[axis] = value;
             }
         }
-        if !self.map_updates.contains(&index) {
-            self.map_updates.push(index);
-        }
+        self.map_updates.register(index)?;
         Ok(())
     }
 

@@ -115,18 +115,6 @@ pub struct OrdinarySlopeInputs {
     pub ticks: u32,
 }
 
-/// The original's lower bound for the changed-actor list capacity (`max_remap_objects`).
-pub(super) const MAP_UPDATE_CAPACITY_FLOOR: usize = 32;
-
-/// How a registration checks the changed-actor list's capacity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MapUpdateCapacity {
-    /// No capacity check: callers that predate the capacity owner.
-    Unbounded,
-    /// The installed capacity, when the caller has it; `None` is unknown.
-    Installed(Option<usize>),
-}
-
 impl ScriptWorld {
     /// Face a target from local Q8 X/Z, following preservation's combat-maintenance
     /// facing rule. Arrival snaps X/Z and registers a deferred map update without
@@ -325,9 +313,7 @@ impl ScriptWorld {
         }
         position[0] = destination[0];
         position[2] = destination[2];
-        if !self.map_updates.contains(&index) {
-            self.map_updates.push(index);
-        }
+        self.map_updates.register(index)?;
         Ok(true)
     }
 
@@ -374,16 +360,6 @@ impl ScriptWorld {
         id: ScriptActorId,
         destination: [i32; 3],
     ) -> Result<bool> {
-        self.arrive_ordinary_point_bounded(id, destination, MapUpdateCapacity::Unbounded)
-    }
-
-    /// `arrive_ordinary_point` with the changed-actor list's capacity enforced on registration.
-    pub fn arrive_ordinary_point_bounded(
-        &mut self,
-        id: ScriptActorId,
-        destination: [i32; 3],
-        capacity: MapUpdateCapacity,
-    ) -> Result<bool> {
         let result = (|| -> Result<_> {
             let index = self.resolve(id)?;
             let origin = self.spatial(id)?.local.position;
@@ -404,7 +380,7 @@ impl ScriptWorld {
                 .actor_mut(index)?
                 .local
                 .position = destination.map(|value| (value >> 8) << 8);
-            self.register_map_update(index, capacity)?;
+            self.map_updates.register(index)?;
             Ok(true)
         })();
         result.with_context(|| {
@@ -413,44 +389,6 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })
-    }
-
-    /// Register an actor whose cell membership must be refreshed before the next regional
-    /// selection. An empty list appends without a capacity check; an actor already registered
-    /// stays where it is; otherwise it is appended while the list is below capacity. A full list
-    /// is the original's runtime error 196, raised after the caller's position stores.
-    pub(super) fn register_map_update(
-        &mut self,
-        index: usize,
-        capacity: MapUpdateCapacity,
-    ) -> Result<()> {
-        if self.map_updates.is_empty() {
-            self.map_updates.push(index);
-            return Ok(());
-        }
-        if self.map_updates.contains(&index) {
-            return Ok(());
-        }
-        // The capacity is at least the original's floor of 32, so a shorter list needs no lookup.
-        let limit = match capacity {
-            MapUpdateCapacity::Unbounded => usize::MAX,
-            MapUpdateCapacity::Installed(_)
-                if self.map_updates.len() < MAP_UPDATE_CAPACITY_FLOOR =>
-            {
-                usize::MAX
-            }
-            MapUpdateCapacity::Installed(Some(limit)) => limit,
-            MapUpdateCapacity::Installed(None) => anyhow::bail!(
-                "changed-actor list holds {} actors and its installed capacity is unavailable; re-export",
-                self.map_updates.len()
-            ),
-        };
-        anyhow::ensure!(
-            self.map_updates.len() < limit,
-            "changed-actor list is full ({limit} actors): original runtime error 196"
-        );
-        self.map_updates.push(index);
-        Ok(())
     }
 
     pub(super) fn request_ordinary_group(

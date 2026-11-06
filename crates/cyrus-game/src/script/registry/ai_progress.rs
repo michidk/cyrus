@@ -127,9 +127,7 @@ impl ScriptWorld {
                 && self.move_position_pending(id, destination, inputs)? != 0
             {
                 self.move_ordinary(id, OrdinaryMovement::Forward, 1, 0, inputs, sounds)?;
-                if !self.map_updates.contains(&index) {
-                    self.map_updates.push(index);
-                }
+                self.map_updates.register(index)?;
             }
             let clear = self.ai_destination_clear(id, player, destination, query)?;
             let control = self.actors[index]

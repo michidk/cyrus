@@ -319,9 +319,7 @@ impl ScriptWorld {
                     self.spacing_step(id, movement, inputs, sounds)?;
                 }
             }
-            if !self.map_updates.contains(&index) {
-                self.map_updates.push(index);
-            }
+            self.map_updates.register(index)?;
             Ok(())
         })();
         result.with_context(|| format!("world {} instance {} fight spacing", self.world, id.index))

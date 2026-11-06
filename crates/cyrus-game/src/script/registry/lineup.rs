@@ -109,9 +109,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             .actor_mut(index)?;
         if let Some(position) = position {
             spatial.local.position = position;
-            if !self.host.registry.map_updates.contains(&index) {
-                self.host.registry.map_updates.push(index);
-            }
+            self.host.registry.map_updates.register(index)?;
         }
         if let Some(angles) = angles
             && spatial.local.angles != angles.map(i32::from)

@@ -810,7 +810,7 @@ impl WorldSnapshot {
                 .model_admission
                 .as_ref()
                 .map(model::AdmissionState::snapshot),
-            map_updates: world.map_updates.clone(),
+            map_updates: world.map_updates.as_slice().to_vec(),
             surface_veto: world.surface_veto,
             camera: world
                 .camera
@@ -998,7 +998,7 @@ impl WorldSnapshot {
         for (rope, saved) in candidate.ropes.iter_mut().zip(&self.ropes) {
             rope.restore_state(saved);
         }
-        candidate.map_updates = self.map_updates;
+        candidate.map_updates.restore(self.map_updates);
         candidate.next_combat_index = self.next_combat_index;
         candidate.ordinary_prepared = self.ordinary_prepared;
         if let Some(saved) = self.actor_prelighting {

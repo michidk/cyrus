@@ -831,9 +831,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("admitted point control")
             .ai_type = AiType::POINT_NAVIGATION;
-        if !self.map_updates.contains(&index) {
-            self.map_updates.push(index);
-        }
+        self.map_updates.register(index)?;
         Ok(1)
     }
 
@@ -1016,9 +1014,7 @@ impl ScriptWorld {
                 sounds.context("point facing requires synchronous sounds")?,
             )?;
         }
-        if !self.map_updates.contains(&id.index) {
-            self.map_updates.push(id.index);
-        }
+        self.map_updates.register(id.index)?;
         if !self.point_visibility(id, point, inputs)? {
             self.globals.native_command.point_phase = PointPhase::START;
         }

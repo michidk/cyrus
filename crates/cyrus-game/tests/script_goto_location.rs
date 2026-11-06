@@ -1503,9 +1503,9 @@ fn move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving
 }
 
 #[test]
-fn the_world_loop_flush_reports_registrations_past_the_installed_capacity_as_error_196() {
+fn an_unchecked_arrival_registers_through_the_shared_list_and_fails_in_the_call_at_the_capacity() {
     let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
-    // Thirty-four actors register through the unchecked arrival helper; the installed capacity is 32.
+    // Thirty-four actors arrive through the shared helper; the installed capacity is 32.
     let mut at = capacity_world(
         cyrus_script::Native::AtPos,
         origin.to_vec(),
@@ -1515,45 +1515,64 @@ fn the_world_loop_flush_reports_registrations_past_the_installed_capacity_as_err
         Object::Me,
         Some(32),
     );
-    for index in 0..34 {
-        let id = at.world.id(index).unwrap();
-        assert!(at.world.arrive_ordinary_point(id, origin).unwrap());
-    }
-    assert_eq!(at.world.pending_map_updates().len(), 34);
-    let error = format!(
-        "{:#}",
-        at.world.flush_map_updates([0; 3], true).unwrap_err()
-    );
-    assert!(error.contains("original runtime error 196"), "{error}");
-    // The first 32 registrations were consumed and the overflow dropped.
-    assert!(at.world.pending_map_updates().is_empty());
-    // Within the capacity nothing is reported.
+    // Far from the target, so the arrival moves each actor and the position store is visible.
+    let moved = [origin[0] + 256, origin[1], origin[2]];
     for index in 0..32 {
         let id = at.world.id(index).unwrap();
-        at.world.arrive_ordinary_point(id, origin).unwrap();
+        assert!(at.world.arrive_ordinary_point(id, moved).unwrap());
     }
+    assert_eq!(at.world.pending_map_updates().len(), 32);
+    // The thirty-third distinct actor stores its position, then the call reports error 196.
+    let id = at.world.id(32).unwrap();
+    let error = format!(
+        "{:#}",
+        at.world.arrive_ordinary_point(id, moved).unwrap_err()
+    );
+    assert!(error.contains("original runtime error 196"), "{error}");
+    assert_eq!(at.position(32), moved.map(|value| (value >> 8) << 8));
+    assert_eq!(at.world.pending_map_updates().len(), 32);
+    // The flush consumes what registered; nothing is left to report.
     at.world.flush_map_updates([0; 3], true).unwrap();
+    assert!(at.world.pending_map_updates().is_empty());
 }
 
 #[test]
-fn the_world_loop_flush_needs_the_installed_capacity_only_past_the_floor() {
+fn the_shared_list_needs_the_installed_capacity_only_past_the_floor() {
     let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
     let mut at = at_pos_world(34, origin, 200, 0);
     for index in 0..32 {
         let id = at.world.id(index).unwrap();
         at.world.arrive_ordinary_point(id, origin).unwrap();
     }
-    at.world.flush_map_updates([0; 3], true).unwrap();
-    for index in 0..33 {
-        let id = at.world.id(index).unwrap();
-        at.world.arrive_ordinary_point(id, origin).unwrap();
-    }
+    let id = at.world.id(32).unwrap();
     let error = format!(
         "{:#}",
-        at.world.flush_map_updates([0; 3], true).unwrap_err()
+        at.world.arrive_ordinary_point(id, origin).unwrap_err()
     );
     assert!(
         error.contains("installed capacity is unavailable"),
         "{error}"
+    );
+}
+
+#[test]
+fn a_script_native_that_overflows_the_list_stops_before_its_continuation() {
+    // AtPos, run twice per script: the thirty-third actor's first call fails after its store, so
+    // the second call and the end of its script never run.
+    let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
+    let mut at = at_pos_world(34, origin, 200, 0);
+    let mut scene = scene();
+    scene.settings.max_remap_objects = Some(32);
+    at.scene = scene;
+    for index in 0..32 {
+        at.step(index, true).unwrap();
+    }
+    let error = format!("{:#}", at.step(32, true).unwrap_err());
+    assert!(error.contains("original runtime error 196"), "{error}");
+    let runtime = at.world.actors()[32].runtime().unwrap();
+    assert_eq!(
+        runtime.program_counter(Thread::Main),
+        Some(0),
+        "the call did not complete"
     );
 }
