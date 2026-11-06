@@ -4787,18 +4787,21 @@
     },
     {
       "native": "WaitLineUp",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named timing/presentation dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Task whose pending state follows the argument actor's alignment flag (script-control mask 2)",
+      "caller": "ScriptWorld::advance -> Runtime host call/poll -> GameHost::native_task_call and poll -> Task::WaitLineUp",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::wait_line_up_stays_active_while_the_argument_actors_alignment_flag_is_set",
+        "crates/cyrus-script/tests/actor_references.rs::references_survive_copy_native_arguments_object_targets_and_pending_continuation"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
         "https://github.com/michidk/redguard-preservation/commit/282107b"
       ],
-      "limits": "Verified independent installed one-argument task declaration/exact native binding/full58-byte handler.3072 original CPU contexts/five effective original-byte semantic controls PASS, no helper/service interception. All256 argument flag bytes/two argument actor identities/three deliberately unmapped receiver tokens/two actor memory patterns. Exact return/full2048-byte actor snapshots/five preserved registers/stack balance checked. Argument actor mask2 selects normalized one/zero; receiver not dereferenced/no actor or shared-state mutation/helper calls. Unknown null/malformed argument admission, actor lifetime/ownership/task scheduling/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/game runtime acceptance.",
-      "reviewed_revision": "374fce24af9b458c998a151b08165a693174ed54"
+      "limits": "Verified independent installed one-argument task declaration/exact native binding/full58-byte handler.3072 original CPU contexts/five effective original-byte semantic controls PASS, no helper/service interception. All256 argument flag bytes/two argument actor identities/three deliberately unmapped receiver tokens/two actor memory patterns. Exact return/full2048-byte actor snapshots/five preserved registers/stack balance checked. Argument actor mask2 selects normalized one/zero; receiver not dereferenced/no actor or shared-state mutation/helper calls. Unknown null/malformed argument admission, actor lifetime/ownership/task scheduling/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/game runtime acceptance. Verified (routed test over the production host; preservation SOUP.md WaitLineUp): the typed actor argument is resolved against the world generation, mask 2 of its alignment flag keeps the task pending (the handler returns one) and a clear flag completes it on the task pass, other bits never matter, the receiver and the argument actor are not changed, and the pending task survives a snapshot restore. Inferred: an actor without a control record never had the flag set, so it reads clear. Unknown: ObjectLineUp does not yet set the flag on arbitrary actors, so only the selected player's lineups reach the flag; no original, native-run or browser comparison of a script that waits on a lineup.",
+      "reviewed_revision": "0d84f397ac756c47ae375735965618b192d577dd"
     },
     {
       "native": "PlayerFaceTalk",

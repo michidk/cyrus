@@ -473,7 +473,10 @@ These targets validate generation and reject retired created actors instead of
 resolving `MyId` through namespaces. World restore explicitly rebinds saved
 reference locals; malformed saved identities fail before replacing the world.
 This follows preservation's [reference encoding](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#reference-name-encoding).
-`WaitLineUp` remains separate native-handler work. References
+Verified: `WaitLineUp(actor)` resolves its typed actor argument and stays pending while mask 2
+of that actor's alignment flag (script-control mask 2, set by the player lineup natives) is set,
+completing on the task pass after the flag clears; it changes no actor and survives a restore.
+An actor without a control record reads clear (inferred). References
 in arithmetic or global flags, raw pointer integers, temporary separate-actor
 addresses and pool-slot reuse remain unsupported; no numeric host-address encoding is exposed.
 

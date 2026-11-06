@@ -304,6 +304,7 @@ impl Task {
             Self::Duration => (Native::Wait, 1, None),
             Self::ViewGxa => (Native::ViewGXA, 3, None),
             Self::AnimateGxa => (Native::AnimateGXA, 4, None),
+            Self::WaitLineUp => (Native::WaitLineUp, 1, None),
             Self::Tasks => (Native::WaitOnTasks, 0, None),
             Self::Blocking => (Native::WaitNonMulti, 0, None),
             Self::Animation { .. } => (Native::PushAnimation, 2, None),

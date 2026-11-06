@@ -18737,6 +18737,94 @@ fn actor_reference_scripts(object: Object) -> Scripts {
     scripts
 }
 
+fn wait_line_up_scripts(object: Object) -> Scripts {
+    let mut scripts = actor_reference_scripts(object);
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::WaitLineUp,
+        kind: CallKind::Task,
+        param_count: 1,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.steps.get_mut(&1).unwrap().operation = Operation::Call {
+        call: Call {
+            function_id,
+            function: Native::WaitLineUp,
+            kind: CallKind::Task,
+            target: Object::Me,
+            arguments: vec![Value::Read {
+                place: Place::Local { index: 0 },
+            }],
+        },
+    };
+    actor.program.steps.get_mut(&3).unwrap().operation = set_flag(5);
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn wait_line_up_stays_active_while_the_argument_actors_alignment_flag_is_set() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let scripts = wait_line_up_scripts(Object::Named { string: 0 });
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id,"actors":[]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    // Mask 2 is the flag; mask 1 and every other bit leave the task finished at once.
+    for (flag_byte, waits) in [
+        (0u8, false),
+        (1, false),
+        (2, true),
+        (3, true),
+        (0xfd, false),
+    ] {
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["control"]["script_control"] = flag_byte.into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let step = |world: &mut ScriptWorld, stage| {
+            let id = world.id(1).unwrap();
+            world.advance(id, stage, inputs, None, None, 20).unwrap()
+        };
+        // A script task statement always allocates its slot; the handler's answer applies on the
+        // task pass.
+        step(&mut world, ScriptStage::OrdinaryMain);
+        assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+        step(&mut world, ScriptStage::Tasks);
+        assert_eq!(
+            world.actors()[1].runtime().unwrap().active_tasks(),
+            usize::from(waits),
+            "flag byte {flag_byte:#x}"
+        );
+        // The script's own yield follows the task.
+        step(&mut world, ScriptStage::OrdinaryMain);
+        step(&mut world, ScriptStage::OrdinaryMain);
+        assert_eq!(world.flags()[0] == 5, !waits, "flag byte {flag_byte:#x}");
+        if !waits {
+            continue;
+        }
+        // The task keeps waiting while the flag stays set, across a restore, and completes the
+        // update after the flag clears.
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["control"]["script_control"] = (flag_byte & !2).into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        step(&mut world, ScriptStage::Tasks);
+        assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
+        step(&mut world, ScriptStage::OrdinaryMain);
+        step(&mut world, ScriptStage::OrdinaryMain);
+        assert_eq!(world.flags()[0], 5);
+    }
+}
+
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};

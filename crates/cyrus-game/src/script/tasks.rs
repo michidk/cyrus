@@ -152,6 +152,8 @@ pub(super) struct NativeServices<'a> {
     pub gxa_overlay: Option<&'a mut Option<GxaOverlay>>,
     /// The task-slot state `AnimateGXA` keeps its loaded image and progress in.
     pub gxa_animation: Option<GxaAnimation<'a>>,
+    /// The alignment flag (mask 2 of the flag byte) of `WaitLineUp`'s argument actor.
+    pub alignment_flag: Option<bool>,
 }
 
 /// An installed GXA image frame drawn centered over the world frame while a `ViewGXA` task runs.
@@ -650,6 +652,8 @@ enum Task {
     /// `AnimateGXA(name, first, cycle, count)`: two cycling images over the world for `count`
     /// counter ticks, advanced by the shared progress.
     AnimateGxa,
+    /// `WaitLineUp(actor)`: active while the argument actor's alignment flag is set.
+    WaitLineUp,
     Tasks,
     Blocking,
     Animation {
@@ -2495,6 +2499,15 @@ impl Task {
                 });
                 done
             }
+            Self::WaitLineUp => {
+                let [Argument::Actor(_)] = arguments else {
+                    anyhow::bail!("WaitLineUp requires one actor reference")
+                };
+                // The handler returns one (still active) while the flag is set.
+                !services
+                    .alignment_flag
+                    .context("WaitLineUp alignment flag unavailable")?
+            }
             Self::AnimateGxa => {
                 let [Argument::String(name), first, cycle, count] = arguments else {
                     anyhow::bail!(
@@ -3035,6 +3048,8 @@ impl NativeTasks {
             Task::ViewGxa
         } else if function == Native::AnimateGXA {
             Task::AnimateGxa
+        } else if function == Native::WaitLineUp {
+            Task::WaitLineUp
         } else if function == Native::WaitOnTasks {
             Task::Tasks
         } else if function == Native::WaitNonMulti {
@@ -3114,6 +3129,11 @@ impl NativeTasks {
             Native::PlayerLineUp,
         ]
         .contains(&function)
+    }
+
+    /// Whether `token` is a `WaitLineUp` continuation, which needs its argument actor's flag.
+    pub(super) fn is_wait_lineup_task(&self, token: u64) -> bool {
+        matches!(self.tasks.get(&token), Some(Task::WaitLineUp))
     }
 
     /// Whether `token` is a lineup continuation.

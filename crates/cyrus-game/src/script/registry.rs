@@ -3472,6 +3472,22 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    /// Mask 2 of the flag byte of `WaitLineUp`'s argument actor. An actor without a control
+    /// record never had the flag set, since only a lineup sets it, so it reads clear.
+    fn argument_alignment_flag(&self, arguments: &[Argument]) -> Result<bool> {
+        let [Argument::Actor(actor)] = arguments else {
+            anyhow::bail!("WaitLineUp requires one actor reference")
+        };
+        let index = self
+            .registry
+            .resolve(*actor)
+            .context("WaitLineUp argument actor")?;
+        Ok(self.registry.actors[index]
+            .control
+            .as_ref()
+            .is_some_and(|control| control.script_control & 2 != 0))
+    }
+
     fn native_task_call(
         &mut self,
         (function, mode): (Native, super::tasks::NativeTaskMode),
@@ -3479,6 +3495,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<CallResult>> {
         let kind = mode.kind();
+        let alignment_flag = (function == Native::WaitLineUp)
+            .then(|| self.argument_alignment_flag(arguments))
+            .transpose()?;
         if matches!(mode, super::tasks::NativeTaskMode::Script(_))
             && super::tasks::NativeTasks::is_lineup_function(function)
         {
@@ -3732,6 +3751,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             bounce: None,
             point: None,
             gxa_overlay: Some(&mut self.registry.gxa_overlay),
+            alignment_flag,
             gxa_animation: self
                 .inputs
                 .nominal_ticks
@@ -8008,6 +8028,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        let alignment_flag = if self.registry.actors[self.index]
+            .tasks
+            .is_wait_lineup_task(token)
+        {
+            Some(self.argument_alignment_flag(arguments)?)
+        } else {
+            None
+        };
         if self.registry.actors[self.index].tasks.is_lineup_task(token) {
             return self.lineup_poll(token, arguments, invocation);
         }
@@ -8254,6 +8282,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 bounce: None,
                 point: None,
                 gxa_overlay: Some(&mut self.registry.gxa_overlay),
+                alignment_flag,
                 gxa_animation: self
                     .inputs
                     .nominal_ticks
