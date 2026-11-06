@@ -6507,6 +6507,25 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // published camera position, **Inferred** as for ResetPosition) by the same displacement
         // and register the actor for the deferred map update; SetRotation(x, y, z) masks and
         // writes the angles and rebuilds the matrix without registering. All return zero.
+        // SetObjectLocation(location, x, y, z): the selected location's coordinates are copied into
+        // the local position on the axes whose flag is nonzero; the receiver is registered for the
+        // deferred map update even when every flag is zero. Returns zero.
+        if function == Native::SetObjectLocation {
+            let [location, x, y, z] = arguments else {
+                anyhow::bail!("SetObjectLocation requires four arguments")
+            };
+            let flags = [x.integer()?, y.integer()?, z.integer()?];
+            self.registry
+                .spatial
+                .as_mut()
+                .context("SetObjectLocation: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .set_location_axes(location.integer()?, flags)?;
+            if !self.registry.map_updates.contains(&self.index) {
+                self.registry.map_updates.push(self.index);
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::SetPosition || function == Native::SetLocation {
             let (name, expected) = if function == Native::SetPosition {
                 ("SetPosition", 3)

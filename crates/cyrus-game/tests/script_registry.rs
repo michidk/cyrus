@@ -4377,6 +4377,49 @@ fn set_location_selects_a_table_entry_or_the_home_and_rejects_the_count() {
 }
 
 #[test]
+fn set_object_location_copies_the_selected_coordinates_on_the_flagged_axes_only() {
+    let offsets = vec![[256, 0, 0], [0, 512, 0]];
+    let home = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    let at = |location: i32, flags: [i32; 3]| {
+        let arguments = [location, flags[0], flags[1], flags[2]];
+        spatial_setter_world(Native::SetObjectLocation, &arguments, offsets.clone(), 0).map(
+            |world| {
+                let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+                (spatial.local.position, spatial.previous_local_position)
+            },
+        )
+    };
+    let target =
+        |delta: [i32; 3]| -> [i32; 3] { std::array::from_fn(|axis| home[axis] + delta[axis]) };
+    // The entry's coordinate lands only where the flag is nonzero; the rest stay.
+    assert_eq!(at(1, [1, 1, 1]).unwrap().0, target([256, 0, 0]));
+    assert_eq!(at(2, [1, 0, 0]).unwrap().0[0], home[0]);
+    assert_eq!(at(2, [0, 7, 0]).unwrap().0, target([0, 512, 0]));
+    assert_eq!(
+        at(2, [0, 0, 0]).unwrap().0,
+        home,
+        "no flag leaves the position"
+    );
+    assert_eq!(at(2, [-1, 0, 5]).unwrap().0, [home[0], home[1], home[2]]);
+    // An out-of-range selector uses the home entry, and the history is not rewritten.
+    assert_eq!(at(-1, [1, 1, 1]).unwrap().0, home);
+    assert_eq!(at(9, [1, 1, 1]).unwrap().0, home);
+    let (position, history) = at(2, [0, 1, 0]).unwrap();
+    assert_eq!(position, target([0, 512, 0]));
+    assert_eq!(history, home, "only the current position is written");
+    // The count itself reads past the table in the original: an explicit error, nothing written.
+    let error = at(3, [1, 1, 1]).unwrap_err();
+    assert!(
+        format!("{error:#}")
+            .contains("SetObjectLocation: location selector equals the location count"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn set_rotation_masks_the_angles_and_rebuilds_the_matrix_from_them() {
     let rotated =
         |angles: &[i32], mode: u8| spatial_setter_world(Native::SetRotation, angles, vec![], mode);

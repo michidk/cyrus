@@ -739,6 +739,21 @@ impl ActorSpatial {
             .map_err(|error| anyhow::anyhow!("SetLocation: {error}"))
     }
 
+    /// `SetObjectLocation` write: each axis whose flag is nonzero takes the selected location's
+    /// coordinate unchanged into the local position; a zero flag leaves that component. The
+    /// selection fails (nothing written) when the selector equals the location count.
+    pub fn set_location_axes(&mut self, location: i32, flags: [i32; 3]) -> Result<()> {
+        let selected = self
+            .selected_location(location)
+            .map_err(|error| anyhow::anyhow!("SetObjectLocation: {error}"))?;
+        for axis in 0..3 {
+            if flags[axis] != 0 {
+                self.local.position[axis] = selected[axis];
+            }
+        }
+        Ok(())
+    }
+
     /// `SetPosition`/`SetLocation` write: the coordinates become the local position and the
     /// previous-position history unchanged. Returns the change per axis (new minus old local) so
     /// the selected player's shared reference triple can follow it.

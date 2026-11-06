@@ -3896,17 +3896,19 @@
     },
     {
       "native": "SetObjectLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Four-argument function copying the selected location's coordinates into the local position on the flagged axes",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (SetObjectLocation) -> ActorSpatial::set_location_axes",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_object_location_copies_the_selected_coordinates_on_the_flagged_axes_only"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/246"
       ],
-      "limits": "Verified installed four-argument native/full125-byte handler,100-byte selector,195-byte registration helper: signed inclusive location-table bound/saved-start fallback; independent nonzero XYZ flags copy selected coordinates unchanged to current local position. Always registers receiver after coordinate writes even with zero flags; list deduplicates, empty insertion bypasses capacity check, nonempty absent receiver appends below signed capacity or reports error after coordinate writes. Normal return0/fourth-stack-argument cleanup.7776 original instruction contexts/18 effective controls. Only full-list diagnostic/error services controlled returning; termination/full consumer, allocation invariants, malformed admission, producers, exhaustive state, VM/natural original/native/browser Unknown. Current named implementation remains missing; related location helpers do not implement this native. No Rust tests/game runtime run.",
-      "reviewed_revision": "875045ad76f36a15cb47884023928bacf4cdf2de"
+      "limits": "Verified installed four-argument native/full125-byte handler,100-byte selector,195-byte registration helper: signed inclusive location-table bound/saved-start fallback; independent nonzero XYZ flags copy selected coordinates unchanged to current local position. Always registers receiver after coordinate writes even with zero flags; list deduplicates, empty insertion bypasses capacity check, nonempty absent receiver appends below signed capacity or reports error after coordinate writes. Normal return0/fourth-stack-argument cleanup.7776 original instruction contexts/18 effective controls. Only full-list diagnostic/error services controlled returning; termination/full consumer, allocation invariants, malformed admission, producers, exhaustive state, VM/natural original/native/browser Unknown. Current named implementation remains missing; related location helpers do not implement this native. No Rust tests/game runtime run. Verified (routed ScriptWorld test; preservation SOUP.md SetObjectLocation): the selector picks a location entry (a selector below zero or above the table size selects the saved start coordinates, the shared selector owner of SetLocation and DistanceToLocation); each nonzero flag copies that coordinate unchanged into the matching local-position component and a zero flag leaves it; the previous-position history is not rewritten; a selector equal to the table size is an explicit error with nothing written (the original reads past the table); the call returns zero. The receiver is added to the deferred map-update list even when every flag is zero (shared owner of SetLocation); that registration and its capacity diagnostic are not asserted by the test. Unknown: no native-run or browser comparison; the original's pending-position capacity diagnostic is not modelled (as for SetLocation).",
+      "reviewed_revision": "1035e4bea58aad78b38424cb88d3a1ef6bd2bab3"
     },
     {
       "native": "SetStartPosition",
