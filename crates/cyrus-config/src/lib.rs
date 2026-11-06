@@ -1,8 +1,8 @@
 //! Where cyrus keeps its own state (settings, the remembered install, exported caches and logs)
 //! and the one way it reads and writes it. Nothing here is ever inside the read-only game install.
 //!
-//! [`read`] treats a missing file as no state; [`write`] replaces a document atomically, so a
-//! failed write never damages the accepted one. Native stores use them instead of `std::fs`.
+//! [`read`] treats a missing file as no state; [`write`] creates parent directories and
+//! overwrites the document using ordinary filesystem writes.
 //!
 //! The root is chosen once per process, in this order:
 //!

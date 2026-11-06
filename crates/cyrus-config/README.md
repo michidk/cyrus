@@ -8,17 +8,10 @@ A leaf crate: no workspace dependencies; `directories` and `anyhow` on native ta
 crate that keeps local state asks it for a directory and goes through `read` and `write`, instead
 of spelling `game-config/...` or replacing files itself.
 
-On Unix, writes sync directory ancestry before publishing a document, so a first
-save also persists newly created directory links. Native stores that create their
-own directories use `create_dir_all` for the same guarantee. Ancestors must be
-readable and support directory syncing; a failure is reported before publication.
-The containing directory is synced again after the document rename. Other targets
-do not receive this Unix directory-sync guarantee.
-
-Windows publishes the synced candidate with `MoveFileExW` replacement and
-write-through enabled. This requests completion of the move on disk before
-returning. Windows directory ancestry and deletion durability remain unverified;
-the write-through move does not establish those guarantees.
+Native storage uses ordinary filesystem reads and writes, creating parent directories
+as needed. Writes overwrite the destination directly. A failed or interrupted write
+may leave a partial file; atomic replacement and power-loss durability are not promised.
+Errors include the affected path.
 
 ```rust
 let settings = cyrus_config::config_dir().join("settings.toml");
@@ -27,7 +20,7 @@ let logs = cyrus_config::log_dir();
 
 // None when the file does not exist; an error that names the path otherwise.
 let saved = cyrus_config::read(&settings)?;
-// Temp file, sync, one rename; the accepted document survives a failed write.
+// Create parent directories and write the document.
 cyrus_config::write(&settings, b"scene = \"START\"")?;
 ```
 

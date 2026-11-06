@@ -107,7 +107,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-config` — Where cyrus keeps its own state (settings, the remembered install, exported caches and logs)
 
-- `src/file.rs` — Atomic reads and writes of local state documents, shared by every native store.
+- `src/file.rs` — Filesystem reads and writes of local state documents, shared by native stores.
 
 ## `cyrus-console` — Console editing and command dispatch independent of gameplay, rendering and storage.
 
@@ -404,7 +404,7 @@ module where it is defined and regenerate.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/debug.rs` — Platform world-picker sources and navigation.
-- `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
+- `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.

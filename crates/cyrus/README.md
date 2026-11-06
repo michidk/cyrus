@@ -46,16 +46,13 @@ scene preparation, debug world options and control-command application.
 `cyrus-control::server` handles TCP framing. Headless assembly omits the camera
 and audio backend; windowed assembly adds the shared presentation plugins.
 
-Native document storage writes an exclusively created sibling candidate, syncs
-its complete bytes, then publishes it with one rename. Failed publication leaves
-the accepted destination intact and cleans up only that write's candidate.
-Callers own document validation. This shared byte-storage boundary does not yet
-establish complete gameplay continuation after a restart. Native save slots wrap
-session documents with revision-checked metadata and optional gameplay thumbnails.
-On Unix, publication and slot deletion sync the containing directory before
-reporting success. A directory-sync failure after publication or deletion means
-the change is visible but its crash durability is unconfirmed. Windows does not
-provide the same directory-sync guarantee through this storage boundary.
+Native document storage uses ordinary filesystem writes through `cyrus-config`,
+creating parent directories as needed. Writes overwrite directly; a failed or
+interrupted write may leave a partial file. Callers own document validation.
+This shared byte-storage boundary does not yet establish complete gameplay
+continuation after a restart. Native save slots wrap session documents with
+revision-checked metadata and optional gameplay thumbnails. Storage operations
+do not request disk syncing.
 
 Original `SAVEGAME.SAV` and per-world `.TSG` files are not supported load inputs.
 They use a different format from cyrus session documents. Preservation can read

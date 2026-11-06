@@ -1,4 +1,4 @@
-//! Native atomic local-state persistence, outside the read-only install.
+//! Native local-state persistence, outside the read-only install.
 use cyrus_game::preferences::{PreferenceKey, PreferenceStore};
 pub struct LocalPreferences;
 impl PreferenceStore for LocalPreferences {

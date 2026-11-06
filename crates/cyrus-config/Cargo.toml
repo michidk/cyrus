@@ -1,6 +1,6 @@
 [package]
 name = "cyrus-config"
-description = "Where cyrus keeps its own settings, caches and logs on the player's machine, and the atomic reads and writes of them, never in the install."
+description = "Where cyrus keeps its own settings, caches and logs on the player's machine, and the reads and writes of them, never in the install."
 version.workspace = true
 edition.workspace = true
 
