@@ -34284,6 +34284,92 @@ fn pushed_item_counts_control_use_eligibility_without_changing_selection() {
     }
 }
 
+#[test]
+fn push_all_items_replaces_consecutive_counts_without_replacing_saved_words() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    let mut asset = inventory_asset(&[(0, 1), (1, 5), (2, 3)]);
+    asset.selected = Some(2);
+    asset.inventory.get_mut(&1).unwrap().remove_drop_items = vec![2];
+    hud.configure(&asset, &Preferences::default());
+    let mut expected = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    for replacement in [0, i32::MIN, -1] {
+        assert_eq!(
+            run_item_count_native(&hud, Native::PushAllItems, &[replacement]).unwrap(),
+            0
+        );
+        for (id, saved) in [(0, 1), (1, 5), (2, 3)] {
+            let key = id.to_string();
+            expected["items"][&key]["count"] = serde_json::json!(replacement as u32);
+            expected["saved_counts"][&key] = serde_json::json!({"value": saved, "pushed": true});
+        }
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+            expected
+        );
+    }
+    for (id, saved) in [(0, 1), (1, 5), (2, 3)] {
+        assert_eq!(
+            run_item_count_native(&hud, Native::PopItem, &[id]).unwrap(),
+            saved
+        );
+    }
+    assert_eq!(
+        hud.inspect()["inventory"]["counts"],
+        serde_json::json!({"0":1,"1":5,"2":3})
+    );
+    assert_eq!(hud.active_item().unwrap(), 2);
+}
+
+#[test]
+fn push_all_items_skips_closed_and_empty_inventories_but_retains_partial_failure() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    let closed = ScriptHud::default();
+    assert_eq!(
+        run_item_count_native(&closed, Native::PushAllItems, &[-1]).unwrap(),
+        0
+    );
+    let empty = ScriptHud::default();
+    empty.configure(&inventory_asset(&[]), &Preferences::default());
+    let before = serde_json::to_value(empty.snapshot_inventory().unwrap()).unwrap();
+    assert_eq!(
+        run_item_count_native(&empty, Native::PushAllItems, &[-1]).unwrap(),
+        0
+    );
+    assert_eq!(
+        serde_json::to_value(empty.snapshot_inventory().unwrap()).unwrap(),
+        before
+    );
+    let sparse = ScriptHud::default();
+    sparse.configure(&inventory_asset(&[(0, 5), (2, 3)]), &Preferences::default());
+    let mut expected = serde_json::to_value(sparse.snapshot_inventory().unwrap()).unwrap();
+    expected["items"]["0"]["count"] = serde_json::json!(0);
+    expected["saved_counts"]["0"] = serde_json::json!({"value":5,"pushed":true});
+    let mut world = item_count_world(Native::PushAllItems, &[0]);
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                hud: Some(&sparse),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("PushItem(1): ITEM.INI definition absent"));
+    assert_eq!(world.flags(), [12], "failed wrapper must not continue");
+    assert_eq!(
+        serde_json::to_value(sparse.snapshot_inventory().unwrap()).unwrap(),
+        expected
+    );
+}
+
 fn item_count_world(native: Native, arguments: &[i32]) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {

@@ -46,6 +46,13 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: `PushAllItems` replaces the owned words of consecutive identifiers starting
+at zero through the shared saved-count owner. Repeated calls preserve the first
+saved words; a missing identifier retains earlier replacements and fails before
+caller continuation. Closed processing skips lookup. Selection and acquisition/drop
+effects are unchanged. This follows preservation's
+[indexed iteration](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushallitems-indexed-iteration).
+
 Verified: `PushItem` saves the first owned count and replaces only the current count;
 `PopItem` restores it once. Repeated pushes keep the first saved word, and subsequent
 pops return the current count. Ordinary item use requires a signed-positive current

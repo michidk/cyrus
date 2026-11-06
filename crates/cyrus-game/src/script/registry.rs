@@ -5877,6 +5877,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .push_item(item.integer()? as u32, value.integer()?)?;
             return Ok(CallResult::Complete(value));
         }
+        if kind == CallKind::Function && function == Native::PushAllItems {
+            let [value] = arguments else {
+                anyhow::bail!("PushAllItems requires one argument")
+            };
+            self.inputs
+                .hud
+                .context("PushAllItems inventory host unavailable")?
+                .push_all_items(value.integer()?)?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::PopItem {
             let [item] = arguments else {
                 anyhow::bail!("PopItem requires one argument")

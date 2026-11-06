@@ -402,6 +402,15 @@ impl Inventory {
         Ok(value)
     }
 
+    /// Replace consecutive identifiers, retaining earlier writes if a later lookup fails.
+    /// Preservation's PushAllItems contract enumerates identifiers, not item records.
+    pub(super) fn push_all_counts(&mut self, value: i32) -> Result<()> {
+        for id in 0..self.items.len() {
+            self.push_count(id as u32, value)?;
+        }
+        Ok(())
+    }
+
     /// Restore a pushed word once; later pops return the current word without restoring again.
     /// The saved word survives restoration, following preservation's SOUP PopItem contract.
     pub(super) fn pop_count(&mut self, id: u32) -> Result<i32> {

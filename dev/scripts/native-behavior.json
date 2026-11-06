@@ -5852,19 +5852,22 @@
     },
     {
       "native": "PushAllItems",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
-      "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Consecutive inventory identifier count replacement with retained saved words",
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory::push_all_counts",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::push_all_items_replaces_consecutive_counts_without_replacing_saved_words",
+        "crates/cyrus-game/tests/script_registry.rs::push_all_items_skips_closed_and_empty_inventories_but_retains_partial_failure"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/blob/cb83d20/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: independent installed function1/exact binding/full99-byte native/full168 PushItem/full117 ordered lookup original instructions. Disabled or signed count<=0 returns0; enabled loop issues original receiver/consecutive index IDs/supplied32-bit value, runs per-item saved-state contract and returns0 on finish. Sparse-ID failure reaches exact diagnostic-copy entry with earlier item writes retained. Full mapped memory/nonstack write order/canary/request sequence/exact return/five preserved registers/stack checked on returns. Unknown diagnostic effects/continuation, natural count/dense-ID invariant/list producer/lifecycle/full joint domain/VM/production parity. Duplicate/unsorted/sparse lists are constructed controls. Named production support missing. Rust/game runtime NOT RUN.",
-      "reviewed_revision": "45d79bc92e3108c1a5318f95427f5a9386c1e22d"
+      "limits": "Verified published contract: closed processing skips all lookup; enabled iteration invokes shared PushItem for consecutive identifiers from zero and returns zero independently of replacement bits. First saved words persist across repeated calls. Sparse definitions fail at the first missing identifier with earlier writes retained, and caller continuation is withheld. Selection, flags, dependents and acquisition/drop effects remain unchanged. Public caller fixtures cover raw high-bit values, empty/closed processing, repeated replacement and PopItem restoration. Original instruction witness covers request order and diagnostic boundaries. Unknown: natural authored reachability, original diagnostic continuation, malformed original lists and full rendered gameplay. The owned definition census supplies the count; arbitrary negative or externally changing original count words have no production representation.",
+      "reviewed_revision": "41df3930"
     },
     {
       "native": "PushItem",

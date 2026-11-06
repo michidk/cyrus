@@ -370,6 +370,18 @@ impl ScriptHud {
         }
     }
 
+    /// Replace all consecutive item counts; closed processing skips every lookup.
+    pub(super) fn push_all_items(&self, value: i32) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.push_all_counts(value),
+            None => Ok(()),
+        }
+    }
+
     /// Restore a saved count, or return zero without lookup while item processing is closed.
     pub(super) fn pop_item(&self, id: u32) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
