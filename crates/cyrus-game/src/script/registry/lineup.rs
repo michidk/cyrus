@@ -530,16 +530,9 @@ impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
     fn source_reference(&mut self) -> Result<Reference> {
         // The shared pointing target: the actor whose interpreter entry last ran, which retains
         // across later passes (the caller of a routed call, and still the caller when the
-        // receiver's own task stage polls the task). Before any entry has run, the running
-        // script's actor as PointAt and MoveAboveMe read it.
-        let source = match self.host.registry.globals.native_source {
-            super::super::activation::NativeSource::Actor { generation, index }
-                if generation == self.host.generation =>
-            {
-                index
-            }
-            _ => self.host.registry.routed_caller.unwrap_or(self.host.index),
-        };
+        // receiver's own task stage polls the task). The original reads whatever the pointer holds,
+        // so an unknown or departed source is an explicit error rather than a substitute actor.
+        let source = self.host.native_source_actor("ObjectLineUp")?.index;
         let local = self
             .host
             .registry

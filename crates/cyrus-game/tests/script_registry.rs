@@ -48769,3 +48769,6 @@ mod move_above_me_tests;
 
 #[path = "script_registry/point_at.rs"]
 mod point_at_tests;
+
+#[path = "script_registry/native_source_order.rs"]
+mod native_source_order_tests;
