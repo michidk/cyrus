@@ -8075,7 +8075,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             // Truncation keeps the heading modulo 2048, which is all the turn reads.
             let difference =
                 self.registry
-                    .face_ordinary_angle(id, angle as u16, inputs, &mut **sounds)?;
+                    .turn_ordinary_angle(id, angle as u16, inputs, &mut **sounds)?;
             return Ok(CallResult::Complete(difference));
         }
         // TurnToPos(x, z) snaps onto a point within the facing threshold (returning zero) or turns
@@ -8094,7 +8094,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("TurnToPos requires synchronous sounds")?;
             let value = self
                 .registry
-                .face_ordinary_point(id, point, inputs, &mut **sounds)?;
+                .turn_ordinary_point(id, point, inputs, &mut **sounds)?;
             return Ok(CallResult::Complete(value));
         }
         if kind == CallKind::Function && function == Native::PlayerForceTalk {

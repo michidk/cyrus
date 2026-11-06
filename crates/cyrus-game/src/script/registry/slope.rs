@@ -156,12 +156,27 @@ impl ScriptWorld {
         inputs: OrdinarySlopeInputs,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<i32> {
+        self.resolve(id)?;
+        ensure!(
+            inputs.selected_player != Some(id),
+            "world {} instance {} point {destination:?} facing: selected-player facing camera unavailable",
+            self.world,
+            id.index
+        );
+        self.turn_ordinary_point(id, destination, inputs, sounds)
+    }
+
+    /// The point-facing step without the facing tasks' selected-player guard: `TurnToPos` has no
+    /// camera feedback, and a selected player's turn rebuilds its matrix after the snap or step.
+    pub(super) fn turn_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
         let result = (|| -> Result<i32> {
             let index = self.resolve(id)?;
-            ensure!(
-                inputs.selected_player != Some(id),
-                "selected-player facing camera unavailable"
-            );
             let speed = self.ordinary_group_speed(index);
             let origin = self.spatial(id)?.local;
             let x = destination[0].wrapping_sub(origin.position[0]);
@@ -201,6 +216,18 @@ impl ScriptWorld {
             inputs.selected_player != Some(id),
             "selected-player facing camera unavailable"
         );
+        self.turn_ordinary_angle(id, heading, inputs, sounds)
+    }
+
+    /// The angle-facing step without the facing tasks' selected-player guard (`TurnToAngle`).
+    pub(super) fn turn_ordinary_angle(
+        &mut self,
+        id: ScriptActorId,
+        heading: u16,
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        self.resolve(id)?;
         self.turn_ordinary_toward(id, heading, inputs, sounds)
             .with_context(|| {
                 format!(

@@ -48273,3 +48273,6 @@ fn distance_from_location_measures_from_the_current_local_position_through_publi
 
 #[path = "script_registry/player_force_talk.rs"]
 mod player_force_talk_tests;
+
+#[path = "script_registry/turn_selected_player.rs"]
+mod turn_selected_player_tests;
