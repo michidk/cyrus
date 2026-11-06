@@ -3816,16 +3816,22 @@
     },
     {
       "native": "MoveAboveMe",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Production named placement of a receiver relative to the running script's actor",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> pending_player_placement or register_map_update",
+      "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it",
+        "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_without_the_standing_height_names_the_missing_input",
+        "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/254"
+        "https://github.com/michidk/redguard-preservation/pull/254",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6694022620",
+        "https://github.com/michidk/redguard-preservation/commit/70a06cd"
       ],
-      "limits": "Verified independent installed4-argument native/full329-byte handler. Shared source actor position resolves alternate/active attachment/current local; source matrix transforms offsets; wrapping XYZ composition, Y subtracts receiver vertical offset<<8 and adds shared adjustment. Selected player writes pending flag/XYZ/unchanged angle; others current local XYZ/angle&2047 then registration. Return0/fourth stack argument cleanup.1440 original contexts/23 effective semantic mutations; original resolver/predicates/registration execute, matrix in-place IO and returning diagnostic/error137 controlled. Exact target hash matches separately evidenced original matrix PR248, not integrated numerical/runtime acceptance. Selected allocated domains; source producer/lifetime, malformed/full list/error termination/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "limits": "Verified published contract plus the recovered globals: the source is the actor whose script runs (the caller of a routed call), the vertical adjustment is the installed standing height shifted left eight bits, and a slave source is the original diagnostic 137. Public routed tests cover a named receiver placed at the source position plus the offset (identity matrix) lowered by its positive Y extent and raised by the standing height, the angle masked into its yaw, registration in the changed-actor list, the source left in place, the missing standing height as an explicit error and the slave source rejected before any change. The selected-player branch stores the pending placement the existing main-loop consumer applies, but has no public test because no fixture prepares a player collision shape. A rotated source matrix is not exercised through the public call. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {

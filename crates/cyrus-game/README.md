@@ -601,3 +601,13 @@ fails with the original's error 196 after its position store. The contract follo
 [AtPos position arrival](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#atpos-position-arrival)
 and [changed-actor list](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#changed-actor-list).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `MoveAboveMe(x, y, z, angle)` places its receiver relative to the actor whose script is
+running (the caller, when the call is routed to a named object): the source position, resolved as
+attached, linked or local, plus the offset turned by the source's matrix, lowered by the receiver's
+positive Y extent and raised by the installed `standing_height` shifted left eight bits. The
+selected player receives the pending placement that `MovePlayerAboveMe` uses; any other receiver is
+written directly with `angle & 2047` as its yaw and registered in the changed-actor list. A slave
+source reports the original's diagnostic 137 before anything changes. The contract follows
+preservation's [MoveAboveMe](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#moveaboveme).
+Natural installed gameplay parity remains Unknown.

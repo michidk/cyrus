@@ -3641,6 +3641,17 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    /// The changed-actor list capacity for a registration: the installed value from the scene the
+    /// caller supplied, or unknown without one.
+    fn map_update_capacity(&self) -> slope::MapUpdateCapacity {
+        slope::MapUpdateCapacity::Installed(
+            self.inputs
+                .player_collision
+                .and_then(|source| source.scene.settings.max_remap_objects)
+                .and_then(|capacity| usize::try_from(capacity).ok()),
+        )
+    }
+
     /// Mask 2 of the flag byte of `WaitLineUp`'s argument actor. An actor without a control
     /// record never had the flag set, since only a lineup sets it, so it reads clear.
     fn argument_alignment_flag(&self, arguments: &[Argument]) -> Result<bool> {
@@ -6667,6 +6678,63 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        // MoveAboveMe places the receiver relative to the actor whose script is running: the source
+        // position plus the offset turned by the source's matrix, lowered by the receiver's
+        // vertical extent and raised by the installed standing height. The selected player is
+        // placed through the pending placement; any other receiver is written directly and
+        // registered in the changed-actor list.
+        if function == Native::MoveAboveMe {
+            anyhow::ensure!(arguments.len() == 4, "MoveAboveMe requires four arguments");
+            let source = self
+                .registry
+                .id(self.registry.routed_caller.unwrap_or(self.index))?;
+            anyhow::ensure!(
+                self.registry.actors[source.index].attributes[Attribute::Slave] == 0,
+                "MoveAboveMe world {} actor {}: original diagnostic 137: slave source",
+                self.registry.world,
+                source.index
+            );
+            let offset = [
+                arguments[0].integer()?,
+                arguments[1].integer()?,
+                arguments[2].integer()?,
+            ];
+            let angle = arguments[3].integer()?;
+            let standing_height = self
+                .inputs
+                .player_collision
+                .map(|source| source.scene.settings.standing_height)
+                .or(self.registry.standing_height)
+                .context("MoveAboveMe: standing height unavailable")?;
+            let rotated = self
+                .registry
+                .spatial(source)?
+                .local
+                .matrix
+                .transform(offset)?;
+            let base = self.registry.query_position(source)?;
+            let extent = self.registry.ordinary_collision_shape(id)?.positive_extent[1];
+            let mut target: [i32; 3] =
+                std::array::from_fn(|axis| base[axis].wrapping_add(rotated[axis]));
+            target[1] = target[1]
+                .wrapping_sub(extent.wrapping_shl(8))
+                .wrapping_add(standing_height.wrapping_shl(8));
+            if self.registry.selected_player_index() == Some(self.index) {
+                self.registry.pending_player_placement = Some((target, wrap(angle) as u16));
+            } else {
+                let capacity = self.map_update_capacity();
+                let receiver = self
+                    .registry
+                    .spatial
+                    .as_mut()
+                    .context("MoveAboveMe: spatial state not prepared")?
+                    .actor_mut(self.index)?;
+                receiver.local.position = target;
+                receiver.local.angles[1] = angle & 2047;
+                self.registry.register_map_update(self.index, capacity)?;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::MovePlayerAboveMe {
             anyhow::ensure!(
                 arguments.len() == 4,
@@ -8383,12 +8451,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("AtPos requires three arguments")
             };
             let point = [x.integer()?, y.integer()?, z.integer()?];
-            let capacity = slope::MapUpdateCapacity::Installed(
-                self.inputs
-                    .player_collision
-                    .and_then(|source| source.scene.settings.max_remap_objects)
-                    .and_then(|capacity| usize::try_from(capacity).ok()),
-            );
+            let capacity = self.map_update_capacity();
             return Ok(CallResult::Complete(i32::from(
                 self.registry
                     .arrive_ordinary_point_bounded(id, point, capacity)?,

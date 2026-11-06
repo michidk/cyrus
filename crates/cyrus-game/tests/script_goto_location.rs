@@ -1061,11 +1061,30 @@ fn routed_at_pos_world(
     extent_y: i32,
     receiver: Object,
 ) -> AtPosWorld {
-    use cyrus_script::{AnimationGroup, Native};
+    native_call_world(
+        cyrus_script::Native::AtPos,
+        target.to_vec(),
+        instances,
+        speed,
+        extent_y,
+        receiver,
+    )
+}
+
+/// Every instance runs the native call twice with integer arguments, into flag zero.
+fn native_call_world(
+    native: cyrus_script::Native,
+    arguments: Vec<i32>,
+    instances: usize,
+    speed: u8,
+    extent_y: i32,
+    receiver: Object,
+) -> AtPosWorld {
+    use cyrus_script::AnimationGroup;
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: Native::AtPos,
-        param_count: 3,
+        name: native,
+        param_count: arguments.len() as u8,
         kind: CallKind::Function,
     });
     scripts.instances = (0..instances)
@@ -1083,10 +1102,10 @@ fn routed_at_pos_world(
     // The call runs twice, so a registered receiver also exercises the already-registered path.
     let function_call = Box::new(Call {
         function_id: 1,
-        function: Native::AtPos,
+        function: native,
         target: receiver.clone(),
         kind: CallKind::Function,
-        arguments: target
+        arguments: arguments
             .into_iter()
             .map(|value| Value::Integer { value })
             .collect(),
@@ -1317,4 +1336,73 @@ fn at_pos_routed_call_moves_the_named_receiver_and_continues_the_caller() {
     // The caller's script ran to its end: the result reached its flag and its task is done.
     assert_eq!(at.world.flags(), [1]);
     assert_eq!(at.world.actors()[1].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it() {
+    // Actor 1's script calls MoveAboveMe on actor 0 (the named object): the target is actor 1's
+    // position plus the offset, lowered by actor 0's positive Y extent and raised by the installed
+    // standing height (here -2, as a Q8 shift), with the angle masked into actor 0's yaw.
+    let extent = 5;
+    let mut at = native_call_world(
+        cyrus_script::Native::MoveAboveMe,
+        vec![256, 512, -768, 2048 + 300],
+        2,
+        2,
+        extent,
+        Object::Named { string: 0 },
+    );
+    let source = at.position(1);
+    let receiver_before = at.position(0);
+    at.step(1, true).unwrap();
+    let standing_height = at.scene.settings.standing_height;
+    let expected = [
+        source[0] + 256,
+        source[1] + 512 - (extent << 8) + (standing_height << 8),
+        source[2] - 768,
+    ];
+    assert_ne!(receiver_before, expected);
+    assert_eq!(at.position(0), expected);
+    assert_eq!(at.position(1), source, "the source is not moved");
+    let id = at.world.id(0).unwrap();
+    assert_eq!(at.world.spatial(id).unwrap().local.angles[1], 300);
+    assert_eq!(at.world.pending_map_updates(), [0]);
+    // The call returns zero; the caller's script completed.
+    assert_eq!(at.world.flags(), [0]);
+}
+
+#[test]
+fn move_above_me_without_the_standing_height_names_the_missing_input() {
+    let mut at = native_call_world(
+        cyrus_script::Native::MoveAboveMe,
+        vec![0, 0, 0, 0],
+        2,
+        2,
+        0,
+        Object::Me,
+    );
+    let before = at.position(0);
+    let error = format!("{:#}", at.step(0, false).unwrap_err());
+    assert!(error.contains("standing height unavailable"), "{error}");
+    assert_eq!(at.position(0), before);
+}
+
+#[test]
+fn move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving() {
+    let mut at = native_call_world(
+        cyrus_script::Native::MoveAboveMe,
+        vec![256, 0, 0, 0],
+        2,
+        2,
+        0,
+        Object::Named { string: 0 },
+    );
+    at.world
+        .set_actor_attribute(1, Attribute::Slave.index(), 1)
+        .unwrap();
+    let receiver_before = at.position(0);
+    let error = format!("{:#}", at.step(1, true).unwrap_err());
+    assert!(error.contains("original diagnostic 137"), "{error}");
+    assert_eq!(at.position(0), receiver_before);
+    assert!(at.world.pending_map_updates().is_empty());
 }
