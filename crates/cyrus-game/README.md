@@ -561,3 +561,12 @@ differs from channel zero's no-selection index, and zero otherwise; it scans, co
 nothing. A selection outside the queue is a contextual error. The contract follows preservation's
 [broadcast availability query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#broadcast-availability-query).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `SendBroadcast(value)` appends an entry to channel zero, the queue every receiver's
+broadcast selection reads: the calling actor is the sender, there is no recipient and the value is
+stored unchanged; the write cursor then advances, wrapping at the eight-entry limit, and the newly
+indexed slot is cleared. A zero value returns before anything is read or written. It shares the
+writer with `SendMessage`, so class-zero message entries and broadcasts live in one queue. The
+contract follows preservation's
+[SendBroadcast entry write](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#sendbroadcast-entry-write).
+Natural installed gameplay parity remains Unknown.

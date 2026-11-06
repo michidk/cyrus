@@ -2733,17 +2733,22 @@
     },
     {
       "native": "SendBroadcast",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast entry-write and global-index update contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast entry write through the shared channel-zero queue writer",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::send_broadcast -> CombatMessages::send",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::send_broadcast_writes_the_channel_zero_entry_every_broadcast_native_reads",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::send_broadcast_wraps_the_write_cursor_and_clears_the_newly_indexed_slot",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::send_broadcast_zero_value_changes_nothing_and_other_forms_fail_before_writing"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/93a140576b27a7f6a1b6dfc135c28f8177558959",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614768568"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614768568",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6692403806"
       ],
-      "limits": "Verified installed one-argument declaration/exact binding/full229-byte native, no native helpers. 64,144 original-instruction contexts/15 effective controls including 2,704 full256-entry arrays. All256 global index bytes/ten signed limits/four arguments/three unmapped receiver tokens/two patterns; selected full arrays/diagnostic repair or argument0. Zero argument returns0 without array/limit reads or entry/index mutation. Nonzero stores receiver token/zero recipient/argument at global index, increments byte/signed-limit reset, re-reads context first pointer and clears newly indexed entry. Exact write order/same-slot clear alias; no receiver or destination-content reads. EDX scratch/five preserved registers/stack checked. No allocation/release. Diagnostic IO controlled returning with repair or zero argument. Unknown malformed admission, producers/capacity/ownership/lifetime/consumption, concurrency/reentrancy/natural diagnostics/VM/original/native/browser/full joint domain. No invented queue model or sibling inference. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "limits": "Verified published entry-write contract and the installed one-argument declaration. Public VM assertions cover a nonzero value stored with the caller as sender and no recipient at channel zero's write cursor, read by every receiver through ReceiveBroadcast and GetBroadcastSender, unchanged selections, write-cursor wrap at the eight-entry limit with the newly indexed slot cleared and reused, a zero value writing nothing, a wrong argument count rejected at prepare and a non-integer value failing without a write. The production context is always initialized with eight entries per channel; absent-context diagnostics and arbitrary capacities are not exposed. SendMessage entries share channel zero for actors of class zero. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "1e3572e6b3be604685e529745cb9d85e9affa71f"
     },
     {

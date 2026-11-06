@@ -613,3 +613,115 @@ fn is_broadcast_waiting_is_one_exactly_when_the_receiver_has_a_broadcast_selecti
     );
     assert!(error.contains("read cursor 200 outside queue"), "{error}");
 }
+
+fn send_broadcast_scripts(arguments: Vec<Value>) -> Scripts {
+    let mut scripts = actor_reference_scripts(Object::Me);
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::SendBroadcast,
+        kind: CallKind::Function,
+        param_count: 1,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&3)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id,
+            function: Native::SendBroadcast,
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments,
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn send_broadcast_writes_the_channel_zero_entry_every_broadcast_native_reads() {
+    let scripts = send_broadcast_scripts(vec![Value::Integer { value: 0xd000 }]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    // Nothing sent yet: no receiver has a broadcast selection.
+    assert_eq!(world.receive_broadcast(a).unwrap(), 0);
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), None);
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    // Every receiver sees the entry: it has no recipient, the sender is the calling actor and
+    // the value is unchanged. Selections are independent of the class-message cursor.
+    for receiver in [a, b] {
+        assert_eq!(world.selected_broadcast_sender(receiver).unwrap(), Some(b));
+        assert_eq!(world.receive_broadcast(receiver).unwrap(), 0xd000);
+    }
+    let queued = world.peek_combat_message(a).unwrap().unwrap();
+    assert_eq!((queued.sender, queued.receiver), (b, None));
+    // Accepting an entry leaves it selected until it is deleted.
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), Some(b));
+    assert_eq!(selection(&world, 0), 0);
+}
+
+#[test]
+fn send_broadcast_wraps_the_write_cursor_and_clears_the_newly_indexed_slot() {
+    let scripts = send_broadcast_scripts(vec![Value::Integer { value: 1 }]);
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    // Receiver 1 selects the last slot; receiver 0 selects the first.
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 7.into()
+    });
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    for value in 1..=8 {
+        world
+            .send_broadcast(b, CombatMessageCode::from(0x100 + value))
+            .unwrap();
+    }
+    // Eight writes returned the cursor to zero and cleared slot zero: the oldest entry is gone,
+    // receiver 0 has no selection, and receiver 1 still reads slot seven.
+    assert_eq!(world.receive_broadcast(a).unwrap(), 0);
+    assert_eq!(world.receive_broadcast(b).unwrap(), 0x108);
+    // The ninth write reuses slot zero.
+    world
+        .send_broadcast(b, CombatMessageCode::from(0x109))
+        .unwrap();
+    assert_eq!(world.receive_broadcast(a).unwrap(), 0x109);
+}
+
+#[test]
+fn send_broadcast_zero_value_changes_nothing_and_other_forms_fail_before_writing() {
+    // A zero value returns before anything is written.
+    let scripts = send_broadcast_scripts(vec![Value::Integer { value: 0 }]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    let before = serde_json::to_value(world.globals()).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), None);
+    assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+    // Any other argument count is rejected against the one-argument declaration when the
+    // world is prepared, before anything runs.
+    for arguments in [
+        vec![],
+        vec![Value::Integer { value: 1 }, Value::Integer { value: 2 }],
+    ] {
+        let Err(error) = ScriptWorld::prepare(&send_broadcast_scripts(arguments), 17) else {
+            panic!("a wrong argument count must be rejected at prepare")
+        };
+        assert!(format!("{error:#}").contains("SendBroadcast"), "{error:#}");
+    }
+    // A non-integer value fails the call and writes nothing.
+    let actor_value = Value::Read {
+        place: Place::Local { index: 0 },
+    };
+    let scripts = send_broadcast_scripts(vec![actor_value]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    actor_reference_step(&mut world, b).unwrap();
+    let error = format!("{:#}", actor_reference_step(&mut world, b).unwrap_err());
+    assert!(error.contains("integer"), "{error}");
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), None);
+}

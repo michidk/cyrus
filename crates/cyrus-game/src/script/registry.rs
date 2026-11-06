@@ -937,6 +937,28 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// `SendBroadcast`: append an entry with no recipient to channel zero, the queue every
+    /// receiver's broadcast selection reads. A zero value has no effect.
+    pub fn send_broadcast(
+        &mut self,
+        sender: ScriptActorId,
+        code: super::CombatMessageCode,
+    ) -> Result<()> {
+        if code == super::CombatMessageCode::NONE {
+            return Ok(());
+        }
+        self.resolve(sender)?;
+        self.globals.combat_messages.send(
+            0,
+            super::CombatMessage {
+                sender,
+                receiver: None,
+                code,
+            },
+        );
+        Ok(())
+    }
+
     /// Peek one addressed message without changing its retained read cursor.
     pub fn peek_combat_message(
         &self,
@@ -7200,6 +7222,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(
                 self.registry.selected_message_entry(receiver)?.is_some(),
             )));
+        }
+        // SendBroadcast appends the value to channel zero with the receiver as sender and no
+        // recipient. A zero value returns before anything is read or written.
+        if function == Native::SendBroadcast {
+            let [value] = arguments else {
+                anyhow::bail!("SendBroadcast requires one value argument")
+            };
+            let sender = self.registry.id(self.index)?;
+            self.registry
+                .send_broadcast(sender, value.integer()?.into())?;
+            return Ok(CallResult::Complete(0));
         }
         // IsBroadcastWaiting is one when the receiver's broadcast selection differs from the
         // no-selection index; it scans nothing and changes nothing.
