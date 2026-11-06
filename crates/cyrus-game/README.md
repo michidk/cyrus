@@ -507,3 +507,15 @@ builder. Slave receivers report original diagnostic 137 before changing the pose
 divide faults also remain explicit errors. The original diagnostic console recovery
 mode is unavailable. Original instruction witnesses and synthetic public native/browser
 callers bound acceptance; natural installed gameplay parity remains Unknown.
+
+Verified: `DeleteBroadcast()` advances only the receiver's broadcast selection
+through direct and routed VM calls and returns zero. It uses channel zero of the
+retained messaging context, independently of the actor's class-message cursor,
+and leaves message entries and senders unchanged. Actor snapshots preserve the
+full selection byte and default older saves to zero; restoring a world retains
+the message writer and rebinds saved actor identities. The contract follows
+preservation's [broadcast selection advance](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#deletebroadcast-selection-advance)
+and [messaging lifecycle](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#messaging-context-lifecycle).
+The production owner always has its initialized eight-entry channels. Missing
+context diagnostic recovery is unavailable. Synthetic public callers bound
+acceptance; natural installed gameplay parity remains Unknown.

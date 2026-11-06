@@ -455,6 +455,8 @@ pub struct ActorControlState {
 pub struct ScriptActor {
     /// Allocator-zero class-message read cursor, independent of combat allocation.
     message_read: u8,
+    /// Allocator-zero broadcast selection, independent of the class-message cursor.
+    broadcast_index: u8,
     pub source: ScriptActorSource,
     /// Signed low word used by namespace lookup; absent for separate map object paths.
     pub runtime_identifier: Option<i16>,
@@ -528,6 +530,7 @@ impl ScriptActor {
         };
         Self {
             message_read: 0,
+            broadcast_index: 0,
             source: ScriptActorSource::Shell(name.to_owned()),
             runtime_identifier: None,
             namespace: template.and_then(|template| template.namespace.clone()),
@@ -1280,6 +1283,7 @@ impl ScriptWorld {
                 light,
                 flat,
                 message_read: 0,
+                broadcast_index: 0,
                 surface: (control.is_some()
                     || matches!(
                         &source,
@@ -3074,7 +3078,7 @@ impl ScriptWorld {
             "activation": self.activation, "globals": self.globals,
             "actors": self.actors.iter().enumerate().skip(offset).take(limit.min(64)).map(|(index, actor)| serde_json::json!({
                 "id": ScriptActorId { generation: self.generation, index }, "name": actor.name(),
-                "source": actor.source.label(), "runtime_identifier": actor.runtime_identifier,
+                "source": actor.source.label(), "runtime_identifier": actor.runtime_identifier, "broadcast_index": actor.broadcast_index,
                 "object_id": actor.placement().map(|placement| placement.object_id), "unavailable": actor.unavailable,
                 "main": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Main)),
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
@@ -5442,6 +5446,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if kind != CallKind::Function
             && [
+                Native::DeleteBroadcast,
                 Native::FlatAnimate,
                 Native::FlatSound,
                 Native::ResetRotation,
@@ -5463,6 +5468,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     other => other,
                 },
             );
+        }
+        if function == Native::DeleteBroadcast {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "DeleteBroadcast requires no arguments"
+            );
+            self.registry
+                .globals
+                .combat_messages
+                .delete_broadcast(&mut self.registry.actors[self.index].broadcast_index);
+            return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function == Native::Jump {
             anyhow::ensure!(arguments.is_empty(), "Jump requires no arguments");
@@ -8529,6 +8545,7 @@ mod fighting_tests {
                 light: None,
                 flat: None,
                 message_read: 0,
+                broadcast_index: 0,
                 source: ScriptActorSource::Map(Instance {
                     object_id: index as u32,
                     actor: format!("ACTOR{index}"),
@@ -8703,6 +8720,7 @@ mod selector_tests {
             light: None,
             flat: None,
             message_read: 0,
+            broadcast_index: 0,
             source,
             runtime_identifier: None,
             namespace: None,

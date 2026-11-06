@@ -499,6 +499,18 @@ impl Default for CombatMessages {
     }
 }
 impl CombatMessages {
+    /// Advance the receiver's broadcast selection without touching entries.
+    /// Broadcasts share channel zero's write cursor and the initialized queue capacity.
+    pub(super) fn delete_broadcast(&self, selection: &mut u8) {
+        if *selection == self.classes[0].write {
+            return;
+        }
+        *selection = selection.wrapping_add(1);
+        if i32::from(*selection) >= QUEUE_CAPACITY as i32 {
+            *selection = 0;
+        }
+    }
+
     /// Send a nonzero message and clear the next slot's code. Zero does nothing.
     /// The caller validates receiver identity and supplies its authored class.
     pub fn send(&mut self, class: u8, message: CombatMessage) {

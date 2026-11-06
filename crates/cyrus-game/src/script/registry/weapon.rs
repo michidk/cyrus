@@ -699,6 +699,7 @@ mod tests {
         };
         ScriptActor {
             message_read: 0,
+            broadcast_index: 0,
             source: ScriptActorSource::Player,
             runtime_identifier: None,
             namespace: None,

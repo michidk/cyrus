@@ -2511,17 +2511,20 @@
     },
     {
       "native": "DeleteBroadcast",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast-selection advance contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast selection advance through the retained channel-zero messaging context",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> CombatMessages::delete_broadcast",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/f1714b7",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613350431"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613350431",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6689747444"
       ],
-      "limits": "Verified installed zero-argument declaration/exact binding/full native and availability helper. 127,232 original-instruction contexts/12 effective semantic controls cover full selection/sentinel pairs, byte increment wrap, ten signed global limit boundaries, two receivers, absent/nonzero unmapped context tokens and exact write order. Unavailable selection unchanged/no limit read; available increments byte then retains below signed limit or resets0, return0. No entry/sender/context-pointer dereference or entry release in native/helper spans. Formatter/runtime-error IO controlled returning with/without repair. Unknown malformed receiver/admission, limit/sentinel producers/consistency, queue lifetime/consumption, natural diagnostics, concurrency, VM/original/native/browser/full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence.",
+      "limits": "Verified published selection advance and shared channel-zero ownership. Public VM assertions cover empty/live writer, independent routed receiver, byte wrap, unchanged entries/class cursor, task completion, malformed arity, world replacement and generation-rebinding save/restore. The production context is always initialized with eight entries per channel; absent-context diagnostic recovery and arbitrary capacities are not exposed. SendBroadcast, ReceiveBroadcast and GetBroadcastSender remain separately owned work. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "8b42f5eaf8299f08e741df1291b8ab843237df4d"
     },
     {
@@ -5866,7 +5869,9 @@
       "owner": 38,
       "scope": "Direct named item/presentation dispatch",
       "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory",
-      "tests": ["crates/cyrus-game/tests/script_registry.rs::item_used_tracks_completed_use_through_public_callers_and_snapshots"],
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::item_used_tracks_completed_use_through_public_callers_and_snapshots"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",

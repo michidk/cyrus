@@ -335,6 +335,8 @@ struct ActorSnapshot {
     source: String,
     runtime_identifier: Option<i16>,
     message_read: u8,
+    #[serde(default)]
+    broadcast_index: u8,
     runtime: Option<cyrus_script::persistence::Snapshot>,
     unavailable: Option<String>,
     attributes: cyrus_script::Attributes,
@@ -390,6 +392,7 @@ impl ActorSnapshot {
             source: actor.source.label().to_owned(),
             runtime_identifier: actor.runtime_identifier,
             message_read: actor.message_read,
+            broadcast_index: actor.broadcast_index,
             runtime: actor
                 .runtime
                 .as_ref()
@@ -583,6 +586,7 @@ impl ActorSnapshot {
             )
         };
         actor.message_read = self.message_read;
+        actor.broadcast_index = self.broadcast_index;
         actor.runtime = runtime;
         actor.tasks = tasks;
         actor.native_commands = self.native_commands;

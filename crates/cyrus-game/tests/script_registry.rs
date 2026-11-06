@@ -47789,3 +47789,6 @@ fn item_used_tracks_completed_use_through_public_callers_and_snapshots() {
 
 #[path = "script_registry/player_tilt.rs"]
 mod player_tilt_tests;
+
+#[path = "script_registry/delete_broadcast.rs"]
+mod delete_broadcast_tests;
