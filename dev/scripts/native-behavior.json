@@ -2715,18 +2715,21 @@
     },
     {
       "native": "ReplySender",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original receiver-channel reply entry-write and per-channel index update contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "One-argument function replying to the sender of the receiver's selected class message",
+      "caller": "ScriptWorld::advance -> Runtime function call (direct or object-routed) -> GameHost::call (ReplySender) -> reply_to_message_sender",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::reply_sender_writes_one_entry_to_the_selected_sender_on_the_receivers_channel",
+        "crates/cyrus-game/tests/script_registry.rs::reply_sender_writes_nothing_without_a_value_a_selection_or_a_distinct_sender"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/ee2be807f8495b58f52a3fbefdbc4873b8384007",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6614584638"
       ],
-      "limits": "Verified installed one-argument declaration/exact binding/full350-byte native; availability126/sender186-byte accepted helper identities audited once and joint originals executed. 84,396 original-instruction contexts/19 effective controls, including 6,828 full256-entry arrays; full selection/index byte pairs at channel0, selected argument/sender/signed-limit/receiver/pattern variations at channel127 and all256 channels. Receiver subrecord channel selects context pointer/global index; zero argument/unavailable/null-self sender returns0 without entry mutation. Otherwise stores receiver/sender token/argument, increments channel index byte/signed-limit reset, re-reads channel context pointer and clears new indexed entry. Exact writes include same-slot/selected-entry alias; receiver cursor/other channels unchanged. EDX scratch/five preserved registers checked. No sender dereference/allocation/release/destination-content gate. Diagnostic IO controlled returning with repair or inactive paths including wrapper/helper double diagnostic. Unknown malformed receiver/subrecord/channel/context admission, producer consistency/capacity/ownership/lifetime/consumption, concurrency/reentrancy/natural diagnostics/VM/original/native/browser/full joint domain. No invented queue model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
-      "reviewed_revision": "0f6f225be7fac876b81a364033ef1f860bfee777"
+      "limits": "Verified installed one-argument declaration/exact binding/full350-byte native; availability126/sender186-byte accepted helper identities audited once and joint originals executed. 84,396 original-instruction contexts/19 effective controls, including 6,828 full256-entry arrays; full selection/index byte pairs at channel0, selected argument/sender/signed-limit/receiver/pattern variations at channel127 and all256 channels. Receiver subrecord channel selects context pointer/global index; zero argument/unavailable/null-self sender returns0 without entry mutation. Otherwise stores receiver/sender token/argument, increments channel index byte/signed-limit reset, re-reads channel context pointer and clears new indexed entry. Exact writes include same-slot/selected-entry alias; receiver cursor/other channels unchanged. EDX scratch/five preserved registers checked. No sender dereference/allocation/release/destination-content gate. Diagnostic IO controlled returning with repair or inactive paths including wrapper/helper double diagnostic. Unknown malformed receiver/subrecord/channel/context admission, producer consistency/capacity/ownership/lifetime/consumption, concurrency/reentrancy/natural diagnostics/VM/original/native/browser/full joint domain. No invented queue model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence. Verified (routed ScriptWorld tests; preservation SOUP.md ReplySender and the shared-context facts in 6c20fd1): a zero value, no selection and a selected sender equal to the receiver write nothing; otherwise one entry (sender the receiver, recipient the selected message's sender, the value) is written on the receiver's own class channel and the shared queue delivers it to that sender; the receiver's selection is unchanged; direct and object-routed calls use the right receiver. A selected entry never written (null sender) writes nothing, as the contract states. Unknown: no native-run or browser comparison; the original's cleared next entry keeps no recipient here; ReplyBroadcastSender (SOUP3) is separate.",
+      "reviewed_revision": "74e16189ae499ee4ec0703597cde5005604507f0"
     },
     {
       "native": "SendBroadcast",

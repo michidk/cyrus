@@ -19060,12 +19060,16 @@ fn delete_message_scripts(target: Object) -> Scripts {
 }
 
 fn message_call_scripts(native: Native, target: Object) -> Scripts {
+    message_call_scripts_with(native, target, vec![])
+}
+
+fn message_call_scripts_with(native: Native, target: Object, arguments: Vec<Value>) -> Scripts {
     let mut scripts = actor_reference_scripts(Object::Me);
     let function_id = scripts.definition.functions.len() as u16;
     scripts.definition.functions.push(Function {
         name: native,
         kind: CallKind::Function,
-        param_count: 0,
+        param_count: arguments.len() as u8,
     });
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     let call = Box::new(Call {
@@ -19073,7 +19077,7 @@ fn message_call_scripts(native: Native, target: Object) -> Scripts {
         function: native,
         kind: CallKind::Function,
         target: target.clone(),
-        arguments: vec![],
+        arguments,
     });
     actor.program.steps.get_mut(&3).unwrap().operation = Operation::Assign {
         destination: Place::Local { index: 2 },
@@ -19342,6 +19346,76 @@ fn is_message_waiting_reports_a_selection_without_reading_or_changing_the_queue(
         world.actors()[1].runtime().unwrap().variables()[2],
         ScriptValue::Integer(0)
     );
+}
+
+#[test]
+fn reply_sender_writes_one_entry_to_the_selected_sender_on_the_receivers_channel() {
+    use cyrus_game::script::CombatMessageCode;
+    // Direct: actor 1 replies to the sender of its own selected message. Object: actor 1 asks
+    // actor 0 to reply to the sender of actor 0's selected message.
+    for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
+        let scripts = message_call_scripts_with(
+            Native::ReplySender,
+            target.clone(),
+            vec![Value::Integer { value: 0xd000 }],
+        );
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        let (receiver, other) = if receiver_index == 0 { (a, b) } else { (b, a) };
+        world
+            .send_combat_message(other, receiver, CombatMessageCode::HIT)
+            .unwrap();
+        // Consume the original so only the reply remains addressed to `other`.
+        let before_selection = world.selected_message_sender(receiver).unwrap();
+        assert_eq!(before_selection, Some(other));
+        actor_reference_step(&mut world, b).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        let reply = world.consume_combat_message(other).unwrap().unwrap();
+        assert_eq!(
+            (reply.sender, reply.receiver, reply.code),
+            (receiver, Some(other), CombatMessageCode::BLOCK),
+            "target {target:?}"
+        );
+        // The receiver's own selection is unchanged.
+        assert_eq!(
+            world.selected_message_sender(receiver).unwrap(),
+            Some(other),
+            "target {target:?}"
+        );
+    }
+}
+
+#[test]
+fn reply_sender_writes_nothing_without_a_value_a_selection_or_a_distinct_sender() {
+    use cyrus_game::script::CombatMessageCode;
+    let reply = |value: i32| {
+        message_call_scripts_with(
+            Native::ReplySender,
+            Object::Me,
+            vec![Value::Integer { value }],
+        )
+    };
+    let run = |scripts: Scripts, send: Option<(usize, usize)>| {
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        if let Some((from, to)) = send {
+            world
+                .send_combat_message(ids[from], ids[to], CombatMessageCode::HIT)
+                .unwrap();
+        }
+        actor_reference_step(&mut world, ids[1]).unwrap();
+        actor_reference_step(&mut world, ids[1]).unwrap();
+        world
+    };
+    // A zero value, no selection, and a message from the receiver to itself each write nothing.
+    for (value, send) in [(0, Some((0, 1))), (0xd000, None), (0xd000, Some((1, 1)))] {
+        let world = run(reply(value), send);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        assert!(
+            world.peek_combat_message(ids[0]).unwrap().is_none(),
+            "value {value} send {send:?}"
+        );
+    }
 }
 
 #[test]

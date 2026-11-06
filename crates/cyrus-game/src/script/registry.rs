@@ -987,6 +987,32 @@ impl ScriptWorld {
         Ok(self.selected_broadcast_entry(actor)?.flatten())
     }
 
+    /// `ReplySender(value)`: unless the value is zero, nothing is selected, or the selected sender
+    /// is null or the receiver itself, write one entry (sender the receiver, recipient the
+    /// selected message's sender, the value) on the receiver's own class channel. The receiver's
+    /// selection is unchanged.
+    pub fn reply_to_message_sender(&mut self, actor: ScriptActorId, value: i32) -> Result<()> {
+        if value == 0 {
+            return Ok(());
+        }
+        let Some(Some(sender)) = self.selected_message_entry(actor)? else {
+            return Ok(());
+        };
+        if sender == actor {
+            return Ok(());
+        }
+        let class = self.actors[self.resolve(actor)?].attributes[Attribute::MessGroup];
+        self.globals.combat_messages.send(
+            class,
+            super::CombatMessage {
+                sender: actor,
+                receiver: Some(sender),
+                code: value.into(),
+            },
+        );
+        Ok(())
+    }
+
     /// `ReceiveMessage`: see [`super::CombatMessages::receive`].
     pub fn receive_message(&mut self, actor: ScriptActorId) -> Result<i32> {
         let index = self.resolve(actor)?;
@@ -7188,6 +7214,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(
                 self.registry.receive_broadcast(receiver)?,
             ));
+        }
+        // ReplySender sends the value to the sender of the receiver's selected message.
+        if function == Native::ReplySender {
+            let [value] = arguments else {
+                anyhow::bail!("ReplySender requires one value")
+            };
+            let receiver = self.registry.id(self.index)?;
+            self.registry
+                .reply_to_message_sender(receiver, value.integer()?)?;
+            return Ok(CallResult::Complete(0));
         }
         // ReceiveMessage returns the value word of the first entry addressed to the receiver.
         if function == Native::ReceiveMessage {
