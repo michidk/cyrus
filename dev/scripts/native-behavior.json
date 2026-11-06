@@ -4965,19 +4965,21 @@
     },
     {
       "native": "InCircle",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named AI/spatial-view/camera dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed horizontal circle query on the receiver query position",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::in_circle_compares_the_rounded_horizontal_distance_inclusively_and_ignores_height"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
         "https://github.com/michidk/redguard-preservation/blob/1603388e687a6e0af050e5acafe08eb823161120/docs/engine/SOUP.md#incircle-query"
       ],
-      "limits": "Verified independent installed three-argument declaration/exact native mapping/full original handler, position selector/two predicates/distance/sqrt chain.7680 freestanding original-byte contexts and12 effective byte-mutation controls PASS; no numerical or position service intercepted. Two receivers/four position admission paths/eight geometry cases/five signed radius neighborhoods/three x87 precisions/four rounding modes/two patterns. Selected X/Z subtract supplied arguments with wrap32, zero Y; signed distance<=signed radius gives Boolean1. Full actor/metadata/linked-record bytes unchanged; saved ESI/EDI/EBP, integer stack/canary, x87 TOP and CW checked. Independent Fraction/150-digit Decimal rounding oracle. Unknown unmasked exceptions/nonempty x87 stack/negative-root library error/default process CW/exhaustive input domain/malformed state/producers/lifetime/VM/natural game/native/browser. Production named dispatch remains missing; no production acceptance inferred.",
-      "reviewed_revision": "a2185baefcca3606f10696828a7d83c7b68b0f94"
+      "limits": "Verified independent installed three-argument declaration/exact native mapping/full original handler, position selector/two predicates/distance/sqrt chain.7680 freestanding original-byte contexts and12 effective byte-mutation controls PASS; no numerical or position service intercepted. Two receivers/four position admission paths/eight geometry cases/five signed radius neighborhoods/three x87 precisions/four rounding modes/two patterns. Selected X/Z subtract supplied arguments with wrap32, zero Y; signed distance<=signed radius gives Boolean1. Full actor/metadata/linked-record bytes unchanged; saved ESI/EDI/EBP, integer stack/canary, x87 TOP and CW checked. Independent Fraction/150-digit Decimal rounding oracle. Unknown unmasked exceptions/nonempty x87 stack/negative-root library error/default process CW/exhaustive input domain/malformed state/producers/lifetime/VM/natural game/native/browser. Production named dispatch remains missing; no production acceptance inferred. Verified public routed dispatch: the receiver query position (attached, linked or local) minus the argument point with 32-bit wrapping and a zero vertical difference goes through the shared rounded distance helper; the result is one when it is at most the signed radius (3-4-5 boundary inclusive, negative radius excludes, height ignored, spatial state required). Unknown: installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "409dd29c7c32b56c8ac7a13c6c1caf48a541b114"
     },
     {
       "native": "IsWithinView",

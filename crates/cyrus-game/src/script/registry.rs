@@ -6970,6 +6970,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .any(|actor| matches!(actor.source, ScriptActorSource::Shell(_)));
             return Ok(CallResult::Complete(i32::from(context && has_shell)));
         }
+        // InCircle(x, z, radius): the receiver's query position (attached, linked or local) minus
+        // (x, z) with 32-bit wrapping and a zero vertical difference goes through the shared rounded
+        // distance helper; the result is one when it is at most the signed radius.
+        if function == Native::InCircle {
+            let [x, z, radius] = arguments else {
+                anyhow::bail!("InCircle requires three arguments")
+            };
+            let (x, z, radius) = (x.integer()?, z.integer()?, radius.integer()?);
+            let position = self.fighting_position(self.index)?;
+            let distance = cyrus_collision::distance::rounded_distance([
+                position[0].wrapping_sub(x),
+                0,
+                position[2].wrapping_sub(z),
+            ])?;
+            return Ok(CallResult::Complete(i32::from(distance <= radius)));
+        }
         if function == Native::InRectangle {
             let [x1, z1, x2, z2] = arguments else {
                 anyhow::bail!("InRectangle requires four arguments")

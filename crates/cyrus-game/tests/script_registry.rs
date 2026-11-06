@@ -3773,6 +3773,31 @@ fn slave_family_controls_change_nothing_and_return_zero_for_any_master_byte() {
 }
 
 #[test]
+fn in_circle_compares_the_rounded_horizontal_distance_inclusively_and_ignores_height() {
+    let origin = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    let (x, z) = (origin[0], origin[2]);
+    let call = |cx: i32, cz: i32, radius: i32| {
+        let world = run_native_world_with(&[(Native::InCircle, &[cx, cz, radius])], true).unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    // A 3-4-5 offset: the boundary is inclusive and one less excludes it.
+    assert_eq!(call(x - 3, z - 4, 5), 1, "distance equals radius");
+    assert_eq!(call(x - 3, z - 4, 4), 0, "distance exceeds radius");
+    assert_eq!(call(x + 3, z + 4, 5), 1, "direction does not matter");
+    assert_eq!(
+        call(x, z, 0),
+        1,
+        "the receiver's own point is inside radius zero"
+    );
+    assert_eq!(call(x, z, -1), 0, "a negative radius excludes everything");
+    assert_eq!(call(x - 3, z - 4, i32::MAX), 1);
+    assert!(run_native_world(&[(Native::InCircle, &[0, 0, 1])]).is_err());
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {
