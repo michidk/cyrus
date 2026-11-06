@@ -5,7 +5,8 @@ use cyrus_game::script::{
     AnimationData, DialogueLine, DialogueSource, ScriptActorId, ScriptActorSource, ScriptHud,
     ScriptInputs, ScriptStage, ScriptWorld,
 };
-use cyrus_script::Attribute;
+use cyrus_script::program::{Call, CallKind, Object, Operation, Value};
+use cyrus_script::{Attribute, Native};
 
 #[derive(Debug)]
 struct NoLines;
@@ -58,39 +59,53 @@ const SELECTED: [(&str, u16); 7] = [
 ];
 const BASELINE_FLAGS: [usize; 6] = [0, 194, 195, 231, 352, 353];
 
-#[test]
-fn installed_item_scripts_run_to_completion() {
+fn installed() -> Option<(Scripts, Animations, HudAsset)> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
     let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
         eprintln!("skipped: no install (item use scripts)");
-        return;
+        return None;
     };
     let files = cyrus_assets::native::Files::open(&install).unwrap();
     let prepared = cyrus_assets::game::prepare(&files, "START.scripts").unwrap();
     let hud_files = cyrus_assets::game::prepare(&files, "hud/overlay.hud").unwrap();
-    let scripts: Scripts = serde_json::from_slice(&prepared["START.scripts"]).unwrap();
-    let animations: Animations = serde_json::from_slice(&prepared["START.animations"]).unwrap();
-    let asset: HudAsset = serde_json::from_slice(&hud_files["hud/overlay.hud"]).unwrap();
+    Some((
+        serde_json::from_slice(&prepared["START.scripts"]).unwrap(),
+        serde_json::from_slice(&prepared["START.animations"]).unwrap(),
+        serde_json::from_slice(&hud_files["hud/overlay.hud"]).unwrap(),
+    ))
+}
+
+/// A START world with its selected player placed, animated and at health 40.
+fn world_with_player(scripts: &Scripts, animations: &Animations) -> (ScriptWorld, ScriptActorId) {
+    let mut world = ScriptWorld::prepare(scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world
+        .id(world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap())
+        .unwrap();
+    world
+        .initialize_player_spatial(player, [0; 3], [0; 3])
+        .unwrap();
+    world
+        .initialize_player_animation(player, animations, 0, &mut |_| Ok(()))
+        .unwrap();
+    world.set_attribute_for_test(player, Attribute::Health, 40);
+    world.globals_mut().initialize_selected_health_for_test(40);
+    (world, player)
+}
+
+#[test]
+fn installed_item_scripts_run_to_completion() {
+    let Some((scripts, animations, asset)) = installed() else {
+        return;
+    };
     for (name, health, flags, counts) in EXPECTED {
-        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-        world.prepare_spatial().unwrap();
-        let player = world
-            .id(world
-                .actors()
-                .iter()
-                .position(|actor| matches!(actor.source, ScriptActorSource::Player))
-                .unwrap())
-            .unwrap();
-        world
-            .initialize_player_spatial(player, [0; 3], [0; 3])
-            .unwrap();
-        world
-            .initialize_player_animation(player, &animations, 0, &mut |_| Ok(()))
-            .unwrap();
-        world.set_attribute_for_test(player, Attribute::Health, 40);
-        world.globals_mut().initialize_selected_health_for_test(40);
+        let (mut world, player) = world_with_player(&scripts, &animations);
         let hud = ScriptHud::default();
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         let before = hud.inventory(None).unwrap().counts;
@@ -165,4 +180,114 @@ fn installed_item_scripts_run_to_completion() {
             "{name}: selected item"
         );
     }
+}
+
+/// Item 51 (the flask) starts two instances of its looping script. The first use holds the flask
+/// and throws while flag 361 is set; the second use's instance clears the flag and puts the flask
+/// away, which also ends the first. Both uses go through the production `UseItem` caller.
+#[test]
+fn installed_flask_second_use_ends_the_throw_loop() {
+    use cyrus_game::script::QuickKeys;
+    const FLASK: u16 = 51;
+    const THROWING_FLAG: usize = 361;
+    let Some((mut scripts, mut animations, mut asset)) = installed() else {
+        return;
+    };
+    // The player's own script establishes the lockout state in a running game; the unused `inouse`
+    // item script stands in for it here.
+    let lockout = scripts
+        .definition
+        .functions
+        .iter()
+        .position(|function| function.name == Native::LockoutPlayer)
+        .unwrap();
+    scripts
+        .actors
+        .get_mut("INOUSE")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id: lockout as u16,
+            function: Native::LockoutPlayer,
+            target: Object::Me,
+            kind: CallKind::Function,
+            arguments: vec![Value::Integer { value: 0 }],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    animations.metadata["script_content_id"] = scripts.content_id.clone().into();
+    asset.selected = Some(FLASK);
+    asset.inventory.get_mut(&FLASK).unwrap().count = 1;
+    let (mut world, player) = world_with_player(&scripts, &animations);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let mut random = cyrus_game::random::EngineRandom::default();
+    let inputs = ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        quick_keys: Some(QuickKeys {
+            sword: false,
+            health: false,
+            use_selected: true,
+        }),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        sound_reset: Some(false),
+        dialogue_source: Some(&NoLines),
+        animations: Some(AnimationData(&animations)),
+        ..Default::default()
+    };
+    let tick = |world: &mut ScriptWorld, random: &mut cyrus_game::random::EngineRandom| {
+        world
+            .advance(
+                player,
+                ScriptStage::Animation,
+                inputs,
+                Some(&mut |_, _| Ok(())),
+                Some(&mut *random),
+                30,
+            )
+            .and_then(|()| world.update_shells(inputs, random, &mut |_, _| Ok(()), 30))
+            .unwrap();
+    };
+    world.spawn_shell("inouse").unwrap();
+    for _ in 0..4 {
+        tick(&mut world, &mut random);
+    }
+    assert_eq!(
+        world.globals_mut().lockout(),
+        Some(0),
+        "lockout is established"
+    );
+    world
+        .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+        .unwrap();
+    for _ in 0..80 {
+        tick(&mut world, &mut random);
+    }
+    assert_eq!(world.running_shells("iflask"), 1, "the first use loops");
+    assert_eq!(world.flags()[THROWING_FLAG], 1, "the throw flag is set");
+    world.globals_mut().end_item_use_attempt();
+    world
+        .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(
+        world.running_shells("iflask"),
+        2,
+        "the second instance starts"
+    );
+    for _ in 0..200 {
+        tick(&mut world, &mut random);
+    }
+    assert_eq!(world.running_shells("iflask"), 0, "both instances end");
+    assert_eq!(world.flags()[THROWING_FLAG], 0, "the throw flag is cleared");
+    assert_eq!(
+        hud.inventory(None).unwrap().counts[&FLASK],
+        1,
+        "the flask is not consumed"
+    );
 }
