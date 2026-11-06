@@ -1,4 +1,5 @@
 use cyrus_assets::sound::SurfaceSounds;
+#[cfg(feature = "parsers")]
 use cyrus_assets::surface::Surface;
 
 #[test]
