@@ -2,12 +2,10 @@
 use super::GameHost;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::hud::ItemKind;
 use cyrus_assets::surface::Surface;
 use cyrus_script::{Attribute, Native};
 
-/// Item-type codes of ITEM.INI that `UseItem` treats specially.
-const WEAPON_ITEM: u32 = 1;
-const TORCH_ITEM: u32 = 3;
 /// Item 83 requests the island map screen, which the host presents.
 const ISLAND_MAP_ITEM: u16 = 83;
 
@@ -71,7 +69,7 @@ impl GameHost<'_, '_, '_, '_> {
         let used = hud.begin_item_use(item)?;
         if item == 0 {
             hud.toggle_compass();
-        } else if used.item_type == WEAPON_ITEM {
+        } else if used.item_type == ItemKind::WEAPON {
             self.registry.actors[selected].attributes[Attribute::Weapon] = item as u8;
             self.draw_sword(player_id)?;
             // Only a draw that began is consumed.
@@ -82,7 +80,7 @@ impl GameHost<'_, '_, '_, '_> {
             if control.living_state != LivingState::DRAWING_SWORD {
                 return Ok(());
             }
-        } else if used.item_type == TORCH_ITEM {
+        } else if used.item_type == ItemKind::TORCH {
             let torch = self.torch_inputs(selected, Native::UseItem)?;
             let ticks = self
                 .inputs

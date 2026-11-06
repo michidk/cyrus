@@ -36647,7 +36647,7 @@ fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
     });
     let hud = cyrus_game::script::ScriptHud::default();
     let mut asset = inventory_asset(&[(45, 1)]);
-    asset.inventory.get_mut(&45).unwrap().item_type = 3;
+    asset.inventory.get_mut(&45).unwrap().item_type = cyrus_assets::hud::ItemKind::TORCH;
     asset.torch_time = Some(60);
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
     let map = world.id(0).unwrap();
@@ -36956,7 +36956,7 @@ fn light_torch_starts_the_lighting_state_and_unlight_torch_waits_for_a_burning_t
     });
     let hud = cyrus_game::script::ScriptHud::default();
     let mut asset = inventory_asset(&[(45, 1)]);
-    asset.inventory.get_mut(&45).unwrap().item_type = 3;
+    asset.inventory.get_mut(&45).unwrap().item_type = cyrus_assets::hud::ItemKind::TORCH;
     asset.torch_time = Some(60);
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
     let map = world.id(0).unwrap();
@@ -37052,7 +37052,7 @@ fn draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it() {
         });
         let hud = cyrus_game::script::ScriptHud::default();
         let mut asset = inventory_asset(&[(1, 1)]);
-        asset.inventory.get_mut(&1).unwrap().item_type = 1;
+        asset.inventory.get_mut(&1).unwrap().item_type = cyrus_assets::hud::ItemKind::WEAPON;
         asset.inventory.get_mut(&1).unwrap().weapon = true;
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         let map = world.id(0).unwrap();
@@ -37327,7 +37327,7 @@ fn the_action_key_draws_the_selected_sabre_once_and_defers_to_an_activation_owne
             .unwrap();
         let hud = cyrus_game::script::ScriptHud::default();
         let mut asset = inventory_asset(&[(1, 1)]);
-        asset.inventory.get_mut(&1).unwrap().item_type = 1;
+        asset.inventory.get_mut(&1).unwrap().item_type = cyrus_assets::hud::ItemKind::WEAPON;
         asset.inventory.get_mut(&1).unwrap().weapon = true;
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         if owner {
@@ -37433,7 +37433,7 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
             let definition = asset.inventory.get_mut(&item).unwrap();
             definition.flags = 4;
             if item == 1 {
-                definition.item_type = 1;
+                definition.item_type = cyrus_assets::hud::ItemKind::WEAPON;
                 definition.weapon = true;
             }
             hud.configure(&asset, &cyrus_game::preferences::Preferences::default());

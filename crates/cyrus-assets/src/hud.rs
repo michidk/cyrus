@@ -112,9 +112,9 @@ pub struct InventoryItem {
     pub add_items: Vec<u16>,
     /// Recursively cleared only while the source retains a nonzero count.
     pub remove_drop_items: Vec<u16>,
-    /// ITEM.INI `type`; code 3 is the torch, code 1 the weapon.
+    /// ITEM.INI `type`.
     #[serde(default)]
-    pub item_type: u32,
+    pub item_type: ItemKind,
     /// ITEM.INI `use_script`: the shell script item use starts.
     #[serde(default)]
     pub use_script: Option<String>,
@@ -124,4 +124,25 @@ pub struct InventoryItem {
     /// ITEM.INI `drop_use_item_list`: one unit of each is dropped when the item is used.
     #[serde(default)]
     pub drop_use_items: Vec<u16>,
+}
+
+/// ITEM.INI item `type` code (preservation item-ini.md). `UseItem` draws the sword for a weapon,
+/// lights the torch for the torch code and otherwise starts the item's use script. Other codes
+/// are retained.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct ItemKind(u32);
+
+impl ItemKind {
+    pub const GENERAL: Self = Self(0);
+    /// A sword that is drawn and sheathed.
+    pub const WEAPON: Self = Self(1);
+    /// A hand object that may override a weapon; no shipped item uses it.
+    pub const HAND_OBJECT: Self = Self(2);
+    /// The torch; ITEM.INI's comment block does not list this code.
+    pub const TORCH: Self = Self(3);
+
+    pub const fn from_code(code: u32) -> Self {
+        Self(code)
+    }
 }

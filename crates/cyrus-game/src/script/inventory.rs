@@ -54,9 +54,9 @@ struct SavedItem {
     used: Option<u32>,
 }
 
-/// What using an owned item starts: its type code and its use script with the instance limit.
+/// What using an owned item starts: its type and its use script with the instance limit.
 pub(super) struct ItemUse {
-    pub item_type: u32,
+    pub item_type: cyrus_assets::hud::ItemKind,
     pub script: Option<(String, i32)>,
 }
 
