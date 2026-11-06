@@ -28,6 +28,10 @@ pub struct MovementSettings {
     /// Missing older cache/config values remain unknown.
     #[serde(default)]
     pub swim_depth: Option<i32>,
+    /// Effective [system] max_remap_objects, the capacity of the original's changed-actor list
+    /// (at least 32; a missing key reads as the floor); absent in old caches.
+    #[serde(default)]
+    pub max_remap_objects: Option<i32>,
     pub turn_speed: u32,
     pub turn_max_speed: u32,
     pub poly_push_units: u32,

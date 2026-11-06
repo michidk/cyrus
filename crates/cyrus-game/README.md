@@ -589,3 +589,15 @@ follows preservation's
 [location selection](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#distancefromlocation-location-selection-and-distance-helper-boundary)
 and [numerical helper](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#distancefromlocation-numerical-distance-helper).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `AtPos(x, y, z)` shares the ordinary arrival helper with `GotoLocation`: the target and the
+receiver's position shift right eight bits, the receiver's positive Y extent is added to its height,
+and the receiver arrives when the rounded distance is strictly below its movement speed times 384
+shifted right eight bits. Arrival stores the target with its low eight bits cleared (Y included),
+registers the receiver in the changed-actor list and returns one; otherwise nothing changes and the
+result is zero. A named receiver is moved while the caller continues. The list holds each actor
+once and its capacity is the installed `max_remap_objects` (at least 32); the first actor past it
+fails with the original's error 196 after its position store. The contract follows preservation's
+[AtPos position arrival](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#atpos-position-arrival)
+and [changed-actor list](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#changed-actor-list).
+Natural installed gameplay parity remains Unknown.

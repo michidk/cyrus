@@ -3602,16 +3602,24 @@
     },
     {
       "native": "AtPos",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Production named point-arrival snap through the shared ordinary arrival helper and the capacity-checked changed-actor list",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::arrive_ordinary_point_bounded",
+      "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::at_pos_snaps_onto_a_point_strictly_inside_one_and_a_half_speed_steps",
+        "crates/cyrus-game/tests/script_goto_location.rs::at_pos_measures_height_from_the_receivers_vertical_offset",
+        "crates/cyrus-game/tests/script_goto_location.rs::at_pos_registers_the_receiver_once_and_a_full_list_is_error_196_after_the_position_store",
+        "crates/cyrus-game/tests/script_goto_location.rs::at_pos_needs_the_installed_capacity_only_once_the_list_could_be_full",
+        "crates/cyrus-game/tests/script_goto_location.rs::at_pos_routed_call_moves_the_named_receiver_and_continues_the_caller"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/blob/f0d4202205ac6a8fa4552512df192d18b25c416e/docs/engine/SOUP.md#atpos-position-arrival"
+        "https://github.com/michidk/redguard-preservation/blob/f0d4202205ac6a8fa4552512df192d18b25c416e/docs/engine/SOUP.md#atpos-position-arrival",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6693416401",
+        "https://github.com/michidk/redguard-preservation/commit/b69c175"
       ],
-      "limits": "Verified independent installed three-argument declaration/exact native/full217-byte handler/original370-byte speed query/101-byte metric/48-byte sqrt/195-byte changed-actor registration/31-byte copy.2180 original CPU contexts/17 effective semantic controls PASS,2062 returns/118 diagnostic stops. Selected arguments/positions/vertical adjustments/eight animation groups/four speed bytes/two receivers/two patterns/rounding-precision controls/queue counts0..2/capacities0..2/dedup states. Prior exact dependencies identity-audited once, new full named chain executes original bytes without numerical interception. Integer target/current truncation, vertical adjustment, strict scaled-speed threshold, position-before-registration, zero-count capacity bypass, dedup/capacity diagnostic verified. Full actor arena/head/queue/error snapshots/three preserved registers/stack on returns/x87 control/TOP checked. Sole controlled runtime diagnostic stops at error196 request after original source copy; continuation/effects/unwind/termination unknown. Production named dispatch missing; no acceptance inferred. Unknown natural CW/unmasked exceptions/nonempty FPU stack/malformed records/negative counts/list producers/lifetime/concurrency/VM/natural original/native/browser/full joint domain.",
+      "limits": "Verified published contract plus the recovered changed-actor list facts. Public routed calls cover: strict threshold of movement speed times 384 shifted right eight bits (equality does not arrive), the low eight bits of each argument discarded in the stored position including Y, the receiver's positive Y extent added to its own height before the difference, a named receiver moved while the caller continues, registration once per actor, and error 196 for the first actor past the installed capacity after the position stores. The capacity is the effective max_remap_objects (at least 32) carried in the player scene settings; below 32 registered actors no capacity lookup is needed, and a larger list without it is an explicit error. Other natives still register without the capacity check. Absent old caches carry no capacity. A distance conversion overflow remains an explicit error rather than the original integer-indefinite value. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "aea12882f4cf724ba5e0da60429b5bd92190a179"
     },
     {

@@ -266,6 +266,7 @@ fn ordinary_collision_scene(
             sheath_sword_delay: None,
             defend_interval: None,
             swim_depth: None,
+            max_remap_objects: None,
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,

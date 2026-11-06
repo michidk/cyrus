@@ -52,6 +52,7 @@ pub(crate) fn prepare(
             .game
             .swim_depth
             .map(|depth| if depth == 0 { 40 } else { depth }),
+        max_remap_objects: Some(system.system.max_remap_objects.unwrap_or(0).max(32)),
         turn_speed: config.turn_speed,
         turn_max_speed: config.turn_max_speed,
         joystick: system

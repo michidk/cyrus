@@ -2029,6 +2029,11 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Actors registered as moved and awaiting regional selection, in registration order.
+    pub fn pending_map_updates(&self) -> &[usize] {
+        &self.map_updates
+    }
+
     /// Consume movement registrations before regional selection, in first-registration order.
     /// View coordinates use Q8 units. The caller supplies the original VM map-exclusion state.
     /// Excluded passes consume registrations without changing cell membership.
@@ -8351,6 +8356,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 )?
             };
             return Ok(CallResult::Complete(i32::from(visible)));
+        }
+        // AtPos snaps the receiver onto the point when it is strictly within one and a half
+        // movement-speed steps, registering it in the changed-actor list after the position stores.
+        if function == Native::AtPos {
+            let [x, y, z] = arguments else {
+                anyhow::bail!("AtPos requires three arguments")
+            };
+            let point = [x.integer()?, y.integer()?, z.integer()?];
+            let capacity = slope::MapUpdateCapacity::Installed(
+                self.inputs
+                    .player_collision
+                    .and_then(|source| source.scene.settings.max_remap_objects)
+                    .and_then(|capacity| usize::try_from(capacity).ok()),
+            );
+            return Ok(CallResult::Complete(i32::from(
+                self.registry
+                    .arrive_ordinary_point_bounded(id, point, capacity)?,
+            )));
         }
         if function == Native::DistanceFromLocation {
             let [location] = arguments else {

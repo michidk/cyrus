@@ -1,6 +1,7 @@
 //! Installed environmental effect textures and map-owned drawing attributes.
 #[cfg(feature = "parsers")]
 use crate::script::PlacementType;
+#[cfg(feature = "parsers")]
 use anyhow::Context;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};

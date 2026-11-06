@@ -77,6 +77,7 @@ mod tests {
                 sheath_sword_delay: None,
                 defend_interval: None,
                 swim_depth: None,
+                max_remap_objects: None,
                 turn_speed: 12,
                 turn_max_speed: 48,
                 poly_push_units: 16,

@@ -282,6 +282,7 @@ fn scene() -> cyrus_game::player::data::PlayerScene {
             sheath_sword_delay: None,
             defend_interval: None,
             swim_depth: None,
+            max_remap_objects: None,
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,
@@ -1038,4 +1039,282 @@ fn is_bouncing_rejects_arguments_before_result_and_retains_the_failure() {
     );
     assert_eq!(world.flags()[0], 12);
     assert_eq!(world.actors()[1].failure(), Some(failure.as_str()));
+}
+
+/// `instances` copies of one actor, each calling `AtPos(target)` into flag zero. Every receiver is
+/// bound to the run group with the given forward speed and prepared with a collision shape whose
+/// positive Y extent is `extent_y` whole units.
+struct AtPosWorld {
+    world: ScriptWorld,
+    data: cyrus_assets::animation::Animations,
+    scene: cyrus_game::player::data::PlayerScene,
+}
+
+fn at_pos_world(instances: usize, target: [i32; 3], speed: u8, extent_y: i32) -> AtPosWorld {
+    routed_at_pos_world(instances, target, speed, extent_y, Object::Me)
+}
+
+fn routed_at_pos_world(
+    instances: usize,
+    target: [i32; 3],
+    speed: u8,
+    extent_y: i32,
+    receiver: Object,
+) -> AtPosWorld {
+    use cyrus_script::{AnimationGroup, Native};
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: Native::AtPos,
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    scripts.instances = (0..instances)
+        .map(|id| {
+            let mut instance = scripts.instances[0].clone();
+            instance.object_id = id as u32;
+            instance.object_type = PlacementType::MODEL;
+            instance
+        })
+        .collect();
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.instances = instances as u16;
+    actor.instance_variables = vec![vec![4]; instances];
+    actor.attributes[Attribute::ForwardSpeed] = speed;
+    // The call runs twice, so a registered receiver also exercises the already-registered path.
+    let function_call = Box::new(Call {
+        function_id: 1,
+        function: Native::AtPos,
+        target: receiver.clone(),
+        kind: CallKind::Function,
+        arguments: target
+            .into_iter()
+            .map(|value| Value::Integer { value })
+            .collect(),
+    });
+    let call = Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: if receiver == Object::Me {
+                Value::Call {
+                    call: function_call,
+                }
+            } else {
+                Value::ObjectCall {
+                    call: function_call,
+                }
+            },
+            rest: vec![],
+        },
+    };
+    actor.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: call.clone(),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: call,
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 2 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: 7,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+          "actors":[{"script_name":"LOGIC", "model_load_path":"animation_table", "mpsz_bounds_primary":0,
+          "raex":{"unknown_12":256}, "animation_groups":[{"group_index":18, "anim_id":1, "anim_type":0,
+          "commands":[{"opcode":0,"frame_reference":18},{"opcode":2,"value":0}]}]}],
+          "mpsz_entries":[{"total_extent":[24,12+extent_y,24],"pos_extent":[12,extent_y,12],"neg_extent":[12,12,12],"center_offset":[0,0,0],"flags":0}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let scene = scene();
+    for index in 0..instances {
+        let id = world.id(index).unwrap();
+        world
+            .bind_animation(id, &data, AnimationGroup::RUN)
+            .unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                20,
+            )
+            .unwrap();
+        world
+            .prepare_ordinary_collision_shape(id, &data, &scene)
+            .unwrap();
+    }
+    AtPosWorld { world, data, scene }
+}
+
+impl AtPosWorld {
+    /// Run one receiver's main body, with the installed settings supplied or not.
+    fn step(&mut self, index: usize, settings: bool) -> anyhow::Result<()> {
+        let id = self.world.id(index)?;
+        let source = cyrus_game::script::PlayerCollisionSource {
+            scene: &self.scene,
+            animations: &self.data,
+            view: [0, 0],
+            actors: &[],
+        };
+        self.world.advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                player_collision: settings.then_some(source),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+    }
+
+    fn position(&self, index: usize) -> [i32; 3] {
+        self.world
+            .spatial(self.world.id(index).unwrap())
+            .unwrap()
+            .local
+            .position
+    }
+}
+
+#[test]
+fn at_pos_snaps_onto_a_point_strictly_inside_one_and_a_half_speed_steps() {
+    // Forward speed two: the threshold is 2 * 384 >> 8 = 3 whole units; equality does not arrive.
+    for (offset, expected) in [
+        ([0, 0, 0], 1),
+        ([2, 0, 0], 1),
+        ([3, 0, 0], 0),
+        ([-2, 0, 0], 1),
+        ([-3, 0, 0], 0),
+        ([1, 0, 2], 1),
+        ([2, 0, 2], 0), // the rounded length of (2, 2) is 3
+    ] {
+        let probe = at_pos_world(2, [0; 3], 2, 0);
+        let origin = probe.position(0);
+        // Low eight bits are discarded: the stored point is the shifted-and-restored argument.
+        let target = [0, 1, 2].map(|axis| origin[axis] + offset[axis] * 256 + 200);
+        let mut at = at_pos_world(2, target, 2, 0);
+        at.step(0, false).unwrap();
+        assert_eq!(at.world.flags(), [expected], "offset {offset:?}");
+        let quantized = target.map(|value| (value >> 8) << 8);
+        let after = at.position(0);
+        assert_eq!(
+            after,
+            if expected == 1 { quantized } else { origin },
+            "offset {offset:?}"
+        );
+        // The other receiver is untouched.
+        assert_eq!(at.position(1), probe.position(1));
+    }
+}
+
+#[test]
+fn at_pos_measures_height_from_the_receivers_vertical_offset() {
+    // The receiver's positive Y extent is added to its own height before the difference: a target
+    // that far above is at distance zero, and the threshold is three whole units.
+    for (extent, rise, expected) in [
+        (5, 5, 1),
+        (5, 7, 1),
+        (5, 8, 0),
+        (5, 3, 1),
+        (5, 2, 0),
+        (0, 5, 0),
+    ] {
+        let probe = at_pos_world(2, [0; 3], 2, extent);
+        let origin = probe.position(0);
+        let target = [origin[0], origin[1] + rise * 256, origin[2]];
+        let mut at = at_pos_world(2, target, 2, extent);
+        let id = at.world.id(0).unwrap();
+        assert_eq!(
+            at.world
+                .ordinary_collision_shape(id)
+                .unwrap()
+                .positive_extent[1],
+            extent
+        );
+        at.step(0, false).unwrap();
+        // The second call of the script sees the moved receiver, so arrival is read from the
+        // position: the target itself is stored, without subtracting the vertical offset.
+        let arrived = at.position(0) == target.map(|value| (value >> 8) << 8);
+        assert_eq!(arrived, expected == 1, "extent {extent} rise {rise}");
+    }
+}
+
+#[test]
+fn at_pos_registers_the_receiver_once_and_a_full_list_is_error_196_after_the_position_store() {
+    let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
+    // Every receiver arrives (speed 200), so each registers; the installed capacity is 32.
+    let mut at = at_pos_world(34, origin, 200, 0);
+    let mut scene = cyrus_game::player::data::PlayerScene { ..scene() };
+    scene.settings.max_remap_objects = Some(32);
+    at.scene = scene;
+    for index in 0..32 {
+        at.step(index, true).unwrap();
+    }
+    assert_eq!(at.world.pending_map_updates().len(), 32);
+    // The thirty-third distinct actor stores its position, then reports error 196.
+    let before = at.position(32);
+    let error = format!("{:#}", at.step(32, true).unwrap_err());
+    assert!(error.contains("original runtime error 196"), "{error}");
+    assert_eq!(at.position(32), before.map(|value| (value >> 8) << 8));
+    assert_eq!(at.world.pending_map_updates().len(), 32);
+}
+
+#[test]
+fn at_pos_needs_the_installed_capacity_only_once_the_list_could_be_full() {
+    let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
+    let mut at = at_pos_world(34, origin, 200, 0);
+    // The capacity is at least 32, so the first 32 registrations need no installed settings.
+    for index in 0..32 {
+        at.step(index, false).unwrap();
+    }
+    let error = format!("{:#}", at.step(32, false).unwrap_err());
+    assert!(
+        error.contains("installed capacity is unavailable"),
+        "{error}"
+    );
+}
+
+#[test]
+fn at_pos_routed_call_moves_the_named_receiver_and_continues_the_caller() {
+    let origin = at_pos_world(2, [0; 3], 2, 0).position(0);
+    let target = [origin[0] + 256 + 7, origin[1], origin[2]];
+    // Actor 1 calls AtPos on actor 0 (the named object).
+    let mut at = routed_at_pos_world(2, target, 2, 0, Object::Named { string: 0 });
+    let caller_before = at.position(1);
+    at.step(1, false).unwrap();
+    assert_eq!(at.position(0), target.map(|value| (value >> 8) << 8));
+    assert_eq!(at.position(1), caller_before);
+    assert_eq!(at.world.pending_map_updates(), [0]);
+    // The caller's script ran to its end: the result reached its flag and its task is done.
+    assert_eq!(at.world.flags(), [1]);
+    assert_eq!(at.world.actors()[1].runtime().unwrap().active_tasks(), 0);
 }
