@@ -2679,7 +2679,32 @@ impl ScriptWorld {
     /// Worlds with any animation-bound actor require nominal ticks, including zero. Sound effects
     /// are dispatched synchronously with the receiving actor's identity.
     /// Random functions require the caller's shared engine stream; they never seed actor state.
+    /// Standalone ordinary stages skip killed records, including retained world records.
+    /// Explicit body and routed calls keep their own invocation semantics.
     pub fn advance(
+        &mut self,
+        id: ScriptActorId,
+        stage: ScriptStage,
+        inputs: ScriptInputs<'_>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
+        random: Option<&mut crate::random::EngineRandom>,
+        budget: usize,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        // Killed map records survive revisits, but never re-enter ordinary script stages.
+        if matches!(stage, ScriptStage::OrdinaryMain | ScriptStage::OrdinaryHook)
+            && self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.killed)
+        {
+            return Ok(());
+        }
+        self.advance_admitted(id, stage, inputs, sounds, random, budget)
+    }
+
+    // The outer traversal checks killed state once, before the hook and main continuation.
+    pub(super) fn advance_admitted(
         &mut self,
         id: ScriptActorId,
         stage: ScriptStage,

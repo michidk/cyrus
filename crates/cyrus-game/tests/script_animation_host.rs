@@ -6560,3 +6560,232 @@ fn routed_torch_predicates_use_receiver_action_then_animation_without_mutation()
         }
     }
 }
+
+fn overlapping_pickup_sources() -> (Scripts, Animations, cyrus_assets::hud::HudAsset) {
+    let mut source = scripts(vec![Operation::End { target: 0 }]);
+    for (name, param_count) in [
+        (Native::Activate, 1),
+        (Native::AddItem, 2),
+        (Native::KillMe, 0),
+    ] {
+        source.definition.functions.push(Function {
+            name,
+            param_count,
+            kind: CallKind::Function,
+        });
+    }
+    let native = |function_id, function, values: &[i32]| Call {
+        function_id,
+        function,
+        target: Object::Me,
+        kind: CallKind::Function,
+        arguments: values
+            .iter()
+            .map(|&value| Value::Integer { value })
+            .collect(),
+    };
+    for name in ["ACTOR", "OTHER"] {
+        let actor = source.actors.get_mut(name).unwrap();
+        actor.program.variables = vec![0];
+        actor.instance_variables = vec![vec![0]];
+        let operations = [
+            Operation::Assign {
+                destination: Place::Local { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(native(
+                            3,
+                            Native::Activate,
+                            &[i32::from_le_bytes(*b"#OPN")],
+                        )),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::If {
+                conditions: vec![Condition {
+                    lhs: Value::Read {
+                        place: Place::Local { index: 0 },
+                    },
+                    comparison: 0,
+                    rhs: Value::Integer { value: 1 },
+                    conjunction: 0,
+                }],
+                target: 6,
+            },
+            Operation::Yield,
+            Operation::Call {
+                call: native(4, Native::AddItem, &[4, 1]),
+            },
+            Operation::Call {
+                call: native(5, Native::KillMe, &[]),
+            },
+            Operation::End { target: 0 },
+            Operation::End { target: 0 },
+        ];
+        actor.program.steps = operations
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+    }
+    let mut player = source.actors["OTHER"].clone();
+    player.namespace = Some("CYRUS".into());
+    player.code_origin = 200;
+    player.program.steps = BTreeMap::from([(
+        0,
+        Step {
+            next: 1,
+            operation: Operation::End { target: 0 },
+        },
+    )]);
+    source.actors.insert("CYRUS".into(), player);
+    source.content_id = source.content_identity().unwrap();
+    let mut data = animations(&source, false);
+    data.metadata["actors"].as_array_mut().unwrap().push(
+        json!({"script_name":"CYRUS", "animation_groups":[{
+            "group_index":0,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+        }]}),
+    );
+    data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .last_mut()
+        .unwrap()["raan_entries"] = json!([{"frame_count":1,"file_path":"TEST.3D"}]);
+    data.models.insert(
+        "TEST".into(),
+        cyrus_assets::animation::AnimationModel {
+            radius: Some(1.0),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            corner_normals: vec![],
+            encoding: "static_3d".into(),
+            positions: vec![vec![]],
+            normals: vec![vec![]],
+        },
+    );
+    let mut asset = inventory_fixture(&[(4, 0)]);
+    asset.labels.insert("#opn".into(), "Pick up".into());
+    (source, data, asset)
+}
+
+#[test]
+fn overlapping_pickups_retain_one_owner_and_removed_records_cannot_restart_after_restore() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{
+            ActivationOverlay, ScriptActors, ScriptHud, ScriptInputs, WorldRestoreContext,
+            WorldSnapshotSources,
+        },
+    };
+    let (source, data, asset) = overlapping_pickup_sources();
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    let mut actors = ScriptActors::default();
+    actors.current = Some(ScriptWorld::prepare(&source, 7).unwrap());
+    actors.begin_new_game();
+    let mut world = actors.current.take().unwrap();
+    let player = world.id(2).unwrap();
+    world
+        .initialize_player_animation(player, &data, 0, &mut |_| Ok(()))
+        .unwrap();
+    let advance = |world: &mut ScriptWorld, index, stage| {
+        world
+            .advance(
+                world.id(index).unwrap(),
+                stage,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    activation_use_held: Some(true),
+                    shell_execution: Some(false),
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+    };
+    advance(&mut world, 0, ScriptStage::OrdinaryMain);
+    assert_eq!(world.activation().owner(), Some(world.id(0).unwrap()));
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 0);
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 22, false, 24)
+            .unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 0, false, 24)
+            .unwrap(),
+        ActivationOverlay::Prompt("Pick up".into())
+    );
+    advance(&mut world, 1, ScriptStage::OrdinaryMain);
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), [0]);
+    assert_eq!(world.activation().owner(), Some(world.id(0).unwrap()));
+    advance(&mut world, 0, ScriptStage::OrdinaryMain);
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    assert_eq!(world.activation().owner(), None);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &source,
+        animations: &data,
+        collision: &collision,
+    };
+    let snapshot = serde_json::to_vec(&world.snapshot(&sources).unwrap()).unwrap();
+    let old = world.id(0).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_slice(&snapshot).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 19,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert!(
+        restored
+            .advance(
+                old,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs::default(),
+                None,
+                None,
+                100
+            )
+            .is_err()
+    );
+    let before = serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap();
+    for stage in [ScriptStage::OrdinaryMain, ScriptStage::OrdinaryHook] {
+        advance(&mut restored, 0, stage);
+    }
+    assert_eq!(
+        serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    // The surviving pickup still owns its authored continuation and can be acquired once.
+    advance(&mut restored, 1, ScriptStage::OrdinaryMain);
+    assert_eq!(restored.activation().owner(), Some(restored.id(1).unwrap()));
+    advance(&mut restored, 1, ScriptStage::OrdinaryMain);
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 2);
+    assert!(restored.actors()[1].control_state().unwrap().killed);
+    assert_eq!(restored.activation().owner(), None);
+}

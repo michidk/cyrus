@@ -26736,6 +26736,17 @@ fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
         .advance(
             id,
             ScriptStage::OrdinaryMain,
+            ScriptInputs::default(),
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(world.actors()[0].control_state().unwrap().killed);
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
             ScriptInputs {
                 frame_scale: Some(256),
                 ..Default::default()
@@ -44971,4 +44982,178 @@ fn node_point_ledge_native_task_runs_transition_before_retaining_its_slot() {
         world.globals().native_command().point_phase,
         PointPhase::START
     );
+}
+
+#[test]
+fn removed_pickup_revisit_skips_ordinary_calls_without_repeating_inventory_awards() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptActors, ScriptHud, ScriptInputs, WorldSnapshotSources},
+    };
+    use cyrus_world::lifecycle::PreparedWorld;
+    let mut scripts = cache();
+    scripts.definition.functions.extend([
+        Function {
+            name: Native::AddItem,
+            param_count: 2,
+            kind: CallKind::Function,
+        },
+        Function {
+            name: Native::KillMe,
+            param_count: 0,
+            kind: CallKind::Function,
+        },
+    ]);
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.steps = [
+        wait(
+            1,
+            Native::AddItem,
+            CallKind::Function,
+            vec![Value::Integer { value: 4 }, Value::Integer { value: 1 }],
+        ),
+        wait(2, Native::KillMe, CallKind::Function, vec![]),
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, operation)| {
+        (
+            i as u32,
+            Step {
+                next: i as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut app, prepared, animations) = revisit_test_app(&scripts);
+    let hud = ScriptHud::default();
+    hud.configure(&inventory_asset(&[(4, 0)]), &Preferences::default());
+    app.insert_resource(prepared.clone());
+    app.update();
+    let call = |world: &mut ScriptWorld, index| {
+        world
+            .advance(
+                world.id(index).unwrap(),
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+    };
+    let old = {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        call(world, 0);
+        assert!(world.actors()[0].control_state().unwrap().killed);
+        world.id(0).unwrap()
+    };
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared);
+    app.update();
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+    assert!(actors.has_pending_revisit());
+    assert!(
+        actors
+            .restore_visited(
+                &WorldSnapshotSources {
+                    identity_memo: None,
+                    effects: None,
+                    player: None,
+                    scripts: &scripts,
+                    animations: &animations,
+                    collision: &collision
+                },
+                &mut |_, _| Ok(())
+            )
+            .unwrap()
+    );
+    let world = actors.current.as_mut().unwrap();
+    assert!(
+        world
+            .advance(
+                old,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs::default(),
+                None,
+                None,
+                100
+            )
+            .is_err()
+    );
+    for _ in 0..3 {
+        call(world, 0);
+    }
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    call(world, 1);
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 2);
+    assert!(world.actors()[1].control_state().unwrap().killed);
+    for index in 0..2 {
+        call(world, index);
+    }
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 2);
+}
+
+#[test]
+fn removed_pickup_ordinary_hook_finishes_admitted_iteration_but_not_the_next() {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: Native::KillMe,
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
+        function_id: 1,
+        function: Native::KillMe,
+        kind: CallKind::Function,
+        target: Object::Me,
+        arguments: vec![],
+    });
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (mut world, data, _) = static_model_fixture(scripts);
+    for expected in [5, 5] {
+        world
+            .update_ordinary(
+                &data,
+                [0; 2],
+                cyrus_game::script::OrdinaryInputs {
+                    scene: None,
+                    scripts: cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().variables(),
+            [expected],
+            "{}",
+            world.inspect(0, 1)
+        );
+        assert!(world.actors()[0].control_state().unwrap().killed);
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+    }
 }

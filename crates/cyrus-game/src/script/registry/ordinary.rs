@@ -304,7 +304,7 @@ impl ScriptWorld {
                         self.select_map_animation_default(id, items_ready, ticks, sounds)?;
                     }
                     if self.updates.animation_system {
-                        self.advance(
+                        self.advance_admitted(
                             id,
                             ScriptStage::Animation,
                             inputs,
@@ -494,7 +494,7 @@ impl ScriptWorld {
                     // production host always supplies the controller for live
                     // player updates, while inspection callers intentionally
                     // omit it.
-                    self.advance(
+                    self.advance_admitted(
                         id,
                         ScriptStage::OrdinaryHook,
                         inputs,
@@ -568,7 +568,7 @@ impl ScriptWorld {
                     };
                     self.maintain_map_combat(id, ticks, transition, inputs, Some(random), sounds)?;
                 }
-                self.advance(
+                self.advance_admitted(
                     id,
                     ScriptStage::OrdinaryMain,
                     inputs,

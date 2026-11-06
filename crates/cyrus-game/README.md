@@ -46,6 +46,14 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: killed map pickups retain their removal state across world restoration.
+Public standalone ordinary main and hook stages skip killed records, so restored pickups cannot
+restart their acquisition scripts. Competing activation callers retain one owner
+until its own `End` or `Deactivate` releases it; the surviving pickup keeps
+its own continuation. These rules follow preservation's
+[killed-object removal](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#killed-object-removal)
+and [activation prompt](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#activation-prompt).
+
 Verified: `PushAllItems` replaces the owned words of consecutive identifiers starting
 at zero through the shared saved-count owner. Repeated calls preserve the first
 saved words; a missing identifier retains earlier replacements and fails before
