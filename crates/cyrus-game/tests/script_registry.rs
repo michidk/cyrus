@@ -35793,13 +35793,18 @@ fn object_lineup_walks_the_receiver_to_the_callers_frame_and_ends_with_the_flag_
     );
 }
 
-#[test]
-fn object_pickup_lineup_places_the_receiver_at_the_callers_unrotated_offset_point_and_keeps_its_slot()
- {
+/// The walking-player fixture where the map actor calls `Player.ObjectPickupLineUp(angle, 0, 2048)`.
+fn object_pickup_fixture(
+    angle: i32,
+) -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+    usize,
+) {
     use cyrus_game::script::ScriptActorSource;
-    // The map actor calls `Player.ObjectPickupLineUp(0, 0, 2048)`: the receiver (the selected player)
-    // walks to the point the unrotated offsets name from the caller to the caller's heading plus a half turn.
-    let (_, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+    let (scripts, world, mut data, scene) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
             name: Native::ObjectPickupLineUp,
@@ -35814,9 +35819,11 @@ fn object_pickup_lineup_places_the_receiver_at_the_callers_unrotated_offset_poin
                     function: Native::ObjectPickupLineUp,
                     kind: CallKind::Task,
                     target: Object::Player,
-                    // The offsets (rotated by the caller's zero heading) name the point 2048 units
-                    // along +Z of the caller, ground the fixture covers (as for PlayerFaceTalk).
-                    arguments: [0, 0, 2048].map(|value| Value::Integer { value }).to_vec(),
+                    // The unrotated offsets name the point 2048 units along +Z of the caller,
+                    // ground the fixture covers (as for PlayerFaceTalk).
+                    arguments: [angle, 0, 2048]
+                        .map(|value| Value::Integer { value })
+                        .to_vec(),
                 },
             },
             set_flag(7),
@@ -35842,33 +35849,90 @@ fn object_pickup_lineup_places_the_receiver_at_the_callers_unrotated_offset_poin
         .iter()
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
+    (scripts, world, data, scene, index)
+}
+
+#[test]
+fn object_pickup_lineup_arrives_completes_and_the_caller_continues() {
+    // With an angle that puts the final heading on the player's own, the plain-mover fallback the
+    // caller's height selects turns to it, arrives at the caller's X/Z plus the unrotated offsets
+    // and the default animation completes the task in the player's own slot; the caller continued
+    // at once.
+    let (_, mut world, data, scene, index) = object_pickup_fixture(1024);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
-    // The mover's first path test sees the caller's Y far above the player's ground, so it takes
-    // the plain-mover fallback; the destination is what this native adds: the caller's X and Z
-    // plus the unrotated offsets, the caller's heading as the angle base. The completion of the
-    // shared pickup and plain movers is covered by the PlayerPickupLineUp tests.
-    let mut trace = vec![];
-    for round in 0..40 {
+    let mut finished = false;
+    for round in 0..600 {
         scheduler_round_with(&mut world, &data, &scene, round, true, true)
             .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
         if round == 0 {
             assert_eq!(world.flags(), [7], "the caller continues at once");
+            assert_eq!(
+                world.actors()[index].runtime().unwrap().active_tasks(),
+                1,
+                "the receiver's own slot holds the task"
+            );
         }
-        let local = world.spatial(player).unwrap().local;
-        trace.push(local.position);
+        if world.actors()[index].runtime().unwrap().active_tasks() == 0 {
+            finished = true;
+            break;
+        }
     }
     let caller = world.spatial(world.id(0).unwrap()).unwrap().local.position;
-    let end = *trace.last().unwrap();
-    assert_eq!(
-        [end[0], end[2]],
-        [caller[0], caller[2] + 2048],
-        "the player stands at the caller's X/Z plus the unrotated offsets"
+    let end = world.spatial(player).unwrap().local.position;
+    assert!(
+        finished,
+        "the task completes; player at {end:?}, caller {caller:?}"
     );
+    assert_eq!([end[0], end[2]], [caller[0], caller[2] + 2048]);
+}
+
+#[test]
+fn object_pickup_lineup_abandons_on_a_stale_collision_response_without_moving() {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    let (scripts, mut world, data, scene, index) = object_pickup_fixture(1024);
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let start = world.spatial(player).unwrap().local.position;
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    // A nonzero collision-response mark older than eight updates: the plain mover abandons first.
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    saved["actors"][index]["control"]["body_response_flags"] = 1.into();
+    saved["actors"][index]["control"]["collision_response_age"] = 9.into();
+    let generation = world.generation() + 1;
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let player = world.id(index).unwrap();
+    for round in 0..6 {
+        scheduler_round_with(&mut world, &data, &scene, round, true, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+    }
+    assert_eq!(world.spatial(player).unwrap().local.position, start);
     assert_eq!(
         world.actors()[index].runtime().unwrap().active_tasks(),
-        1,
-        "the receiver's own slot keeps the task"
+        0,
+        "the task completed by abandoning"
+    );
+    assert_eq!(
+        serde_json::to_value(world.globals()).unwrap()["native_command_return"],
+        6,
+        "the abandon leaves return state six"
     );
 }
 
