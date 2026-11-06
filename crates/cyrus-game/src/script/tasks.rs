@@ -224,6 +224,9 @@ pub(super) trait PointHost {
     /// the receiver's orientation.
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()>;
 
+    /// One persistent PlayerTilt orientation update.
+    fn player_tilt(&mut self, angle: i32, strength: i32, divisor: i32) -> Result<()>;
+
     /// One `DragonBreathTask` update: true while the receiver keeps breathing.
     fn dragon_breath(&mut self) -> Result<bool>;
 
@@ -614,6 +617,8 @@ enum Task {
     /// `PlayerOffsettask(x, y, z)`: every invocation places the selected player at the receiver's
     /// position plus the offset and gives it the receiver's orientation; it never completes.
     PlayerOffset,
+    /// `PlayerTilt`: recomputes receiver tilt from the selected player each invocation.
+    PlayerTilt,
     /// `DragonBreathTask()`: the `DragonBreath` update every invocation, completing when it returns zero.
     DragonBreath,
     /// `projectileAI()`: one projectile flight step every invocation, completing when it ends.
@@ -1324,6 +1329,16 @@ impl Task {
                     .point
                     .context("PlayerOffsettask requires the receiver's placement owner")?;
                 host.player_offset([x.integer()?, y.integer()?, z.integer()?])?;
+                false
+            }
+            Self::PlayerTilt => {
+                let [angle, strength, divisor] = arguments else {
+                    anyhow::bail!("PlayerTilt requires three arguments")
+                };
+                services
+                    .point
+                    .context("PlayerTilt receiver owner unavailable")?
+                    .player_tilt(angle.integer()?, strength.integer()?, divisor.integer()?)?;
                 false
             }
             Self::DragonBreath => {
@@ -2973,6 +2988,12 @@ impl NativeTasks {
                 "PlayerOffsettask requires multitask encoding"
             );
             Task::PlayerOffset
+        } else if function == Native::PlayerTilt {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "PlayerTilt requires multitask encoding"
+            );
+            Task::PlayerTilt
         } else if function == Native::DragonBreathTask {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
@@ -3160,6 +3181,7 @@ impl NativeTasks {
             Native::FaceAngle,
             Native::FacePos,
             Native::PlayerOffsettask,
+            Native::PlayerTilt,
             Native::DragonBreathTask,
             Native::ProjectileAI,
             Native::MoveMarker,
@@ -3180,6 +3202,7 @@ impl NativeTasks {
             Some(
                 Task::FaceAngle
                     | Task::FacePos
+                    | Task::PlayerTilt
                     | Task::PlayerOffset
                     | Task::DragonBreath
                     | Task::Projectile

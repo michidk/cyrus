@@ -2635,6 +2635,9 @@ struct RecordingPointHost {
     breathing: bool,
 }
 impl PointHost for RecordingPointHost {
+    fn player_tilt(&mut self, _: i32, _: i32, _: i32) -> Result<()> {
+        anyhow::bail!("recording host does not provide PlayerTilt")
+    }
     fn goto_location(&mut self, _: i32) -> Result<i32> {
         anyhow::bail!("recording host does not provide GotoLocation")
     }

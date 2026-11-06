@@ -4045,17 +4045,24 @@
     },
     {
       "native": "PlayerTilt",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named transform/player SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "PlayerTilt persistent receiver orientation through public VM task callers",
+      "caller": "GameHost::native_task_call/point_call -> Task::PlayerTilt -> PointHost::player_tilt; point_poll on later task passes",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_public_call_scales_total_extent_and_persists_after_caller_continues",
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_retains_task_and_rebinds_live_support_on_restore",
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_routed_call_changes_receiver_and_leaves_callers_pose",
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_faults_and_unsupported_refresh_do_not_publish_partial_angles"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/commit/e8dc5a8"
+        "https://github.com/michidk/redguard-preservation/commit/e8dc5a8",
+        "https://github.com/michidk/redguard-preservation/commit/5c0a4c7689fe00c822913428b058be5aca6b0c94",
+        "https://github.com/michidk/redguard-preservation/commit/96193075f911d3f2d73f7d0b6f4f3032ae40b3a7"
       ],
-      "limits": "Verified: independent installed three-argument multitask/exact binding/full729 native and original eligibility/effective-position/linked/bearing/metric/sqrt/signed-angular-difference/magnitude helpers CPU execution.5616 contexts/14 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS.1008 actual result1 returns/864 diagnostic-copy entry stops/3744 orientation-refresh entry stops. Attr26 diagnostic; player actor-association selects zero or strength-scaled pitch/roll targets. Bearing uses effective position, distance uses local position; fixed-point wrapping arithmetic, positive distance limit, signed step division/min1/shared update multiplier/snap-add rules. Full constructed arena/error/player/multiplier/arguments/result/canary/x87 CW/TOP, three preserved registers/stack on actual returns. No arbitrary helper returns or fabricated diagnostic/refresh effects/continuation. Original-produced bearing table hash checked under flag0/fninit only. Unknown zero-limit division/overflow domain/malformed pointers/unmasked exceptions/natural table initialization/software path/diagnostic and refresh effects/full domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
-      "reviewed_revision": "f696205424fa41aa2bb94e94d95ad302458277a4"
+      "limits": "Verified original: retained full native/helpers witness passes 5616 contexts with 14 effective instruction controls; 1008 result-one returns, 864 diagnostic entry stops and 3744 orientation-refresh entry stops. A further 2880 original contexts match the public fixture, including signed strengths/divisors and wrapping multiplication. Additional full refresh instruction interpretation passes 64 contexts with three effective controls and controlled matrix-service IO, not numerical matrix execution. PlayerStand reads the same support identity; clock producer identifies the multiplier as whole nominal ticks; distance limit uses total extents. Production implements persistent task dispatch, dynamic support queries, wrapping target arithmetic, signed division/minimum-one steps and orientation/history refresh. Explicitly unsupported: slave diagnostic, rotation mode one, original division faults and unmasked result angles outside the wrapped spatial storage domain. Unknown: natural installed original/native/browser gameplay parity, malformed/freed pointers, complete overflow/FPU initialization domain and alternate matrix service. Synthetic public native/browser verification is recorded with the landing evidence; #5 stays open.",
+      "reviewed_revision": "0d84f397ac756c47ae375735965618b192d577dd"
     },
     {
       "native": "PlayerTiltRevx",

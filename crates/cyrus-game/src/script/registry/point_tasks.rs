@@ -6,6 +6,23 @@ use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 use cyrus_script::Native;
 
+// The exact half-turn keeps the sign of the unwrapped difference.
+fn tilt_difference(current: i32, target: i32) -> i32 {
+    let difference = (target & 2047) - (current & 2047);
+    let magnitude = difference.wrapping_abs() & 2047;
+    if magnitude > 1024 {
+        if difference < 0 {
+            2048 - magnitude
+        } else {
+            magnitude - 2048
+        }
+    } else if difference < 0 {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
 impl PointHost for GameHost<'_, '_, '_, '_> {
     fn goto_location(&mut self, location: i32) -> Result<i32> {
         let id = ScriptActorId {
@@ -47,6 +64,102 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
         self.registry
             .offset_selected_player(self.index, offset, true)
+    }
+
+    fn player_tilt(&mut self, angle: i32, strength: i32, divisor: i32) -> Result<()> {
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        anyhow::ensure!(
+            self.registry.actors[self.index].attributes[Attribute::Slave] == 0,
+            "PlayerTilt world {} actor {}: slave diagnostic unsupported",
+            self.registry.world,
+            self.index
+        );
+        let shape = self.registry.ordinary_collision_shape(id)?;
+        let extent =
+            |axis: usize| shape.positive_extent[axis].wrapping_add(shape.negative_extent[axis]);
+        let limit = extent(0).max(extent(2)).wrapping_shl(8) / 2;
+        let player = self
+            .selected_player()
+            .context("PlayerTilt selected player unavailable")?;
+        let associated = self.registry.model_support(player)?.actor == Some(id);
+        let spatial = self
+            .registry
+            .spatial
+            .as_ref()
+            .context("PlayerTilt spatial state unavailable")?;
+        let receiver = spatial.actor(self.index)?;
+        let mut targets = [0, 0];
+        if associated {
+            let player_position = spatial.actor(player.index)?.local.position;
+            let effective = self.registry.query_position(id)?;
+            let bearing = super::super::spatial::query_bearing(
+                effective[0].wrapping_sub(player_position[0]),
+                effective[2].wrapping_sub(player_position[2]),
+            );
+            let a = (-i32::from(bearing))
+                .wrapping_add(i32::from(receiver.local.angles[1]))
+                .wrapping_add(angle)
+                & 2047;
+            let pitch = -(if a < 1024 { 512 - a } else { a - 1536 });
+            let roll = if a < 512 {
+                a
+            } else if a < 1536 {
+                1024 - a
+            } else {
+                a - 2048
+            };
+            let distance = crate::script::spatial::rounded_distance([
+                receiver.local.position[0].wrapping_sub(player_position[0]),
+                0,
+                receiver.local.position[2].wrapping_sub(player_position[2]),
+            ])?
+            .min(limit);
+            let reciprocal = 16_777_216i32
+                .checked_div(limit)
+                .context("PlayerTilt distance limit causes original division fault")?;
+            let factor = reciprocal.wrapping_mul(distance) >> 16;
+            let strength = strength.wrapping_mul(factor) >> 8;
+            targets = [pitch, roll].map(|target| (target.wrapping_mul(strength) >> 8) & 2047);
+        }
+        let current = receiver.local.angles;
+        if [i32::from(current[0]), i32::from(current[2])] == targets {
+            return Ok(());
+        }
+        let ticks = self
+            .inputs
+            .nominal_ticks
+            .context("PlayerTilt requires nominal_ticks")? as i32;
+        let mut angles = current;
+        for (axis, target) in [0, 2].into_iter().zip(targets) {
+            let difference = tilt_difference(i32::from(current[axis]), target);
+            let step = if divisor == 0 {
+                difference
+            } else {
+                (difference / divisor).max(1)
+            };
+            let step = step.wrapping_mul(ticks);
+            let value = if difference > step {
+                i32::from(current[axis]).wrapping_add(step)
+            } else {
+                target
+            };
+            // The original stores unmasked sums; the spatial owner currently requires wrapped angles.
+            anyhow::ensure!(
+                (0..2048).contains(&value),
+                "PlayerTilt unwrapped angle exceeds spatial storage domain"
+            );
+            angles[axis] = value as u16;
+        }
+        self.registry
+            .spatial
+            .as_mut()
+            .unwrap()
+            .actor_mut(self.index)?
+            .set_rotation(angles.map(i32::from))
+            .context("PlayerTilt orientation refresh")
     }
 
     fn dragon_breath(&mut self) -> Result<bool> {

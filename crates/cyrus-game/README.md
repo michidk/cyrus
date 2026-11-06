@@ -493,3 +493,15 @@ existing nearest-even transform contract. This follows preservation's
 [OffsetLocation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#offsetlocation).
 Original instruction witnesses and public native/browser synthetic callers cover
 the bounded behavior; natural authored gameplay parity remains Unknown.
+
+Verified: `PlayerTilt(angle, strength, divisor)` runs as a persistent multitask
+through direct and routed script calls. It reads the selected player's retained
+support actor, total receiver X/Z bounds, effective bearing position and local
+strength distance on each invocation. Whole nominal ticks scale its signed
+snap/add steps; successful changes rebuild orientation and angle history.
+The contract is published in preservation's
+[PlayerTilt reference](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playertilt-receiver-orientation).
+Slave diagnostics, rotation mode one's alternate matrix builder, original divide
+faults and unmasked angle sums outside the spatial owner's wrapped domain remain
+explicit errors. Original instruction witnesses and synthetic public native/browser
+callers bound acceptance; natural installed gameplay parity remains Unknown.

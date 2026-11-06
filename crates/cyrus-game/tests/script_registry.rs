@@ -47398,3 +47398,6 @@ fn item_used_tracks_completed_use_through_public_callers_and_snapshots() {
         .contains("no use history")
     );
 }
+
+#[path = "script_registry/player_tilt.rs"]
+mod player_tilt_tests;
