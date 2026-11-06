@@ -21,6 +21,8 @@ class CargoScripts(unittest.TestCase):
 [[ "$CARGO_HAULER_SHIM_BACKGROUND" == 0 ]] || exit 99
 [[ "$CARGO_HAULER_MAX_CONCURRENT" == 1 ]] || exit 99
 [[ ! -t 1 ]] || exit 99
+[[ "$CARGO_HAULER_MAX_CONCURRENT" == 1 ]] || exit 99
+[[ "$CARGO_HAULER_OVERLAP_EXECUTION" == 0 ]] || exit 99
 echo 'test output'
 exit 17
 ''')
@@ -145,7 +147,7 @@ exit 17
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("1 install tests skipped", result.stderr)
 
-    def toolchain_flags(self, **environment):
+    def toolchain_flags(self, *, source_twice=False, **environment):
         env = {key: value for key, value in os.environ.items()
                if key not in ("CARGO_HOME", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS")}
         env.update(environment)
@@ -156,8 +158,8 @@ exit 17
             stub.chmod(0o755)
             env["PATH"] = f"{directory}:{env['PATH']}"
             result = subprocess.run(
-                ["bash", "-c", 'source "$1"; printf %s "${CARGO_BUILD_RUSTFLAGS-}"', "test",
-                 str(SCRIPTS / "toolchain.sh")],
+                ["bash", "-c", 'source "$1"; if [ "$2" = twice ]; then source "$1"; fi; printf %s "${CARGO_BUILD_RUSTFLAGS-}"', "test",
+                 str(SCRIPTS / "toolchain.sh"), "twice" if source_twice else "once"],
                 capture_output=True, text=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
@@ -171,6 +173,40 @@ exit 17
             flags.replace("/tools-a/", "/tools-b/"), other,
             "only the CARGO_HOME prefix may differ between checkouts",
         )
+
+    def test_toolchain_aliases_produce_identical_flags_and_repeated_sourcing_is_stable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = root / "cargo"
+            canonical.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(canonical, target_is_directory=True)
+            flags = self.toolchain_flags(CARGO_HOME=str(canonical), CARGO_BUILD_RUSTFLAGS="-Dwarnings")
+            self.assertEqual(self.toolchain_flags(CARGO_HOME=str(alias), CARGO_BUILD_RUSTFLAGS="-Dwarnings"), flags)
+            self.assertEqual(self.toolchain_flags(source_twice=True, CARGO_HOME=str(alias), CARGO_BUILD_RUSTFLAGS="-Dwarnings"), flags)
+            self.assertEqual(flags.count("--remap-path-prefix="), 2)
+            self.assertTrue(flags.startswith("-Dwarnings "))
+
+    def test_setup_hooks_keep_single_execution_and_preserve_other_hooks(self):
+        import json
+        source = (SCRIPTS / "setup-hauler.sh").read_text()
+        fragment = source.split("<<'PY'\n", 1)[1].split("\nPY", 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "hooks.json"
+            path.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "other-hook"}]}]}}))
+            prefix = "import os; os.path.expanduser = lambda _: " + repr(str(path)) + "\n"
+            result = subprocess.run(["python3", "-c", prefix + fragment, "/shared/hooks"],
+                env=dict(os.environ, CARGO_HAULER_MAX_CONCURRENT="1", CARGO_HAULER_OVERLAP_EXECUTION="0"),
+                text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            hooks = json.loads(path.read_text())["hooks"]
+            commands = [hook["command"] for groups in hooks.values() for group in groups for hook in group["hooks"]]
+            self.assertIn("other-hook", commands)
+            generated = [command for command in commands if "cargo-hauler" in command or "/shared/hooks/" in command]
+            self.assertEqual(len(generated), 4)
+            for command in generated:
+                self.assertIn("CARGO_HAULER_MAX_CONCURRENT=1 ", command)
+                self.assertIn("CARGO_HAULER_OVERLAP_EXECUTION=0 ", command)
 
     def test_toolchain_leaves_explicit_rustflags_alone(self):
         self.assertEqual(self.toolchain_flags(CARGO_HOME="/tools/cargo", RUSTFLAGS="-Dwarnings"), "")

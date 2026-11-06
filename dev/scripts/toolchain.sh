@@ -9,7 +9,7 @@
 #
 # A system-wide cargo on PATH always wins; this only fills the gap.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-tools="$root/magic/build-tools"
+tools="$(realpath -m "$root/magic/build-tools")"
 sysdeps="$tools/sysdeps"
 arch_lib="usr/lib/x86_64-linux-gnu"
 
@@ -63,9 +63,18 @@ fi
 # artifact names into a shared CARGO_TARGET_DIR with a crate hash that depends on that path, which
 # strands every dependent built against the other copy (rustdoc: E0463 can't find crate).
 # Remapping the dependency directories makes the hash path-independent.
-if [ -n "${CARGO_HOME:-}" ] && [ -z "${RUSTFLAGS:-}" ] && [ -z "${CARGO_ENCODED_RUSTFLAGS:-}" ]; then
-    CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:+$CARGO_BUILD_RUSTFLAGS }--remap-path-prefix=$CARGO_HOME/registry/src=/cargo/registry/src --remap-path-prefix=$CARGO_HOME/git/checkouts=/cargo/git/checkouts"
-    export CARGO_BUILD_RUSTFLAGS
+if [ -n "${CARGO_HOME:-}" ]; then
+    export CARGO_HOME="$(realpath -m "$CARGO_HOME")"
+    if [ -z "${RUSTFLAGS:-}" ] && [ -z "${CARGO_ENCODED_RUSTFLAGS:-}" ]; then
+        for dependency_dir in registry/src git/checkouts; do
+            dependency_remap="--remap-path-prefix=$CARGO_HOME/$dependency_dir=/cargo/$dependency_dir"
+            case " ${CARGO_BUILD_RUSTFLAGS:-} " in
+                *" $dependency_remap "*) ;;
+                *) CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:+$CARGO_BUILD_RUSTFLAGS }$dependency_remap" ;;
+            esac
+        done
+        export CARGO_BUILD_RUSTFLAGS
+    fi
 fi
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
     return 0
