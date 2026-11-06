@@ -424,7 +424,7 @@ impl ScriptWorld {
                 // A facing wall 24 units lower marks a record that reaches below the top.
                 let low = wall_at(top.wrapping_add(16 + 24))?.is_some();
                 records.push(LedgeRecord {
-                    flag: u8::from(low),
+                    wall_below: low,
                     top,
                     point: [
                         point[0].wrapping_mul(256),
@@ -434,7 +434,7 @@ impl ScriptWorld {
                     heading: wall_heading(normal),
                     support,
                     class: None,
-                    clear: 0,
+                    room_to_climb: false,
                 });
             }
             if stance.airborne && stance.hand_y.is_none() && !records.is_empty() {
@@ -450,7 +450,7 @@ impl ScriptWorld {
                 if let Some(class) = record.class {
                     let wall = [record.point[0] >> 8, record.point[2] >> 8];
                     let (body_fits, head_fits) = fits(record.top, wall, record.heading)?;
-                    (record.class, record.clear) = settle(class, body_fits, head_fits);
+                    (record.class, record.room_to_climb) = settle(class, body_fits, head_fits);
                 }
             }
             // The result is the lowest class of any record.
@@ -489,14 +489,14 @@ type Wall = ([i32; 3], [i32; 3], Option<usize>);
 #[derive(Clone, Debug)]
 pub(super) struct LedgeRecord {
     /// Record byte 0: a second facing wall 24 units lower was found.
-    pub flag: u8,
+    pub wall_below: bool,
     pub top: i32,
     pub point: [i32; 3],
     pub heading: u16,
     pub support: Option<usize>,
     pub class: Option<LedgeClass>,
     /// Record byte 2: whether a hang record leaves room to climb.
-    pub clear: u8,
+    pub room_to_climb: bool,
 }
 
 /// Class of a ledge record by its top's height against the actor (preservation player.md "Ledge
@@ -565,11 +565,11 @@ fn ledge_class(stance: &Stance, top: i32, undersides: &[i32]) -> Option<LedgeCla
 
 /// Class and record byte 2 after the fit test: a body that does not fit rejects low and high
 /// ledges, and leaves a hang without room to climb; a blocked head also leaves it without room.
-fn settle(class: LedgeClass, body_fits: bool, head_fits: bool) -> (Option<LedgeClass>, u8) {
+fn settle(class: LedgeClass, body_fits: bool, head_fits: bool) -> (Option<LedgeClass>, bool) {
     match class {
-        LedgeClass::Hang => (Some(class), u8::from(head_fits && body_fits)),
-        _ if !body_fits => (None, 0),
-        _ => (Some(class), 0),
+        LedgeClass::Hang => (Some(class), head_fits && body_fits),
+        _ if !body_fits => (None, false),
+        _ => (Some(class), false),
     }
 }
 
@@ -646,13 +646,13 @@ mod tests {
 
     fn record(top: i32, class: Option<LedgeClass>) -> LedgeRecord {
         LedgeRecord {
-            flag: 0,
+            wall_below: false,
             top,
             point: [0, top * 256, 0],
             heading: 0,
             support: None,
             class,
-            clear: 1,
+            room_to_climb: true,
         }
     }
 
@@ -711,22 +711,22 @@ mod tests {
 
     #[test]
     fn the_fit_test_rejects_low_and_high_ledges_and_flags_class_three_clearance() {
-        assert_eq!(settle(LedgeClass::Low, false, true), (None, 0));
+        assert_eq!(settle(LedgeClass::Low, false, true), (None, false));
         assert_eq!(
             settle(LedgeClass::High, true, false),
-            (Some(LedgeClass::High), 0)
+            (Some(LedgeClass::High), false)
         );
         assert_eq!(
             settle(LedgeClass::Hang, true, true),
-            (Some(LedgeClass::Hang), 1)
+            (Some(LedgeClass::Hang), true)
         );
         assert_eq!(
             settle(LedgeClass::Hang, true, false),
-            (Some(LedgeClass::Hang), 0)
+            (Some(LedgeClass::Hang), false)
         );
         assert_eq!(
             settle(LedgeClass::Hang, false, true),
-            (Some(LedgeClass::Hang), 0)
+            (Some(LedgeClass::Hang), false)
         );
     }
 

@@ -192,7 +192,7 @@ impl ScriptWorld {
         let local_y = self.spatial(id)?.local.position[1];
         let Some(record) = scan
             .hand_nearest(local_y)
-            .filter(|record| record.clear != 0)
+            .filter(|record| record.room_to_climb)
         else {
             return Ok(1);
         };
@@ -384,10 +384,10 @@ impl ScriptWorld {
         )?;
         self.force_ledge_group(
             ctx,
-            if record.flag == 0 {
-                AnimationGroup::SWING_LEDGE
-            } else {
+            if record.wall_below {
                 AnimationGroup::GRAB_LEDGE
+            } else {
+                AnimationGroup::SWING_LEDGE
             },
             sounds,
         )?;
