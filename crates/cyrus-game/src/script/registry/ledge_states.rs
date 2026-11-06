@@ -3,7 +3,11 @@
 //! ledge, `TURNING_TO_LOW_LEDGE`), else the first class 2 record (high ledge, `TURNING_TO_HIGH_LEDGE`), else the hand-nearest
 //! class 3 record (catch, `CATCHING_HANG`); the edge service starts it from a fall, queued motion or the
 //! selected jump entry.
-use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery, ledge::LedgeScan};
+use super::{
+    ScriptActorId, ScriptWorld,
+    ground::OrdinaryGroundQuery,
+    ledge::{LedgeClass, LedgeScan},
+};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
@@ -216,14 +220,10 @@ impl ScriptWorld {
         let scan = self.ledge_scan(id, query, environment, timing.fine_ticks, 19)?;
         let local_y = self.spatial(id)?.local.position[1];
         let (record, state) = match scan.result {
-            1 | 2 => (
-                scan.first(scan.result),
-                if scan.result == 1 {
-                    LivingState::TURNING_TO_LOW_LEDGE
-                } else {
-                    LivingState::TURNING_TO_HIGH_LEDGE
-                },
-            ),
+            Some(class @ LedgeClass::Low) => (scan.first(class), LivingState::TURNING_TO_LOW_LEDGE),
+            Some(class @ LedgeClass::High) => {
+                (scan.first(class), LivingState::TURNING_TO_HIGH_LEDGE)
+            }
             _ => (scan.hand_nearest(local_y), LivingState::CATCHING_HANG),
         };
         let Some(record) = record.cloned() else {
@@ -246,7 +246,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<Option<u8>> {
         let (point, heading) = self.ledge_anchor()?;
-        if let Some(result) = self.ledge_turn_toward(ctx, heading, 1, sounds)? {
+        if let Some(result) = self.ledge_turn_toward(ctx, heading, LedgeClass::Low, sounds)? {
             return Ok(Some(result));
         }
         let [dx, dz] =
@@ -268,7 +268,7 @@ impl ScriptWorld {
         &mut self,
         ctx: &Transition<'_>,
         heading: u16,
-        class: u8,
+        class: LedgeClass,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<Option<u8>> {
         let (id, index) = (ctx.id, ctx.index);
@@ -296,7 +296,7 @@ impl ScriptWorld {
             return Ok(Some(0));
         }
         let scan = self.ledge_scan(id, ctx.query, ctx.environment, ctx.timing.fine_ticks, 12)?;
-        if scan.result != class {
+        if scan.result != Some(class) {
             self.set_living(index, LivingState::ORDINARY);
             return Ok(Some(0));
         }
@@ -312,7 +312,7 @@ impl ScriptWorld {
     ) -> Result<Option<u8>> {
         let (id, index) = (ctx.id, ctx.index);
         let (point, heading) = self.ledge_anchor()?;
-        if let Some(result) = self.ledge_turn_toward(ctx, heading, 2, sounds)? {
+        if let Some(result) = self.ledge_turn_toward(ctx, heading, LedgeClass::High, sounds)? {
             return Ok(Some(result));
         }
         let [dx, dz] =

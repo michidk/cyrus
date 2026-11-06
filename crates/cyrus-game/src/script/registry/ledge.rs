@@ -432,7 +432,7 @@ impl ScriptWorld {
                     ],
                     heading: wall_heading(normal),
                     support,
-                    class: 0,
+                    class: None,
                     clear: 0,
                 });
             }
@@ -446,21 +446,17 @@ impl ScriptWorld {
             }
             for record in &mut records {
                 record.class = ledge_class(&stance, record.top, &undersides);
-                if record.class != 0 {
+                if let Some(class) = record.class {
                     let wall = [record.point[0] >> 8, record.point[2] >> 8];
                     let (body_fits, head_fits) = fits(record.top, wall, record.heading)?;
-                    (record.class, record.clear) = settle(record.class, body_fits, head_fits);
+                    (record.class, record.clear) = settle(class, body_fits, head_fits);
                 }
             }
-            // The result is the lowest nonzero class of any record.
-            let result = records
-                .iter()
-                .map(|record| record.class)
-                .filter(|&class| class != 0)
-                .min();
+            // The result is the lowest class of any record.
+            let result = records.iter().filter_map(|record| record.class).min();
             if result.is_some() || offset == LEDGE_SCAN_PASSES[1] {
                 return Ok(LedgeScan {
-                    result: result.unwrap_or(0),
+                    result,
                     records,
                     grip: stance.grip,
                 });
@@ -497,40 +493,54 @@ pub(super) struct LedgeRecord {
     pub point: [i32; 3],
     pub heading: u16,
     pub support: Option<usize>,
-    pub class: u8,
-    /// Record byte 2: whether a class 3 record leaves room to climb.
+    pub class: Option<LedgeClass>,
+    /// Record byte 2: whether a hang record leaves room to climb.
     pub clear: u8,
 }
 
-/// The scan result (1, 2 or 3 by the lowest nonzero class, else 0), the table and the hand vertex
-/// that the class 3 queries share.
+/// Class of a ledge record by its top's height against the actor (preservation player.md "Ledge
+/// record classification"). Ordered so that the scan result is the lowest class present.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum LedgeClass {
+    /// Class 1: a standing actor's top from a quarter of the upper extent above the origin down to
+    /// `post_collide_height` above the feet.
+    Low = 1,
+    /// Class 2: a standing actor's top above that, up to the reach above the head.
+    High = 2,
+    /// Class 3: an airborne actor's top within reach of the hand, or any top while hanging.
+    Hang = 3,
+}
+
+/// The scan result (the lowest class of any record), the table and the hand vertex that the hang
+/// queries share.
 #[derive(Default)]
 pub(super) struct LedgeScan {
-    pub result: u8,
+    pub result: Option<LedgeClass>,
     pub records: Vec<LedgeRecord>,
     pub grip: Option<[i32; 3]>,
 }
 
 impl LedgeScan {
-    /// The first record of a class, for the entering selections of classes 1 and 2.
-    pub fn first(&self, class: u8) -> Option<&LedgeRecord> {
-        self.records.iter().find(|record| record.class == class)
+    /// The first record of a class, for the entering selections of low and high ledges.
+    pub fn first(&self, class: LedgeClass) -> Option<&LedgeRecord> {
+        self.records
+            .iter()
+            .find(|record| record.class == Some(class))
     }
 
-    /// The class 3 record nearest the hand, earliest on ties; none without a hand frame.
+    /// The hang record nearest the hand, earliest on ties; none without a hand frame.
     pub fn hand_nearest(&self, local_y: i32) -> Option<&LedgeRecord> {
         let hand = local_y.wrapping_add(self.grip?[1]);
         self.records
             .iter()
-            .filter(|record| record.class == 3)
+            .filter(|record| record.class == Some(LedgeClass::Hang))
             .min_by_key(|record| record.point[1].wrapping_sub(hand).unsigned_abs())
     }
 }
 
-/// Class of a record by its top's height against the actor, before the fit test: 1 low, 2 high,
-/// 3 reachable from the hand while airborne or hanging, 0 none. An underside within eight units
-/// of the top rejects it.
-fn ledge_class(stance: &Stance, top: i32, undersides: &[i32]) -> u8 {
+/// Class of a record by its top's height against the actor, before the fit test; none when no
+/// class applies. An underside within eight units of the top rejects it.
+fn ledge_class(stance: &Stance, top: i32, undersides: &[i32]) -> Option<LedgeClass> {
     let (y, quarter) = (stance.y, stance.negative >> 2);
     let class = if stance.airborne {
         if stance.hanging
@@ -538,31 +548,27 @@ fn ledge_class(stance: &Stance, top: i32, undersides: &[i32]) -> u8 {
                 .hand_y
                 .is_some_and(|hand| hand.wrapping_sub(top).abs() < stance.reach)
         {
-            3
+            Some(LedgeClass::Hang)
         } else {
-            0
+            None
         }
     } else if y - stance.negative - stance.reach <= top && top < y - quarter {
-        2
+        Some(LedgeClass::High)
     } else if y - quarter <= top && top < y + stance.positive - stance.post {
-        1
+        Some(LedgeClass::Low)
     } else {
-        0
+        None
     };
-    if undersides.iter().any(|&under| (top - under).abs() < 8) {
-        0
-    } else {
-        class
-    }
+    class.filter(|_| !undersides.iter().any(|&under| (top - under).abs() < 8))
 }
 
-/// Class and record byte 2 after the fit test: a body that does not fit rejects classes 1 and 2,
-/// and leaves class 3 without room to climb; a blocked head also leaves it without room.
-fn settle(class: u8, body_fits: bool, head_fits: bool) -> (u8, u8) {
+/// Class and record byte 2 after the fit test: a body that does not fit rejects low and high
+/// ledges, and leaves a hang without room to climb; a blocked head also leaves it without room.
+fn settle(class: LedgeClass, body_fits: bool, head_fits: bool) -> (Option<LedgeClass>, u8) {
     match class {
-        3 => (3, u8::from(head_fits && body_fits)),
-        _ if !body_fits => (0, 0),
-        _ => (class, 0),
+        LedgeClass::Hang => (Some(class), u8::from(head_fits && body_fits)),
+        _ if !body_fits => (None, 0),
+        _ => (Some(class), 0),
     }
 }
 
@@ -633,10 +639,11 @@ fn facing(heading: u16, normal: [i32; 3]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LedgeRecord, LedgeScan, Stance, facing, heading_offset, ledge_class, settle, wrap,
+        LedgeClass, LedgeRecord, LedgeScan, Stance, facing, heading_offset, ledge_class, settle,
+        wrap,
     };
 
-    fn record(top: i32, class: u8) -> LedgeRecord {
+    fn record(top: i32, class: Option<LedgeClass>) -> LedgeRecord {
         LedgeRecord {
             flag: 0,
             top,
@@ -651,12 +658,12 @@ mod tests {
     #[test]
     fn the_hand_picks_the_nearest_class_three_record_earliest_on_ties() {
         let scan = LedgeScan {
-            result: 3,
+            result: Some(LedgeClass::Hang),
             records: vec![
-                record(100, 0),
-                record(110, 3),
-                record(90, 3),
-                record(130, 3),
+                record(100, None),
+                record(110, Some(LedgeClass::Hang)),
+                record(90, Some(LedgeClass::Hang)),
+                record(130, Some(LedgeClass::Hang)),
             ],
             grip: Some([0, -20 * 256, 0]),
         };
@@ -684,30 +691,42 @@ mod tests {
     fn grounded_tops_split_by_height_into_classes_two_and_one() {
         let grounded = stance(false);
         // Class 2 spans Y - neg - reach up to Y - neg/4 (exclusive); class 1 continues to the feet.
-        assert_eq!(ledge_class(&grounded, 922, &[]), 2);
-        assert_eq!(ledge_class(&grounded, 921, &[]), 0);
-        assert_eq!(ledge_class(&grounded, 983, &[]), 2);
-        assert_eq!(ledge_class(&grounded, 984, &[]), 1);
-        assert_eq!(ledge_class(&grounded, 1009, &[]), 1);
-        assert_eq!(ledge_class(&grounded, 1010, &[]), 0);
+        assert_eq!(ledge_class(&grounded, 922, &[]), Some(LedgeClass::High));
+        assert_eq!(ledge_class(&grounded, 921, &[]), None);
+        assert_eq!(ledge_class(&grounded, 983, &[]), Some(LedgeClass::High));
+        assert_eq!(ledge_class(&grounded, 984, &[]), Some(LedgeClass::Low));
+        assert_eq!(ledge_class(&grounded, 1009, &[]), Some(LedgeClass::Low));
+        assert_eq!(ledge_class(&grounded, 1010, &[]), None);
     }
 
     #[test]
     fn airborne_tops_need_the_hand_within_reach_and_an_underside_rejects() {
         let airborne = stance(true);
-        assert_eq!(ledge_class(&airborne, 887, &[]), 3);
-        assert_eq!(ledge_class(&airborne, 886, &[]), 0);
-        assert_eq!(ledge_class(&airborne, 887, &[894]), 0);
-        assert_eq!(ledge_class(&airborne, 887, &[895]), 3);
+        assert_eq!(ledge_class(&airborne, 887, &[]), Some(LedgeClass::Hang));
+        assert_eq!(ledge_class(&airborne, 886, &[]), None);
+        assert_eq!(ledge_class(&airborne, 887, &[894]), None);
+        assert_eq!(ledge_class(&airborne, 887, &[895]), Some(LedgeClass::Hang));
     }
 
     #[test]
     fn the_fit_test_rejects_low_and_high_ledges_and_flags_class_three_clearance() {
-        assert_eq!(settle(1, false, true), (0, 0));
-        assert_eq!(settle(2, true, false), (2, 0));
-        assert_eq!(settle(3, true, true), (3, 1));
-        assert_eq!(settle(3, true, false), (3, 0));
-        assert_eq!(settle(3, false, true), (3, 0));
+        assert_eq!(settle(LedgeClass::Low, false, true), (None, 0));
+        assert_eq!(
+            settle(LedgeClass::High, true, false),
+            (Some(LedgeClass::High), 0)
+        );
+        assert_eq!(
+            settle(LedgeClass::Hang, true, true),
+            (Some(LedgeClass::Hang), 1)
+        );
+        assert_eq!(
+            settle(LedgeClass::Hang, true, false),
+            (Some(LedgeClass::Hang), 0)
+        );
+        assert_eq!(
+            settle(LedgeClass::Hang, false, true),
+            (Some(LedgeClass::Hang), 0)
+        );
     }
 
     #[test]
