@@ -6220,6 +6220,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        // PlayerSnap(angle, x_offset, z_offset): the selected player's local X and Z are copied
+        // directly from the receiver's. The arguments only feed a temporary rotation whose result
+        // the original discards; Y, heading and both history fields stay, nothing is registered
+        // and no position-update or collision service runs. Returns zero.
+        if function == Native::PlayerSnap {
+            anyhow::ensure!(arguments.len() == 3, "PlayerSnap requires 3 arguments");
+            for argument in arguments {
+                argument.integer()?;
+            }
+            let player = self
+                .registry
+                .selected_player_index()
+                .context("PlayerSnap: selected player unavailable")?;
+            let spatial = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("PlayerSnap: spatial state not prepared")?;
+            let source = spatial.actor(self.index)?.local.position;
+            let target = &mut spatial.actor_mut(player)?.local.position;
+            target[0] = source[0];
+            target[2] = source[2];
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::SetRotation {
             anyhow::ensure!(arguments.len() == 3, "SetRotation requires 3 arguments");
             let angles = [

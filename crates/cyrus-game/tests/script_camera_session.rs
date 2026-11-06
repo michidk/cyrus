@@ -654,6 +654,88 @@ fn is_within_view_compares_the_horizontal_camera_distance_with_the_installed_dis
 }
 
 #[test]
+fn player_snap_copies_the_receivers_horizontal_position_onto_the_selected_player_only() {
+    let snap = |arguments: [i32; 3]| {
+        let mut data = scripts_calling(Native::PlayerSnap, &arguments);
+        data.definition.functions[1].kind = CallKind::Function;
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: Native::PlayerSnap,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: arguments
+                            .iter()
+                            .map(|&value| Value::Integer { value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
+            },
+        };
+        // The fixture's own later steps overwrite flag zero, so the result goes to a local.
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        actor.program.variables = vec![4];
+        actor.instance_variables = vec![vec![7]];
+        data.instances[0].map_position = [20, 30, 40];
+        let mut world = prepared(&mut data);
+        let receiver = world.id(0).unwrap();
+        let player = world.id(PLAYER).unwrap();
+        let receiver_before = world.spatial(receiver).unwrap().local;
+        let player_before = world.spatial(player).unwrap().clone();
+        run(&mut world, 0, BODY, Some(&ScriptHud::default())).unwrap();
+        (world, receiver, player, receiver_before, player_before)
+    };
+    let (world, receiver, player, receiver_before, player_before) = snap([5, 100, -100]);
+    let after = world.spatial(player).unwrap();
+    assert_ne!(
+        [
+            player_before.local.position[0],
+            player_before.local.position[2]
+        ],
+        [receiver_before.position[0], receiver_before.position[2]],
+        "the fixture starts the player elsewhere"
+    );
+    assert_eq!(
+        [after.local.position[0], after.local.position[2]],
+        [receiver_before.position[0], receiver_before.position[2]],
+        "X and Z come straight from the receiver"
+    );
+    assert_eq!(
+        after.local.position[1], player_before.local.position[1],
+        "the player's Y stays"
+    );
+    assert_eq!(
+        after.local.angles, player_before.local.angles,
+        "the heading stays"
+    );
+    assert_eq!(
+        after.previous_local_position, player_before.previous_local_position,
+        "the history is not written"
+    );
+    let receiver_after = world.spatial(receiver).unwrap().local;
+    assert_eq!(receiver_after.position, receiver_before.position);
+    assert_eq!(receiver_after.angles, receiver_before.angles);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+    // The angle and offsets supply no positional offset.
+    let (other, _, other_player, _, _) = snap([0, 0, 0]);
+    assert_eq!(
+        other.spatial(other_player).unwrap().local.position,
+        after.local.position
+    );
+}
+
+#[test]
 fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
     let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 3]);
     // A nonzero slave attribute selects the composed pose: the master's pose plus the offset.

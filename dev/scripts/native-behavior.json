@@ -4021,17 +4021,19 @@
     },
     {
       "native": "PlayerSnap",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named transform/player SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed selected-player horizontal position copy from the receiver",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::player_snap_copies_the_receivers_horizontal_position_onto_the_selected_player_only"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/commit/6373429"
       ],
-      "limits": "Verified: independent installed three-argument function/exact binding/full176-byte native/full154 planar rotation helper CPU execution. Temporary offsets rotate using masked receiver-heading-plus-angle and add receiver X/Z, but final stores copy receiver local X/Z directly to selected player; zero result, Y/headings retained, alias preserves X/Z, no ordinary update/collision services.4608 contexts/10 effective original-byte CPU controls require normal exit/full output; final original reexecution PASS. Exact full two-actor arena/result/three preserved registers/stack/canary/x87 CW/TOP. Two receivers/two player pointers including alias/four angle values/three X and two Z offsets/three headings/two XYZ triples/two masked x87 CW/two synthetic finite table modes/two patterns. Tables are controlled memory inputs; no natural trig producer/table initialization/numerical rotation-result claim. Unknown unmasked exceptions/nonempty FPU stack/null-invalid pointers/full joint domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
-      "reviewed_revision": "7b5502e032648a7bcc9774253300bff12415d7d2"
+      "limits": "Verified: independent installed three-argument function/exact binding/full176-byte native/full154 planar rotation helper CPU execution. Temporary offsets rotate using masked receiver-heading-plus-angle and add receiver X/Z, but final stores copy receiver local X/Z directly to selected player; zero result, Y/headings retained, alias preserves X/Z, no ordinary update/collision services.4608 contexts/10 effective original-byte CPU controls require normal exit/full output; final original reexecution PASS. Exact full two-actor arena/result/three preserved registers/stack/canary/x87 CW/TOP. Two receivers/two player pointers including alias/four angle values/three X and two Z offsets/three headings/two XYZ triples/two masked x87 CW/two synthetic finite table modes/two patterns. Tables are controlled memory inputs; no natural trig producer/table initialization/numerical rotation-result claim. Unknown unmasked exceptions/nonempty FPU stack/null-invalid pointers/full joint domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime. Verified public routed dispatch: the selected player's local X and Z are copied from the receiver's local X and Z; the player's Y, heading and previous-position history, and the receiver itself, are unchanged; the angle and offsets supply no offset (results identical for different arguments); zero is returned. Inferred: the discarded temporary rotation has no effect the rebuild must reproduce (its floating-point exception behaviour is not modelled), and no view-origin shift or map-update registration occurs because the contract names none. Unknown: installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "594ce4819d5db462546d7a7f350c2405cacf1674"
     },
     {
       "native": "PlayerTilt",
