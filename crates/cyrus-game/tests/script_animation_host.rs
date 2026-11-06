@@ -726,7 +726,7 @@ fn axis_task_scripts(function: Native, axis: i32, delta: i32, duration: i32) -> 
 
 #[test]
 fn absolute_rotation_matches_original_angle_sequences_and_completion() {
-    let cases: &[(Native, u32, i32, i32, &[u16])] = &[
+    let cases: &[(Native, u32, i32, i32, &[i32])] = &[
         (Native::RotateToAxis, 0, 512, 4, &[128, 256, 384, 512]),
         (Native::RotateToAxis, 0, 1536, 4, &[1920, 1792, 1664, 1536]),
         (Native::RotateToAxis, 2040, 8, 4, &[2044, 0, 4, 8]),
@@ -5334,7 +5334,7 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
     let hud = cyrus_game::script::ScriptHud::default();
     // (function, literal arguments, start heading, turn rate, headings after each invocation)
     let far_ahead = 1_000_000;
-    let down: Vec<u16> = (0..62).map(|step| 984 - 16 * step).collect();
+    let down: Vec<i32> = (0..62).map(|step| 984 - 16 * step).collect();
     for (function, arguments, start, rate, expected) in [
         // Rate 16 closes the 32 units to 432 in two steps, snapping on the second.
         (Native::FaceAngle, vec![432], 400, 16u8, vec![416, 432]),
@@ -5371,7 +5371,7 @@ fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival(
             kind: CallKind::Task,
         });
         data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::TurnSpeed] = rate;
-        data.instances[0].angles[1] = start;
+        data.instances[0].angles[1] = start as u32;
         data.content_id = data.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&data, 1).unwrap();
         world.prepare_spatial().unwrap();

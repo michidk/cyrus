@@ -1035,14 +1035,14 @@ impl ScriptWorld {
                 .actor_mut(index)?;
             let movement = match step {
                 Continuation::Forward | Continuation::Walk => locomotion::forward_translation(
-                    spatial.local.angles[1],
+                    spatial.local.wrapped_angles()[1],
                     distance,
                     frame_scale,
                     suppressed,
                 ),
                 Continuation::Backward | Continuation::WalkBackward => {
                     locomotion::backward_translation(
-                        spatial.local.angles[1],
+                        spatial.local.wrapped_angles()[1],
                         distance,
                         frame_scale,
                         suppressed,
@@ -1051,18 +1051,18 @@ impl ScriptWorld {
                 Continuation::Circle(strafe) => {
                     let (angle, movement) = locomotion::strafe_motion(
                         strafe,
-                        spatial.local.angles[1],
+                        spatial.local.wrapped_angles()[1],
                         turn,
                         distance,
                         frame_scale,
                         suppressed,
                     );
-                    spatial.local.angles[1] = angle;
+                    spatial.local.angles[1] = i32::from(angle);
                     movement
                 }
                 Continuation::Sidestep(strafe) => locomotion::strafe_translation(
                     strafe,
-                    spatial.local.angles[1],
+                    spatial.local.wrapped_angles()[1],
                     distance,
                     frame_scale,
                     suppressed,

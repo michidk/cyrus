@@ -214,7 +214,7 @@ impl ScriptWorld {
             world: self.world,
             content_id: self.content_id.clone(),
             candidates,
-            working_angles,
+            working_angles: working_angles.map(|angle| (angle & 2047) as u16),
         })
     }
 
@@ -1188,7 +1188,7 @@ impl ScriptWorld {
             [0; 3],
             pose.matrix,
             pose.position.map(|value| value as f32 / 256.0),
-            pose.angles[2],
+            pose.wrapped_angles()[2],
             drawn,
         )?;
         let endpoints = geometry.combat_endpoints(definition.length)?;

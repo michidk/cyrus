@@ -142,7 +142,7 @@ impl ScriptWorld {
                 if super::super::decision::ordinary_defence_forward_arc(
                     own.position,
                     target.position,
-                    i32::from(own.angles[1]),
+                    own.angles[1],
                 ) {
                     AnimationGroup::FIGHT_HURT_FRONT
                 } else {

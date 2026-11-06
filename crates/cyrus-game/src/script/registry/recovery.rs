@@ -174,7 +174,7 @@ impl ScriptWorld {
             .context("ordinary stable recovery spatial state unavailable")?
             .actor_mut(index)?;
         spatial.local.position = position;
-        spatial.local.angles[1] = wrap(i32::from(spatial.local.angles[1]) + heading_delta) as u16;
+        spatial.local.angles[1] = wrap(spatial.local.angles[1].wrapping_add(heading_delta));
         if age > 16 {
             self.resolve_ordinary_bounds_obstacle(
                 id,

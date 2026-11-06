@@ -1179,7 +1179,7 @@ mod live {
             let expected = if name == Native::ShowCyrusLoc {
                 ([4000, 9000, -6000], [100, 1900, 20])
             } else {
-                (receiver.position, receiver.angles)
+                (receiver.position, receiver.wrapped_angles())
             };
             assert_eq!(
                 *service.seen.borrow(),

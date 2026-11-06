@@ -373,7 +373,7 @@ fn insert_suspends_the_camera_limiter_and_steps_forward_while_yeahbaby_is_on() {
                 .spatial(world.selected_player().unwrap())
                 .unwrap()
                 .local
-                .angles[1]
+                .wrapped_angles()[1]
         };
         fixture.frame(&[KeyCode::Insert], &[]);
         // The step is the frame scale of that update times 128 Q8 along the heading.

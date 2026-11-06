@@ -1997,13 +1997,13 @@ impl ScriptWorld {
             1 => 1,
             _ => 2,
         };
-        let local = angle.wrapping_sub(i32::from(master_angles[component])) & 2047;
+        let local = angle.wrapping_sub(master_angles[component]) & 2047;
         self.spatial
             .as_mut()
             .context("FixSlaveAngle: spatial state not prepared")?
             .actor_mut(index)?
             .local
-            .angles[component] = local as u16;
+            .angles[component] = local;
         Ok(())
     }
 
@@ -4043,7 +4043,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
         Ok(super::tasks::PlayerFaceState {
             position: pose.position,
-            angles: pose.angles,
+            angles: pose.wrapped_angles(),
             speed: super::alignment::speed(
                 animation.playback.current_group(),
                 Some(&actor.attributes),
@@ -4074,8 +4074,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .actor_mut(index)?;
         let mut refresh = false;
         if let Some(angles) = outcome.angles {
-            refresh = spatial.local.angles != angles;
-            spatial.local.angles = angles;
+            refresh = spatial.local.angles != angles.map(i32::from);
+            spatial.local.angles = angles.map(i32::from);
         }
         if let Some(position) = outcome.position {
             spatial.local.position = position;
@@ -5152,7 +5152,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .actor(index)?;
         Ok(match pose {
             PoseProperty::Position(axis) => spatial.local.position[axis],
-            PoseProperty::Angle(axis) => i32::from(spatial.local.angles[axis]),
+            PoseProperty::Angle(axis) => spatial.local.angles[axis],
         })
     }
 
@@ -5279,17 +5279,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .local;
         match pose {
             PoseProperty::Position(axis) => local.position[axis] = value,
-            // The local angle field is stored wrapped; a wider assigned value has no owner yet.
-            PoseProperty::Angle(axis) => {
-                local.angles[axis] = u16::try_from(value)
-                    .ok()
-                    .filter(|angle| *angle < 2048)
-                    .with_context(|| {
-                        format!(
-                            "property {target:?}.{name}: angle {value} outside 0..2048 unsupported"
-                        )
-                    })?;
-            }
+            PoseProperty::Angle(axis) => local.angles[axis] = value,
         }
         Ok(())
     }
@@ -5816,9 +5806,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             // roll by the plain angles; actor orientation negates all three, so this is the
             // actor-orientation builder with pitch and roll negated.
             let rotated = cyrus_world::transform::Matrix::orientation([
-                wrap(local.angles[0].wrapping_neg()),
-                local.angles[1],
-                wrap(local.angles[2].wrapping_neg()),
+                wrap(local.angles[0].wrapping_neg()) as u16,
+                local.wrapped_angles()[1],
+                wrap(local.angles[2].wrapping_neg()) as u16,
             ])
             .transform(offset)?;
             let position =

@@ -86,7 +86,7 @@ pub(super) struct AnimationCall<'a, 'sound> {
 /// Current receiver pose and shared timing inputs for spatial native tasks.
 pub(super) struct SpatialCall<'a> {
     pub position: &'a mut [i32; 3],
-    pub angles: &'a mut [u16; 3],
+    pub angles: &'a mut [i32; 3],
     pub frame_scale: u32,
     /// Held-turn amount at `frame_scale` from the shared accumulators; negative turns left.
     pub turn: i64,
@@ -1227,9 +1227,10 @@ impl Task {
                     _ => 2,
                 }] = step;
                 let [pitch, yaw, roll] = *input.angles;
-                let rotated =
-                    cyrus_world::transform::Matrix::euler([pitch, wrap(yaw.wrapping_neg()), roll])
-                        .inverse_transform(offset)?;
+                let rotated = cyrus_world::transform::Matrix::euler(
+                    [pitch, wrap(yaw.wrapping_neg()), roll].map(|angle| (angle & 2047) as u16),
+                )
+                .inverse_transform(offset)?;
                 for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
                     *coordinate = coordinate.wrapping_add(amount);
                 }
@@ -1270,8 +1271,7 @@ impl Task {
                             .wrapping_mul(elapsed)
                             >> 8;
                         let step = if operand < 0 { -step } else { step };
-                        input.angles[axis] =
-                            wrap(i32::from(input.angles[axis]).wrapping_add(step)) as u16;
+                        input.angles[axis] = wrap(input.angles[axis].wrapping_add(step));
                     }
                 }
                 duration.wrapping_sub(1) <= elapsed
@@ -1387,7 +1387,7 @@ impl Task {
                     player[0].wrapping_sub(input.position[0]),
                     player[2].wrapping_sub(input.position[2]),
                 ));
-                let heading = i32::from(input.angles[1]);
+                let heading = input.angles[1];
                 // The query bearing is the negation of the routine's angle, which the routine
                 // subtracts from the negated heading.
                 let mut delta = wrap(bearing.wrapping_sub(heading));
@@ -1412,11 +1412,11 @@ impl Task {
                     return Ok(true);
                 }
                 let heading = if backwards {
-                    heading - step
+                    heading.wrapping_sub(step)
                 } else {
-                    heading + step
+                    heading.wrapping_add(step)
                 };
-                input.angles[1] = wrap(heading) as u16;
+                input.angles[1] = wrap(heading);
                 elapsed >= duration.wrapping_sub(1)
             }
             Self::Bounce(state) => {
@@ -1678,7 +1678,7 @@ impl Task {
                         step_distance,
                     );
                     if let Some((heading, distance)) = backward_translation(
-                        spatial.angles[1],
+                        (spatial.angles[1] & 2047) as u16,
                         distance,
                         spatial.frame_scale as i32,
                         input.animation.translation_suppressed(),
@@ -1820,7 +1820,7 @@ impl Task {
                         },
                     );
                     if let Some((heading, distance)) = forward_translation(
-                        spatial.angles[1],
+                        (spatial.angles[1] & 2047) as u16,
                         distance,
                         spatial.frame_scale as i32,
                         input.animation.translation_suppressed(),
@@ -1923,7 +1923,7 @@ impl Task {
                         );
                         if let Some((heading, distance)) = super::locomotion::strafe_translation(
                             *strafe,
-                            spatial.angles[1],
+                            (spatial.angles[1] & 2047) as u16,
                             distance,
                             spatial.frame_scale as i32,
                             input.animation.translation_suppressed(),
@@ -1962,13 +1962,13 @@ impl Task {
                 );
                 let (angle, movement) = strafe_motion(
                     *strafe,
-                    spatial.angles[1],
+                    (spatial.angles[1] & 2047) as u16,
                     turn,
                     distance,
                     spatial.frame_scale as i32,
                     input.animation.translation_suppressed(),
                 );
-                spatial.angles[1] = angle;
+                spatial.angles[1] = i32::from(angle);
                 if let Some((heading, distance)) = movement {
                     *spatial.position = cyrus_world::transform::translate_forward(
                         *spatial.position,
@@ -2069,8 +2069,10 @@ impl Task {
                     _ => 2,
                 }] = step;
                 // An ordinary actor rotates by its angles, the sense opposite the stored matrix's.
-                let rotated = cyrus_world::transform::Matrix::orientation(*input.angles)
-                    .inverse_transform(offset)?;
+                let rotated = cyrus_world::transform::Matrix::orientation(
+                    input.angles.map(|angle| (angle & 2047) as u16),
+                )
+                .inverse_transform(offset)?;
                 for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
                     *coordinate = coordinate.wrapping_add(amount);
                 }
@@ -2223,7 +2225,7 @@ impl Task {
                 if axis == 2 && !input.slave && input.angles[0] == 0 && input.angles[2] == 0 {
                     *input.position = cyrus_world::transform::translate_forward(
                         *input.position,
-                        input.angles[1],
+                        (input.angles[1] & 2047) as u16,
                         step,
                     )?;
                 } else {
@@ -2327,7 +2329,7 @@ impl Task {
                     1 => 1,
                     _ => 2,
                 };
-                let current = i32::from(input.angles[axis]);
+                let current = input.angles[axis];
                 let elapsed = invocation
                     .elapsed
                     .context("RotateByAxis requires explicit elapsed input")?;
@@ -2346,13 +2348,13 @@ impl Task {
                         step = step.wrapping_neg();
                     }
                 }
-                let difference = wrap(current - (*target >> 8) + 1024) - 1024;
+                let difference = wrap(current.wrapping_sub(*target >> 8).wrapping_add(1024)) - 1024;
                 if difference.abs() <= (step >> 8).abs() {
-                    input.angles[axis] = (*target >> 8) as u16;
+                    input.angles[axis] = *target >> 8;
                     true
                 } else {
                     *accumulator = accumulator.wrapping_add(step);
-                    input.angles[axis] = wrap(*accumulator >> 8) as u16;
+                    input.angles[axis] = wrap(*accumulator >> 8);
                     false
                 }
             }
@@ -2376,7 +2378,7 @@ impl Task {
                 let input = spatial
                     .as_mut()
                     .context("RotateToAxis requires spatial state")?;
-                let current = i32::from(input.angles[axis]);
+                let current = input.angles[axis];
                 let difference = wrap(current) - target;
                 let remaining = if difference < -1024 {
                     -wrap(difference)
@@ -2404,11 +2406,11 @@ impl Task {
                     }
                 }
                 if remaining.abs() <= (step >> 8).abs() {
-                    input.angles[axis] = target as u16;
+                    input.angles[axis] = target;
                     true
                 } else {
                     *accumulator = accumulator.wrapping_add(step);
-                    input.angles[axis] = wrap(*accumulator >> 8) as u16;
+                    input.angles[axis] = wrap(*accumulator >> 8);
                     false
                 }
             }
@@ -2425,7 +2427,7 @@ impl Task {
                     .as_mut()
                     .context("sRotateToAxis requires spatial state")?;
                 if elapsed == 0 && (0..=2).contains(&axis) {
-                    *origin = i32::from(input.angles[axis as usize]);
+                    *origin = input.angles[axis as usize];
                 }
                 let difference = target.wrapping_sub(*origin);
                 let movement = if difference < -1024 {
@@ -2445,9 +2447,9 @@ impl Task {
                 let complete = elapsed >= end;
                 if (0..=2).contains(&axis) {
                     input.angles[axis as usize] = if complete {
-                        wrap(target) as u16
+                        wrap(target)
                     } else {
-                        wrap(origin.wrapping_add(offset)) as u16
+                        wrap(origin.wrapping_add(offset))
                     };
                 }
                 complete
@@ -2465,7 +2467,7 @@ impl Task {
                     .as_mut()
                     .context("sRotateByAxis requires spatial state")?;
                 if elapsed == 0 && (0..=2).contains(&axis) {
-                    *origin = i32::from(input.angles[axis as usize]);
+                    *origin = input.angles[axis as usize];
                 }
                 let magnitude = delta
                     .wrapping_abs()
@@ -2482,7 +2484,7 @@ impl Task {
                 let complete = elapsed >= duration.wrapping_sub(1);
                 if (0..=2).contains(&axis) {
                     input.angles[axis as usize] =
-                        wrap(origin.wrapping_add(if complete { delta } else { offset })) as u16;
+                        wrap(origin.wrapping_add(if complete { delta } else { offset }));
                 }
                 complete
             }
@@ -2636,7 +2638,10 @@ impl Task {
                         let pose = spatial
                             .as_mut()
                             .context("PushControlAnimation requires receiver pose")?;
-                        pose.angles[1] = crate::player::turn::turned(pose.angles[1], pose.turn);
+                        pose.angles[1] = i32::from(crate::player::turn::turned(
+                            (pose.angles[1] & 2047) as u16,
+                            pose.turn,
+                        ));
                     }
                     !running
                 } else {

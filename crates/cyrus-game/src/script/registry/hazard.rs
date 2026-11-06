@@ -196,7 +196,7 @@ impl ScriptWorld {
         let spatial = self.spatial(id)?;
         let destination = cyrus_world::transform::translate_forward(
             self.sight_position(index)?,
-            spatial.local.angles[1],
+            spatial.local.wrapped_angles()[1],
             distance,
         )?;
         Ok(Some(!self.step_hazard(

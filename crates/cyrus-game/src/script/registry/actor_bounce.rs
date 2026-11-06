@@ -44,7 +44,7 @@ impl BouncingActor<'_, '_> {
             .spatial(self.id)
             .expect("validated actor bounce pose")
             .local;
-        (local.position, local.angles)
+        (local.position, local.wrapped_angles())
     }
 }
 
@@ -134,9 +134,9 @@ impl BouncePort for BouncingActor<'_, '_> {
             .spatial
             .as_mut()
             .and_then(|spatial| spatial.actor_mut(index).ok())
-            && spatial.local.angles[1] != heading
+            && spatial.local.angles[1] != i32::from(heading)
         {
-            spatial.local.angles[1] = heading;
+            spatial.local.angles[1] = i32::from(heading);
             // A failed transform refresh surfaces on the next pose read of the same actor.
             let _ = spatial.refresh_transform();
         }

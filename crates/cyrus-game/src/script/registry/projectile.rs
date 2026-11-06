@@ -33,9 +33,9 @@ impl GameHost<'_, '_, '_, '_> {
         let previous = local.position;
         // The step is the shoot offset rotation with the yaw masked to the turn range.
         let step = cyrus_world::transform::Matrix::orientation([
-            wrap(local.angles[0].wrapping_neg()),
-            wrap(local.angles[1]),
-            wrap(local.angles[2].wrapping_neg()),
+            wrap(local.angles[0].wrapping_neg()) as u16,
+            wrap(local.angles[1]) as u16,
+            wrap(local.angles[2].wrapping_neg()) as u16,
         ])
         .transform([0, 0, speed])?;
         let position = std::array::from_fn(|axis| previous[axis].wrapping_add(step[axis]));

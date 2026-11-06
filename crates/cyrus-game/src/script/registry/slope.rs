@@ -226,7 +226,7 @@ impl ScriptWorld {
             .torch_burning
             != 0;
         let turn = ordinary_slope_turn(
-            origin.angles[1],
+            origin.wrapped_angles()[1],
             desired,
             actor.attributes[if inputs.holding_weapon || inputs.combat_active {
                 Attribute::FightTurnSpeed
@@ -247,7 +247,7 @@ impl ScriptWorld {
             .context("spatial owner unavailable")?
             .actor_mut(index)?
             .local
-            .angles[1] = turn.heading;
+            .angles[1] = i32::from(turn.heading);
         if inputs.selected_player == Some(id) {
             // The selected player's turn rebuilds its matrix and copies the angles to history.
             self.spatial
@@ -259,10 +259,7 @@ impl ScriptWorld {
         Ok(if turn.group.is_none() {
             0
         } else {
-            super::super::decision::heading_difference(
-                i32::from(desired),
-                i32::from(origin.angles[1]),
-            )
+            super::super::decision::heading_difference(i32::from(desired), origin.angles[1])
         })
     }
 
@@ -485,7 +482,7 @@ impl ScriptWorld {
         let spatial = self.spatial(id)?;
         let slide = ordinary_slide(
             support.normal,
-            spatial.query_pose()?.angles[1],
+            spatial.query_pose()?.wrapped_angles()[1],
             torch,
             slide_speed,
             inputs.frame_scale,

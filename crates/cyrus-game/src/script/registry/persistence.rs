@@ -1610,7 +1610,13 @@ impl ScriptActors {
                     ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
                 ) {
                     spatial
-                        .place_player(index, actor, destination.position, destination.angles, true)
+                        .place_player(
+                            index,
+                            actor,
+                            destination.position,
+                            destination.wrapped_angles(),
+                            true,
+                        )
                         .with_context(|| {
                             format!(
                                 "world {world_id} instance {index}: revisit destination placement"

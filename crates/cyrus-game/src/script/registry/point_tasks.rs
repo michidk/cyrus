@@ -73,7 +73,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
         };
         anyhow::ensure!(
             self.registry.actors[self.index].attributes[Attribute::Slave] == 0,
-            "PlayerTilt world {} actor {}: slave diagnostic unsupported",
+            "PlayerTilt world {} actor {}: original diagnostic 137: slave receiver",
             self.registry.world,
             self.index
         );
@@ -100,7 +100,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                 effective[2].wrapping_sub(player_position[2]),
             );
             let a = (-i32::from(bearing))
-                .wrapping_add(i32::from(receiver.local.angles[1]))
+                .wrapping_add(receiver.local.angles[1])
                 .wrapping_add(angle)
                 & 2047;
             let pitch = -(if a < 1024 { 512 - a } else { a - 1536 });
@@ -125,7 +125,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             targets = [pitch, roll].map(|target| (target.wrapping_mul(strength) >> 8) & 2047);
         }
         let current = receiver.local.angles;
-        if [i32::from(current[0]), i32::from(current[2])] == targets {
+        if [current[0], current[2]] == targets {
             return Ok(());
         }
         let ticks = self
@@ -134,7 +134,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .context("PlayerTilt requires nominal_ticks")? as i32;
         let mut angles = current;
         for (axis, target) in [0, 2].into_iter().zip(targets) {
-            let difference = tilt_difference(i32::from(current[axis]), target);
+            let difference = tilt_difference(current[axis], target);
             let step = if divisor == 0 {
                 difference
             } else {
@@ -142,23 +142,18 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             };
             let step = step.wrapping_mul(ticks);
             let value = if difference > step {
-                i32::from(current[axis]).wrapping_add(step)
+                current[axis].wrapping_add(step)
             } else {
                 target
             };
-            // The original stores unmasked sums; the spatial owner currently requires wrapped angles.
-            anyhow::ensure!(
-                (0..2048).contains(&value),
-                "PlayerTilt unwrapped angle exceeds spatial storage domain"
-            );
-            angles[axis] = value as u16;
+            angles[axis] = value;
         }
         self.registry
             .spatial
             .as_mut()
             .unwrap()
             .actor_mut(self.index)?
-            .set_rotation(angles.map(i32::from))
+            .refresh_rotation(angles)
             .context("PlayerTilt orientation refresh")
     }
 

@@ -77,7 +77,7 @@ impl ScriptWorld {
                     destination[2].wrapping_sub(origin[2]),
                 );
                 let heading = self.spatial(id)?.local.angles[1];
-                let difference = wrap(heading.wrapping_sub(bearing));
+                let difference = wrap(heading.wrapping_sub(i32::from(bearing)));
                 if !(256..=1792).contains(&difference) {
                     return Ok(1);
                 }

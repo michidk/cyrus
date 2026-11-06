@@ -231,7 +231,7 @@ impl ScriptWorld {
         let Ok(spheres) = self.ordinary_overlap_spheres(id, data) else {
             return Ok(None);
         };
-        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let heading = self.spatial(id)?.local.angles[1];
         // The engine tests the retained rope list head first.  Keep that order here: when
         // several ropes overlap the player's contact spheres, the first authored rope owns the
         // grab (the selected link is resolved below).
@@ -284,7 +284,7 @@ impl ScriptWorld {
         let index = self.resolve(id)?;
         self.request_ordinary_group(id, AnimationGroup::ROPE_GRAB, false, ticks, sounds)?;
         let pose = self.spatial(id)?.local;
-        let heading = i32::from(pose.angles[1]);
+        let heading = pose.angles[1];
         let step = {
             let previous = self.spatial(id)?.previous_local_position;
             let dx = f64::from(pose.position[0] - previous[0]);
@@ -320,13 +320,14 @@ impl ScriptWorld {
         if rope.kind & 1 == 0 {
             rope.heading = heading;
         } else {
-            let shifted = wrap(heading + rope_heading_difference(rope.heading, heading));
+            let shifted =
+                wrap(heading.wrapping_add(rope_heading_difference(rope.heading, heading)));
             self.spatial
                 .as_mut()
                 .context("rope attach spatial state unavailable")?
                 .actor_mut(index)?
                 .local
-                .angles[1] = shifted as u16;
+                .angles[1] = shifted;
         }
         let rope = &mut self.ropes[rope_index];
         if airborne {
@@ -411,12 +412,12 @@ impl ScriptWorld {
         if let Some(group) = ordinary_climb_group(up, down, look) {
             self.request_ordinary_group(id, group, false, ticks, sounds)?;
         }
-        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let heading = self.spatial(id)?.local.angles[1];
         let mut turned = heading;
         if self.player_rope.turn_rate != 0 {
             let rate = self.player_rope.turn_rate;
             let step = ((rate >> 4) * frame_scale) >> 8;
-            turned = wrap(heading + step);
+            turned = wrap(heading.wrapping_add(step));
             self.player_rope.turn_total += step;
             if self.player_rope.turn_total.abs() > rate.abs() {
                 self.player_rope.turn_rate = 0;
@@ -435,7 +436,7 @@ impl ScriptWorld {
                 } else {
                     let step = ((i32::from(right) * frame_scale) >> 8)
                         - ((i32::from(left) * frame_scale) >> 8);
-                    turned = wrap(heading + step);
+                    turned = wrap(heading.wrapping_add(step));
                 }
             }
         } else if !look {
@@ -448,7 +449,7 @@ impl ScriptWorld {
                 .context("rope turn spatial state unavailable")?
                 .actor_mut(index)?
                 .local
-                .angles[1] = turned as u16;
+                .angles[1] = turned;
         }
         self.place_player_on_rope(id, rope_index, data)?;
         if !up && !down {
@@ -476,7 +477,11 @@ impl ScriptWorld {
             .playback
             .pending_group();
         let pitch = self.spatial(id)?.local.angles[0];
-        match hanging_group(pending, self.ropes[rope_index].direction, pitch) {
+        match hanging_group(
+            pending,
+            self.ropes[rope_index].direction,
+            (pitch & 2047) as u16,
+        ) {
             Some(group) => self.request_ordinary_group(id, group, false, ticks, sounds),
             None => Ok(()),
         }
@@ -662,7 +667,7 @@ impl ScriptWorld {
         settings: cyrus_assets::script::RopeSettings,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let heading = self.spatial(id)?.local.angles[1];
         let rope = &mut self.ropes[rope_index];
         let position = rope
             .attachments
@@ -807,7 +812,7 @@ impl ScriptWorld {
             attachment.node = node;
         }
         let accumulated = rope.step * (node - 1).max(0);
-        let heading = i32::from(self.spatial(id)?.local.angles[1]);
+        let heading = self.spatial(id)?.local.angles[1];
         let close = heading_difference(heading, self.ropes[rope_index].heading).abs() < 0x10;
         let pitch = if close {
             wrap(accumulated >> 8)
@@ -832,7 +837,7 @@ impl ScriptWorld {
             .actor_mut(index)?;
         spatial.local.position = position;
         spatial.previous_local_position = position;
-        spatial.local.angles[0] = pitch as u16;
+        spatial.local.angles[0] = pitch;
         spatial.local.angles[2] = 0;
         self.refresh_transform(id)
     }

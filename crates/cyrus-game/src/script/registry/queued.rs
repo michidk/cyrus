@@ -380,7 +380,7 @@ impl super::ScriptWorld {
             let pose = self.spatial(id)?.local;
             let position = cyrus_world::transform::translate_forward(
                 pose.position,
-                wrap(pose.angles[1]),
+                pose.wrapped_angles()[1],
                 distance,
             )?;
             self.spatial
@@ -471,7 +471,7 @@ impl super::ScriptWorld {
             (control.queued_motion == JumpMotion::BACKWARD).then_some(control.motion_vector[1]);
         let pose = self.spatial(id)?.local;
         let movement = super::super::locomotion::backward_translation(
-            retained.map_or(pose.angles[1], |heading| heading as u16),
+            retained.map_or(pose.wrapped_angles()[1], |heading| heading as u16),
             distance,
             frame_scale as i32,
             suppressed,
@@ -525,7 +525,7 @@ impl super::ScriptWorld {
             return Ok(());
         }
         let pose = self.spatial(id)?.local;
-        let heading = wrap(pose.angles[1] + if backward { 1024 } else { 0 });
+        let heading = wrap(pose.angles[1].wrapping_add(if backward { 1024 } else { 0 })) as u16;
         let position = cyrus_world::transform::translate_forward(
             pose.position,
             heading,
@@ -727,7 +727,7 @@ impl super::ScriptWorld {
                 ))
                 || selected_backward)
         {
-            control.motion_vector[1] = i32::from(heading.expect("script Jump heading"));
+            control.motion_vector[1] = heading.expect("script Jump heading");
         }
         if self.updates.animation_system {
             let surface = actor.surface;

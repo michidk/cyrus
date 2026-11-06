@@ -462,7 +462,7 @@ impl ScriptWorld {
                         (settings.turn_speed, settings.turn_max_speed)
                     };
                     if let Some(target) = controller.steer {
-                        let heading = self.spatial(id)?.local.angles[1];
+                        let heading = self.spatial(id)?.local.wrapped_angles()[1];
                         // Modern steering turns at four times the held-key limit.
                         self.globals.turn.steer(
                             heading,
@@ -1466,7 +1466,7 @@ pub fn run_ordinary(
         Ok(Some(super::super::QueryInputs {
             player: Some(super::super::PlayerQuery {
                 position: pose.position,
-                heading: pose.angles[1],
+                heading: pose.wrapped_angles()[1],
             }),
             distance_override: Some(
                 cheats

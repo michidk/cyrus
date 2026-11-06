@@ -298,7 +298,7 @@ impl ScriptWorld {
                 && crate::script::decision::ordinary_defence_forward_arc(
                     own.position,
                     other.position,
-                    i32::from(own.angles[1]),
+                    own.angles[1],
                 )
             {
                 index = self
@@ -340,7 +340,7 @@ impl ScriptWorld {
             if !crate::script::decision::ordinary_defence_forward_arc(
                 own.position,
                 other.position,
-                i32::from(own.angles[1]),
+                own.angles[1],
             ) || !combat.flags.contains(CombatFlags::MOVE_INTENT)
                 || combat.decision.attack_state != ExecutorState::DEFENDING
             {
@@ -451,7 +451,7 @@ impl ScriptWorld {
                 && crate::script::decision::defence_arc_from_positions_scaled(
                     own.position,
                     world.spatial(other)?.local.position,
-                    i32::from(own.angles[1]),
+                    own.angles[1],
                     arc,
                     center,
                     scale,

@@ -178,8 +178,7 @@ impl ScriptWorld {
             let [x, _, z] = crate::script::spatial::normalized_direction(delta);
             let bearing = i32::from(crate::script::spatial::query_bearing(x, z));
             let difference =
-                crate::script::decision::heading_difference(i32::from(own.angles[1]), bearing)
-                    .abs();
+                crate::script::decision::heading_difference(own.angles[1], bearing).abs();
             let motion = self.current_combat_motion(id)?;
             let center = motion.arc_center.context("arc_center unavailable")?;
             let arc = motion.arc.context("arc unavailable")?;

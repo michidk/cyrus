@@ -35,7 +35,7 @@ impl ScriptWorld {
         } else {
             spatial.local
         };
-        Ok((pose.position, pose.angles))
+        Ok((pose.position, pose.wrapped_angles()))
     }
 
     /// The pose the follow camera places itself from: [`Self::camera_binding_pose`], with the

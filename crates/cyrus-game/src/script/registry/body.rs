@@ -198,7 +198,7 @@ impl ScriptWorld {
         let spatial = self.spatial(id)?;
         let previous = spatial.previous_local_position.map(i64::from);
         let attempted = spatial.local.position.map(i64::from);
-        let mut heading = spatial.local.angles[1];
+        let mut heading = spatial.local.wrapped_angles()[1];
         let movement = if previous[0] == attempted[0] && previous[2] == attempted[2] {
             heading
         } else {
@@ -274,7 +274,7 @@ impl ScriptWorld {
             .context("ordinary body response spatial state unavailable")?
             .actor_mut(index)?;
         spatial.local.position = position;
-        spatial.local.angles[1] = heading;
+        spatial.local.angles[1] = i32::from(heading);
         self.actors[index]
             .control
             .as_mut()
@@ -306,9 +306,10 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let spatial = self.spatial(id)?;
-        let rows = cyrus_world::transform::Matrix::collision_orientation(spatial.local.angles)
-            .0
-            .map(Vec3::from_array);
+        let rows =
+            cyrus_world::transform::Matrix::collision_orientation(spatial.local.wrapped_angles())
+                .0
+                .map(Vec3::from_array);
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -354,7 +355,7 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let pose = self.spatial(id)?.local;
-        let rows = cyrus_world::transform::Matrix::collision_orientation(pose.angles)
+        let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
             .0
             .map(Vec3::from_array);
         query.scene.static_collision.runtime_primary_body_contacts(

@@ -37,7 +37,7 @@ impl ScriptWorld {
             .context("getmapmarker: spatial state not prepared")?
             .actor_mut(index)?;
         let yaw = actor.local.angles[1];
-        actor.relocate(position, yaw);
+        actor.relocate(position, (yaw & 2047) as u16);
         self.refresh_transform(player)
     }
 
@@ -86,7 +86,7 @@ impl ScriptWorld {
             .actor_mut(index)?;
         let angles = placement.orientation.map(|angle| wrap(angle) as u16);
         actor.relocate(placement.position, angles[1]);
-        actor.local.angles = angles;
+        actor.local.angles = angles.map(i32::from);
         actor.snapshot();
         self.refresh_transform(player)?;
         let camera = self.camera.as_mut().expect("validated camera session");

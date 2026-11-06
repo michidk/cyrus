@@ -248,7 +248,7 @@ impl ScriptWorld {
             return Ok(LedgeScan::default());
         }
         let pose = self.spatial(id)?.query_pose()?;
-        let heading = pose.angles[1];
+        let heading = pose.wrapped_angles()[1];
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let models = query
             .scene
@@ -288,7 +288,7 @@ impl ScriptWorld {
                 rotated[axis].wrapping_add(pose.position[axis]) >> 8
             }))
         };
-        let rows = cyrus_world::transform::Matrix::collision_orientation(pose.angles)
+        let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
             .0
             .map(Vec3::from_array);
         let rotation = Mat3::from_cols(rows[0], rows[1], rows[2]).transpose();

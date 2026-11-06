@@ -122,8 +122,10 @@ impl ScriptWorld {
             });
             let offset =
                 std::array::from_fn(|axis| translated[axis].wrapping_sub(current_position[axis]));
-            let offset = Matrix::orientation(previous_angles).inverse_transform(offset)?;
-            let offset = Matrix::orientation(current_angles).transform(offset)?;
+            let offset = Matrix::orientation(previous_angles.map(|angle| (angle & 2047) as u16))
+                .inverse_transform(offset)?;
+            let offset = Matrix::orientation(current_angles.map(|angle| (angle & 2047) as u16))
+                .transform(offset)?;
             Ok(std::array::from_fn(|axis| {
                 current_position[axis].wrapping_add(offset[axis])
             }))
@@ -149,8 +151,10 @@ impl ScriptWorld {
             }
         }
         if special && let Some((point, ledge_heading)) = self.globals.selected_ledge_anchor {
-            self.globals.selected_ledge_anchor =
-                Some((carry(point)?, wrap(ledge_heading.wrapping_add(turn))));
+            self.globals.selected_ledge_anchor = Some((
+                carry(point)?,
+                wrap(ledge_heading.wrapping_add((turn & 2047) as u16)),
+            ));
         }
         let spatial = self
             .spatial
@@ -204,7 +208,7 @@ impl ScriptWorld {
                 )
             })
             .collect();
-        let rows = Matrix::collision_orientation(angles)
+        let rows = Matrix::collision_orientation(angles.map(|angle| (angle & 2047) as u16))
             .0
             .map(Vec3::from_array);
         let collision = &scene.static_collision;

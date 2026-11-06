@@ -3988,7 +3988,7 @@ fn fix_slave_angle_sets_one_local_component_from_the_master_group_angle() {
         let world = fix_slave_angle_world(1, Some((axis, angle)), true, None).unwrap();
         let slave = world.spatial(world.id(0).unwrap()).unwrap();
         let mut angles = before.local.angles;
-        angles[component] = expected as u16;
+        angles[component] = expected;
         assert_eq!(slave.local.angles, angles, "axis {axis}, angle {angle}");
         assert_eq!(
             format!("{:?}", slave.effective),
@@ -4399,10 +4399,12 @@ fn set_rotation_masks_the_angles_and_rebuilds_the_matrix_from_them() {
         format!("{:?}", zero.local.matrix),
         "different angles give a different matrix"
     );
-    let error = rotated(&[1, 2, 3], 1).err().unwrap();
-    assert!(
-        format!("{error:#}").contains("rotation mode one matrix builder unsupported"),
-        "{error:#}"
+    let alternate = rotated(&[1, 2, 3], 1).unwrap();
+    let pose = alternate.spatial(alternate.id(0).unwrap()).unwrap().local;
+    assert_eq!(pose.angles, [1, 2, 3]);
+    assert_eq!(
+        format!("{:?}", pose.matrix),
+        format!("{:?}", cyrus_world::transform::Matrix::euler([1, 2, 3]))
     );
 }
 
@@ -11573,7 +11575,12 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     );
     assert_eq!(
         world.spatial(id).unwrap().local.position,
-        cyrus_world::transform::translate_forward(before.position, before.angles[1], 2048).unwrap()
+        cyrus_world::transform::translate_forward(
+            before.position,
+            before.wrapped_angles()[1],
+            2048
+        )
+        .unwrap()
     );
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!((control.motion_direction, control.move_counter), (2, 48));
@@ -12352,7 +12359,7 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
     assert_eq!(spatial.angle_history, spatial.local.angles);
     assert_eq!(
         spatial.local.matrix,
-        cyrus_world::transform::Matrix::orientation(spatial.local.angles)
+        cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles())
     );
 }
 
@@ -12422,7 +12429,10 @@ fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
         let expected = [128, rotated[1], 64];
         assert_eq!(state.local.angles, expected, "axis one keeps its rotation");
         assert_eq!(state.angle_history, expected);
-        assert_eq!(state.local.matrix, Matrix::orientation(expected));
+        assert_eq!(
+            state.local.matrix,
+            Matrix::orientation(expected.map(|angle| (angle & 2047) as u16))
+        );
     }
 }
 
@@ -12490,7 +12500,10 @@ fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
     let expected = [128, rotated[1], 64];
     assert_eq!(state.local.angles, expected, "no axis is restored");
     assert_eq!(state.angle_history, expected);
-    assert_eq!(state.local.matrix, Matrix::orientation(expected));
+    assert_eq!(
+        state.local.matrix,
+        Matrix::orientation(expected.map(|angle| (angle & 2047) as u16))
+    );
 }
 
 #[test]
@@ -19110,65 +19123,36 @@ fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
 
 #[test]
 fn heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes() {
-    for (spatial, name, write, expected) in [
-        (false, Property::AngleVy, false, "spatial owner unavailable"),
-        (true, Property::AngleVy, true, "unsupported"),
-    ] {
-        let mut scripts = heading_property_scripts(294, Object::Me);
-        scripts.definition.references[294] = name;
-        if write {
-            scripts
-                .actors
-                .get_mut("LOGIC")
-                .unwrap()
-                .program
-                .steps
-                .get_mut(&0)
-                .unwrap()
-                .operation = Operation::Assign {
-                destination: Place::Property {
-                    object: Object::Me,
-                    reference: 294,
-                },
-                formula: Formula {
-                    first: Value::Integer { value: 4096 },
-                    rest: vec![],
-                },
-            };
-        }
-        scripts.content_id = scripts.content_identity().unwrap();
-        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
-        if spatial {
-            world.prepare_spatial().unwrap();
-        }
-        let caller = world.id(0).unwrap();
-        let error = world
-            .advance(
-                caller,
-                cyrus_game::script::ScriptStage::Body(Thread::Main),
-                cyrus_game::script::ScriptInputs {
-                    frame_scale: Some(256),
-                    nominal_ticks: Some(1),
-                    ..Default::default()
-                },
-                None,
-                None,
-                20,
-            )
-            .unwrap_err();
-        assert!(format!("{error:#}").contains(expected), "{error:#}");
-        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
-        if spatial {
-            assert_eq!(world.spatial(caller).unwrap().local.angles[1], 1536);
-        }
-    }
+    let scripts = heading_property_scripts(294, Object::Me);
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let caller = world.id(0).unwrap();
+    let error = world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("spatial owner unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
 }
 
 #[test]
 fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
-    for (axis, name) in [Property::AngleVx, Property::AngleVy, Property::AngleVz]
+    for ((axis, name), value) in [Property::AngleVx, Property::AngleVy, Property::AngleVz]
         .into_iter()
         .enumerate()
+        .flat_map(|axis| [i32::MIN, -4097, -1, 512, 2048, i32::MAX].map(|value| (axis, value)))
     {
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name;
@@ -19187,10 +19171,37 @@ fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
                 reference: 294,
             },
             formula: Formula {
-                first: Value::Integer { value: 512 },
+                first: Value::Integer { value },
                 rest: vec![],
             },
         };
+        let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+        program.steps.get_mut(&1).unwrap().operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Read {
+                    place: Place::Property {
+                        object: Object::Me,
+                        reference: 294,
+                    },
+                },
+                rest: vec![],
+            },
+        };
+        program.steps.insert(
+            2,
+            Step {
+                next: 3,
+                operation: Operation::Yield,
+            },
+        );
+        program.steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::End { target: 0 },
+            },
+        );
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
         world.prepare_spatial().unwrap();
@@ -19212,9 +19223,14 @@ fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
             .unwrap();
         let after = world.spatial(caller).unwrap().local;
         let mut expected = before.angles;
-        expected[axis] = 512;
+        expected[axis] = value;
         assert_eq!(after.angles, expected, "{name}");
         assert_eq!(after.position, before.position);
+        assert_eq!(
+            after.matrix.0.map(|row| row.map(f32::to_bits)),
+            before.matrix.0.map(|row| row.map(f32::to_bits))
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [value]);
     }
 }
 
@@ -34232,7 +34248,7 @@ fn player_looking_facing_and_arc_match_the_original_routines() {
     let mut actor = world.spatial(world.id(0).unwrap()).unwrap().clone();
     actor.local.position = [0; 3];
     for (name, receiver_heading, player_heading, x, z, first, second, expected) in rows {
-        actor.local.angles[1] = receiver_heading;
+        actor.local.angles[1] = i32::from(receiver_heading);
         let inputs = QueryInputs {
             player: Some(PlayerQuery {
                 position: [x, 0, z],
@@ -39812,15 +39828,7 @@ fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
         );
         assert_eq!(
             control.motion_vector,
-            [
-                11,
-                if heading_write {
-                    i32::from(origin.angles[1])
-                } else {
-                    22
-                },
-                33
-            ]
+            [11, if heading_write { origin.angles[1] } else { 22 }, 33]
         );
         let collision = Default::default();
         let saved = serde_json::to_value(
@@ -40070,7 +40078,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
         .unwrap();
     let control = world.actors()[player_index].control_state().unwrap();
     assert_eq!(control.queued_motion, JumpMotion::BACKWARD);
-    assert_eq!(control.motion_vector[1], i32::from(before_heading));
+    assert_eq!(control.motion_vector[1], before_heading);
     assert_eq!(
         serde_json::to_value(world.globals()).unwrap()["controller_prelude"]["conditional_ticks"],
         6
@@ -44159,7 +44167,8 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
             } else {
                 wrap(before.angles[1].wrapping_add(1024))
             };
-            cyrus_world::transform::translate_forward(before.position, heading, 384).unwrap()
+            cyrus_world::transform::translate_forward(before.position, (heading & 2047) as u16, 384)
+                .unwrap()
         };
         assert_eq!(
             world.spatial(id).unwrap().local.position,
@@ -45036,9 +45045,12 @@ fn insert_suspends_the_camera_limiter_and_steps_forward_until_it_is_released() {
     for held in 0..2 {
         let before = world.spatial(player).unwrap().local;
         selected_player_update(&mut world, &data, &scene, (Some(true), None), insert);
-        let expected =
-            cyrus_world::transform::translate_forward(before.position, before.angles[1], 32768)
-                .unwrap();
+        let expected = cyrus_world::transform::translate_forward(
+            before.position,
+            before.wrapped_angles()[1],
+            32768,
+        )
+        .unwrap();
         let after = world.spatial(player).unwrap().local.position;
         assert_eq!(
             (after[0], after[2]),

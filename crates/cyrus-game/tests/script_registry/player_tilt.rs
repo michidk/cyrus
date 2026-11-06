@@ -169,7 +169,7 @@ fn player_tilt_retains_task_and_rebinds_live_support_on_restore() {
         snapshot,
         &sources,
         WorldRestoreContext {
-            generation: 8,
+            generation: world.generation() + 1,
             globals: Default::default(),
             samples: &Default::default(),
         },
@@ -207,7 +207,7 @@ fn player_tilt_failures_preserve_caller_and_pose() {
         let error = tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1))
             .unwrap_err()
             .to_string();
-        assert!(error.contains("slave diagnostic"), "{error}");
+        assert!(error.contains("original diagnostic 137"), "{error}");
         let after = world.inspect(0, 10);
         assert_eq!(
             after["actors"][0]["spatial"],
@@ -245,7 +245,7 @@ fn tilt_restore_changed(
         serde_json::from_value(saved).unwrap(),
         &sources,
         WorldRestoreContext {
-            generation: 8,
+            generation: world.generation() + 1,
             globals: Default::default(),
             samples: &Default::default(),
         },
@@ -271,35 +271,20 @@ fn player_tilt_linked_bearing_is_independent_of_local_strength_distance() {
 }
 
 #[test]
-fn player_tilt_faults_and_unsupported_refresh_do_not_publish_partial_angles() {
-    for case in ["zero limit", "rotation mode", "unwrapped angle"] {
-        let (world, scripts, data) = tilt_fixture(
-            [512, 256, 4],
-            [0, 0, if case == "unwrapped angle" { 2047 } else { 0 }],
-            true,
-            Object::Me,
-        );
-        let mut world = tilt_restore_changed(&world, &scripts, &data, |saved| match case {
-            "zero limit" => {
-                saved["actors"][0]["collision"]["positive_extent"] = serde_json::json!([0, 0, 0]);
-                saved["actors"][0]["collision"]["negative_extent"] = serde_json::json!([0, 0, 0]);
-            }
-            "rotation mode" => {
-                saved["spatial"]["actors"][0]["rotation_mode"] = 1.into();
-            }
-            _ => {}
-        });
-        let before = world.inspect(0, 10)["actors"][0]["spatial"].clone();
-        let error = tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap_err();
-        let expected = match case {
-            "zero limit" => "original division fault",
-            "rotation mode" => "orientation refresh",
-            _ => "unwrapped angle",
-        };
-        assert!(format!("{error:#}").contains(expected), "{case}: {error:#}");
-        assert_eq!(world.inspect(0, 10)["actors"][0]["spatial"], before);
-        assert_eq!(world.flags()[0], 12);
-    }
+fn player_tilt_division_fault_does_not_publish_partial_angles() {
+    let (world, scripts, data) = tilt_fixture([512, 256, 4], [0; 3], true, Object::Me);
+    let mut world = tilt_restore_changed(&world, &scripts, &data, |saved| {
+        saved["actors"][0]["collision"]["positive_extent"] = serde_json::json!([0, 0, 0]);
+        saved["actors"][0]["collision"]["negative_extent"] = serde_json::json!([0, 0, 0]);
+    });
+    let before = world.inspect(0, 10)["actors"][0]["spatial"].clone();
+    let error = tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("original division fault"),
+        "{error:#}"
+    );
+    assert_eq!(world.inspect(0, 10)["actors"][0]["spatial"], before);
+    assert_eq!(world.flags()[0], 12);
 }
 
 #[test]
@@ -349,4 +334,96 @@ fn player_tilt_routed_call_changes_receiver_and_leaves_callers_pose() {
         world.spatial(world.id(1).unwrap()).unwrap().local.angles,
         [0; 3]
     );
+}
+
+#[test]
+fn player_tilt_alternate_rotation_matches_original_numerical_matrix() {
+    let (world, scripts, data) = tilt_fixture([512, 256, 4], [0; 3], true, Object::Me);
+    let mut world = tilt_restore_changed(&world, &scripts, &data, |saved| {
+        saved["spatial"]["actors"][0]["rotation_mode"] = 1.into();
+    });
+    tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+    let pose = world.spatial(world.id(0).unwrap()).unwrap().local;
+    assert_eq!(pose.angles, [0, 0, 63]);
+    // Verified original numerical builder with the initialized rotation table.
+    assert_eq!(
+        pose.matrix
+            .0
+            .into_iter()
+            .flatten()
+            .map(f32::to_bits)
+            .collect::<Vec<_>>(),
+        vec![
+            1065040811, 3192172729, 0, 1044689081, 1065040811, 2147483648, 0, 0, 1065353216
+        ]
+    );
+}
+
+#[test]
+fn player_tilt_retains_unmasked_angle_sums_and_history_across_restore() {
+    let (mut world, scripts, data) = tilt_fixture([512, 256, 4], [0, 0, 2047], true, Object::Me);
+    tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+        [0, 0, 2110]
+    );
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["spatial"]["angle_history"],
+        serde_json::json!([0, 0, 2110])
+    );
+    assert_eq!(world.flags()[0], 91);
+    let mut world = tilt_restore_changed(&world, &scripts, &data, |_| {});
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+        [0, 0, 2110]
+    );
+    tilt_step(&mut world, ScriptStage::Tasks, Some(1)).unwrap();
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+        [0, 0, 2158]
+    );
+    assert_eq!(
+        world
+            .spatial(world.id(0).unwrap())
+            .unwrap()
+            .local
+            .matrix
+            .0
+            .map(|row| row.map(f32::to_bits)),
+        cyrus_world::transform::Matrix::orientation([0, 0, 110])
+            .0
+            .map(|row| row.map(f32::to_bits))
+    );
+}
+
+#[test]
+fn player_tilt_signed_storage_matches_original_full_width_result_stores() {
+    // Literal results from original instruction execution with the public fixture's geometry.
+    for (initial, expected) in [
+        (i32::MIN, -2147483585),
+        (-4097, -4034),
+        (-1, 62),
+        (2047, 2110),
+        (i32::MAX, -2147483586),
+    ] {
+        let (world, scripts, data) = tilt_fixture([512, 256, 4], [0; 3], true, Object::Me);
+        let mut world = tilt_restore_changed(&world, &scripts, &data, |saved| {
+            saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 0, initial]);
+        });
+        tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+        assert_eq!(
+            world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+            [0, 0, expected]
+        );
+        assert_eq!(
+            world.inspect(0, 1)["actors"][0]["spatial"]["angle_history"],
+            serde_json::json!([0, 0, expected])
+        );
+        assert_eq!(world.flags()[0], 91);
+        let world = tilt_restore_changed(&world, &scripts, &data, |_| {});
+        assert_eq!(
+            world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+            [0, 0, expected]
+        );
+    }
 }

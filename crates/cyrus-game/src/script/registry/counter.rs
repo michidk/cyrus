@@ -137,13 +137,12 @@ impl ScriptWorld {
             }
             let own_heading = self.spatial(id)?.local.angles[1];
             let target_heading = self.spatial(target)?.local.angles[1];
-            if !crate::script::decision::facing_each_other(
-                i32::from(target_heading),
-                i32::from(own_heading),
-            ) || matches!(
-                target_combat.action,
-                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
-            ) || combat.action != CombatControlState::NO_ACTION
+            if !crate::script::decision::facing_each_other(target_heading, own_heading)
+                || matches!(
+                    target_combat.action,
+                    CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+                )
+                || combat.action != CombatControlState::NO_ACTION
                 || !combat.defense_indices.iter().any(Option::is_some)
                 || target_combat.flags.contains(CombatFlags::ATTACKED)
             {

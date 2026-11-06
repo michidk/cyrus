@@ -290,7 +290,7 @@ impl ScriptWorld {
         let spatial = self.spatial(id)?;
         let probe = OrdinaryStableProbe::new(
             spatial.query_pose()?.position,
-            spatial.local.angles[1],
+            spatial.local.wrapped_angles()[1],
             self.ordinary_collision_shape(id)?.positive_extent[1],
             scene.settings.post_collide_height,
         )?;

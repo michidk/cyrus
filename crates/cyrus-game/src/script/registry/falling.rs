@@ -613,7 +613,7 @@ impl ScriptWorld {
         let pose = self.spatial(id)?.local;
         let Some(action) = ordinary_directional_motion(
             motion,
-            pose.angles[1],
+            pose.wrapped_angles()[1],
             distance,
             surface,
             animation.playback.translation_suppressed(),

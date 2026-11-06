@@ -759,7 +759,7 @@ impl ScriptWorld {
                 .actor_mut(id.index)?;
             spatial.local.position = cyrus_world::transform::translate_forward(
                 spatial.local.position,
-                spatial.local.angles[1],
+                spatial.local.wrapped_angles()[1],
                 distance,
             )?;
             if !self.map_updates.contains(&id.index) {

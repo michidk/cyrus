@@ -179,7 +179,7 @@ pub(super) fn apply(
             });
             transform.translation += Vec3::new(-delta[0], -delta[1], delta[2]);
             player_pose.position = position;
-            player_pose.heading = spatial.local.angles[1];
+            player_pose.heading = spatial.local.wrapped_angles()[1];
         }
         match world.actor_surface(binding.actor).ok().map(SoundSurface) {
             Some(next) if surface != Some(&next) => {

@@ -184,7 +184,7 @@ impl ScriptWorld {
                 if !crate::script::decision::ordinary_defence_forward_arc(
                     own.position,
                     other.position,
-                    i32::from(own.angles[1]),
+                    own.angles[1],
                 ) {
                     return Ok(());
                 }
@@ -194,8 +194,7 @@ impl ScriptWorld {
                     return Ok(());
                 }
                 selection.facing_alike =
-                    heading_difference(i32::from(own.angles[1]), i32::from(other.angles[1])).abs()
-                        < 256;
+                    heading_difference(own.angles[1], other.angles[1]).abs() < 256;
                 if !selection.facing_alike {
                     selection.target_in_combat_stance = self.spacing_weapon(target, inputs)?.1;
                     if !selection.target_in_combat_stance {
@@ -624,7 +623,7 @@ impl crate::script::decision::PacedDefenceQueries for LivePacedQueries<'_> {
         Ok(crate::script::decision::defence_arc_from_positions(
             own.position,
             other.position,
-            i32::from(own.angles[1]),
+            own.angles[1],
             arc,
             motion.arc_center.unwrap_or(0),
         ))

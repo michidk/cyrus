@@ -26,12 +26,12 @@ pub struct QueryInputs {
     pub linked_position: Option<Option<[i32; 3]>>,
 }
 
-/// Original Q8 coordinates and pitch/yaw/roll in wrapped 1/2048 turns.
+/// Original Q8 coordinates and signed pitch/yaw/roll in 1/2048 turns.
 /// The stored matrix retains its single-precision update history.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Pose {
     pub position: [i32; 3],
-    pub angles: [u16; 3],
+    pub angles: [i32; 3],
     #[serde(serialize_with = "serialize_matrix")]
     pub matrix: Matrix,
 }
@@ -47,16 +47,16 @@ pub struct ActorSpatial {
     pub effective: Option<Pose>,
     pub previous_effective_position: Option<[i32; 3]>,
     /// Effective angles before the latest family refresh.
-    pub previous_effective_angles: Option<[u16; 3]>,
+    pub previous_effective_angles: Option<[i32; 3]>,
     /// Local position captured at the ordinary update boundary, in Q8 units.
     pub previous_local_position: [i32; 3],
     /// End-of-update position retained by dry or falling updates for water veto.
     /// None leaves the fresh-allocation record explicitly unavailable.
     pub water_rollback_position: Option<[i32; 3]>,
     /// Previous local angles after snapshot; propagated deltas after family refresh.
-    pub angle_history: [u16; 3],
+    pub angle_history: [i32; 3],
     /// Angles the actor was created with; `ResetRotation` restores axes from them.
-    pub initial_angles: [u16; 3],
+    pub initial_angles: [i32; 3],
     pub parent: Option<usize>,
     /// Fresh allocation has no linked-position record; dynamic creation is unsupported.
     /// The record's cached position while it names an owner, for effective-position queries.
@@ -89,6 +89,13 @@ pub(super) struct SpatialWorld {
     refreshes: u32,
 }
 
+impl Pose {
+    /// Wrapped table indices for services whose input is a heading, without changing storage.
+    pub fn wrapped_angles(self) -> [u16; 3] {
+        self.angles.map(|angle| (angle & 2047) as u16)
+    }
+}
+
 impl SpatialWorld {
     pub fn prepare(actors: &[ScriptActor]) -> Result<Self> {
         let mut poses = Vec::with_capacity(actors.len());
@@ -104,9 +111,9 @@ impl SpatialWorld {
                 let angles = if matches!(placement.object_type, 2 | 6) {
                     [0; 3]
                 } else {
-                    placement.angles.map(|angle| wrap(angle) as u16)
+                    placement.angles.map(|angle| wrap(angle) as i32)
                 };
-                Ok(Pose { position, angles, matrix: Matrix::orientation(angles) })
+                Ok(Pose { position, angles, matrix: Matrix::orientation(angles.map(|angle| (angle & 2047) as u16)) })
             }).transpose()?;
             if pose.is_some() && actor.attributes()[Attribute::Master] != 0 {
                 if let Some(&previous) = masters.get(&actor.attributes()[Attribute::Master]) {
@@ -254,8 +261,8 @@ impl SpatialWorld {
         );
         let pose = Pose {
             position,
-            angles,
-            matrix: Matrix::orientation(angles),
+            angles: angles.map(i32::from),
+            matrix: Matrix::orientation(angles.map(|angle| angle & 2047)),
         };
         let index = self.actors.len();
         self.actors.push(Some(ActorSpatial {
@@ -270,8 +277,8 @@ impl SpatialWorld {
             previous_effective_angles: None,
             previous_local_position: position,
             water_rollback_position: None,
-            angle_history: angles,
-            initial_angles: angles,
+            angle_history: angles.map(i32::from),
+            initial_angles: angles.map(i32::from),
             parent: None,
             linked_position: None,
             link: None,
@@ -320,8 +327,8 @@ impl SpatialWorld {
         );
         let pose = Pose {
             position,
-            angles,
-            matrix: Matrix::orientation(angles),
+            angles: angles.map(i32::from),
+            matrix: Matrix::orientation(angles.map(|angle| angle & 2047)),
         };
         let initialized = slot.is_some();
         *slot = Some(ActorSpatial {
@@ -336,8 +343,8 @@ impl SpatialWorld {
             previous_effective_angles: None,
             previous_local_position: position,
             water_rollback_position: None,
-            angle_history: angles,
-            initial_angles: angles,
+            angle_history: angles.map(i32::from),
+            initial_angles: angles.map(i32::from),
             parent: None,
             linked_position: None,
             link: None,
@@ -405,7 +412,10 @@ impl SpatialWorld {
             });
             state.angle_history = state.local.angles;
             state.local.matrix = parent.matrix;
-            state.local.matrix.rotate(state.local.angles);
+            state
+                .local
+                .matrix
+                .rotate(state.local.angles.map(|angle| (angle & 2047) as u16));
         }
         state.parent = Some(target);
         self.order.retain(|&actor| actor != index);
@@ -445,12 +455,15 @@ impl SpatialWorld {
                 let delta = std::array::from_fn(|axis| {
                     wrap(state.local.angles[axis].wrapping_sub(state.angle_history[axis]))
                 });
-                state.local.matrix.rotate(delta);
+                state
+                    .local
+                    .matrix
+                    .rotate(delta.map(|angle| (angle & 2047) as u16));
                 matrix = state.local.matrix;
                 angles = state.local.angles;
             } else {
                 let mut composed = parent_pose.matrix;
-                composed.rotate(state.local.angles);
+                composed.rotate(state.local.angles.map(|angle| (angle & 2047) as u16));
                 matrix = composed;
                 angles = std::array::from_fn(|axis| {
                     wrap(parent_pose.angles[axis].wrapping_add(state.local.angles[axis]))
@@ -526,30 +539,18 @@ impl ActorSpatial {
         self.angle_history = self.local.angles;
     }
 
-    /// `ResetRotation`: restore each selected axis from the creation angles, make the
-    /// previous-angle history equal the result, and rebuild the matrix from the angles
-    /// (identity, then negated yaw, pitch and roll). Rotation mode one's alternate matrix
-    /// builder is not established and is rejected before any change.
+    /// Restore selected creation angles, rebuild orientation and copy angle history.
+    /// Rotation mode one uses the closed-form Euler builder; other modes rebuild
+    /// from identity with negated yaw, pitch and roll.
     pub fn reset_rotation(&mut self, axes: [bool; 3]) -> Result<()> {
-        ensure!(
-            self.rotation_mode != 1,
-            "ResetRotation: rotation mode one matrix builder unsupported"
-        );
-        for (axis, selected) in axes.into_iter().enumerate() {
-            if selected {
-                self.local.angles[axis] = self.initial_angles[axis];
-            }
-        }
-        self.angle_history = self.local.angles;
-        self.local.matrix = Matrix::orientation(self.local.angles);
-        if let Some(effective) = &mut self.effective {
-            if self.parent.is_none() {
-                *effective = self.local;
+        let angles = std::array::from_fn(|axis| {
+            if axes[axis] {
+                self.initial_angles[axis]
             } else {
-                effective.matrix = self.local.matrix;
+                self.local.angles[axis]
             }
-        }
-        Ok(())
+        });
+        self.refresh_rotation(angles)
     }
 
     /// `DetachMe` for an attached actor without `attr_master`: unlink it from its parent and make
@@ -619,7 +620,7 @@ impl ActorSpatial {
     pub fn relocate(&mut self, position: [i32; 3], yaw: u16) {
         self.local.position = position;
         self.previous_local_position = position;
-        self.local.angles[1] = wrap(yaw);
+        self.local.angles[1] = i32::from(wrap(yaw));
     }
 
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
@@ -672,9 +673,12 @@ impl ActorSpatial {
                 .local
                 .matrix
                 .rotate_unattached(std::array::from_fn(|axis| {
-                    wrap(self.local.angles[axis].wrapping_sub(matrix_angles[axis]))
+                    wrap(self.local.angles[axis].wrapping_sub(matrix_angles[axis])) as u16
                 })),
-            2 => self.local.matrix = Matrix::orientation(self.local.angles),
+            2 => {
+                self.local.matrix =
+                    Matrix::orientation(self.local.angles.map(|angle| (angle & 2047) as u16))
+            }
             mode => anyhow::bail!("actor rotation mode {mode} unsupported"),
         }
         self.effective = Some(self.local);
@@ -747,17 +751,21 @@ impl ActorSpatial {
     }
 
     /// `SetRotation(x, y, z)`: the arguments masked to 11 bits become the local angles and the
-    /// angle history, and the matrix is rebuilt from them (identity, then negated yaw, pitch and
-    /// roll). Existing angles supply no component. Rotation mode one's alternate matrix builder is
-    /// not established and is rejected before any change.
+    /// angle history. The matrix rebuild uses the same rotation-mode owner as PlayerTilt.
+    /// Existing angles supply no component.
     pub fn set_rotation(&mut self, angles: [i32; 3]) -> Result<()> {
-        ensure!(
-            self.rotation_mode != 1,
-            "SetRotation: rotation mode one matrix builder unsupported"
-        );
-        self.local.angles = angles.map(|angle| (angle & 2047) as u16);
+        self.refresh_rotation(angles.map(|angle| angle & 2047))
+    }
+
+    /// Rebuild orientation and copy signed angle history without changing the supplied angles.
+    pub fn refresh_rotation(&mut self, angles: [i32; 3]) -> Result<()> {
+        self.local.angles = angles;
         self.angle_history = self.local.angles;
-        self.local.matrix = Matrix::orientation(self.local.angles);
+        self.local.matrix = if self.rotation_mode == 1 {
+            Matrix::euler(self.local.wrapped_angles())
+        } else {
+            Matrix::orientation(self.local.wrapped_angles())
+        };
         if let Some(effective) = &mut self.effective {
             if self.parent.is_none() {
                 *effective = self.local;
@@ -841,7 +849,7 @@ impl ActorSpatial {
             let x = receiver[0].wrapping_sub(player.position[0]);
             let z = receiver[2].wrapping_sub(player.position[2]);
             let target = i32::from(query_bearing(x, z));
-            let heading = wrap(i32::from(pose.angles[1]).wrapping_sub(offset.integer()?));
+            let heading = wrap(pose.angles[1].wrapping_sub(offset.integer()?));
             let difference = wrap(heading - target + 1024) - 1024;
             return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
@@ -897,7 +905,7 @@ impl ActorSpatial {
             let [offset, tolerance] = arguments else {
                 anyhow::bail!("PlayerFacing requires two arguments");
             };
-            let target = wrap(i32::from(pose.angles[1]).wrapping_add(offset.integer()?));
+            let target = wrap(pose.angles[1].wrapping_add(offset.integer()?));
             let difference = wrap(i32::from(player.heading) - target + 1024) - 1024;
             Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)))
         }
@@ -954,7 +962,7 @@ impl SpatialSnapshot {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SavedPose {
     position: [i32; 3],
-    angles: [u16; 3],
+    angles: [i32; 3],
     matrix_bits: [[u32; 3]; 3],
 }
 impl From<Pose> for SavedPose {
@@ -968,10 +976,6 @@ impl From<Pose> for SavedPose {
 }
 impl SavedPose {
     pub(super) fn restore(self) -> Result<Pose> {
-        ensure!(
-            self.angles.iter().all(|&angle| angle < 2048),
-            "saved pose angle outside wrapped range"
-        );
         let matrix = self.matrix_bits.map(|row| row.map(f32::from_bits));
         ensure!(
             matrix.iter().flatten().all(|value| value.is_finite()),
@@ -992,11 +996,11 @@ struct SavedSpatialActor {
     effective: Option<SavedPose>,
     previous_effective_position: Option<[i32; 3]>,
     #[serde(default)]
-    previous_effective_angles: Option<[u16; 3]>,
+    previous_effective_angles: Option<[i32; 3]>,
     previous_local_position: [i32; 3],
     water_rollback_position: Option<[i32; 3]>,
-    angle_history: [u16; 3],
-    initial_angles: [u16; 3],
+    angle_history: [i32; 3],
+    initial_angles: [i32; 3],
     parent: Option<usize>,
     linked_position: Option<[i32; 3]>,
     #[serde(default)]
@@ -1099,14 +1103,6 @@ impl SpatialWorld {
             ensure!(
                 saved.locations == locations,
                 "actor {index}: saved authored locations differ"
-            );
-            ensure!(
-                saved
-                    .angle_history
-                    .iter()
-                    .chain(&saved.initial_angles)
-                    .all(|&angle| angle < 2048),
-                "actor {index}: saved angle history outside wrapped range"
             );
             restored.push(Some(ActorSpatial {
                 local: saved

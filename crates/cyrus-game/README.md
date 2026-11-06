@@ -501,7 +501,9 @@ strength distance on each invocation. Whole nominal ticks scale its signed
 snap/add steps; successful changes rebuild orientation and angle history.
 The contract is published in preservation's
 [PlayerTilt reference](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playertilt-receiver-orientation).
-Slave diagnostics, rotation mode one's alternate matrix builder, original divide
-faults and unmasked angle sums outside the spatial owner's wrapped domain remain
-explicit errors. Original instruction witnesses and synthetic public native/browser
+Signed angle sums, history and save/restore retain the full 32-bit value. Rotation
+mode one uses the shared Euler builder; other modes use the ordinary orientation
+builder. Slave receivers report original diagnostic 137 before changing the pose; original
+divide faults also remain explicit errors. The original diagnostic console recovery
+mode is unavailable. Original instruction witnesses and synthetic public native/browser
 callers bound acceptance; natural installed gameplay parity remains Unknown.

@@ -151,15 +151,15 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
 
 /// `PlayerTurned`: whether any of the selected player's angles differs from the angles saved at
 /// the ordinary update's entry.
-pub fn player_turned(angles: [u16; 3], history: [u16; 3]) -> i32 {
+pub fn player_turned(angles: [i32; 3], history: [i32; 3]) -> i32 {
     i32::from(angles.map(wrap) != history.map(wrap))
 }
 
 /// `PlayerTurnedDirection`: 1, 0 or -1 for the sign of the change of the negated yaw since the saved
 /// one, taking the shorter way round the circle (a change of more than 1024 inverts the sign).
-pub fn player_turned_direction(heading: u16, history: u16) -> i32 {
-    let now = wrap(2048 - i32::from(heading));
-    let before = wrap(2048 - i32::from(history));
+pub fn player_turned_direction(heading: i32, history: i32) -> i32 {
+    let now = wrap(2048i32.wrapping_sub(heading));
+    let before = wrap(2048i32.wrapping_sub(history));
     let sign = (now - before).signum();
     if (before - now).abs() > 1024 {
         -sign
@@ -419,7 +419,10 @@ mod tests {
         for (pitch, heading, history, expected) in turned {
             let history_angles = [0, history, 0];
             assert_eq!(
-                player_turned([pitch, heading, 0], history_angles),
+                player_turned(
+                    [i32::from(pitch), i32::from(heading), 0],
+                    history_angles.map(i32::from)
+                ),
                 expected,
                 "pitch {pitch} heading {heading} history {history}"
             );
@@ -495,7 +498,7 @@ mod tests {
         .unwrap();
         for (heading, history, expected) in direction {
             assert_eq!(
-                player_turned_direction(heading, history),
+                player_turned_direction(i32::from(heading), i32::from(history)),
                 expected,
                 "heading {heading} history {history}"
             );

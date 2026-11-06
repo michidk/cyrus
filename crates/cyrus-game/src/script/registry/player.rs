@@ -693,8 +693,8 @@ impl ScriptWorld {
         );
         let angles = self.spatial(id)?.local.angles;
         let result = turn::ground_turn(
-            angles[1],
-            angles[2],
+            (angles[1] & 2047) as u16,
+            (angles[2] & 2047) as u16,
             turn::GroundTurnInput {
                 delta: self.globals.turn.delta(timing.frame_scale),
                 running,
@@ -741,9 +741,11 @@ impl ScriptWorld {
             .as_mut()
             .context("player spatial registry unavailable")?
             .actor_mut(index)?;
-        if spatial.local.angles[1] != heading || spatial.local.angles[2] != roll {
-            spatial.local.angles[1] = heading;
-            spatial.local.angles[2] = roll;
+        if spatial.local.angles[1] != i32::from(heading)
+            || spatial.local.angles[2] != i32::from(roll)
+        {
+            spatial.local.angles[1] = i32::from(heading);
+            spatial.local.angles[2] = i32::from(roll);
             spatial.refresh_transform()?;
         }
         Ok(())
@@ -955,9 +957,10 @@ impl ScriptWorld {
             spatial.parent.is_none(),
             "attached player forward query unsupported"
         );
-        let rows = cyrus_world::transform::Matrix::collision_orientation(spatial.local.angles)
-            .0
-            .map(Vec3::from_array);
+        let rows =
+            cyrus_world::transform::Matrix::collision_orientation(spatial.local.wrapped_angles())
+                .0
+                .map(Vec3::from_array);
         let shape = self.ordinary_collision_shape(id)?;
         let spheres = shape
             .body
@@ -1291,7 +1294,7 @@ impl ScriptWorld {
         };
         let mut input = GroundedUpdate {
             motion: ForwardWalk {
-                heading: spatial.local.angles[1],
+                heading: spatial.local.wrapped_angles()[1],
                 frame_scale: tick.frame_scale,
                 nominal_ticks: tick.nominal_ticks,
             },
@@ -1346,7 +1349,7 @@ impl ScriptWorld {
                 .with_context(|| format!("player update axis {axis}: Q8 position outside i32"))?;
         }
         spatial.local.position = position;
-        spatial.local.angles[1] = input.motion.heading;
+        spatial.local.angles[1] = i32::from(input.motion.heading);
         let frame = result?;
         spatial.refresh_transform()?;
         Ok(GroundedPresentation {

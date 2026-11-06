@@ -220,7 +220,7 @@ impl ScriptWorld {
             selected.index == to,
             "player swap selected an unexpected role"
         );
-        let angles = placement.angles.map(wrap);
+        let angles = placement.wrapped_angles();
         // Only the selected role's pose is initialized at world entry; the other role's first
         // pose is the one it takes here.
         if !self
@@ -236,7 +236,7 @@ impl ScriptWorld {
             .as_mut()
             .context("player swap: spatial state not prepared")?
             .actor_mut(to)?;
-        spatial.relocate(placement.position, placement.angles[1]);
+        spatial.relocate(placement.position, placement.wrapped_angles()[1]);
         // The orientation setter stores the angles, the previous-angle history and the triple the
         // actor was created with (which `ResetRotation` restores from).
         spatial.local.angles = placement.angles.map(wrap);

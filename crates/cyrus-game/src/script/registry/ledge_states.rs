@@ -360,9 +360,7 @@ impl ScriptWorld {
         let (index, id) = (ctx.index, ctx.id);
         let (point, heading) = self.ledge_anchor()?;
         let own = self.spatial(id)?.local;
-        if super::super::decision::heading_difference(i32::from(own.angles[1]), i32::from(heading))
-            .abs()
-            > 256
+        if super::super::decision::heading_difference(own.angles[1], i32::from(heading)).abs() > 256
         {
             self.set_living(index, LivingState::ORDINARY);
             return Ok(0);
@@ -399,7 +397,7 @@ impl ScriptWorld {
             .context("ledge spatial state unavailable")?
             .actor_mut(index)?
             .local
-            .angles[1] = record.heading;
+            .angles[1] = i32::from(record.heading);
         self.actors[index].model.ledge_support = self.ledge_support_id(record.support)?;
         Ok(1)
     }
@@ -451,7 +449,7 @@ impl ScriptWorld {
                 .context("ledge spatial state unavailable")?
                 .actor_mut(index)?
                 .local
-                .angles[1] = record.heading;
+                .angles[1] = i32::from(record.heading);
         }
         let distance = self.query_ordinary_queued_clearance(id, query)?;
         let extent = self.ordinary_collision_shape(id)?.positive_extent[1];

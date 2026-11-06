@@ -432,7 +432,7 @@ fn installed_palace_nested_family_reconstructs_authored_poses() {
         );
         assert_eq!(
             pose.angles,
-            placement.angles.map(|value| wrap(value) as u16)
+            placement.angles.map(|value| wrap(value) as i32)
         );
     }
 }
@@ -484,7 +484,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     let query = QueryInputs {
         player: Some(PlayerQuery {
             position: pose.position,
-            heading: pose.angles[1],
+            heading: pose.wrapped_angles()[1],
         }),
         distance_override: Some(false),
         fallback_position: None,
@@ -1074,7 +1074,7 @@ fn installed_shrines_read_player_heading_before_nonstanding_branch() {
     world
         .initialize_player_spatial(player, [0; 3], [0, 668, 0])
         .unwrap();
-    let heading = i32::from(world.spatial(player).unwrap().local.angles[1]);
+    let heading = world.spatial(player).unwrap().local.angles[1];
     let support = world.model_support(player).unwrap();
     assert!(support.actor.is_none());
     let flags = world.flags().to_vec();

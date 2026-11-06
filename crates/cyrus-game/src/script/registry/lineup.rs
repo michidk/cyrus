@@ -51,7 +51,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             .spatial(self.player)
             .context("lineup selected-player pose unavailable")?
             .local;
-        Ok((local.position, local.angles))
+        Ok((local.position, local.wrapped_angles()))
     }
 
     fn frame_scale(&self) -> Result<i32> {
@@ -98,9 +98,9 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             }
         }
         if let Some(angles) = angles
-            && spatial.local.angles != angles
+            && spatial.local.angles != angles.map(i32::from)
         {
-            spatial.local.angles = angles;
+            spatial.local.angles = angles.map(i32::from);
             spatial.refresh_transform()?;
         }
         Ok(())
@@ -527,7 +527,7 @@ impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
             index as u32,
             Reference {
                 position: local.position,
-                heading: local.angles[1],
+                heading: local.wrapped_angles()[1],
             },
         ))
     }

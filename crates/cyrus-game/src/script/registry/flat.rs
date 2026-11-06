@@ -224,7 +224,7 @@ impl super::ScriptWorld {
                 (Some(_), Some(effective)) => effective,
                 _ => spatial.local,
             };
-            let rotated = cyrus_world::transform::Matrix::orientation(pose.angles)
+            let rotated = cyrus_world::transform::Matrix::orientation(pose.wrapped_angles())
                 .transform(flat.offset.map(|word| i32::from(word as i16)))?;
             let position =
                 std::array::from_fn(|axis| rotated[axis].wrapping_add(pose.position[axis]) >> 8);
