@@ -969,6 +969,17 @@ impl ScriptWorld {
         Ok(self.selected_message_entry(actor)?.flatten())
     }
 
+    /// The sender of the broadcast entry the actor's retained broadcast selection picks in
+    /// channel zero, if any. The reference is returned as stored, not checked against the world.
+    pub fn selected_broadcast_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+        let index = self.resolve(actor)?;
+        Ok(self
+            .globals
+            .combat_messages
+            .selected_entry(0, self.actors[index].broadcast_index)?
+            .flatten())
+    }
+
     /// `ReceiveMessage`: see [`super::CombatMessages::receive`].
     pub fn receive_message(&mut self, actor: ScriptActorId) -> Result<i32> {
         let index = self.resolve(actor)?;
@@ -7056,6 +7067,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             let receiver = self.registry.id(self.index)?;
             return Ok(match self.registry.selected_message_sender(receiver)? {
+                Some(sender) => {
+                    self.registry.globals.actor_result = Some(sender);
+                    CallResult::CompleteWithoutValue
+                }
+                None => CallResult::Complete(0),
+            });
+        }
+        // GetBroadcastSender returns the selected broadcast entry's sender pointer, unchanged, as an
+        // actor reference; zero when nothing is selected or the entry has no sender.
+        if function == Native::GetBroadcastSender {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "GetBroadcastSender requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            return Ok(match self.registry.selected_broadcast_sender(receiver)? {
                 Some(sender) => {
                     self.registry.globals.actor_result = Some(sender);
                     CallResult::CompleteWithoutValue

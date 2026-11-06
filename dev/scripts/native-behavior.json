@@ -2516,7 +2516,11 @@
       "scope": "Production named broadcast selection advance through the retained channel-zero messaging context",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> CombatMessages::delete_broadcast",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs"
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::delete_broadcast_empty_context_returns_zero_and_task_forms_complete",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::delete_broadcast_routed_call_changes_only_receiver_and_preserves_entry",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::delete_broadcast_byte_selection_wrap_and_live_writer_survive_restore",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::delete_broadcast_old_saves_default_selection_and_receivers_are_independent",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::delete_broadcast_declares_no_parameters_so_an_extra_argument_is_rejected_at_prepare"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
@@ -2547,17 +2551,23 @@
     },
     {
       "native": "GetBroadcastSender",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast sender-pointer query",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast sender-pointer query over the retained channel-zero entry and broadcast selection",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::selected_broadcast_sender -> Host::take_actor_result",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_returns_the_selected_channel_zero_sender_as_a_typed_reference",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_follows_the_broadcast_selection_not_the_class_message_cursor",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_reports_a_selection_outside_the_queue_with_its_context",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_routed_call_reads_the_named_receivers_selection"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/e7e21c2",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613234729"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6613234729",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6691398996"
       ],
-      "limits": "Verified installed zero-argument declaration/exact binding/full native and availability helper. 76,799 original-instruction contexts and 10 effective semantic controls cover full selection/sentinel byte pairs, selected raw pointer/receiver/context paths and repeated availability guard. Context first pointer supplies 12-byte entry array; entry first pointer returned unchanged without sender dereference or ID extraction, including null/unmapped tokens. No selection/entry/sender mutation. Missing-context formatter/runtime-error IO controlled returning equal sentinel or repairing context; post-helper sentinel change is synthetic order probe. Unknown malformed receiver/context/entry admission, selection/sentinel producers, queue/sender lifetime/consumption, returned-pointer use, concurrency, natural diagnostics, VM/original/native/browser and full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence.",
+      "limits": "Verified published pointer-query contract. Public VM assertions cover no selection, a live selected entry as a typed actor reference, an unwritten selected entry returning zero, direct and object-routed receivers, independence from the class-message cursor, unchanged selection and queue, and an out-of-queue selection as a contextual error. The production context is always initialized with eight entries per channel; absent-context diagnostics are not exposed. SendBroadcast and ReceiveBroadcast remain separately owned, so only combat messages reach channel zero. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "7ac94cfd7d1cd3dd654286cf33b35e30b5cf61bf"
     },
     {

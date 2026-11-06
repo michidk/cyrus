@@ -225,3 +225,162 @@ fn delete_broadcast_declares_no_parameters_so_an_extra_argument_is_rejected_at_p
         "{error:#}"
     );
 }
+
+fn broadcast_sender_scripts(target: Object) -> Scripts {
+    let mut scripts = message_query_scripts(Native::GetBroadcastSender);
+    let first = &mut scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation;
+    let Operation::Assign { formula, .. } = first else {
+        unreachable!("the query fixture assigns the call result")
+    };
+    let Value::Call { call } = &mut formula.first else {
+        unreachable!("the query fixture assigns a call")
+    };
+    call.target = target.clone();
+    if target != Object::Me {
+        formula.first = Value::ObjectCall { call: call.clone() };
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+fn sender_result(world: &ScriptWorld) -> cyrus_script::ScriptValue {
+    world.actors()[1].runtime().unwrap().variables()[0]
+}
+
+#[test]
+fn get_broadcast_sender_returns_the_selected_channel_zero_sender_as_a_typed_reference() {
+    use cyrus_script::{ActorReference, ScriptValue};
+    let scripts = broadcast_sender_scripts(Object::Me);
+    let sender_of = |world: &ScriptWorld| {
+        ScriptValue::Actor(ActorReference {
+            generation: world.generation(),
+            index: 0,
+        })
+    };
+    // (broadcast selection, entries written, expected sender present). A selection equal to the
+    // write cursor is no selection; a selected slot never written has a null sender.
+    for (selection, writes, found) in [
+        (0, 0, false),
+        (0, 1, true),
+        (1, 1, false),
+        (3, 1, false),
+        (0, 2, true),
+        (1, 2, true),
+    ] {
+        let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let mut world = broadcast_restore(&world, &scripts, |saved| {
+            saved["actors"][1]["broadcast_index"] = selection.into()
+        });
+        let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+        for _ in 0..writes {
+            world
+                .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+                .unwrap();
+        }
+        let before = serde_json::to_value(world.globals()).unwrap();
+        actor_reference_step(&mut world, receiver).unwrap();
+        let expected = if found {
+            sender_of(&world)
+        } else {
+            ScriptValue::Integer(0)
+        };
+        assert_eq!(
+            sender_result(&world),
+            expected,
+            "selection {selection} writes {writes}"
+        );
+        // The query consumes nothing and changes no selection.
+        assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+        assert_eq!(selection_of(&world, 1), selection);
+    }
+}
+
+fn selection_of(world: &ScriptWorld, index: usize) -> u64 {
+    world.inspect(index, 1)["actors"][0]["broadcast_index"]
+        .as_u64()
+        .unwrap()
+}
+
+#[test]
+fn get_broadcast_sender_follows_the_broadcast_selection_not_the_class_message_cursor() {
+    use cyrus_script::{ActorReference, ScriptValue};
+    let scripts = broadcast_sender_scripts(Object::Me);
+    let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    // The class-message cursor is on a written entry; the broadcast selection is not.
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["message_read"] = 0.into();
+        saved["actors"][1]["broadcast_index"] = 1.into();
+    });
+    let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
+    actor_reference_step(&mut world, receiver).unwrap();
+    assert_eq!(sender_result(&world), ScriptValue::Integer(0));
+    // Selecting the entry through the broadcast selection returns its sender.
+    let fresh = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let mut world = broadcast_restore(&fresh, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 0.into()
+    });
+    let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
+    actor_reference_step(&mut world, receiver).unwrap();
+    assert_eq!(
+        sender_result(&world),
+        ScriptValue::Actor(ActorReference {
+            generation: world.generation(),
+            index: 0
+        })
+    );
+}
+
+#[test]
+fn get_broadcast_sender_reports_a_selection_outside_the_queue_with_its_context() {
+    let scripts = broadcast_sender_scripts(Object::Me);
+    let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 200.into()
+    });
+    let receiver = world.id(1).unwrap();
+    let error = format!(
+        "{:#}",
+        actor_reference_step(&mut world, receiver).unwrap_err()
+    );
+    assert!(error.contains("read cursor 200 outside queue"), "{error}");
+}
+
+#[test]
+fn get_broadcast_sender_routed_call_reads_the_named_receivers_selection() {
+    use cyrus_script::{ActorReference, ScriptValue};
+    let scripts = broadcast_sender_scripts(Object::Named { string: 0 });
+    let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    // The named receiver (actor 0) selects the written entry; the calling actor (1) does not, so
+    // a sender result proves the routed receiver's selection was read.
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][0]["broadcast_index"] = 0.into();
+        saved["actors"][1]["broadcast_index"] = 1.into();
+    });
+    let (sender, caller) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, caller, CombatMessageCode::HIT)
+        .unwrap();
+    actor_reference_step(&mut world, caller).unwrap();
+    assert_eq!(
+        sender_result(&world),
+        ScriptValue::Actor(ActorReference {
+            generation: world.generation(),
+            index: 0
+        })
+    );
+    assert_eq!(selection(&world, 1), 1);
+}

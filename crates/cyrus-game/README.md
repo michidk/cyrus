@@ -523,3 +523,13 @@ and [messaging lifecycle](https://github.com/michidk/redguard-preservation/blob/
 The production owner always has its initialized eight-entry channels. Missing
 context diagnostic recovery is unavailable. Synthetic public callers bound
 acceptance; natural installed gameplay parity remains Unknown.
+
+Verified: `GetBroadcastSender()` returns the sender of the receiver's selected broadcast
+entry (channel zero, at the broadcast selection) as a typed actor reference through the
+host's actor result, or zero when nothing is selected or the entry was never written. It
+consumes and changes nothing and ignores the class-message cursor. The reference is returned
+as stored, not checked against the live world; a selection outside the eight-entry queue is a
+contextual error. The contract follows preservation's
+[broadcast sender pointer query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getbroadcastsender-query).
+Only combat messages reach channel zero until the broadcast send natives exist; natural
+installed gameplay parity remains Unknown.
