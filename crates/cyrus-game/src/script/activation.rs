@@ -186,6 +186,8 @@ pub struct GameplayGlobals {
     pub(super) native_command: super::NativeCommandState,
     pub(super) native_source: NativeSource,
     pub(super) native_command_return: u8,
+    /// The actor reference the function that just completed returned, taken by its value site.
+    pub(super) actor_result: Option<cyrus_script::ActorReference>,
     pub(super) walk_route: super::WalkRouteState,
     /// Shared direction-called flags, reset at ordinary wrapper entry.
     pub(super) locomotion_called: u8,
@@ -1492,6 +1494,7 @@ impl GameplayGlobals {
             native_source,
             native_command: saved.native_command,
             native_command_return: saved.native_command_return,
+            actor_result: None,
             walk_route: saved.walk_route,
             locomotion_called: saved.locomotion_called,
             ground_prevalidation_used: saved.ground_prevalidation_used,

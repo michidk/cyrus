@@ -561,6 +561,21 @@ impl CombatMessages {
         Ok(None)
     }
 
+    /// The sender of the entry a receiver has selected: its read cursor in the class queue.
+    /// An equal cursor and write index is no selection (`None`), as is an entry never written.
+    /// The reference is returned as stored; it is not checked against the live world.
+    pub fn selected_sender(&self, class: u8, read: u8) -> Result<Option<ScriptActorId>> {
+        anyhow::ensure!(
+            usize::from(read) < QUEUE_CAPACITY,
+            "combat message class {class} read cursor {read} outside queue"
+        );
+        let queue = &self.classes[usize::from(class)];
+        if read == queue.write {
+            return Ok(None);
+        }
+        Ok(queue.entries[usize::from(read)].map(|message| message.sender))
+    }
+
     /// Clear all class queues; actor cursor reset belongs to actor lifecycle.
     pub fn reset(&mut self) {
         *self = Self::default();

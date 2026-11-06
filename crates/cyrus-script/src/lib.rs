@@ -214,6 +214,12 @@ pub trait Host {
     /// Normal interpreter entry replaces the session source before entry/task gates.
     /// Hosts sharing actors retain this immutable program with their source identity.
     fn establish_native_source(&mut self, _: CodeOrigin, _: Arc<Program>) {}
+    /// The actor reference a function that just completed with [`CallResult::CompleteWithoutValue`]
+    /// returned, taken once by the value site that consumed the call. The original returns an
+    /// actor pointer; hosts expose it as a typed reference, never as a number.
+    fn take_actor_result(&mut self) -> Option<ActorReference> {
+        None
+    }
     /// Native strings use the retained source, independently of the receiver.
     /// The default supports isolated hosts without a shared actor session.
     fn native_string_parameter(&mut self, index: u32, strings: &[String]) -> Result<String> {

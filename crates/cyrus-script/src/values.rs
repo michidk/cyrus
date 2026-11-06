@@ -52,10 +52,15 @@ impl Runtime {
                     super::NativeCallSite::FunctionValue
                 };
                 let target = self.target(&call.target)?;
+                // A stale reference from an earlier statement call must not reach this value.
+                host.take_actor_result();
                 let value = match host.route(&target, call, strings, site, flags)? {
                     super::Route::Here => self.receive_inner(call, strings, site, host, flags)?.0,
                     super::Route::Complete(value) => value,
                 };
+                if let Some(actor) = host.take_actor_result() {
+                    return Ok(Argument::Actor(actor));
+                }
                 Argument::Integer(value.with_context(|| {
                     format!("native {} has no supported numeric result", call.function)
                 })?)

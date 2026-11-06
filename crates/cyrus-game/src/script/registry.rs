@@ -947,6 +947,16 @@ impl ScriptWorld {
         )
     }
 
+    /// The sender of the message the actor's retained class cursor selects, if any.
+    pub fn selected_message_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+        let index = self.resolve(actor)?;
+        let receiver = &self.actors[index];
+        self.globals.combat_messages.selected_sender(
+            receiver.attributes[Attribute::MessGroup],
+            receiver.message_read,
+        )
+    }
+
     /// Consume one addressed message using the actor's retained class cursor.
     /// This is message transport; combat effects belong to the maintenance stage.
     pub fn consume_combat_message(
@@ -4931,6 +4941,10 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
+    fn take_actor_result(&mut self) -> Option<ScriptActorId> {
+        self.registry.globals.actor_result.take()
+    }
+
     fn establish_native_source(
         &mut self,
         _: cyrus_script::CodeOrigin,
@@ -6978,6 +6992,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // a request that the original's main loop consumes; the host takes it from the globals.
         if function == Native::IsWithinMap {
             return Ok(CallResult::Complete(1));
+        }
+        // GetMessageSender returns the sender of the receiver's selected class message as an actor
+        // reference, or zero when nothing is selected or the entry has no sender.
+        if function == Native::GetMessageSender {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "GetMessageSender requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            return Ok(match self.registry.selected_message_sender(receiver)? {
+                Some(sender) => {
+                    self.registry.globals.actor_result = Some(sender);
+                    CallResult::CompleteWithoutValue
+                }
+                None => CallResult::Complete(0),
+            });
         }
         // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
         if function == Native::MyId {

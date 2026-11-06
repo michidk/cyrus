@@ -2571,18 +2571,21 @@
     },
     {
       "native": "GetMessageSender",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original receiver-channel sender-pointer query",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Zero-argument query returning the sender of the receiver's selected class message as a typed actor reference",
+      "caller": "ScriptWorld::advance -> Runtime function value -> GameHost::call (GetMessageSender) -> Host::take_actor_result",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::get_message_sender_returns_the_selected_entrys_sender_as_a_typed_reference",
+        "crates/cyrus-game/tests/script_registry.rs::get_message_sender_returns_a_retained_queue_entry_unchanged_after_world_replacement"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/ec1721d",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6612797770"
       ],
-      "limits": "Verified installed zero-argument declaration/exact native/full handler and availability helper. 46,588 bounded original-instruction contexts and 12 effective semantic controls cover receiver-subrecord channel, per-channel sentinel/pointer table, selection-byte 12-byte entry stride and raw first-pointer return. Null and deliberately unmapped sender tokens return unchanged without dereference; no selection/entry/sender mutation. Missing-context formatter/runtime-error IO controlled returning equal sentinel or repairing context. Unknown receiver/subrecord/table admission, channel producers, queue/sender lifetime, returned-pointer use, natural diagnostics, concurrency, VM/original/native/browser and exhaustive domain. Production named call remains absent; no implementation or dedicated public-call Rust assertion established. Historical usage counts do not prove hidden-body absence.",
-      "reviewed_revision": "cb9682de239fb2023a722037e5c4e0702e2def8a"
+      "limits": "Verified installed zero-argument declaration/exact native/full handler and availability helper. 46,588 bounded original-instruction contexts and 12 effective semantic controls cover receiver-subrecord channel, per-channel sentinel/pointer table, selection-byte 12-byte entry stride and raw first-pointer return. Null and deliberately unmapped sender tokens return unchanged without dereference; no selection/entry/sender mutation. Missing-context formatter/runtime-error IO controlled returning equal sentinel or repairing context. Unknown receiver/subrecord/table admission, channel producers, queue/sender lifetime, returned-pointer use, natural diagnostics, concurrency, VM/original/native/browser and exhaustive domain. Production named call remains absent; no implementation or dedicated public-call Rust assertion established. Historical usage counts do not prove hidden-body absence. Verified (routed ScriptWorld tests; preservation SOUP.md GetMessageSender): the receiver's class queue (its MessGroup channel) and read cursor select the entry; an equal cursor and write index, or an entry never written, return zero; otherwise the entry's sender comes back unchanged as a typed actor reference through Host::take_actor_result; nothing is consumed or changed; a retained entry survives world replacement as stored. Inferred: the original's channel byte is the authored class the existing combat queue uses, the receiver's selection byte is the retained read cursor, and the world's message context is always present, so the missing-context diagnostic has no representable case. Unknown: ReceiveMessage/DeleteMessage/SendMessage natives do not exist yet, so only combat messages reach the queue; no original, native-run or browser comparison; the sender reference is not validated against the live world (as the original).",
+      "reviewed_revision": "2a8f7487b3906e5bc23f51c3819b190375afb089"
     },
     {
       "native": "GetMessageSenderId",

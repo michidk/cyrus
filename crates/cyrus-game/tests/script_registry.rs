@@ -18838,6 +18838,132 @@ fn wait_line_up_stays_active_while_the_argument_actors_alignment_flag_is_set() {
     }
 }
 
+fn message_sender_scripts() -> Scripts {
+    let mut scripts = actor_reference_scripts(Object::Me);
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::GetMessageSender,
+        kind: CallKind::Function,
+        param_count: 0,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.steps.get_mut(&0).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id,
+                    function: Native::GetMessageSender,
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    arguments: vec![],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn get_message_sender_returns_the_selected_entrys_sender_as_a_typed_reference() {
+    use cyrus_game::script::CombatMessageCode;
+    use cyrus_script::{ActorReference, ScriptValue};
+    let scripts = message_sender_scripts();
+    // Nothing selected, a consumed message, a message and a message for another receiver.
+    for (send, consume, expected) in [
+        (false, false, None),
+        (true, true, None),
+        (true, false, Some(0)),
+    ] {
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+        if send {
+            world
+                .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+                .unwrap();
+        }
+        if consume {
+            world.consume_combat_message(receiver).unwrap().unwrap();
+        }
+        actor_reference_step(&mut world, receiver).unwrap();
+        let first = world.actors()[1].runtime().unwrap().variables()[0];
+        assert_eq!(
+            first,
+            expected.map_or(ScriptValue::Integer(0), |index| ScriptValue::Actor(
+                ActorReference {
+                    generation: 17,
+                    index
+                }
+            )),
+            "send {send} consume {consume}"
+        );
+        // The query consumes nothing and changes nothing.
+        if send && !consume {
+            assert!(world.peek_combat_message(receiver).unwrap().is_some());
+        }
+    }
+}
+
+#[test]
+fn get_message_sender_returns_a_retained_queue_entry_unchanged_after_world_replacement() {
+    use cyrus_game::script::{CombatMessageCode, WorldRestoreContext, WorldSnapshotSources};
+    use cyrus_script::{ActorReference, ScriptValue};
+    let scripts = message_sender_scripts();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id,"actors":[]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
+    let snapshot = world
+        .snapshot(&WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        })
+        .unwrap();
+    // The queue belongs to the host's retained globals: it carries the entry across the
+    // replacement of the logical world, and the stored reference comes back as stored.
+    let mut world = ScriptWorld::from_snapshot(
+        snapshot,
+        &WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        },
+        WorldRestoreContext {
+            generation: 18,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let receiver = world.id(1).unwrap();
+    actor_reference_step(&mut world, receiver).unwrap();
+    assert_eq!(
+        world.actors()[1].runtime().unwrap().variables()[0],
+        ScriptValue::Actor(ActorReference {
+            generation: 17,
+            index: 0
+        })
+    );
+}
+
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};
