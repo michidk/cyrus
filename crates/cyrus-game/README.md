@@ -25,6 +25,14 @@ CR/VT controls. Cursor phase starts hidden and toggles only on changed sampled B
 divisible by six, without replaying skipped ticks. These rules follow preservation's manual
 logbook contract. Native and browser hosts share the editor and persisted journal owner.
 
+Verified: inventory closing waits for Inventory and Escape release before sampling
+Activate or Enter once to commit the cursor selection. It then waits for Walk,
+Activate and Enter release in order. Earlier waits do not restart when their keys
+are pressed again. The candle timer clears after the first two waits, before selection is sampled.
+The shared modal lock and paused virtual time remain held until the final wait
+finishes. Selecting an item does not use it. This follows preservation's
+[inventory exit contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#exit).
+
 ## Module guide
 
 | Module | Responsibility |

@@ -145,9 +145,19 @@ pub fn name_lines(text: &str) -> Vec<&str> {
     lines
 }
 
+#[derive(Default)]
+enum CloseWait {
+    #[default]
+    Inventory,
+    Escape,
+    Walk,
+    Activate,
+    Enter,
+}
+
 /// Shared inventory-screen lifecycle. Presentation draws [`InventoryScreen::layout`].
 /// Opening waits for the inventory key's release; closing keeps input suspended until
-/// every exit control is released.
+/// the ordered Inventory, Escape, Walk, Activate and Enter release waits complete.
 #[derive(bevy::prelude::Resource, Default, serde::Serialize)]
 pub struct InventoryScreen {
     pub open: bool,
@@ -158,6 +168,8 @@ pub struct InventoryScreen {
     pub error: Option<String>,
     #[serde(skip)]
     pub grid: InventoryGrid,
+    #[serde(skip)]
+    close_wait: CloseWait,
     #[serde(skip)]
     checkpoint: Option<crate::clock::ClockCheckpoint>,
     #[serde(skip)]
@@ -176,6 +188,49 @@ impl InventoryScreen {
     /// The item under the cursor while the screen is open.
     pub fn cursor(&self) -> Option<u16> {
         self.open.then(|| self.grid.selection()).flatten()
+    }
+
+    // Selection is sampled once, after the first two waits, not at the close request.
+    fn poll_close(
+        &mut self,
+        held: &impl Fn(crate::player::input::Action) -> bool,
+        escape: bool,
+        enter: bool,
+        hud: Option<&crate::script::ScriptHud>,
+    ) -> bool {
+        use crate::player::input::Action;
+        loop {
+            if match self.close_wait {
+                CloseWait::Inventory => held(Action::Inventory),
+                CloseWait::Escape => escape,
+                CloseWait::Walk => held(Action::Walk),
+                CloseWait::Activate => held(Action::Use),
+                CloseWait::Enter => enter,
+            } {
+                return false;
+            }
+            self.close_wait = match self.close_wait {
+                CloseWait::Inventory => CloseWait::Escape,
+                CloseWait::Escape => {
+                    if let Some(hud) = hud {
+                        hud.set_inventory_candle(false);
+                    }
+                    if (held(Action::Use) || enter)
+                        && let (Some(id), Some(hud)) = (self.grid.selection(), hud)
+                        && let Err(error) = hud.select_item(id)
+                    {
+                        log::warn!("inventory: selecting item {id}: {error:#}");
+                    }
+                    CloseWait::Walk
+                }
+                CloseWait::Walk => CloseWait::Activate,
+                CloseWait::Activate => CloseWait::Enter,
+                CloseWait::Enter => {
+                    self.waiting_for_release = false;
+                    return true;
+                }
+            };
+        }
     }
 }
 pub(crate) fn register(app: &mut bevy::prelude::App) {
@@ -241,6 +296,7 @@ fn drive(
         screen.open = false;
         screen.opening = false;
         screen.waiting_for_release = false;
+        screen.close_wait = CloseWait::default();
         screen.checkpoint = None;
         screen.last_tick = None;
         return;
@@ -251,12 +307,7 @@ fn drive(
     let escape = keys.pressed(KeyCode::Escape);
     let enter = keys.pressed(KeyCode::Enter);
     if screen.waiting_for_release {
-        if !(held(Action::Inventory) || escape || held(Action::Walk) || held(Action::Use) || enter)
-        {
-            screen.waiting_for_release = false;
-            if let Some(hud) = hud.as_ref() {
-                hud.set_inventory_candle(false);
-            }
+        if screen.poll_close(&held, escape, enter, hud.as_deref()) {
             resume(&mut screen, &mut virtual_time, &mut clock);
         }
         return;
@@ -354,14 +405,12 @@ fn drive(
     }
     screen.layout = screen.grid.layout();
     if held(Action::Inventory) || held(Action::Use) || held(Action::Walk) || escape || enter {
-        if (held(Action::Use) || enter)
-            && let (Some(id), Some(hud)) = (screen.grid.selection(), hud.as_ref())
-            && let Err(error) = hud.select_item(id)
-        {
-            log::warn!("inventory: selecting item {id}: {error:#}");
-        }
         screen.open = false;
         screen.waiting_for_release = true;
+        screen.close_wait = CloseWait::default();
+        if screen.poll_close(&held, escape, enter, hud.as_deref()) {
+            resume(&mut screen, &mut virtual_time, &mut clock);
+        }
     }
 }
 
@@ -492,5 +541,199 @@ mod tests {
             ["'ELVEN ARTIFACTS", "VIII'"]
         );
         assert_eq!(name_lines("ABCDEFGHIJKLMNOP "), ["ABCDEFGHIJKLMNOP "]);
+    }
+    fn close_asset() -> cyrus_assets::hud::HudAsset {
+        cyrus_assets::hud::HudAsset {
+            labels: Default::default(),
+            images: vec![],
+            candle_mode: 0,
+            candle: [0; 2],
+            candle_size: [0; 2],
+            pickup: [0; 2],
+            prompt: [0; 2],
+            override_ticks: 0,
+            compass: [0; 2],
+            compass_size: [0; 2],
+            world_compass: Default::default(),
+            powerup_slots: [[0; 2]; 2],
+            powerup_sizes: vec![],
+            logbook: [0; 2],
+            logbook_size: [0; 2],
+            walk_mode: false,
+            auto_defend: false,
+            notices: Default::default(),
+            inventory: [1, 2]
+                .into_iter()
+                .map(|id| {
+                    (
+                        id,
+                        cyrus_assets::hud::InventoryItem {
+                            count: 1,
+                            total: 1,
+                            player_max: 1,
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect(),
+            start_items: vec![],
+            items: vec![],
+            selected: Some(1),
+            bindings: [0; 15],
+            font: Default::default(),
+            text_alpha: [0; 2],
+            player_text_alpha: [0; 2],
+            used_text_alpha: [0; 2],
+            torch_time: None,
+            inventory_screen: Default::default(),
+            island_map: Default::default(),
+        }
+    }
+
+    fn close_app(
+        asset: &cyrus_assets::hud::HudAsset,
+        bindings: crate::player::input::PlayerBindings,
+    ) -> bevy::prelude::App {
+        use bevy::prelude::*;
+        let mut app = App::new();
+        app.insert_resource(State::new(crate::AppState::InGame))
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(Time::<Virtual>::default())
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<crate::logbook::LogbookScreen>()
+            .insert_resource(bindings);
+        register(&mut app);
+        let hud = crate::script::ScriptHud::default();
+        hud.configure(asset, &crate::preferences::Preferences::default());
+        let (items, selected) = hud.inventory_list().unwrap();
+        assert!(items.len() >= 2);
+        {
+            let mut screen = app.world_mut().resource_mut::<InventoryScreen>();
+            screen.open = true;
+            screen.grid.open(items, selected);
+            assert!(screen.grid.update(RIGHT));
+            screen.layout = screen.grid.layout();
+            screen.paused_virtual_time = true;
+        }
+        app.world_mut().resource_mut::<Time<Virtual>>().pause();
+        hud.set_inventory_candle(true);
+        app.insert_resource(hud);
+        app
+    }
+
+    fn close_tick(app: &mut bevy::prelude::App, held: &[bevy::prelude::KeyCode]) {
+        use bevy::prelude::*;
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.reset_all();
+        for &key in held {
+            keys.press(key);
+        }
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(std::time::Duration::from_millis(60));
+        app.update();
+    }
+
+    fn close_bindings() -> crate::player::input::PlayerBindings {
+        use crate::player::input::{Action, Input};
+        [
+            (Action::Inventory, 23),
+            (Action::Walk, 42),
+            (Action::Use, 29),
+        ]
+        .into_iter()
+        .map(|(action, code)| (action, Input::from_binding(code).unwrap().unwrap()))
+        .collect()
+    }
+
+    fn close_state(app: &bevy::prelude::App, selected: Option<u16>, waiting: bool, timer: u32) {
+        use bevy::prelude::*;
+        let screen = app.world().resource::<InventoryScreen>();
+        assert!(!screen.open);
+        assert_eq!(screen.waiting_for_release, waiting);
+        assert_eq!(screen.suspended(), waiting);
+        assert_eq!(
+            app.world()
+                .resource::<crate::logbook::LogbookScreen>()
+                .suspended(),
+            waiting
+        );
+        let hud = app.world().resource::<crate::script::ScriptHud>();
+        assert_eq!(hud.inventory_list().unwrap().1, selected);
+        assert_eq!(hud.health_feedback_ticks(), timer);
+        assert_eq!(app.world().resource::<Time<Virtual>>().is_paused(), waiting);
+    }
+
+    #[test]
+    fn closing_samples_confirmation_after_early_release_waits() {
+        use bevy::prelude::KeyCode::*;
+        let mut app = close_app(&close_asset(), close_bindings());
+        close_tick(&mut app, &[KeyI, Enter]);
+        close_state(&app, Some(1), true, 50);
+        close_tick(&mut app, &[KeyI]);
+        close_tick(&mut app, &[]);
+        close_state(&app, Some(1), false, 0);
+        let mut app = close_app(&close_asset(), close_bindings());
+        close_tick(&mut app, &[Escape]);
+        close_tick(&mut app, &[Escape, ControlLeft]);
+        close_state(&app, Some(1), true, 50);
+        close_tick(&mut app, &[ControlLeft]);
+        close_state(&app, Some(2), true, 0);
+        close_tick(&mut app, &[]);
+        close_state(&app, Some(2), false, 0);
+    }
+
+    #[test]
+    fn closing_does_not_restart_completed_waits_or_reselect() {
+        use bevy::prelude::KeyCode::*;
+        let mut app = close_app(&close_asset(), close_bindings());
+        close_tick(&mut app, &[KeyI, Escape, Enter]);
+        close_state(&app, Some(1), true, 50);
+        close_tick(&mut app, &[Escape, Enter]);
+        close_tick(&mut app, &[KeyI, ShiftLeft, ControlLeft]);
+        close_state(&app, Some(2), true, 0);
+        // Inventory and Escape waits are complete. Walk release advances to Activate.
+        close_tick(&mut app, &[KeyI, Escape, ControlLeft]);
+        // Walk is pressed again after its wait. Activate release advances to Enter.
+        close_tick(&mut app, &[KeyI, Escape, ShiftLeft, Enter]);
+        close_state(&app, Some(2), true, 0);
+        // Even a newly re-pressed Activate cannot restart a completed wait.
+        close_tick(&mut app, &[KeyI, Escape, ShiftLeft, ControlLeft]);
+        close_state(&app, Some(2), false, 0);
+        assert_eq!(
+            app.world()
+                .resource::<crate::script::ScriptHud>()
+                .inventory_list()
+                .unwrap()
+                .0,
+            vec![(1, 1), (2, 1)]
+        );
+    }
+
+    #[test]
+    fn closing_empty_cursor_and_state_departure_do_not_select() {
+        use bevy::prelude::*;
+        let mut app = close_app(&close_asset(), close_bindings());
+        app.world_mut()
+            .resource_mut::<InventoryScreen>()
+            .grid
+            .open(vec![], None);
+        close_tick(&mut app, &[KeyCode::Enter]);
+        close_state(&app, Some(1), true, 0);
+        close_tick(&mut app, &[]);
+        close_state(&app, Some(1), false, 0);
+        let mut app = close_app(&close_asset(), close_bindings());
+        close_tick(&mut app, &[KeyCode::Escape, KeyCode::Enter]);
+        app.insert_resource(State::new(crate::AppState::Menu));
+        close_tick(&mut app, &[KeyCode::Enter]);
+        assert!(!app.world().resource::<InventoryScreen>().suspended());
+        assert_eq!(
+            app.world()
+                .resource::<crate::script::ScriptHud>()
+                .inventory_list()
+                .unwrap()
+                .1,
+            Some(1)
+        );
     }
 }
