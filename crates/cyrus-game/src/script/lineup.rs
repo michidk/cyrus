@@ -36,6 +36,8 @@ pub trait LineupPort {
     fn default_animation(&mut self) -> bool;
     /// Set or clear the four directions' shared called flags.
     fn set_called_flags(&mut self, value: bool);
+    /// The selected player's attribute 26 is nonzero, which starts the actor diagnostic.
+    fn slave_player(&self) -> bool;
     /// Report a stale collision response: return state 6.
     fn abandon(&mut self, clear_hook_flag: bool);
     /// The packed collision-response word carries a mark that makes alignment fall back.
@@ -95,6 +97,9 @@ pub trait LineupHost: LineupPort {
     fn receiver_distance(&mut self) -> anyhow::Result<i32>;
     /// The installed lineup distance in Q8 units.
     fn lineup_distance(&mut self) -> anyhow::Result<i32>;
+    /// `PlayerFaceTalk`'s target: the receiver's local X/Z plus the X/Z of `(0, 0, distance)`
+    /// through its orientation matrix (wrapping), and the receiver's heading.
+    fn talk_target(&mut self, distance: i32) -> anyhow::Result<([i32; 2], u16)>;
     /// Store `PlayerLineUp`'s return value as the shared player-lineup result.
     fn set_lineup_result(&mut self, result: i32);
     /// The first failure a helper met, if any.
@@ -229,6 +234,56 @@ pub fn close_mover<P: LineupPort + ?Sized>(
     Ok(1)
 }
 
+/// `PlayerFaceTalk`'s mover: bring the player to the point at `target` and turn it to face the
+/// receiver (`heading` is the receiver's, so the player ends facing the opposite way). Zero when
+/// done, one while continuing. The diagnostic for a nonzero player attribute 26 comes after the
+/// roll leveling; a stale collision response abandons before any step; a rejected step has
+/// snapped the player onto the point, which finishes like an arrival without the called flags.
+pub fn face_talk<P: LineupPort + ?Sized>(
+    port: &mut P,
+    target: [i32; 2],
+    heading: u16,
+) -> anyhow::Result<i32> {
+    let [x, z] = target;
+    port.level_roll();
+    anyhow::ensure!(
+        !port.slave_player(),
+        "PlayerFaceTalk: original diagnostic 137: slave selected player"
+    );
+    if port.arrival(x, z) {
+        if port.turn_to(opposite(heading)) {
+            return Ok(1);
+        }
+        port.set_called_flags(true);
+        return Ok(finish_default(port));
+    }
+    if port.turn_to(opposite(heading)) {
+        return Ok(1);
+    }
+    if port.response_masked() && port.response_age_over() {
+        port.abandon(true);
+        return Ok(0);
+    }
+    let step = close_step(port.relative_bearing(x, z));
+    if !port.permitted(x, z) || port.step(step, x, z) {
+        return Ok(1);
+    }
+    if port.turn_to(opposite(heading)) {
+        return Ok(1);
+    }
+    Ok(finish_default(port))
+}
+
+/// The default animation request that ends an alignment: complete, it clears the alignment flag.
+fn finish_default<P: LineupPort + ?Sized>(port: &mut P) -> i32 {
+    if port.default_animation() {
+        port.clear_hook_flag();
+        0
+    } else {
+        1
+    }
+}
+
 /// The pickup mover's retained state: the fallback flag.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PickupState {
@@ -356,6 +411,9 @@ mod tests {
             self.stale
         }
         fn level_roll(&mut self) {}
+        fn slave_player(&self) -> bool {
+            false
+        }
         fn path_clear(&mut self, target: [i32; 3]) -> bool {
             self.answer("path", target.to_vec())
         }

@@ -270,6 +270,7 @@ impl Task {
             Self::ParallelLineUp => (Native::PlayerParallelLineUp, 3, Some(CallKind::Task)),
             Self::Bounce(_) => (Native::BounceObject, 3, Some(CallKind::Task)),
             Self::LineUp { .. } => (Native::PlayerLineUp, 3, Some(CallKind::Task)),
+            Self::PlayerFaceTalk => (Native::PlayerFaceTalk, 1, Some(CallKind::Task)),
             Self::FacePlayer => (Native::FacePlayer, 1, None),
             Self::FaceLocation => (Native::FaceLocation, 2, None),
             Self::FacePlayerInertia => (Native::FacePlayerInertia, 1, None),

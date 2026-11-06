@@ -4503,6 +4503,9 @@ impl crate::script::lineup::LineupPort for LineupLog {
         false
     }
     fn level_roll(&mut self) {}
+    fn slave_player(&self) -> bool {
+        false
+    }
     fn path_clear(&mut self, target: [i32; 3]) -> bool {
         self.log.push(format!("path {target:?}"));
         self.path_clear
@@ -4546,6 +4549,9 @@ impl crate::script::lineup::LineupPort for LineupLog {
 }
 
 impl crate::script::lineup::LineupHost for LineupLog {
+    fn talk_target(&mut self, _: i32) -> anyhow::Result<([i32; 2], u16)> {
+        anyhow::bail!("recording lineup host does not provide PlayerFaceTalk")
+    }
     fn reference(
         &mut self,
         _: Option<u32>,

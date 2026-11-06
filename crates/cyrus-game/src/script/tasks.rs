@@ -609,6 +609,8 @@ enum Task {
         origin: i32,
     },
     FacePlayer,
+    /// `PlayerFaceTalk(distance)`: aligns the selected player in front of the receiver.
+    PlayerFaceTalk,
     /// `FaceLocation(location, deadline)`: turns toward a location table entry by the shared tick
     /// counter's distance to the deadline.
     FaceLocation,
@@ -1596,6 +1598,20 @@ impl Task {
                 let result = result?;
                 port.set_lineup_result(result);
                 result == 0
+            }
+            Self::PlayerFaceTalk => {
+                let [distance] = arguments else {
+                    anyhow::bail!("PlayerFaceTalk takes one argument");
+                };
+                let port = services
+                    .lineup
+                    .context("PlayerFaceTalk selected-player state unavailable")?;
+                let (target, heading) = port.talk_target(distance.integer()?)?;
+                let result = super::lineup::face_talk(&mut *port, target, heading);
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                result? == 0
             }
             Self::PlayerFace => {
                 use super::alignment::{self, Facing};
@@ -3023,6 +3039,12 @@ impl NativeTasks {
                 "PlayerPickupLineUp requires task encoding"
             );
             Task::PickupLineUp { fallback: false }
+        } else if function == Native::PlayerFaceTalk {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "PlayerFaceTalk requires task encoding"
+            );
+            Task::PlayerFaceTalk
         } else if function == Native::PlayerLineUp {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -3250,6 +3272,7 @@ impl NativeTasks {
             Native::PlayerPickupLineUp,
             Native::PlayerParallelLineUp,
             Native::PlayerLineUp,
+            Native::PlayerFaceTalk,
         ]
         .contains(&function)
     }
@@ -3263,8 +3286,18 @@ impl NativeTasks {
     pub(super) fn is_lineup_task(&self, token: u64) -> bool {
         matches!(
             self.tasks.get(&token),
-            Some(Task::PickupLineUp { .. } | Task::ParallelLineUp | Task::LineUp { .. })
+            Some(
+                Task::PickupLineUp { .. }
+                    | Task::ParallelLineUp
+                    | Task::LineUp { .. }
+                    | Task::PlayerFaceTalk
+            )
         )
+    }
+
+    /// Whether `token` is a `PlayerFaceTalk` continuation, whose receiver may be the player.
+    pub(super) fn is_face_talk_task(&self, token: u64) -> bool {
+        matches!(self.tasks.get(&token), Some(Task::PlayerFaceTalk))
     }
 
     /// Whether `function` is `BounceObject`, which needs the receiver's live state.

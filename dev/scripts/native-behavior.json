@@ -4969,17 +4969,21 @@
     },
     {
       "native": "PlayerFaceTalk",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Direct named timing/presentation dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "caller": "GameHost::lineup_call/lineup_poll -> Task::PlayerFaceTalk -> lineup::face_talk over PlayerLineup",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::a_receivers_player_face_talk_walks_the_selected_player_in_front_of_it_and_faces_it",
+        "crates/cyrus-game/tests/script_registry.rs::player_face_talk_reports_the_selected_player_diagnostic_without_continuing"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
-        "https://github.com/michidk/redguard-preservation/commit/8e84853"
+        "https://github.com/michidk/redguard-preservation/commit/8e84853",
+        "https://github.com/michidk/redguard-preservation/commit/e94607d"
       ],
-      "limits": "Verified independent installed one-argument task/exact binding/full963-byte native.11520 original CPU contexts/eight effective original-byte controls PASS to exact selected-player predicate entry, no fabricated return/continuation. Full original matrix202/pitch226 instructions execute; accepted identities audited once. Five signed arguments/four dyadic matrices/two receivers/three player aliases/four pitch values/three pitch steps/four masked x87 rounding modes/two patterns. Independent local target vector/full3072-byte actor snapshots/CW/TOP checked; no preserved-register claim at dependency stop. Receiver-relative transformed target stays local; selected player pitch adjustment precedes state query, other actor fields retained to boundary. Unknown downstream predicate/geometry/proximity/movement/alignment/animation/diagnostic effects, matrix producer/exceptional conversions/pointer lifecycle/full joint domain/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/game runtime acceptance.",
+      "limits": "Verified published contract (recovered from the original handler and its helpers): the target is the receiver's X/Z plus the X/Z of (0, 0, distance) through its orientation matrix; each invocation levels the player's roll, raises the attribute-26 diagnostic, then on arrival turns to the receiver's heading plus a half turn, sets the called flags, requests the default animation and clears the alignment flag; away from the target it first turns to the final heading, abandons on a stale collision response (return state 6), and otherwise takes the close step the relative bearing selects, finishing like an arrival when the step is rejected; it never sets the alignment flag and the receiver may be the selected player. Public routed callers cover the walk onto the target, the final heading, the cleared flag, caller continuation and the diagnostic failure ordering. Unknown: natural authored callers, the stale-response and rejected-step branches under live geometry, rendered walk and turn parity.",
       "reviewed_revision": "57866279a3581af66ca403455e69a8d42c4ead1a"
     },
     {

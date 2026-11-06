@@ -35548,6 +35548,196 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
     }
 }
 
+/// A receiver whose `PlayerFaceTalk(2048)` task runs against the walking-player fixture: the
+/// player stands 6656 units away and the target is 2048 units in front of the receiver.
+fn face_talk_fixture() -> (
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    let (_, world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::PlayerFaceTalk,
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            wait(
+                id,
+                Native::PlayerFaceTalk,
+                CallKind::Task,
+                vec![Value::Integer { value: 2048 }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    (world, data, scene)
+}
+
+/// One scheduler round for the receiver: the player's collision and locomotion inputs, then the
+/// receiver's task and main stages (the first round runs the call itself).
+fn face_talk_round(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    round: usize,
+) -> anyhow::Result<()> {
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
+        ScriptActorSource, ScriptInputs, ScriptStage,
+    };
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let actors = vec![player, map];
+    let hud = cyrus_game::script::ScriptHud::default();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, scene, data, [10, 30], &actors)
+        .unwrap();
+    let inputs = ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        player_collision: Some(PlayerCollisionSource {
+            scene,
+            animations: data,
+            view: [10, 30],
+            actors: &actors,
+        }),
+        locomotion_geometry: Some(LocomotionGeometry {
+            ground: OrdinaryGroundQuery {
+                scene,
+                animations: data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            environment: ObstacleEnvironment {
+                selected_player: Some(player),
+                auto_grab: false,
+                item_system_ready: false,
+                shell_execution: false,
+                ticks: 1,
+            },
+        }),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::default();
+    let stages: &[ScriptStage] = if round == 0 {
+        &[ScriptStage::Body(Thread::Main)]
+    } else {
+        &[ScriptStage::Tasks, ScriptStage::Body(Thread::Main)]
+    };
+    for &stage in stages {
+        world.advance(
+            map,
+            stage,
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn a_receivers_player_face_talk_walks_the_selected_player_in_front_of_it_and_faces_it() {
+    use cyrus_game::script::ScriptActorSource;
+    let (mut world, data, scene) = face_talk_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut trace = vec![];
+    // The player first turns to its final heading (a half turn, eight units a round), then walks.
+    for round in 0..400 {
+        face_talk_round(&mut world, &data, &scene, round)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        let local = world.spatial(player).unwrap().local;
+        trace.push((local.position, local.wrapped_angles()[1]));
+        if world.flags() == [7] {
+            break;
+        }
+    }
+    assert_eq!(
+        world.flags(),
+        [7],
+        "the task completes and the caller continues: {:?}",
+        &trace[trace.len().saturating_sub(3)..]
+    );
+    let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    let end = world.spatial(player).unwrap().local.position;
+    // The target is the receiver's position plus (0, 0, 2048) through its identity orientation;
+    // the player ends facing the receiver's heading turned a half turn, with the alignment
+    // flag cleared.
+    assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);
+    assert_eq!(
+        world.spatial(player).unwrap().local.wrapped_angles()[1],
+        1024
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .script_control
+            & 2,
+        0
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn player_face_talk_reports_the_selected_player_diagnostic_without_continuing() {
+    use cyrus_game::script::ScriptActorSource;
+    let (mut world, data, scene) = face_talk_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    world.set_attribute_for_test(player, Attribute::Slave, 1);
+    world.begin_player_movement_update(player, 0).unwrap();
+    let position = world.spatial(player).unwrap().local.position;
+    let error = face_talk_round(&mut world, &data, &scene, 0).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("original diagnostic 137"),
+        "{error:#}"
+    );
+    assert_eq!(
+        world.flags(),
+        [12],
+        "the failed call withholds the continuation"
+    );
+    assert_eq!(world.spatial(player).unwrap().local.position, position);
+}
+
 #[test]
 fn initialized_lineup_references_are_validated_before_session_replacement() {
     use cyrus_game::{

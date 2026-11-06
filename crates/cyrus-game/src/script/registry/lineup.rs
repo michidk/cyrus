@@ -20,13 +20,18 @@ pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
 }
 
 impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
-    pub(super) fn new(host: &'h mut GameHost<'a, 's, 'i, 'r>) -> Result<Self> {
+    /// The port for a lineup native; the receiver must not be the selected player, except for
+    /// `PlayerFaceTalk`, whose receiver may be the player itself.
+    pub(super) fn new(
+        host: &'h mut GameHost<'a, 's, 'i, 'r>,
+        receiver_may_be_player: bool,
+    ) -> Result<Self> {
         let player = host
             .selected_player()
             .context("lineup selected player unavailable")?;
         let index = host.registry.resolve(player)?;
         anyhow::ensure!(
-            index != host.index,
+            receiver_may_be_player || index != host.index,
             "lineup receiver is the selected player"
         );
         Ok(Self {
@@ -479,6 +484,9 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
             .as_ref()
             .is_some_and(|control| control.last_collide_count > 8)
     }
+    fn slave_player(&self) -> bool {
+        self.host.registry.actors[self.player.index].attributes[Attribute::Slave] != 0
+    }
     fn set_hook_flag(&mut self) {
         if let Some(control) = self.host.registry.actors[self.player.index]
             .control
@@ -508,6 +516,20 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
 }
 
 impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
+    fn talk_target(&mut self, distance: i32) -> Result<([i32; 2], u16)> {
+        let receiver = self.host.registry.id(self.host.index)?;
+        let source = self
+            .host
+            .registry
+            .spatial(receiver)
+            .context("PlayerFaceTalk receiver pose unavailable")?;
+        let rotated = source.local.matrix.transform([0, 0, distance])?;
+        let position = source.local.position;
+        Ok((
+            [0, 2].map(|axis| position[axis].wrapping_add(rotated[axis])),
+            source.local.wrapped_angles()[1],
+        ))
+    }
     fn reference(&mut self, retained: Option<u32>) -> Result<(u32, Reference)> {
         let index = match retained {
             Some(index) => index as usize,
@@ -565,7 +587,7 @@ impl GameHost<'_, '_, '_, '_> {
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<super::CallResult>> {
-        let mut port = PlayerLineup::new(self)?;
+        let mut port = PlayerLineup::new(self, function == Native::PlayerFaceTalk)?;
         let mut tasks = std::mem::take(&mut port.host.registry.actors[port.host.index].tasks);
         let result = tasks.call(
             (function, kind),
@@ -590,7 +612,10 @@ impl GameHost<'_, '_, '_, '_> {
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<bool> {
-        let mut port = PlayerLineup::new(self)?;
+        let talk = self.registry.actors[self.index]
+            .tasks
+            .is_face_talk_task(token);
+        let mut port = PlayerLineup::new(self, talk)?;
         let mut tasks = std::mem::take(&mut port.host.registry.actors[port.host.index].tasks);
         let result = tasks.poll(
             token,
