@@ -485,11 +485,6 @@ impl ActorSnapshot {
             self.name
         );
         ensure!(
-            self.message_read < 8,
-            "saved actor {}: message cursor outside queue",
-            self.name
-        );
-        ensure!(
             self.control.is_some() == actor.control.is_some(),
             "saved actor {}: control allocation differs",
             self.name

@@ -4981,7 +4981,7 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
         assert!(plan.finish(&samples).is_err());
     }
     // A late invalid visited-world field must discard the whole candidate.
-    document["registry"]["worlds"][1]["actors"][0]["message_read"] = 8.into();
+    document["registry"]["worlds"][1]["actors"][0]["unavailable"] = "corrupt".into();
     let plan = serde_json::from_value::<LogicalSessionSnapshot>(document)
         .unwrap()
         .plan(inputs())

@@ -643,3 +643,9 @@ not write them yet; `node_map` stays unsupported. The contract follows preservat
 [AI record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#ai-record-properties)
 and [HeaderHook diagnostics](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#headerhook-diagnostics).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `message_index` and `broadcast_index` read and write the receiver's message and broadcast
+selection bytes (unsigned, low eight bits kept) over the cursors the message and broadcast natives
+use, and any byte now survives a save: the natives report a selection outside the eight-entry queue
+when they use it. See preservation's
+[message selection properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#message-selection-properties).

@@ -7360,6 +7360,38 @@
       ],
       "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives do not write this field yet. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
+    },
+    {
+      "property": "message_index",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver message-channel selection byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::message_and_broadcast_index_properties_are_the_receivers_selection_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697669162"
+      ],
+      "limits": "Verified: the message and broadcast natives read these actor-record bytes as the receiver's selections; the property reads zero-extend and writes keep the low eight bits, over the same retained cursor those natives use (the broadcast test selects through it). A stored value outside the eight-entry queue is reported by the natives when used; the original uses it unchecked. Saved with the actor. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "cceb9e8364f3fce349dd17561b0a99f85cc9fe5a"
+    },
+    {
+      "property": "broadcast_index",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver broadcast selection byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::message_and_broadcast_index_properties_are_the_receivers_selection_bytes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697669162"
+      ],
+      "limits": "Verified: the message and broadcast natives read these actor-record bytes as the receiver's selections; the property reads zero-extend and writes keep the low eight bits, over the same retained cursor those natives use (the broadcast test selects through it). A stored value outside the eight-entry queue is reported by the natives when used; the original uses it unchecked. Saved with the actor. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "cceb9e8364f3fce349dd17561b0a99f85cc9fe5a"
     }
   ],
   "property_groups": [
@@ -7727,7 +7759,6 @@
         "ai_type",
         "anchor",
         "arms_time",
-        "broadcast_index",
         "dead",
         "disable_script",
         "extra_time",
@@ -7741,7 +7772,6 @@
         "last_direction",
         "last_valid_flag",
         "loaded_matrix",
-        "message_index",
         "move_counter",
         "origin_time",
         "rope_id",

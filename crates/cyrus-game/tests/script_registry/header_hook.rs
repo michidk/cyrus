@@ -246,3 +246,36 @@ fn the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_
         [4, 0, 0, -1, -1, -1]
     );
 }
+
+#[test]
+fn message_and_broadcast_index_properties_are_the_receivers_selection_bytes() {
+    // Unsigned bytes: a write keeps the low eight bits and a read zero-extends.
+    let mut world = header_world(
+        &[(Property::BroadcastIndex, 1), (Property::MessageIndex, -3)],
+        &[Property::BroadcastIndex, Property::MessageIndex],
+    );
+    let locals = world.actors()[0].runtime().unwrap().variables().to_vec();
+    assert_eq!(locals, [1, 1, 253].map(cyrus_script::ScriptValue::Integer));
+    // The property is the selection the broadcast natives use: with the selection at slot one, a
+    // single broadcast (write cursor one) leaves nothing selected; at slot zero it is selected.
+    let (sender, receiver) = (world.id(1).unwrap(), world.id(0).unwrap());
+    world
+        .send_broadcast(sender, cyrus_game::script::CombatMessageCode::HIT)
+        .unwrap();
+    assert_eq!(world.selected_broadcast_sender(receiver).unwrap(), None);
+    let mut at_zero = header_world(&[(Property::BroadcastIndex, 0)], &[]);
+    let (sender, receiver) = (at_zero.id(1).unwrap(), at_zero.id(0).unwrap());
+    at_zero
+        .send_broadcast(sender, cyrus_game::script::CombatMessageCode::HIT)
+        .unwrap();
+    assert_eq!(
+        at_zero.selected_broadcast_sender(receiver).unwrap(),
+        Some(sender)
+    );
+    // Any byte survives a raw write and a save; the natives report an out-of-queue cursor on use.
+    let wide = header_world(&[(Property::MessageIndex, 200)], &[Property::MessageIndex]);
+    assert_eq!(
+        wide.actors()[0].runtime().unwrap().variables()[1],
+        cyrus_script::ScriptValue::Integer(200)
+    );
+}

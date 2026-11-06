@@ -5382,6 +5382,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 *motion_property(control, name).expect("named motion byte"),
             ));
         }
+        // The message and broadcast selections are the actor-record bytes the message natives read.
+        if name == Property::MessageIndex || name == Property::BroadcastIndex {
+            let index = self.property_receiver(target)?;
+            let actor = &self.registry.actors[index];
+            return Ok(i32::from(if name == Property::MessageIndex {
+                actor.message_read
+            } else {
+                actor.broadcast_index
+            }));
+        }
         if ai_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5511,6 +5521,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             *motion_property(control, name).expect("named motion byte") = value as u8;
+            return Ok(());
+        }
+        if name == Property::MessageIndex || name == Property::BroadcastIndex {
+            let index = self.property_receiver(target)?;
+            let actor = &mut self.registry.actors[index];
+            if name == Property::MessageIndex {
+                actor.message_read = value as u8;
+            } else {
+                actor.broadcast_index = value as u8;
+            }
             return Ok(());
         }
         if ai_record_property(&mut ActorControlState::default(), name).is_some() {
