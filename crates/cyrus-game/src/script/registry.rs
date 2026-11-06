@@ -7112,6 +7112,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .context("GetMessageSenderId: sender runtime identifier unavailable")?,
             )));
         }
+        // SendMessage(recipient, value) writes sender (the receiver), recipient and value on the
+        // recipient's class channel. The original takes the value from a third operand, so the
+        // declared single-argument form passes the receiver token as the value and an integer
+        // recipient is read as a pointer; neither is representable and both fail here. A zero
+        // value returns before the recipient is read.
+        if function == Native::SendMessage {
+            let [recipient, value] = arguments else {
+                anyhow::bail!(
+                    "SendMessage requires a recipient actor reference and a value: the original reads the value from an operand the declared single argument does not supply"
+                )
+            };
+            if value.integer()? == 0 {
+                return Ok(CallResult::Complete(0));
+            }
+            let recipient = recipient.actor().context("SendMessage recipient")?;
+            let sender = self.registry.id(self.index)?;
+            self.registry
+                .send_combat_message(sender, recipient, value.integer()?.into())?;
+            return Ok(CallResult::Complete(0));
+        }
         // ReceiveMessage returns the value word of the first entry addressed to the receiver.
         if function == Native::ReceiveMessage {
             anyhow::ensure!(arguments.is_empty(), "ReceiveMessage requires no arguments");

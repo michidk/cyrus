@@ -2730,18 +2730,21 @@
     },
     {
       "native": "SendMessage",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original recipient-channel entry-write and index update contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Two-argument function (recipient actor, value) writing a message on the recipient's class channel",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (SendMessage) -> send_combat_message",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::send_message_writes_the_queue_the_receive_chain_reads",
+        "crates/cyrus-game/tests/script_registry.rs::send_message_zero_value_returns_before_reading_the_recipient_and_other_forms_fail"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/60a45b95d7ffd5fa70b2c01dcbf022b91f6d772c",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6614889857"
       ],
-      "limits": "Verified installed one-argument declaration/exact binding/full289-byte native, no native helpers. 78,944 original-instruction contexts/16 effective controls including 2,144 full256-entry arrays. All256 index bytes at channel127/ten signed limits/four arguments/three opaque sender tokens/two patterns; all256 channels at selected inputs; selected full arrays/two recipients. Zero value returns0 without recipient/channel/array/limit reads or entry/index mutation. Nonzero writes receiver token/recipient/value at recipient channel index, increments byte/signed-limit reset, re-reads channel pointer and stores zero/recipient/zero at updated index. Exact write order/same-slot alias, recipient cursor/other channels unchanged, no sender dereference/destination-content gate/allocation/release. Five preserved registers/EDX/stack checked. Diagnostic IO controlled returning with repair or zero argument. Unknown malformed admission/arbitrary structural alias/producers/capacity/ownership/lifetime/consumption/concurrency/reentrancy/natural diagnostics/VM argument adaptation/original/native/browser/full joint domain. Production named call remains absent; no dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
-      "reviewed_revision": "3899b0b249fc0a1f39e923f9394194c93fa65713"
+      "limits": "Verified installed one-argument declaration/exact binding/full289-byte native, no native helpers. 78,944 original-instruction contexts/16 effective controls including 2,144 full256-entry arrays. All256 index bytes at channel127/ten signed limits/four arguments/three opaque sender tokens/two patterns; all256 channels at selected inputs; selected full arrays/two recipients. Zero value returns0 without recipient/channel/array/limit reads or entry/index mutation. Nonzero writes receiver token/recipient/value at recipient channel index, increments byte/signed-limit reset, re-reads channel pointer and stores zero/recipient/zero at updated index. Exact write order/same-slot alias, recipient cursor/other channels unchanged, no sender dereference/destination-content gate/allocation/release. Five preserved registers/EDX/stack checked. Diagnostic IO controlled returning with repair or zero argument. Unknown malformed admission/arbitrary structural alias/producers/capacity/ownership/lifetime/consumption/concurrency/reentrancy/natural diagnostics/VM argument adaptation/original/native/browser/full joint domain. Production named call remains absent; no dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence. Verified in the running original (synthetic statement in a live actor, preservation 4932fbe) and by static reading: the handler takes the receiver, a recipient actor and a value; two arguments write sender (the receiver), recipient and value at the recipient's attribute-125 channel index, advance the index and clear the next entry, and a zero value returns first. Verified here (routed ScriptWorld tests): the send reaches ReceiveMessage, GetMessageSender and DeleteMessage through the shared queue, a zero value changes nothing even with an integer recipient, and the declared single-argument form and an integer recipient fail explicitly (the original reads an unsupplied register, and an integer as a pointer, so those forms are not representable). The script validation accepts a two-argument SendMessage call although the definition declares one. Unknown: no installed script calls SendMessage; the cleared next entry keeps no recipient here; no native-run or browser comparison.",
+      "reviewed_revision": "38823483b52c8f3aa8b1f8c662c7575934a9a457"
     },
     {
       "native": "SyncWithUser",

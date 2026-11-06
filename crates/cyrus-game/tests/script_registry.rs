@@ -19199,6 +19199,91 @@ fn receive_message_returns_the_first_entry_addressed_to_the_receiver_and_keeps_i
     );
 }
 
+fn send_message_scripts(arguments: Vec<Value>) -> Scripts {
+    let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::SendMessage,
+        kind: CallKind::Function,
+        param_count: 1,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.steps.get_mut(&3).unwrap().operation = Operation::Call {
+        call: Call {
+            function_id,
+            function: Native::SendMessage,
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments,
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn send_message_writes_the_queue_the_receive_chain_reads() {
+    use cyrus_game::script::CombatMessageCode;
+    let recipient = Value::Read {
+        place: Place::Local { index: 0 },
+    };
+    let scripts = send_message_scripts(vec![recipient.clone(), Value::Integer { value: 0xd000 }]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    // Actor 1's script captures a reference to actor 0, then sends it the value.
+    actor_reference_step(&mut world, b).unwrap();
+    assert_eq!(world.receive_message(a).unwrap(), 0, "nothing sent yet");
+    actor_reference_step(&mut world, b).unwrap();
+    // The recipient receives the value word and sees the receiver as sender, then deletes it.
+    assert_eq!(world.receive_message(a).unwrap(), 0xd000);
+    assert_eq!(world.selected_message_sender(a).unwrap(), Some(b));
+    let queued = world.peek_combat_message(a).unwrap().unwrap();
+    assert_eq!(
+        (queued.sender, queued.receiver, queued.code),
+        (b, Some(a), CombatMessageCode::BLOCK)
+    );
+    world.advance_message_selection(a).unwrap();
+    assert_eq!(world.receive_message(a).unwrap(), 0);
+    assert!(world.peek_combat_message(a).unwrap().is_none());
+    // Nothing reached anyone else.
+    assert!(world.peek_combat_message(b).unwrap().is_none());
+}
+
+#[test]
+fn send_message_zero_value_returns_before_reading_the_recipient_and_other_forms_fail() {
+    let recipient = Value::Read {
+        place: Place::Local { index: 0 },
+    };
+    // A zero value changes nothing, even with an integer where the recipient belongs.
+    for first in [recipient.clone(), Value::Integer { value: 1234 }] {
+        let scripts = send_message_scripts(vec![first, Value::Integer { value: 0 }]);
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        actor_reference_step(&mut world, b).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        assert!(world.peek_combat_message(a).unwrap().is_none());
+    }
+    // The declared single-argument form and an integer recipient fail explicitly.
+    for (arguments, expected) in [
+        (
+            vec![Value::Integer { value: 7 }],
+            "requires a recipient actor reference",
+        ),
+        (
+            vec![Value::Integer { value: 1234 }, Value::Integer { value: 5 }],
+            "SendMessage recipient",
+        ),
+    ] {
+        let scripts = send_message_scripts(arguments);
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        actor_reference_step(&mut world, b).unwrap();
+        let error = format!("{:#}", actor_reference_step(&mut world, b).unwrap_err());
+        assert!(error.contains(expected), "{error}");
+        assert!(world.peek_combat_message(a).unwrap().is_none());
+    }
+}
+
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};

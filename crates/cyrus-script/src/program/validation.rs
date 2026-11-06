@@ -1,5 +1,6 @@
 //! Validate portable operands before a script can issue host side effects.
 use super::{Call, Definition, Formula, Object, Operation, Place, Program, Value};
+use crate::Native;
 use anyhow::Result;
 impl Program {
     /// Checks an actor-load hook against its program operands and installed declarations.
@@ -101,6 +102,10 @@ impl Program {
                         declaration.is_some_and(|function| {
                             function.name == call.function
                                 && (usize::from(function.param_count) == call.arguments.len()
+                                    // The original's SendMessage takes a recipient and a value
+                                    // although the definition declares one argument.
+                                    || (function.name == Native::SendMessage
+                                        && call.arguments.len() == 2)
                                     || (function.param_count == 0
                                         && encoded_reset
                                             .is_some_and(|reset| std::ptr::eq(reset, call))))
