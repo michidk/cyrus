@@ -8431,6 +8431,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             return Ok(CallResult::Complete(test(control)));
         }
+        // The Spare0/Spare1 natives ignore every argument, change no actor state, add a diagnostic
+        // line and return zero. The original's line carries the receiver's host pointer, which
+        // has no portable value, so the receiver's name stands in for it (as PrintSingleParm's
+        // line does); the argument count is the call record's, whatever the definition declares.
+        if matches!(
+            function,
+            Native::Spare0Parm0
+                | Native::Spare0Parm1
+                | Native::Spare0Parm2
+                | Native::Spare0Parm3
+                | Native::Spare0Parm4
+                | Native::Spare0Parm5
+                | Native::Spare0Parm6
+                | Native::Spare0Parm7
+                | Native::Spare1Parm0
+                | Native::Spare1Parm1
+                | Native::Spare1Parm2
+                | Native::Spare1Parm3
+                | Native::Spare1Parm4
+                | Native::Spare1Parm5
+                | Native::Spare1Parm6
+                | Native::Spare1Parm7
+        ) {
+            let name = self.registry.actors[self.index].name().to_owned();
+            self.registry
+                .globals
+                .print_line(format!("{name} Spare function"));
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::PrintSingleParm {
             let [value] = arguments else {
                 anyhow::bail!("{function} requires one argument");

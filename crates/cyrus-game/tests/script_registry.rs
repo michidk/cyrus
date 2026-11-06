@@ -19558,6 +19558,49 @@ fn face_object_turns_one_step_per_pass_toward_the_target_actor_and_a_zero_rate_e
 }
 
 #[test]
+fn spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero() {
+    use Native::*;
+    // (native, argument count): the Spare1Parm7 record carries eight although the handler
+    // cleans seven; the dispatch uses the record's own count.
+    let spares = [
+        (Spare0Parm0, 0),
+        (Spare0Parm1, 1),
+        (Spare0Parm2, 2),
+        (Spare0Parm3, 3),
+        (Spare0Parm4, 4),
+        (Spare0Parm5, 5),
+        (Spare0Parm6, 6),
+        (Spare0Parm7, 7),
+        (Spare1Parm0, 0),
+        (Spare1Parm1, 1),
+        (Spare1Parm2, 2),
+        (Spare1Parm3, 3),
+        (Spare1Parm4, 4),
+        (Spare1Parm5, 5),
+        (Spare1Parm6, 6),
+        (Spare1Parm7, 8),
+    ];
+    for (native, count) in spares {
+        let arguments: Vec<i32> = (0..count).map(|value| value * 7 + 3).collect();
+        let world = run_native_world_with(&[(native, &arguments)], true).unwrap();
+        let id = world.id(0).unwrap();
+        let before = run_native_world_with(&[], true).unwrap();
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            before
+                .spatial(before.id(0).unwrap())
+                .unwrap()
+                .local
+                .position,
+            "{native}: no actor state changes"
+        );
+        let lines = world.globals().printed_lines();
+        assert_eq!(lines.len(), 1, "{native}");
+        assert!(lines[0].ends_with("Spare function"), "{native}: {lines:?}");
+    }
+}
+
+#[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};
     for (object, expected) in [

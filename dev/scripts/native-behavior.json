@@ -2791,253 +2791,285 @@
     },
     {
       "native": "Spare0Parm0",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/206",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606431380"
       ],
-      "limits": "Verified: installed zero-argument declaration and complete original handler yield receiver-pointer diagnostic then return zero, without dereferencing receiver or changing actor state. 192 constructed original-instruction cases vary receiver, actor bytes, register values and controlled writer return. Six effective instruction mutations reject wrong return, missing diagnostic, wrong format, actor mutation, wrong receiver operand and wrong writer target. Diagnostic writer is observed IO; its formatting buffers/platform output are not executed. Noncanonical register values do not establish invalid script-call admission. Current named implementation remains missing, with no dedicated public rejection assertion located. Missing status means named dispatch only; no live original/native/browser acceptance or Rust test execution claimed. Historical static absence cannot exclude hidden unsupported actor bodies. No other Spare native behavior is inferred.",
-      "reviewed_revision": "de96e279af78d2a03ceb4a7f5f90c6bb27fe7dd6"
+      "limits": "Verified: installed zero-argument declaration and complete original handler yield receiver-pointer diagnostic then return zero, without dereferencing receiver or changing actor state. 192 constructed original-instruction cases vary receiver, actor bytes, register values and controlled writer return. Six effective instruction mutations reject wrong return, missing diagnostic, wrong format, actor mutation, wrong receiver operand and wrong writer target. Diagnostic writer is observed IO; its formatting buffers/platform output are not executed. Noncanonical register values do not establish invalid script-call admission. Current named implementation remains missing, with no dedicated public rejection assertion located. Missing status means named dispatch only; no live original/native/browser acceptance or Rust test execution claimed. Historical static absence cannot exclude hidden unsupported actor bodies. No other Spare native behavior is inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm1",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named one-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/208",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606510781"
       ],
-      "limits": "Verified: installed one-argument declaration and independently resolved complete original handler. Argument is unused; handler emits receiver-pointer diagnostic and returns zero without dereferencing receiver or changing actor memory. 192 constructed original-instruction cases vary receiver, actor bytes, incoming argument register and controlled writer return. Six actual mutations reject wrong return, missing writer, wrong format, actor write, wrong receiver operand and wrong writer target. Actor/string memory, saved registers and stack checked. Writer is observed IO, not formatter/platform execution; handler does not preserve argument register. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing, with no dedicated rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude unsupported bodies; other Spare handlers are not inferred.",
-      "reviewed_revision": "a1cc70556b27e264a21f8c924b61f730ef4e7b60"
+      "limits": "Verified: installed one-argument declaration and independently resolved complete original handler. Argument is unused; handler emits receiver-pointer diagnostic and returns zero without dereferencing receiver or changing actor memory. 192 constructed original-instruction cases vary receiver, actor bytes, incoming argument register and controlled writer return. Six actual mutations reject wrong return, missing writer, wrong format, actor write, wrong receiver operand and wrong writer target. Actor/string memory, saved registers and stack checked. Writer is observed IO, not formatter/platform execution; handler does not preserve argument register. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing, with no dedicated rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude unsupported bodies; other Spare handlers are not inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm2",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named two-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/209",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606695876"
       ],
-      "limits": "Verified: installed two-argument declaration and independently resolved complete original handler. Both arguments are unused; receiver-pointer diagnostic then return zero without dereferencing receiver or changing actor memory. 768 constructed original-instruction cases vary receiver, actor bytes, both incoming argument registers independently and controlled writer return. Six effective mutations reject wrong return, missing writer, wrong format, actor write, wrong receiver diagnostic operand and wrong writer target. Unchanged actor/string bytes, saved registers and stack checked; argument-register preservation not claimed. Writer is controlled IO, not formatter/platform execution. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred.",
-      "reviewed_revision": "4bce524c088f7f5cfb3d45ca40b7f42b8a8802f0"
+      "limits": "Verified: installed two-argument declaration and independently resolved complete original handler. Both arguments are unused; receiver-pointer diagnostic then return zero without dereferencing receiver or changing actor memory. 768 constructed original-instruction cases vary receiver, actor bytes, both incoming argument registers independently and controlled writer return. Six effective mutations reject wrong return, missing writer, wrong format, actor write, wrong receiver diagnostic operand and wrong writer target. Unchanged actor/string bytes, saved registers and stack checked; argument-register preservation not claimed. Writer is controlled IO, not formatter/platform execution. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm3",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named three-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/210",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606755274"
       ],
-      "limits": "Verified: installed three-argument declaration and independently resolved complete original handler. All three arguments unused; receiver-pointer diagnostic then return zero without receiver dereference or actor mutation. 3072 constructed original-instruction cases vary receiver, actor bytes, three incoming argument registers independently and controlled writer result. Six effective instruction mutations reject wrong return, missing writer, wrong mapped format, actor write, wrong receiver diagnostic operand and wrong writer target. Actor/string memory, saved registers and stack checked; argument-register preservation not claimed. Writer controlled IO, not formatter/platform output. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred.",
-      "reviewed_revision": "bbc923ec458b0de868eb1a707397a1deebacf9e5"
+      "limits": "Verified: installed three-argument declaration and independently resolved complete original handler. All three arguments unused; receiver-pointer diagnostic then return zero without receiver dereference or actor mutation. 3072 constructed original-instruction cases vary receiver, actor bytes, three incoming argument registers independently and controlled writer result. Six effective instruction mutations reject wrong return, missing writer, wrong mapped format, actor write, wrong receiver diagnostic operand and wrong writer target. Actor/string memory, saved registers and stack checked; argument-register preservation not claimed. Writer controlled IO, not formatter/platform output. No VM operand-decoder or malformed-call admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Historical static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm4",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named four-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/213",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606928141"
       ],
-      "limits": "Verified: installed four-argument declaration and independently resolved complete original handler. All four arguments unused; receiver-pointer diagnostic then return zero, no receiver dereference/actor mutation. 12288 original-instruction contexts vary receiver, actor bytes, three incoming register arguments and fourth stack argument independently plus controlled writer result. Eight effective mutations reject wrong return, omitted writer, wrong mapped format, actor write, wrong receiver diagnostic operand, wrong writer and missing/excess stack cleanup. Original consumes one stack argument; caller canary, saved registers/stack and actor/string bytes checked. Argument-register preservation not claimed. Writer controlled IO, not formatter/platform output or VM operand decoding. No malformed admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred.",
-      "reviewed_revision": "d9d5571c82c4097b56f12a69929996ac6d694248"
+      "limits": "Verified: installed four-argument declaration and independently resolved complete original handler. All four arguments unused; receiver-pointer diagnostic then return zero, no receiver dereference/actor mutation. 12288 original-instruction contexts vary receiver, actor bytes, three incoming register arguments and fourth stack argument independently plus controlled writer result. Eight effective mutations reject wrong return, omitted writer, wrong mapped format, actor write, wrong receiver diagnostic operand, wrong writer and missing/excess stack cleanup. Original consumes one stack argument; caller canary, saved registers/stack and actor/string bytes checked. Argument-register preservation not claimed. Writer controlled IO, not formatter/platform output or VM operand decoding. No malformed admission proof. Named host implementation remains missing; no dedicated public rejection assertion located. Missing status means named dispatch only. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare handler inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm5",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named five-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/214",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6606989287"
       ],
-      "limits": "Verified: installed five-argument declaration and independently mapped complete original handler. All arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. 49152 original-instruction contexts vary receiver/state, three register arguments, two stack arguments independently and controlled writer return. Eight effective mutations reject return, omitted writer, wrong mapped format, actor write, wrong receiver diagnostic, wrong writer and missing/excess stack cleanup. Original consumes two stack arguments; actor/string bytes, caller canary, saved registers/stack checked. Argument-register preservation not claimed. Writer controlled IO; no VM decoding/malformed admission/formatter-platform output proof. Named implementation remains missing with no dedicated rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "f637fb552c76be7f5467bb7caf5c93d4c08c1442"
+      "limits": "Verified: installed five-argument declaration and independently mapped complete original handler. All arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. 49152 original-instruction contexts vary receiver/state, three register arguments, two stack arguments independently and controlled writer return. Eight effective mutations reject return, omitted writer, wrong mapped format, actor write, wrong receiver diagnostic, wrong writer and missing/excess stack cleanup. Original consumes two stack arguments; actor/string bytes, caller canary, saved registers/stack checked. Argument-register preservation not claimed. Writer controlled IO; no VM decoding/malformed admission/formatter-platform output proof. Named implementation remains missing with no dedicated rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm6",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named six-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/215",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607060943"
       ],
-      "limits": "Verified: installed six-argument declaration and independently mapped complete original handler. Six arguments unused; receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. 7536 original contexts cross receiver/state/writer variations with every pair of six argument inputs over four selected values plus all-equal patterns, not full six-dimensional domain. Three register/three stack inputs supplied; original consumes three stack arguments. Eight effective instruction mutations reject wrong return, missing writer, wrong mapped format, actor write, wrong receiver diagnostic, wrong writer and missing/excess stack cleanup. Actor/string bytes/caller canary/saved registers/stack checked; argument-register preservation not claimed. Writer controlled IO, not VM decoding/formatter-platform output/malformed admission proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "4653441ad1e4958c977af7494e6c6a31d41a6d7d"
+      "limits": "Verified: installed six-argument declaration and independently mapped complete original handler. Six arguments unused; receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. 7536 original contexts cross receiver/state/writer variations with every pair of six argument inputs over four selected values plus all-equal patterns, not full six-dimensional domain. Three register/three stack inputs supplied; original consumes three stack arguments. Eight effective instruction mutations reject wrong return, missing writer, wrong mapped format, actor write, wrong receiver diagnostic, wrong writer and missing/excess stack cleanup. Actor/string bytes/caller canary/saved registers/stack checked; argument-register preservation not claimed. Writer controlled IO, not VM decoding/formatter-platform output/malformed admission proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare0Parm7",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named seven-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/218",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607176418"
       ],
-      "limits": "Verified: installed seven-argument declaration and independently mapped full original handler. Seven arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. 10272 original contexts cross receiver/state/writer variations with pairwise coverage of seven argument inputs over four selected values and all-equal patterns, not full seven-dimensional/integer domain. Three register/four stack inputs; consumes four stack arguments. Eight effective mutations reject wrong return, omitted writer, wrong mapped format, actor mutation, wrong receiver diagnostic, wrong writer and missing/excess cleanup. Actor/string bytes/caller canary/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "cafaa4d1ab310e47773e30d1cf085992a6aa90e7"
+      "limits": "Verified: installed seven-argument declaration and independently mapped full original handler. Seven arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. 10272 original contexts cross receiver/state/writer variations with pairwise coverage of seven argument inputs over four selected values and all-equal patterns, not full seven-dimensional/integer domain. Three register/four stack inputs; consumes four stack arguments. Eight effective mutations reject wrong return, omitted writer, wrong mapped format, actor mutation, wrong receiver diagnostic, wrong writer and missing/excess cleanup. Actor/string bytes/caller canary/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm0",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/219",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607227141"
       ],
-      "limits": "Verified: installed zero-argument declaration and independently mapped full original handler emit receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. Numeric prefix does not imply return one. 192 original-instruction contexts vary receiver, actor bytes, unrelated incoming registers and controlled writer return. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor write and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked. Writer controlled IO, not formatter/platform output; no malformed-call admission or VM decoding proof. Named implementation remains missing, no dedicated rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "4c47535225c9a1b18c4603b23795e5dd806e6de8"
+      "limits": "Verified: installed zero-argument declaration and independently mapped full original handler emit receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. Numeric prefix does not imply return one. 192 original-instruction contexts vary receiver, actor bytes, unrelated incoming registers and controlled writer return. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor write and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked. Writer controlled IO, not formatter/platform output; no malformed-call admission or VM decoding proof. Named implementation remains missing, no dedicated rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm1",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named one-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/220",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607281190"
       ],
-      "limits": "Verified: installed one-argument declaration and independently mapped full original handler. Argument unused; receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. Numeric prefix not a return-value rule. 192 original-instruction contexts vary receiver, actor bytes, incoming argument register and controlled writer result. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "1a1bfa212e584c213963e959eb2d48e5f74db481"
+      "limits": "Verified: installed one-argument declaration and independently mapped full original handler. Argument unused; receiver-pointer diagnostic then return zero without receiver dereference/actor mutation. Numeric prefix not a return-value rule. 192 original-instruction contexts vary receiver, actor bytes, incoming argument register and controlled writer result. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm2",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named two-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/223",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607412662"
       ],
-      "limits": "Verified: installed two-argument declaration and independently mapped full original handler. Both arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. Numeric prefix not a return rule. 768 original-instruction contexts vary receiver, actor bytes, both incoming argument registers independently over four selected values and controlled writer result, not exhaustive integer domain. Six effective mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked; argument-register preservation not claimed. Writer controlled IO, not VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "d13e806814dfa74ab6981ff8e20096416a22e417"
+      "limits": "Verified: installed two-argument declaration and independently mapped full original handler. Both arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. Numeric prefix not a return rule. 768 original-instruction contexts vary receiver, actor bytes, both incoming argument registers independently over four selected values and controlled writer result, not exhaustive integer domain. Six effective mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked; argument-register preservation not claimed. Writer controlled IO, not VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm3",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named three-argument receiver-pointer diagnostic dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/224",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607470575"
       ],
-      "limits": "Verified: installed three-argument declaration and independently mapped full original handler. All three arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. Numeric prefix not a return rule. 3072 original-instruction contexts vary receiver, actor bytes, each incoming argument register independently over four selected values and controlled writer result, not exhaustive integer domain. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred.",
-      "reviewed_revision": "ecade47fe45455a547d77aaa3966fbb6196fd66f"
+      "limits": "Verified: installed three-argument declaration and independently mapped full original handler. All three arguments unused; receiver-pointer diagnostic then zero return without receiver dereference/actor mutation. Numeric prefix not a return rule. 3072 original-instruction contexts vary receiver, actor bytes, each incoming argument register independently over four selected values and controlled writer result, not exhaustive integer domain. Six effective instruction mutations reject return one, writer omission/target, wrong mapped format, actor mutation and wrong receiver diagnostic operand. Actor/string bytes/saved registers/stack checked, argument-register preservation not claimed. Writer controlled IO, no VM decoding/malformed admission/formatter-platform proof. Named implementation remains missing, no dedicated public rejection assertion located. No natural original/native/browser acceptance or Rust tests run. Static absence cannot exclude hidden unsupported bodies; no other Spare inferred. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm4",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Four-argument original diagnostic contract; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/pull/225",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607621023"
       ],
-      "limits": "Verified: independent installed declaration/native/full-handler mapping; four arguments unused, receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 12288 bounded original-instruction contexts and eight effective mutation controls, including stack cleanup, pass. Diagnostic writer is controlled IO; four selected values per argument do not exhaust the integer domain. Unknown: VM operand decoding, malformed-call admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing.",
-      "reviewed_revision": "38708356618b7417747dd5c3c8e03b5a88fc69bd"
+      "limits": "Verified: independent installed declaration/native/full-handler mapping; four arguments unused, receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 12288 bounded original-instruction contexts and eight effective mutation controls, including stack cleanup, pass. Diagnostic writer is controlled IO; four selected values per argument do not exhaust the integer domain. Unknown: VM operand decoding, malformed-call admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm5",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Five-argument original diagnostic contract; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/pull/227"
       ],
-      "limits": "Verified: independent installed declaration/native/full-handler mapping; all five arguments unused, receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 49152 bounded original-instruction contexts and eight effective mutation controls pass, including two-stack-argument cleanup. Diagnostic writer is controlled IO; four selected values per argument do not exhaust the integer domain. Unknown: VM operand decoding, malformed-call admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing.",
-      "reviewed_revision": "600953ab81430b630703e7cf415ad821e617cb35"
+      "limits": "Verified: independent installed declaration/native/full-handler mapping; all five arguments unused, receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 49152 bounded original-instruction contexts and eight effective mutation controls pass, including two-stack-argument cleanup. Diagnostic writer is controlled IO; four selected values per argument do not exhaust the integer domain. Unknown: VM operand decoding, malformed-call admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm6",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Original six-argument receiver-pointer diagnostic function; named production implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/commit/479d7c6bed021cb19c9bd54ed359c1669319205a"
       ],
-      "limits": "Verified: independent installed declaration/native/full55-byte handler mapping. All six arguments unused; receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 7536 bounded original-instruction contexts cover157 six-input patterns with every pair across four selected values, four receivers/four actor patterns/three controlled writer returns. Eight effective decoded-instruction controls fail on semantic return, diagnostic, writer identity, memory or stack assertions; decoder/unmapped/budget failures excluded. Three register and three stack arguments match declaration; ret consumes three stack slots. Diagnostic writer is controlled IO; full integer domain, VM argument preparation/malformed admission and natural original/native/browser output/failure remain Unknown. Conditional production/public regression contract prepared; diagnostic service/identity and shared source agreement required before implementation. Missing status is retained; no Rust tests or production/runtime acceptance.",
-      "reviewed_revision": "46bc47613e859facef71ffd3af0012ead8d5c0dc"
+      "limits": "Verified: independent installed declaration/native/full55-byte handler mapping. All six arguments unused; receiver-pointer diagnostic then zero return without receiver dereference or actor mutation. 7536 bounded original-instruction contexts cover157 six-input patterns with every pair across four selected values, four receivers/four actor patterns/three controlled writer returns. Eight effective decoded-instruction controls fail on semantic return, diagnostic, writer identity, memory or stack assertions; decoder/unmapped/budget failures excluded. Three register and three stack arguments match declaration; ret consumes three stack slots. Diagnostic writer is controlled IO; full integer domain, VM argument preparation/malformed admission and natural original/native/browser output/failure remain Unknown. Conditional production/public regression contract prepared; diagnostic service/identity and shared source agreement required before implementation. Missing status is retained; no Rust tests or production/runtime acceptance. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "native": "Spare1Parm7",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Original diagnostic contract with eight-declared/seven-native argument mismatch; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Argument-ignoring diagnostic native returning zero",
+      "caller": "ScriptWorld::advance -> Runtime function call -> GameHost::call (Spare diagnostic)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602350761",
         "https://github.com/michidk/redguard-preservation/pull/228",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6607774152"
       ],
-      "limits": "Verified: installed declaration has eight arguments despite suffix7. Independently mapped full native handler ignores input values, emits receiver-pointer diagnostic and returns zero without receiver dereference/actor mutation. Three register inputs and four consumed stack slots account for seven native arguments; an eighth supplied argument remains on caller stack. 13344 bounded instruction contexts,277 selected pairwise eight-input vectors and seven-input layouts; eight effective instruction controls reject return, writer omission/target, format, actor mutation, receiver and missing/excess cleanup. Actor/string/caller-canary bytes, saved registers and stack checked. Pairwise coverage is not Cartesian or exhaustive integer coverage. Writer controlled IO. Unknown: VM caller handling of argument-count mismatch, operand decoding, malformed admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing.",
-      "reviewed_revision": "344984707cdc4aaeac5af4f419b404c70921bd13"
+      "limits": "Verified: installed declaration has eight arguments despite suffix7. Independently mapped full native handler ignores input values, emits receiver-pointer diagnostic and returns zero without receiver dereference/actor mutation. Three register inputs and four consumed stack slots account for seven native arguments; an eighth supplied argument remains on caller stack. 13344 bounded instruction contexts,277 selected pairwise eight-input vectors and seven-input layouts; eight effective instruction controls reject return, writer omission/target, format, actor mutation, receiver and missing/excess cleanup. Actor/string/caller-canary bytes, saved registers and stack checked. Pairwise coverage is not Cartesian or exhaustive integer coverage. Writer controlled IO. Unknown: VM caller handling of argument-count mismatch, operand decoding, malformed admission, formatter/platform output and natural original/native/browser acceptance. Argument-register preservation and other family behavior not claimed. Named implementation remains missing. Verified (routed ScriptWorld test over all sixteen Spare natives; preservation SOUP.md Spare diagnostics): every argument is ignored, no actor state changes, one diagnostic line is added to the shared console line buffer (the 66-line buffer PrintSingleParm uses) and the call returns zero; the dispatch uses the call record's own argument count, so the Spare1Parm7 record that carries eight arguments is accepted. Limits: the original's line is '0x%p Spare function' with the receiver's host pointer, which has no portable value, so the receiver's name stands in for the pointer (as PrintSingleParm's line does); the original's suppression settings before formatting and for storage are not modelled; Spare1Parm7's seven-versus-eight stack cleanup mismatch is not reproduced (a host-stack artefact); no native-run or browser comparison.",
+      "reviewed_revision": "166c69741908999fc4ba2b87c82c00e6fe6303a4"
     },
     {
       "owner": 5,
