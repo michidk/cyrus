@@ -84,7 +84,8 @@ apply. Space jumps as installed. With a gamepad, the left stick moves him the
 same way: a partial tilt walks, a full tilt runs. The arrow keys and the D-pad do
 not move him, and a quick sword key on W, A, S or D (S in the GOG install) moves
 instead of drawing the sword. In conversation topic menus, W and S or the left stick
-move the selection up and down. `--camera modern` (`?camera=modern`, or F1's Camera setting) turns the
+move the selection up and down. In the book menu, the D-pad or left stick acts as
+the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F1's Camera setting) turns the
 follow camera with horizontal mouse movement or the right stick and locks the
 cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.
 Vertical mouse movement does not tilt the camera. The Faithful camera follows

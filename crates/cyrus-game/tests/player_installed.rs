@@ -217,6 +217,20 @@ fn installed_keyboard_route(modern_jump: bool) -> Result<()> {
                 app.update();
                 position(&mut app)?;
             }
+            // Modern walks unless Shift is held.
+            let actors = app.world().resource::<ScriptActors>();
+            let world = actors.current.as_ref().unwrap();
+            let index = world.selected_player().unwrap().index;
+            let group = world.inspect(index, 1)["actors"][0]["animation"]["current_group"].as_u64();
+            let expected = if running {
+                cyrus_script::AnimationGroup::RUN
+            } else {
+                cyrus_script::AnimationGroup::WALK
+            };
+            ensure!(
+                group == Some(u64::from(expected.index())),
+                "held forward played group {group:?}, expected {expected:?}"
+            );
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
                 .press(KeyCode::Space);
