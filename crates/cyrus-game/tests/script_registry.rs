@@ -48915,3 +48915,6 @@ mod point_at_tests;
 
 #[path = "script_registry/native_source_order.rs"]
 mod native_source_order_tests;
+
+#[path = "script_registry/parameter_diagnostics.rs"]
+mod parameter_diagnostics_tests;

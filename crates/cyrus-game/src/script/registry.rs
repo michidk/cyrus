@@ -8480,6 +8480,36 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.globals.print_line(format!("{name} {value}"));
             return Ok(CallResult::Complete(0));
         }
+        // PrintParms and LogParms format the receiver's script name and all eight arguments as signed
+        // decimals; PrintParms takes the first free console line, LogParms goes to the diagnostic log.
+        if function == Native::PrintParms || function == Native::LogParms {
+            anyhow::ensure!(
+                arguments.len() == 8,
+                "{function} requires eight integer arguments"
+            );
+            let values = arguments
+                .iter()
+                .map(|argument| argument.integer().map(|value| value.to_string()))
+                .collect::<Result<Vec<_>>>()
+                .with_context(|| format!("{function} arguments"))?
+                .join(", ");
+            let name = self.registry.actors[self.index].name().to_owned();
+            if function == Native::PrintParms {
+                self.registry.globals.print_line(format!("{name} {values}"));
+            } else {
+                bevy::log::debug!("  {name}|3 {values}");
+            }
+            return Ok(CallResult::Complete(0));
+        }
+        // PrintStringParm is PrintSingleParm's line with the already evaluated string as its text.
+        if function == Native::PrintStringParm {
+            let [Argument::String(text)] = arguments else {
+                anyhow::bail!("{function} requires one string argument");
+            };
+            let name = self.registry.actors[self.index].name().to_owned();
+            self.registry.globals.print_line(format!("{name} {text}"));
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::PlayerInSight {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let player = self
