@@ -4549,6 +4549,12 @@ impl crate::script::lineup::LineupPort for LineupLog {
 }
 
 impl crate::script::lineup::LineupHost for LineupLog {
+    fn source_reference(&mut self) -> anyhow::Result<crate::script::lineup::Reference> {
+        Ok(crate::script::lineup::Reference {
+            position: [0; 3],
+            heading: 0,
+        })
+    }
     fn talk_target(&mut self, _: i32) -> anyhow::Result<([i32; 2], u16)> {
         anyhow::bail!("recording lineup host does not provide PlayerFaceTalk")
     }

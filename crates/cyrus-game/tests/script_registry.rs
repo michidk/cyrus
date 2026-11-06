@@ -35599,6 +35599,31 @@ fn face_talk_round(
     scene: &cyrus_game::player::data::PlayerScene,
     round: usize,
 ) -> anyhow::Result<()> {
+    scheduler_round(world, data, scene, round, false)
+}
+
+/// `face_talk_round`, optionally also running the selected player's own task stage (for a task
+/// an object call left in the player's slots).
+fn scheduler_round(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    round: usize,
+    player_tasks: bool,
+) -> anyhow::Result<()> {
+    scheduler_round_with(world, data, scene, round, player_tasks, false)
+}
+
+/// `scheduler_round` with the caller's stage chosen: `ordinary` runs its interpreter entry (which
+/// retains it as the shared source actor) instead of the body-only stage.
+fn scheduler_round_with(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    round: usize,
+    player_tasks: bool,
+    ordinary: bool,
+) -> anyhow::Result<()> {
     use cyrus_game::script::{
         LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
         ScriptActorSource, ScriptInputs, ScriptStage,
@@ -35645,7 +35670,9 @@ fn face_talk_round(
         ..Default::default()
     };
     let mut random = cyrus_game::random::EngineRandom::default();
-    let stages: &[ScriptStage] = if round == 0 {
+    let stages: &[ScriptStage] = if ordinary {
+        &[ScriptStage::OrdinaryMain]
+    } else if round == 0 {
         &[ScriptStage::Body(Thread::Main)]
     } else {
         &[ScriptStage::Tasks, ScriptStage::Body(Thread::Main)]
@@ -35660,7 +35687,110 @@ fn face_talk_round(
             20,
         )?;
     }
+    if player_tasks {
+        world.advance(
+            player,
+            ScriptStage::Tasks,
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            20,
+        )?;
+    }
     Ok(())
+}
+
+#[test]
+fn object_lineup_walks_the_receiver_to_the_callers_frame_and_ends_with_the_flag_cleared() {
+    use cyrus_game::script::ScriptActorSource;
+    // The map actor calls `Player.ObjectLineUp(0, 0, 2048)`: the receiver (the selected player)
+    // walks to the point the offsets name from the caller and turns to the caller's heading plus a half turn.
+    let (_, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::ObjectLineUp,
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            Operation::ObjectCall {
+                call: Call {
+                    function_id: id,
+                    function: Native::ObjectLineUp,
+                    kind: CallKind::Task,
+                    target: Object::Player,
+                    // The offsets (rotated by the caller's zero heading) name the point 2048 units
+                    // along +Z of the caller, ground the fixture covers (as for PlayerFaceTalk).
+                    arguments: [0, 0, 2048].map(|value| Value::Integer { value }).to_vec(),
+                },
+            },
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut finished = false;
+    let mut trace = vec![];
+    for round in 0..600 {
+        scheduler_round_with(&mut world, &data, &scene, round, true, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        // The object-targeted call returns at once: the caller continues while the player's own
+        // slot runs the alignment.
+        if round == 0 {
+            assert_eq!(world.flags(), [7], "the caller continues at once");
+        }
+        let local = world.spatial(player).unwrap().local;
+        trace.push((local.position, local.wrapped_angles()[1]));
+        if world.actors()[index].runtime().unwrap().active_tasks() == 0 {
+            finished = true;
+            break;
+        }
+    }
+    let caller_at = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    assert!(
+        finished,
+        "the alignment completes; caller {caller_at:?}, trace {:?} .. {:?}",
+        &trace[..3.min(trace.len())],
+        &trace[trace.len().saturating_sub(3)..]
+    );
+    let caller = world.spatial(world.id(0).unwrap()).unwrap().local;
+    let end = world.spatial(player).unwrap().local;
+    assert_eq!(
+        [end.position[0], end.position[2]],
+        [caller.position[0], caller.position[2] + 2048]
+    );
+    assert_eq!(
+        end.wrapped_angles()[1],
+        (caller.wrapped_angles()[1] + 1024) & 2047,
+        "the receiver ends facing the half-turn heading"
+    );
+    let control = world.actors()[index].control_state().unwrap();
+    assert_eq!(
+        control.script_control & 2,
+        0,
+        "the alignment flag is cleared"
+    );
 }
 
 #[test]

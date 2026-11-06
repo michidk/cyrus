@@ -42,6 +42,17 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
         })
     }
 
+    /// The port for `ObjectLineUp`: the mover is the receiver itself, whoever it is.
+    pub(super) fn for_receiver(host: &'h mut GameHost<'a, 's, 'i, 'r>) -> Result<Self> {
+        let player = host.registry.id(host.index)?;
+        Ok(Self {
+            host,
+            player,
+            prepared: None,
+            error: None,
+        })
+    }
+
     fn record<T>(&mut self, fallback: T, result: Result<T>) -> T {
         result.unwrap_or_else(|error| {
             self.error.get_or_insert(error);
@@ -516,6 +527,30 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
 }
 
 impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
+    fn source_reference(&mut self) -> Result<Reference> {
+        // The shared pointing target: the actor whose interpreter entry last ran, which retains
+        // across later passes (the caller of a routed call, and still the caller when the
+        // receiver's own task stage polls the task). Before any entry has run, the running
+        // script's actor as PointAt and MoveAboveMe read it.
+        let source = match self.host.registry.globals.native_source {
+            super::super::activation::NativeSource::Actor { generation, index }
+                if generation == self.host.generation =>
+            {
+                index
+            }
+            _ => self.host.registry.routed_caller.unwrap_or(self.host.index),
+        };
+        let local = self
+            .host
+            .registry
+            .spatial(self.host.registry.id(source)?)
+            .context("ObjectLineUp source pose unavailable")?
+            .local;
+        Ok(Reference {
+            position: local.position,
+            heading: local.wrapped_angles()[1],
+        })
+    }
     fn talk_target(&mut self, distance: i32) -> Result<([i32; 2], u16)> {
         let receiver = self.host.registry.id(self.host.index)?;
         let source = self
@@ -587,7 +622,11 @@ impl GameHost<'_, '_, '_, '_> {
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<super::CallResult>> {
-        let mut port = PlayerLineup::new(self, function == Native::PlayerFaceTalk)?;
+        let mut port = if function == Native::ObjectLineUp {
+            PlayerLineup::for_receiver(self)?
+        } else {
+            PlayerLineup::new(self, function == Native::PlayerFaceTalk)?
+        };
         let mut tasks = std::mem::take(&mut port.host.registry.actors[port.host.index].tasks);
         let result = tasks.call(
             (function, kind),
@@ -615,7 +654,14 @@ impl GameHost<'_, '_, '_, '_> {
         let talk = self.registry.actors[self.index]
             .tasks
             .is_face_talk_task(token);
-        let mut port = PlayerLineup::new(self, talk)?;
+        let object = self.registry.actors[self.index]
+            .tasks
+            .is_object_lineup_task(token);
+        let mut port = if object {
+            PlayerLineup::for_receiver(self)?
+        } else {
+            PlayerLineup::new(self, talk)?
+        };
         let mut tasks = std::mem::take(&mut port.host.registry.actors[port.host.index].tasks);
         let result = tasks.poll(
             token,

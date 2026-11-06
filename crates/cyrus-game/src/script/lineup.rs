@@ -97,6 +97,8 @@ pub trait LineupHost: LineupPort {
     fn receiver_distance(&mut self) -> anyhow::Result<i32>;
     /// The installed lineup distance in Q8 units.
     fn lineup_distance(&mut self) -> anyhow::Result<i32>;
+    /// `ObjectLineUp`'s reference: the script-source actor's local position and heading.
+    fn source_reference(&mut self) -> anyhow::Result<Reference>;
     /// `PlayerFaceTalk`'s target: the receiver's local X/Z plus the X/Z of `(0, 0, distance)`
     /// through its orientation matrix (wrapping), and the receiver's heading.
     fn talk_target(&mut self, distance: i32) -> anyhow::Result<([i32; 2], u16)>;
@@ -272,6 +274,41 @@ pub fn face_talk<P: LineupPort + ?Sized>(
         return Ok(1);
     }
     Ok(finish_default(port))
+}
+
+/// `ObjectLineUp`'s mover (the receiver walks to the source actor's frame): a stale collision
+/// response abandons first (return state six, flag cleared); otherwise roll levelling and the
+/// alignment flag, then arrival turns to the final heading and the default animation ends it,
+/// else the facing step, then the movement admission and forward step, whose rejected step
+/// finishes like an arrival; any other outcome repeats the stale test and continues. Zero when
+/// done, one while continuing.
+pub fn object_mover<P: LineupPort + ?Sized>(
+    port: &mut P,
+    angle: i32,
+    offsets: [i32; 2],
+    reference: Reference,
+) -> anyhow::Result<i32> {
+    if port.stale_response() {
+        port.abandon(true);
+        return Ok(0);
+    }
+    port.level_roll();
+    port.set_hook_flag();
+    let (heading, [x, z]) = rotated_target(angle, offsets, reference)?;
+    if port.arrival(x, z) {
+        return Ok(finish_turn(port, heading));
+    }
+    if port.face_point(x, z) {
+        return Ok(1);
+    }
+    if port.permitted(x, z) && !port.step(CloseStep::Forward, x, z) {
+        return Ok(finish_turn(port, heading));
+    }
+    if port.stale_response() {
+        port.abandon(true);
+        return Ok(0);
+    }
+    Ok(1)
 }
 
 /// The default animation request that ends an alignment: complete, it clears the alignment flag.
@@ -1110,6 +1147,87 @@ mod tests {
                 flag,
                 "row {index}"
             );
+        }
+    }
+
+    #[test]
+    fn object_mover_follows_the_original_order_of_arrival_facing_admission_and_step() {
+        let reference = Reference {
+            position: [1000, 0, 2000],
+            heading: 100,
+        };
+        let port = |stale: bool, answers: &[(&str, &[i32])]| Scripted {
+            stale,
+            heading: 0,
+            position: [0, 0],
+            script: answers
+                .iter()
+                .map(|(name, values)| ((*name).to_string(), values.to_vec()))
+                .collect(),
+            used: BTreeMap::new(),
+            log: vec![],
+            called: 0,
+            state: 0,
+            hook: false,
+            masked: false,
+            age_over: false,
+        };
+        fn names(port: &Scripted) -> Vec<String> {
+            port.log.iter().map(|(name, _)| name.clone()).collect()
+        }
+        // A stale collision response abandons before anything else: state six, flag cleared.
+        let mut stale = port(true, &[]);
+        assert_eq!(object_mover(&mut stale, 0, [0, 0], reference).unwrap(), 0);
+        assert_eq!((stale.state, stale.hook, stale.log.len()), (6, false, 0));
+        // Arrival turns to the half-turn heading, then the default animation clears the flag.
+        let mut arrived = port(false, &[("arrive", &[1]), ("turn", &[0]), ("anim", &[1])]);
+        assert_eq!(object_mover(&mut arrived, 0, [0, 0], reference).unwrap(), 0);
+        assert_eq!(names(&arrived), ["arrive", "turn", "anim"]);
+        assert_eq!(arrived.log[0].1, [1000, 2000]);
+        assert_eq!(arrived.log[1].1, [i32::from(opposite(100))]);
+        assert!(!arrived.hook);
+        // Still turning, or the animation not complete, keeps the alignment going with the flag set.
+        let mut turning = port(false, &[("arrive", &[1]), ("turn", &[1])]);
+        assert_eq!(object_mover(&mut turning, 0, [0, 0], reference).unwrap(), 1);
+        assert!(turning.hook);
+        // Not arrived: a facing step still turning continues without admission or step.
+        let mut facing = port(false, &[("arrive", &[0]), ("face", &[1])]);
+        assert_eq!(object_mover(&mut facing, 0, [0, 0], reference).unwrap(), 1);
+        assert_eq!(names(&facing), ["arrive", "face"]);
+        // Facing done, movement admitted and the forward step rejected: finishes like an arrival.
+        let mut rejected = port(
+            false,
+            &[
+                ("arrive", &[0]),
+                ("face", &[0]),
+                ("permit", &[1]),
+                ("fwd", &[0]),
+                ("turn", &[0]),
+                ("anim", &[1]),
+            ],
+        );
+        assert_eq!(
+            object_mover(&mut rejected, 0, [0, 0], reference).unwrap(),
+            0
+        );
+        assert_eq!(
+            names(&rejected),
+            ["arrive", "face", "permit", "fwd", "turn", "anim"]
+        );
+        assert!(!rejected.hook);
+        // A step that moved, or no admission, continues.
+        for permit in [1, 0] {
+            let mut moving = port(
+                false,
+                &[
+                    ("arrive", &[0]),
+                    ("face", &[0]),
+                    ("permit", &[permit]),
+                    ("fwd", &[1]),
+                ],
+            );
+            assert_eq!(object_mover(&mut moving, 0, [0, 0], reference).unwrap(), 1);
+            assert!(moving.hook);
         }
     }
 }
