@@ -3733,6 +3733,9 @@ fn slave_family_controls_change_nothing_and_return_zero_for_any_master_byte() {
         Native::EnableSlaves,
         Native::DisableSlaves,
         Native::KillSlaves,
+        Native::HideSlaves,
+        Native::ShowSlaves,
+        Native::DetachSlaves,
     ] {
         for master in [0, 1, 255] {
             let mut scripts = random_scripts(function, vec![], Object::Me);

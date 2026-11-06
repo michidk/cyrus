@@ -4464,19 +4464,21 @@
     },
     {
       "native": "DetachSlaves",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument family detachment control",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed slave family control: no state change, zero returned",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::slave_family_controls_change_nothing_and_return_zero_for_any_master_byte"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/187",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6604759945"
       ],
-      "limits": "Verified: installed declaration has zero arguments; complete original handler, receiver predicate and recursive lookup pass 15 constructed instruction contexts and five wrong-return/traversal controls. Zero attr_master returns zero immediately; otherwise shared lookup exhausts valid finite acyclic child/sibling trees without selecting a node. Later detach-helper calls are unreachable, so return is zero with only traversal scratch changed and no actor/attachment/tree mutation. Dormant helper semantics, malformed/cyclic graphs and live original/native/browser acceptance are outside this claim. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
-      "reviewed_revision": "8a166f76f7a28c49eda3dccbed2a31828712f136"
+      "limits": "Verified: installed declaration has zero arguments; complete original handler, receiver predicate and recursive lookup pass 15 constructed instruction contexts and five wrong-return/traversal controls. Zero attr_master returns zero immediately; otherwise shared lookup exhausts valid finite acyclic child/sibling trees without selecting a node. Later detach-helper calls are unreachable, so return is zero with only traversal scratch changed and no actor/attachment/tree mutation. Dormant helper semantics, malformed/cyclic graphs and live original/native/browser acceptance are outside this claim. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run. Verified public routed dispatch: no arguments, no actor, attribute, killed-state or family change for master bytes 0, 1 and 255, zero returned, matching the published finite-acyclic-family contract (the family lookup never selects a node, so the visibility and attachment writes are unreachable). Unknown: cyclic or malformed family structures (the original has no cycle check), installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "e90345564a28310fa6858a56a9bec9e297475f82"
     },
     {
       "native": "FixSlaveAngle",
@@ -4496,19 +4498,21 @@
     },
     {
       "native": "HideSlaves",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument family visibility control",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed slave family control: no state change, zero returned",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::slave_family_controls_change_nothing_and_return_zero_for_any_master_byte"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/186",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6604684460"
       ],
-      "limits": "Verified: canonical declaration has zero arguments; complete original handlers, receiver predicate and shared lookup pass 30 constructed instruction cases and five changed-return/traversal controls. Zero attr_master returns zero immediately. For valid finite acyclic family trees, lookup traverses children/siblings without selecting a node; later visibility writes are unreachable and both functions return zero, changing only internal traversal scratch. This does not establish malformed/cyclic graph behavior or live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
-      "reviewed_revision": "a77cf7d2f756c75400b06d849f6486d3978d3c91"
+      "limits": "Verified: canonical declaration has zero arguments; complete original handlers, receiver predicate and shared lookup pass 30 constructed instruction cases and five changed-return/traversal controls. Zero attr_master returns zero immediately. For valid finite acyclic family trees, lookup traverses children/siblings without selecting a node; later visibility writes are unreachable and both functions return zero, changing only internal traversal scratch. This does not establish malformed/cyclic graph behavior or live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run. Verified public routed dispatch: no arguments, no actor, attribute, killed-state or family change for master bytes 0, 1 and 255, zero returned, matching the published finite-acyclic-family contract (the family lookup never selects a node, so the visibility and attachment writes are unreachable). Unknown: cyclic or malformed family structures (the original has no cycle check), installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "e90345564a28310fa6858a56a9bec9e297475f82"
     },
     {
       "native": "KillSlaves",
@@ -4530,19 +4534,21 @@
     },
     {
       "native": "ShowSlaves",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument family visibility control",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed slave family control: no state change, zero returned",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::slave_family_controls_change_nothing_and_return_zero_for_any_master_byte"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/186",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6604684460"
       ],
-      "limits": "Verified: canonical declaration has zero arguments; complete original handlers, receiver predicate and shared lookup pass 30 constructed instruction cases and five changed-return/traversal controls. Zero attr_master returns zero immediately. For valid finite acyclic family trees, lookup traverses children/siblings without selecting a node; later visibility writes are unreachable and both functions return zero, changing only internal traversal scratch. This does not establish malformed/cyclic graph behavior or live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
-      "reviewed_revision": "a77cf7d2f756c75400b06d849f6486d3978d3c91"
+      "limits": "Verified: canonical declaration has zero arguments; complete original handlers, receiver predicate and shared lookup pass 30 constructed instruction cases and five changed-return/traversal controls. Zero attr_master returns zero immediately. For valid finite acyclic family trees, lookup traverses children/siblings without selecting a node; later visibility writes are unreachable and both functions return zero, changing only internal traversal scratch. This does not establish malformed/cyclic graph behavior or live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run. Verified public routed dispatch: no arguments, no actor, attribute, killed-state or family change for master bytes 0, 1 and 255, zero returned, matching the published finite-acyclic-family contract (the family lookup never selects a node, so the visibility and attachment writes are unreachable). Unknown: cyclic or malformed family structures (the original has no cycle check), installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "e90345564a28310fa6858a56a9bec9e297475f82"
     },
     {
       "native": "PipeAroundMe",

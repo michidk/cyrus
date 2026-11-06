@@ -6717,7 +6717,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[self.index].attributes[attribute] != 0,
             )));
         }
-        // EnableSlaves, DisableSlaves and KillSlaves search the family tree for the receiver, but the
+        // EnableSlaves, DisableSlaves, KillSlaves, HideSlaves, ShowSlaves and DetachSlaves search the
+        // family tree for the receiver, but the
         // shared lookup never selects a node. For a finite acyclic family they change nothing,
         // leave the global slave scheduling alone and return zero. Cyclic families are outside
         // the contract.
@@ -6725,6 +6726,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             Native::EnableSlaves,
             Native::DisableSlaves,
             Native::KillSlaves,
+            Native::HideSlaves,
+            Native::ShowSlaves,
+            Native::DetachSlaves,
         ]
         .contains(&function)
         {
