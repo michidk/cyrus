@@ -796,6 +796,19 @@ impl ActorSpatial {
         }))
     }
 
+    /// `DistanceFromLocation`: the length from the receiver's current local coordinates to the
+    /// selected location, with the selection `DistanceToLocation` uses. The differences wrap at
+    /// 32 bits and an out-of-range length converts to the x87 integer-indefinite value, as the
+    /// original's masked conversion does, instead of failing.
+    pub fn location_distance_from_local(&self, location: i32) -> Result<i32> {
+        let target = self
+            .selected_location(location)
+            .map_err(|error| anyhow::anyhow!("DistanceFromLocation: {error}"))?;
+        Ok(rounded_distance_or_indefinite(std::array::from_fn(
+            |axis| target[axis].wrapping_sub(self.local.position[axis]),
+        )))
+    }
+
     /// Distance the `RTX` task compares with `dialog_max_distance`: the rounded Euclidean length of
     /// the receiver-to-player difference, shifted right eight bits (arithmetic) to whole units.
     /// Unlike `PlayerDistance` it is not replaced by the `neversaydie` override.
@@ -920,7 +933,7 @@ fn serialize_matrix<S: serde::Serializer>(
 }
 
 pub use cyrus_collision::distance::rounded_distance;
-use cyrus_collision::distance::single_precision_length;
+use cyrus_collision::distance::{rounded_distance_or_indefinite, single_precision_length};
 
 /// Original single-precision normalization to Q16, using nearest-even integers.
 pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {
@@ -1451,6 +1464,23 @@ mod tests {
                 "{position:?} to {location:?}"
             );
         }
+    }
+
+    #[test]
+    fn distance_from_location_measures_from_the_local_position_through_the_masked_helper() {
+        let table = vec![[0; 3], [3, 4, 0], [2_147_483_647, 0, 0]];
+        let actor = receiver([0; 3], table.clone());
+        assert_eq!(actor.location_distance_from_local(0).unwrap(), 0);
+        assert_eq!(actor.location_distance_from_local(1).unwrap(), 5);
+        assert_eq!(actor.location_distance_from_local(2).unwrap(), i32::MIN);
+        // Selection matches DistanceToLocation: out of range selects home, the count is unsupported.
+        assert_eq!(actor.location_distance_from_local(-1).unwrap(), 0);
+        assert_eq!(actor.location_distance_from_local(4).unwrap(), 0);
+        assert!(actor.location_distance_from_local(3).is_err());
+        // The receiver's linked position is not used; differences wrap at 32 bits.
+        let moved = receiver([3, 4, 0], table);
+        assert_eq!(moved.location_distance_from_local(1).unwrap(), 0);
+        assert_eq!(moved.location_distance_from_local(0).unwrap(), 5);
     }
 
     #[test]

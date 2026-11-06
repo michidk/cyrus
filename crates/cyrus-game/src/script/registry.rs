@@ -8280,6 +8280,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(visible)));
         }
+        if function == Native::DistanceFromLocation {
+            let [location] = arguments else {
+                anyhow::bail!("DistanceFromLocation requires one argument")
+            };
+            return Ok(CallResult::Complete(
+                self.registry
+                    .spatial(id)?
+                    .location_distance_from_local(location.integer()?)?,
+            ));
+        }
         if function == Native::DistanceToLocation {
             let [location] = arguments else {
                 anyhow::bail!("DistanceToLocation requires one argument")

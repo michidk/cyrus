@@ -3566,17 +3566,21 @@
     },
     {
       "native": "DistanceFromLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP spatial dispatch; original location-selection/distance-helper boundary",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Production named receiver-local-to-location distance query with the shared location selector and masked distance helper",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ActorSpatial::location_distance_from_local",
+      "tests": [
+        "crates/cyrus-game/src/script/spatial.rs::distance_from_location_measures_from_the_local_position_through_the_masked_helper",
+        "crates/cyrus-game/tests/script_registry.rs::distance_from_location_measures_from_the_current_local_position_through_public_calls"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/241",
-        "https://github.com/michidk/redguard-preservation/pull/244"
+        "https://github.com/michidk/redguard-preservation/pull/244",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6692723284"
       ],
-      "limits": "Verified original one-argument native/location selector: signed inclusive table bound, saved-start fallback, wrapped XYZ selected-minus-local-current differences, metric return forwarding. Wrapper/selector1120 contexts/11 controls with metric controlled separately. Original complete metric/sqrt nonnegative path independently executed1644 contexts across4 x87 rounding modes/3 precision controls with8 effective mutations and independent arithmetic reference. Signed inputs become single precision; x87 squares/additions, double sqrt argument, single sqrt result, active-rounding signed integer conversion; masked out-of-range conversion0x80000000. Incoming process control-word initialization, unmasked exceptions/nonempty FPU stack, negative-root library error path, producers, malformed admission, exhaustive domain, VM/natural original/native/browser Unknown. Current named implementation remains missing. No Rust tests/game runtime run.",
+      "limits": "Verified published selector and helper contract. A public routed call measures from the receiver's current local coordinates (not its linked position) to the selected location through the shared rounded-distance helper: (3, 4, 0) is five, (1, 1, 0) is one, zero at the start; negative and oversized selectors select the start; an out-of-range length returns the integer-indefinite value instead of failing; the selector equal to the location count is an explicit error because the original reads past the table; no prepared spatial state is an error. The original absent-table fallback to the saved start has no representation distinct from location zero here. The shared helper is verified against original-emulator rows through DistanceToLocation. Incoming x87 control word, unmasked exceptions and natural authored gameplay parity remain Unknown.",
       "reviewed_revision": "73a666517fc50e7e673c465bb778b2f3714db411"
     },
     {

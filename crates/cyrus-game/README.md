@@ -579,3 +579,13 @@ newly indexed slot. The receiver's own broadcast selection does not move. It sha
 with `SendBroadcast`. The contract follows preservation's
 [ReplyBroadcastSender entry write](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#replybroadcastsender-entry-write).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `DistanceFromLocation(location)` returns the length from the receiver's current local
+coordinates to the selected location, selecting as `DistanceToLocation` does (a negative or
+oversized selector selects the start) and converting through the shared mixed-precision helper:
+an out-of-range length returns the signed minimum rather than failing. The selector equal to the
+location count is a contextual error because the original reads past the table. The contract
+follows preservation's
+[location selection](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#distancefromlocation-location-selection-and-distance-helper-boundary)
+and [numerical helper](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#distancefromlocation-numerical-distance-helper).
+Natural installed gameplay parity remains Unknown.

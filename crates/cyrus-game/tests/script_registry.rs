@@ -48057,5 +48057,41 @@ mod player_tilt_tests;
 #[path = "script_registry/delete_broadcast.rs"]
 mod delete_broadcast_tests;
 
+#[test]
+fn distance_from_location_measures_from_the_current_local_position_through_public_calls() {
+    let home = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    // Location zero is the start: a receiver still at its start is zero away, and one moved by
+    // a (3, 4, 0) offset is five away (original rounding), whichever selector names the start.
+    let call = |offset: [i32; 3], selector: i32| {
+        let position = [0, 1, 2].map(|axis| home[axis] + offset[axis]);
+        let world = run_native_world_with(
+            &[
+                (Native::SetPosition, &position),
+                (Native::DistanceFromLocation, &[selector]),
+            ],
+            true,
+        )
+        .unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    for selector in [0, -1, i32::MAX] {
+        assert_eq!(call([0; 3], selector), 0, "selector {selector}");
+        assert_eq!(call([3, 4, 0], selector), 5, "selector {selector}");
+        assert_eq!(call([1, 1, 0], selector), 1, "selector {selector}");
+    }
+    // Exactly one selector, the location count, reads past the table: an explicit error.
+    let failing: Vec<i32> = (0..16)
+        .filter(|&selector| {
+            run_native_world_with(&[(Native::DistanceFromLocation, &[selector])], true).is_err()
+        })
+        .collect();
+    assert_eq!(failing.len(), 1, "{failing:?}");
+    // Without prepared spatial state the call cannot run.
+    assert!(run_native_world(&[(Native::DistanceFromLocation, &[0])]).is_err());
+}
+
 #[path = "script_registry/player_force_talk.rs"]
 mod player_force_talk_tests;
