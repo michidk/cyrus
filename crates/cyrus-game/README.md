@@ -570,3 +570,12 @@ writer with `SendMessage`, so class-zero message entries and broadcasts live in 
 contract follows preservation's
 [SendBroadcast entry write](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#sendbroadcast-entry-write).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `ReplyBroadcastSender(value)` answers the sender of the receiver's selected broadcast entry
+on channel zero: unless the value is zero, nothing is selected, or the selected sender is null or
+the receiver itself, it appends an entry with the receiver as sender, that sender as recipient and
+the value unchanged, advancing the write cursor (wrap at the eight-entry limit) and clearing the
+newly indexed slot. The receiver's own broadcast selection does not move. It shares the writer
+with `SendBroadcast`. The contract follows preservation's
+[ReplyBroadcastSender entry write](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#replybroadcastsender-entry-write).
+Natural installed gameplay parity remains Unknown.

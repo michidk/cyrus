@@ -615,10 +615,14 @@ fn is_broadcast_waiting_is_one_exactly_when_the_receiver_has_a_broadcast_selecti
 }
 
 fn send_broadcast_scripts(arguments: Vec<Value>) -> Scripts {
+    broadcast_write_scripts(Native::SendBroadcast, arguments)
+}
+
+fn broadcast_write_scripts(native: Native, arguments: Vec<Value>) -> Scripts {
     let mut scripts = actor_reference_scripts(Object::Me);
     let function_id = scripts.definition.functions.len() as u16;
     scripts.definition.functions.push(Function {
-        name: Native::SendBroadcast,
+        name: native,
         kind: CallKind::Function,
         param_count: 1,
     });
@@ -633,7 +637,7 @@ fn send_broadcast_scripts(arguments: Vec<Value>) -> Scripts {
         .operation = Operation::Call {
         call: Call {
             function_id,
-            function: Native::SendBroadcast,
+            function: native,
             kind: CallKind::Function,
             target: Object::Me,
             arguments,
@@ -724,4 +728,105 @@ fn send_broadcast_zero_value_changes_nothing_and_other_forms_fail_before_writing
     let error = format!("{:#}", actor_reference_step(&mut world, b).unwrap_err());
     assert!(error.contains("integer"), "{error}");
     assert_eq!(world.selected_broadcast_sender(a).unwrap(), None);
+}
+
+fn reply_scripts(arguments: Vec<Value>) -> Scripts {
+    broadcast_write_scripts(Native::ReplyBroadcastSender, arguments)
+}
+
+#[test]
+fn reply_broadcast_sender_answers_the_selected_broadcasts_sender_on_channel_zero() {
+    let scripts = reply_scripts(vec![Value::Integer { value: 0x222 }]);
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    // Actor 0 will read the reply from slot one; actor 1 (the caller) selects slot zero.
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][0]["broadcast_index"] = 1.into()
+    });
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_broadcast(a, CombatMessageCode::from(0x111))
+        .unwrap();
+    // Slot one is the next write: actor 0 has no selection until the reply arrives.
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), None);
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    // The reply names actor 1 as sender and actor 0 as recipient, with the value unchanged.
+    assert_eq!(world.selected_broadcast_sender(a).unwrap(), Some(b));
+    assert_eq!(world.receive_broadcast(a).unwrap(), 0x222);
+    // Actor 1's own selection did not move, so it still sees the original broadcast first.
+    assert_eq!(selection(&world, 1), 0);
+    assert_eq!(world.selected_broadcast_sender(b).unwrap(), Some(a));
+    assert_eq!(world.receive_broadcast(b).unwrap(), 0x111);
+}
+
+#[test]
+fn reply_broadcast_sender_writes_nothing_without_an_answerable_sender_or_a_value() {
+    // (selection of the caller, who broadcast, value)
+    for (selection, broadcaster, value) in [
+        (0, None, 0x222),    // nothing selected
+        (0, Some(0), 0),     // zero value
+        (0, Some(1), 0x222), // the caller is the sender
+        (3, Some(0), 0x222), // a selected slot never written has a null sender
+    ] {
+        let scripts = reply_scripts(vec![Value::Integer { value }]);
+        let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let mut world = broadcast_restore(&world, &scripts, |saved| {
+            saved["actors"][1]["broadcast_index"] = selection.into()
+        });
+        if let Some(index) = broadcaster {
+            let sender = world.id(index).unwrap();
+            world
+                .send_broadcast(sender, CombatMessageCode::from(0x111))
+                .unwrap();
+        }
+        let before = serde_json::to_value(world.globals()).unwrap();
+        let b = world.id(1).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        assert_eq!(
+            serde_json::to_value(world.globals()).unwrap(),
+            before,
+            "selection {selection} broadcaster {broadcaster:?} value {value}"
+        );
+    }
+}
+
+#[test]
+fn reply_broadcast_sender_wraps_the_write_cursor_and_reports_failures_before_writing() {
+    let scripts = reply_scripts(vec![Value::Integer { value: 0x222 }]);
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][0]["broadcast_index"] = 7.into()
+    });
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    // Seven broadcasts leave the write cursor on slot seven; the reply fills it, wraps the cursor
+    // to zero and clears slot zero, so actor 1 (selection zero) has nothing left to read.
+    for _ in 0..7 {
+        world
+            .send_broadcast(a, CombatMessageCode::from(0x111))
+            .unwrap();
+    }
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    assert_eq!(world.receive_broadcast(b).unwrap(), 0);
+    assert_eq!(world.receive_broadcast(a).unwrap(), 0x222);
+    // A selection outside the queue fails before anything is written.
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 200.into()
+    });
+    let b = world.id(1).unwrap();
+    let before = serde_json::to_value(world.globals()).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    let error = format!("{:#}", actor_reference_step(&mut world, b).unwrap_err());
+    assert!(error.contains("read cursor 200 outside queue"), "{error}");
+    assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+    // Any other argument count is rejected at prepare, a non-integer value fails the call.
+    let Err(error) = ScriptWorld::prepare(&reply_scripts(vec![]), 17) else {
+        panic!("a wrong argument count must be rejected at prepare")
+    };
+    assert!(
+        format!("{error:#}").contains("ReplyBroadcastSender"),
+        "{error:#}"
+    );
 }

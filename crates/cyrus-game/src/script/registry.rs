@@ -1036,6 +1036,31 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// `ReplyBroadcastSender(value)`: unless the value is zero, no broadcast is selected, or the
+    /// selected sender is null or the receiver itself, write one entry on channel zero (sender the
+    /// receiver, recipient the selected broadcast's sender, the value). The receiver's own
+    /// broadcast selection is unchanged.
+    pub fn reply_to_broadcast_sender(&mut self, actor: ScriptActorId, value: i32) -> Result<()> {
+        if value == 0 {
+            return Ok(());
+        }
+        let Some(Some(sender)) = self.selected_broadcast_entry(actor)? else {
+            return Ok(());
+        };
+        if sender == actor {
+            return Ok(());
+        }
+        self.globals.combat_messages.send(
+            0,
+            super::CombatMessage {
+                sender: actor,
+                receiver: Some(sender),
+                code: value.into(),
+            },
+        );
+        Ok(())
+    }
+
     /// `ReceiveMessage`: see [`super::CombatMessages::receive`].
     pub fn receive_message(&mut self, actor: ScriptActorId) -> Result<i32> {
         let index = self.resolve(actor)?;
@@ -7232,6 +7257,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let sender = self.registry.id(self.index)?;
             self.registry
                 .send_broadcast(sender, value.integer()?.into())?;
+            return Ok(CallResult::Complete(0));
+        }
+        // ReplyBroadcastSender answers the selected broadcast's sender on channel zero.
+        if function == Native::ReplyBroadcastSender {
+            let [value] = arguments else {
+                anyhow::bail!("ReplyBroadcastSender requires one value")
+            };
+            let receiver = self.registry.id(self.index)?;
+            self.registry
+                .reply_to_broadcast_sender(receiver, value.integer()?)?;
             return Ok(CallResult::Complete(0));
         }
         // IsBroadcastWaiting is one when the receiver's broadcast selection differs from the

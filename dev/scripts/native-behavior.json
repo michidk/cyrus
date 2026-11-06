@@ -2700,17 +2700,22 @@
     },
     {
       "native": "ReplyBroadcastSender",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast reply entry-write and global-index update contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named reply to the selected broadcast's sender through the shared channel-zero queue writer",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::reply_to_broadcast_sender -> CombatMessages::send",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::reply_broadcast_sender_answers_the_selected_broadcasts_sender_on_channel_zero",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::reply_broadcast_sender_writes_nothing_without_an_answerable_sender_or_a_value",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::reply_broadcast_sender_wraps_the_write_cursor_and_reports_failures_before_writing"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/73625e301f01ac4b532cbb1c4679cfeea91c3ca5",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614227600"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614227600",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6692584337"
       ],
-      "limits": "Verified installed one-argument declaration/exact binding/full289-byte native; availability106/sender158-byte accepted helper identities audited once and joint chain executed without semantic interception. 72,912 original-instruction contexts/17 effective semantic controls, including 7,376 full256-entry arrays, full index/global-byte pairs, selected argument/sender/signed-limit/receiver/pattern variations and alias paths. Zero argument/unavailable/null-self sender returns0 without entry mutation. Otherwise stores receiver/sender token/argument at global index, increments byte/signed-limit reset, re-reads context pointer and clears new indexed entry; append-before-index-before-clear writes exact even on same-slot or selected-entry alias. Receiver cursor unchanged; EDX scratch, five preserved registers. No sender dereference/allocation/release/destination-content gate. Diagnostic IO controlled returning with repair or inactive paths, including wrapper/helper double diagnostic. Unknown malformed admission, producers/consistency/capacity/ownership/lifetime/consumption, concurrency/reentrancy, natural diagnostics, VM/original/native/browser/full joint domain. No invented queue model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "limits": "Verified published entry-write contract. Public VM assertions cover a reply written on channel zero with the caller as sender, the selected broadcast's sender as recipient and the value unchanged, read by the original sender through ReceiveBroadcast and GetBroadcastSender while the caller's own selection stays put; no write for a zero value, no selection, a never-written selected slot (null sender) or the caller as sender; write-cursor wrap with the newly indexed slot cleared; an out-of-queue selection failing before any write and a wrong argument count rejected at prepare. The production context is always initialized with eight entries per channel; absent-context diagnostics are not exposed. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "dca032c60447b08469b0b92c3fa655fb58bc3c35"
     },
     {
