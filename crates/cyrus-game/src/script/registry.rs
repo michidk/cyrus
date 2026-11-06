@@ -704,6 +704,8 @@ pub struct ScriptWorld {
     standing_height: Option<i32>,
     /// The image the running `ViewGXA` task has the host draw over the world frame.
     gxa_overlay: Option<super::tasks::GxaOverlay>,
+    /// `AnimateGXA`'s shared animation progress. Not saved: a restored world restarts the cycle.
+    gxa_progress: i32,
     /// The selected player's placement raised by `MovePlayerAboveMe`, applied at the end of the
     /// frame loop.
     pending_player_placement: Option<([i32; 3], u16)>,
@@ -1390,6 +1392,7 @@ impl ScriptWorld {
             camera_settings: scripts.camera.clone(),
             standing_height: None,
             gxa_overlay: None,
+            gxa_progress: 0,
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),
@@ -3730,6 +3733,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             bounce: None,
             point: None,
             gxa_overlay: Some(&mut self.registry.gxa_overlay),
+            gxa_animation: self
+                .inputs
+                .nominal_ticks
+                .map(|ticks| super::tasks::GxaAnimation {
+                    progress: &mut self.registry.gxa_progress,
+                    ticks,
+                }),
         };
         let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -8164,6 +8174,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 bounce: None,
                 point: None,
                 gxa_overlay: Some(&mut self.registry.gxa_overlay),
+                gxa_animation: self
+                    .inputs
+                    .nominal_ticks
+                    .map(|ticks| super::tasks::GxaAnimation {
+                        progress: &mut self.registry.gxa_progress,
+                        ticks,
+                    }),
             },
         );
         self.finish_camera_update(result.is_ok())?;
@@ -8418,6 +8435,7 @@ mod fighting_tests {
             camera_settings: Default::default(),
             standing_height: None,
             gxa_overlay: None,
+            gxa_progress: 0,
             pending_player_placement: None,
             effects: None,
             ropes: Vec::new(),
