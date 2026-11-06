@@ -384,3 +384,102 @@ fn get_broadcast_sender_routed_call_reads_the_named_receivers_selection() {
     );
     assert_eq!(selection(&world, 1), 1);
 }
+
+/// Restore the fixture with the given per-actor broadcast selections, then step the caller
+/// (actor 1) through the call and its dependent statement, returning its result local.
+fn receive_broadcast_world(target: Object, selections: [u64; 2]) -> (ScriptWorld, Scripts) {
+    let scripts = message_call_scripts(Native::ReceiveBroadcast, target);
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let world = broadcast_restore(&world, &scripts, |saved| {
+        for (index, selection) in selections.into_iter().enumerate() {
+            saved["actors"][index]["broadcast_index"] = selection.into();
+        }
+    });
+    (world, scripts)
+}
+
+fn receive_result(world: &mut ScriptWorld) -> anyhow::Result<cyrus_script::ScriptValue> {
+    let caller = world.id(1).unwrap();
+    actor_reference_step(world, caller)?;
+    actor_reference_step(world, caller)?;
+    Ok(world.actors()[1].runtime().unwrap().variables()[2])
+}
+
+#[test]
+fn receive_broadcast_skips_other_receivers_and_keeps_the_accepted_entry_selected() {
+    use cyrus_script::ScriptValue;
+    // Direct: actor 1 receives for itself. Routed: actor 1 receives on behalf of actor 0.
+    for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
+        let (mut world, _) = receive_broadcast_world(target.clone(), [0, 0]);
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        let (receiver, other) = if receiver_index == 0 { (a, b) } else { (b, a) };
+        // The first entry is addressed to the other actor and is skipped; the second is ours.
+        world
+            .send_combat_message(receiver, other, CombatMessageCode::HIT)
+            .unwrap();
+        world
+            .send_combat_message(other, receiver, CombatMessageCode::BLOCK)
+            .unwrap();
+        let before = serde_json::to_value(world.globals()).unwrap();
+        assert_eq!(
+            receive_result(&mut world).unwrap(),
+            ScriptValue::Integer(0xd000),
+            "target {target:?}"
+        );
+        // Only the receiver's broadcast selection moved: skipped entry, accepted one stays.
+        assert_eq!(selection(&world, receiver_index), 1, "target {target:?}");
+        assert_eq!(
+            selection(&world, 1 - receiver_index),
+            0,
+            "target {target:?}"
+        );
+        assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+    }
+}
+
+#[test]
+fn receive_broadcast_returns_zero_without_a_selection_or_for_an_unwritten_entry() {
+    use cyrus_script::ScriptValue;
+    // No selection: selection equals channel zero's write cursor.
+    let (mut world, _) = receive_broadcast_world(Object::Me, [0, 0]);
+    assert_eq!(receive_result(&mut world).unwrap(), ScriptValue::Integer(0));
+    assert_eq!(selection(&world, 1), 0);
+    // A selected slot that was never written has no recipient and a zero value: accepted.
+    let (mut world, _) = receive_broadcast_world(Object::Me, [0, 3]);
+    let (sender, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+        .unwrap();
+    assert_eq!(receive_result(&mut world).unwrap(), ScriptValue::Integer(0));
+    assert_eq!(selection(&world, 1), 3);
+}
+
+#[test]
+fn receive_broadcast_skipping_wraps_the_selection_and_ignores_the_class_cursor() {
+    use cyrus_script::ScriptValue;
+    let scripts = message_call_scripts(Native::ReceiveBroadcast, Object::Me);
+    let world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    // Selection on the last slot, with the class-message cursor elsewhere.
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 7.into();
+        saved["actors"][1]["message_read"] = 5.into();
+    });
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    // Eight writes fill channel zero and return its write cursor to zero; every entry is for
+    // actor 0, so the receiver skips slot 7, wraps to zero and finds no selection left.
+    for _ in 0..8 {
+        world
+            .send_combat_message(b, a, CombatMessageCode::HIT)
+            .unwrap();
+    }
+    assert_eq!(receive_result(&mut world).unwrap(), ScriptValue::Integer(0));
+    assert_eq!(selection(&world, 1), 0);
+}
+
+#[test]
+fn receive_broadcast_reports_a_selection_outside_the_queue_before_changing_it() {
+    let (mut world, _) = receive_broadcast_world(Object::Me, [0, 200]);
+    let error = format!("{:#}", receive_result(&mut world).unwrap_err());
+    assert!(error.contains("read cursor 200 outside queue"), "{error}");
+    assert_eq!(selection(&world, 1), 200);
+}

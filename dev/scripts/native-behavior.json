@@ -2654,17 +2654,23 @@
     },
     {
       "native": "ReceiveBroadcast",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original broadcast entry filter, value return and cursor advance contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast entry filter, value return and selection advance over the retained channel-zero owner",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::receive_broadcast -> CombatMessages::receive",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::receive_broadcast_skips_other_receivers_and_keeps_the_accepted_entry_selected",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::receive_broadcast_returns_zero_without_a_selection_or_for_an_unwritten_entry",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::receive_broadcast_skipping_wraps_the_selection_and_ignores_the_class_cursor",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::receive_broadcast_reports_a_selection_outside_the_queue_before_changing_it"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/544bf8a9614defc35c27f5e724e4a5ab2fa9d1ed",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614034764"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6614034764",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6691806661"
       ],
-      "limits": "Verified installed zero-argument declaration/exact binding/full206-byte native. 77,580 original-instruction contexts/14 effective semantic controls cover full256x256 selection/sentinel pairs, all256 selections/two receivers/two patterns/null-self recipients/five raw values, finite skip/wrap/sentinel paths/max8 skipped entries, signed thresholds and controlled returning diagnostics. Direct context first-pointer supplies12-byte entries; no channel/subrecord or ordinary cursor read. Matching/null recipient returns raw value retaining cursor, other recipient advances byte/reset under signed global limit and repeats; sentinel returns0 before entry read. Exact repeated sentinel/first-pointer reads/write order verified. No sender/recipient dereference, entry mutation or release. Formatter/runtime-error IO controlled with repair or immediate sentinel. Unknown malformed receiver/context/array admission, cursor/sentinel/limit/context producers/consistency, lifetime/allocation/consumption, arbitrary nontermination, natural diagnostics, concurrency/reentrancy, VM/original/native/browser/full joint domain. No invented queue service model. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical occurrence does not prove hidden-body absence.",
+      "limits": "Verified published entry-selection contract. Public VM assertions cover no selection, a skipped entry addressed to another receiver advancing only the receiver's broadcast selection with the accepted entry staying selected, direct and object-routed receivers, an unwritten selected slot accepted with value zero, wrap at the eight-entry limit, independence from the class-message cursor, unchanged queue, and an out-of-queue selection as a contextual error before any change. The production context is always initialized with eight entries per channel; absent-context diagnostics and arbitrary capacities are not exposed. SendBroadcast remains separately owned, so only combat and SendMessage entries reach channel zero. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "46c9692e22abd020ce1ed28ed32d85a0d63c68d9"
     },
     {

@@ -990,6 +990,16 @@ impl ScriptWorld {
             .receive(class, actor, &mut receiver.message_read)
     }
 
+    /// `ReceiveBroadcast`: the `ReceiveMessage` skip and admission rule over channel zero, driven by
+    /// the actor's broadcast selection instead of its class-message cursor.
+    pub fn receive_broadcast(&mut self, actor: ScriptActorId) -> Result<i32> {
+        let index = self.resolve(actor)?;
+        let receiver = &mut self.actors[index];
+        self.globals
+            .combat_messages
+            .receive(0, actor, &mut receiver.broadcast_index)
+    }
+
     /// `DeleteMessage`: move the actor's selection to the next entry of its class queue. With no
     /// selection (cursor at the write index) nothing changes. Otherwise the cursor increments and
     /// wraps to zero at the queue's entry count; no entry is released.
@@ -7143,6 +7153,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(
                 self.registry.selected_message_entry(receiver)?.is_some(),
             )));
+        }
+        // ReceiveBroadcast is ReceiveMessage over the broadcast selection and channel zero.
+        if function == Native::ReceiveBroadcast {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "ReceiveBroadcast requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            return Ok(CallResult::Complete(
+                self.registry.receive_broadcast(receiver)?,
+            ));
         }
         // ReceiveMessage returns the value word of the first entry addressed to the receiver.
         if function == Native::ReceiveMessage {

@@ -537,3 +537,13 @@ contextual error. The contract follows preservation's
 [broadcast sender pointer query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getbroadcastsender-query).
 Only combat messages reach channel zero until the broadcast send natives exist; natural
 installed gameplay parity remains Unknown.
+
+Verified: `ReceiveBroadcast()` applies the `ReceiveMessage` admission rule to the receiver's
+broadcast selection over channel zero. It returns zero with no selection; otherwise it skips
+entries addressed to another receiver by advancing only the broadcast selection (wrapping at the
+eight-entry limit) and returns the first entry addressed to the receiver or to no one with its
+value unchanged, leaving that entry selected. A selected slot never written is accepted with
+value zero. Entries, senders and the class-message cursor are untouched, and a selection outside
+the queue is a contextual error before any change. The contract follows preservation's
+[ReceiveBroadcast entry selection](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#receivebroadcast-entry-selection).
+Natural installed gameplay parity remains Unknown.
