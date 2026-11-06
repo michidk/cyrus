@@ -881,6 +881,7 @@ struct CompassInputs<'w, 's> {
     console: Option<Res<'w, cyrus_console::Console>>,
     clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
     logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
+    inventory: Option<Res<'w, cyrus_game::inventory_screen::InventoryScreen>>,
 }
 
 fn configure_scripts(
@@ -958,14 +959,24 @@ fn update(
     if compass.console.as_ref().is_some_and(|console| console.open) {
         return;
     }
-    if compass
-        .logbook
+    let inventory_draw = compass
+        .inventory
         .as_ref()
-        .is_some_and(|screen| screen.inventory_open)
+        .is_some_and(|screen| screen.draw_admitted);
+    if inventory_draw
+        || compass
+            .logbook
+            .as_ref()
+            .is_some_and(|screen| screen.inventory_open)
     {
-        // Inventory redraws the candle over the frozen world HUD.
-        state.candle_visible =
-            script_hud.advance_health_feedback(false, state.lockout, state.candle_mode, 0);
+        // Inventory advances only the candle once per admitted draw, even on the exit update.
+        if !inventory_draw {
+            return;
+        }
+        let health = state.health;
+        state.candle.advance(health);
+        // Each inventory draw pins visibility before closing can clear the logical timer.
+        state.candle_visible = state.lockout == 0;
         for (sprite, mut image, mut node, mut visibility) in &mut sprites {
             if *sprite != HudSprite::Candle {
                 continue;
@@ -2006,84 +2017,126 @@ mod tests {
     }
 
     #[test]
-    fn inventory_projects_the_pinned_candle_over_the_paused_hud() {
+    fn inventory_retains_the_last_candle_during_closing_release_waits() {
         let mut app = compass_app();
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::ZERO,
         ));
+        // One ordinary update first consumes the world's pending candle-show request.
         app.update();
+        app.init_resource::<cyrus_game::inventory_screen::InventoryScreen>();
+        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
+        app.world_mut()
+            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .inventory_open = true;
+        app.world_mut()
+            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .draw_admitted = true;
+        // Closing may already have cleared the logical timer in PreUpdate.
         app.world()
             .resource::<cyrus_game::script::ScriptHud>()
             .set_inventory_candle(false);
         app.update();
-        assert!(!app.world().resource::<HudState>().candle_visible);
-        let candle_sprite = app
-            .world_mut()
-            .query::<(Entity, &HudSprite)>()
-            .iter(app.world())
-            .find(|(_, sprite)| **sprite == HudSprite::Candle)
-            .unwrap()
-            .0;
-        assert_eq!(
-            app.world().get::<Visibility>(candle_sprite),
-            Some(&Visibility::Hidden)
-        );
-        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
-        for lockout in [0, 1, 2, 0] {
-            app.world_mut().resource_mut::<ActivationInputs>().lockout = lockout;
-            app.update();
-            let frame = {
-                let mut state = app.world_mut().resource_mut::<HudState>();
-                state.notices = [24, 24];
-                state.frames.candle[usize::from(state.candle.frame)].clone()
-            };
-            app.world_mut()
-                .resource_mut::<cyrus_game::logbook::LogbookScreen>()
-                .inventory_open = true;
-            app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
-                .set_inventory_candle(true);
+        let candle = app.world().resource::<HudState>().candle;
+        assert!(app.world().resource::<HudState>().candle_visible);
+        app.world_mut()
+            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .draw_admitted = false;
+        for _ in 0..3 {
             app.update();
             let state = app.world().resource::<HudState>();
-            assert_eq!(state.candle_visible, lockout == 0);
-            assert_eq!(state.notices, [24, 24]);
+            assert_eq!(state.candle, candle);
+            assert!(state.candle_visible);
             assert_eq!(
                 app.world()
                     .resource::<cyrus_game::script::ScriptHud>()
                     .health_feedback_ticks(),
-                50
-            );
-            assert_eq!(
-                app.world().get::<Visibility>(candle_sprite),
-                Some(&if lockout == 0 {
-                    Visibility::Inherited
-                } else {
-                    Visibility::Hidden
-                })
-            );
-            if lockout == 0 {
-                assert_eq!(
-                    app.world().get::<ImageNode>(candle_sprite).unwrap().image,
-                    frame
-                );
-                assert_eq!(
-                    app.world().get::<Node>(candle_sprite),
-                    Some(&place([12, 8], [50, 98]))
-                );
-            }
-            app.world_mut()
-                .resource_mut::<cyrus_game::logbook::LogbookScreen>()
-                .inventory_open = false;
-            app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
-                .set_inventory_candle(false);
-            app.update();
-            assert!(!app.world().resource::<HudState>().candle_visible);
-            assert_eq!(
-                app.world().get::<Visibility>(candle_sprite),
-                Some(&Visibility::Hidden)
+                0
             );
         }
+        app.world_mut()
+            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .inventory_open = false;
+        app.update();
+        assert!(!app.world().resource::<HudState>().candle_visible);
+    }
+
+    #[test]
+    fn inventory_draws_advance_only_the_shared_candle_even_while_hidden() {
+        let mut app = compass_app();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::ZERO,
+        ));
+        app.init_resource::<cyrus_game::inventory_screen::InventoryScreen>();
+        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
+        app.world_mut()
+            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .inventory_open = true;
+        app.world()
+            .resource::<cyrus_game::script::ScriptHud>()
+            .set_inventory_candle(true);
+        {
+            let mut state = app.world_mut().resource_mut::<HudState>();
+            state.health = 100;
+            state.candle = Candle::default();
+            state.notices = [24, 24];
+            state.logbook_frame = Some(7);
+            state.elapsed = 0.004;
+        }
+        for (admitted, lockout, expected) in
+            [(true, 0, 1), (false, 0, 1), (true, 1, 2), (true, 0, 3)]
+        {
+            app.world_mut()
+                .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+                .draw_admitted = admitted;
+            app.world_mut().resource_mut::<HudState>().lockout = lockout;
+            app.update();
+            let state = app.world().resource::<HudState>();
+            assert_eq!(state.candle.frame, expected);
+            assert_eq!(state.candle_visible, lockout == 0);
+            assert_eq!(state.notices, [24, 24]);
+            assert_eq!(state.logbook_frame, Some(7));
+            assert_eq!(state.elapsed, 0.004);
+            let (_, image, _, visibility) = app
+                .world_mut()
+                .query::<(&HudSprite, &ImageNode, &Node, &Visibility)>()
+                .iter(app.world())
+                .find(|(sprite, ..)| **sprite == HudSprite::Candle)
+                .unwrap();
+            if lockout == 0 {
+                assert_eq!(
+                    image.image,
+                    app.world().resource::<HudState>().frames.candle[usize::from(expected)]
+                );
+                assert_eq!(*visibility, Visibility::Inherited);
+            } else {
+                assert_eq!(*visibility, Visibility::Hidden);
+            }
+        }
+        app.world_mut()
+            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .inventory_open = false;
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().candle.frame,
+            4,
+            "the exit-request draw survives immediate modal teardown"
+        );
+        assert_eq!(app.world().resource::<HudState>().elapsed, 0.004);
+        app.world_mut()
+            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .draw_admitted = false;
+        app.world_mut().remove_resource::<ScriptActors>();
+        app.world_mut().remove_resource::<ActivationInputs>();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs_f64(1.0 / 60.0),
+        ));
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().candle.frame,
+            0,
+            "world resumes the shared flicker continuation"
+        );
     }
 
     #[test]

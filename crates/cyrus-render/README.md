@@ -389,8 +389,13 @@ it does not resize or offset the coordinate space used by its sibling artwork.
 
 The inventory screen projects its pinned candle over the paused world HUD,
 including conditional visibility mode, and closing the screen clears the timer.
-The candle remains hidden for every nonzero lockout. Inventory candle animation
-cadence remains unverified.
+Verified: each admitted inventory draw advances the shared candle animation once,
+including hidden draws under nonzero lockout. Admission follows changed 18.2 Hz
+BIOS ticks without catching up missed ticks. Unchanged ticks and opening/closing
+release waits retain the last submitted candle without advancing it. The exit draw
+uses pinned visibility even when closing has already cleared the logical timer.
+Other world HUD animations remain paused.
+See preservation’s [inventory cadence](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#inventory-screen).
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta

@@ -25,6 +25,10 @@ CR/VT controls. Cursor phase starts hidden and toggles only on changed sampled B
 divisible by six, without replaying skipped ticks. These rules follow preservation's manual
 logbook contract. Native and browser hosts share the editor and persisted journal owner.
 
+Verified: inventory publishes a draw pulse on each changed BIOS tick after opening
+release, including the exit-request update. Missed ticks admit one draw; release
+waits admit none. Presentation uses this pulse for the shared candle animation.
+
 Verified: inventory closing waits for Inventory and Escape release before sampling
 Activate or Enter once to commit the cursor selection. It then waits for Walk,
 Activate and Enter release in order. Earlier waits do not restart when their keys

@@ -164,6 +164,10 @@ pub struct InventoryScreen {
     pub waiting_for_release: bool,
     /// Gameplay keeps the opening key until it is released, before the first update.
     pub opening: bool,
+    /// True only for the current application update when a changed BIOS tick admits a draw.
+    /// Presentation advances the shared candle once, including the final exit draw.
+    #[serde(skip)]
+    pub draw_admitted: bool,
     pub layout: Layout,
     pub error: Option<String>,
     #[serde(skip)]
@@ -274,6 +278,7 @@ fn drive(
     mut sounds: Option<bevy::prelude::MessageWriter<cyrus_world::sound::SoundCue>>,
 ) {
     use bevy::prelude::KeyCode;
+    screen.draw_admitted = false;
     let tick = crate::clock::bios_tick(time.elapsed());
     let resume =
         |screen: &mut InventoryScreen,
@@ -379,6 +384,7 @@ fn drive(
         return;
     }
     screen.last_tick = Some(tick);
+    screen.draw_admitted = true;
     // Each update polls input once, so a mouse binding reads the release since the last update.
     let mouse = Mouse::ALL.map(|mouse| devices.mouse_held(mouse));
     let previous = std::mem::replace(&mut screen.mouse_held, mouse);
@@ -632,6 +638,40 @@ mod tests {
             .resource_mut::<Time<Real>>()
             .advance_by(std::time::Duration::from_millis(60));
         app.update();
+    }
+
+    #[test]
+    fn admitted_draw_is_one_pulse_per_changed_tick_through_exit() {
+        use bevy::prelude::*;
+        let mut app = close_app(&close_asset(), close_bindings());
+        app.world_mut().resource_mut::<InventoryScreen>().opening = true;
+        close_tick(&mut app, &[KeyCode::KeyI]);
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        close_tick(&mut app, &[]);
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        close_tick(&mut app, &[]);
+        assert!(app.world().resource::<InventoryScreen>().draw_admitted);
+        app.update();
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(std::time::Duration::from_secs(1));
+        app.update();
+        assert!(app.world().resource::<InventoryScreen>().draw_admitted);
+        app.update();
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        close_tick(&mut app, &[KeyCode::Escape]);
+        assert!(app.world().resource::<InventoryScreen>().draw_admitted);
+        assert!(
+            app.world()
+                .resource::<InventoryScreen>()
+                .waiting_for_release
+        );
+        close_tick(&mut app, &[KeyCode::Escape]);
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        close_tick(&mut app, &[]);
+        assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
+        assert!(!app.world().resource::<InventoryScreen>().suspended());
     }
 
     fn close_bindings() -> crate::player::input::PlayerBindings {
