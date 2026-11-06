@@ -35074,7 +35074,7 @@ fn pushed_item_counts_control_use_eligibility_without_changing_selection() {
                     5
                 );
             }
-            let before = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+            let mut before = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
             let (_, mut world, _, _) = make_world();
             let result = world.advance(
                 world.id(0).unwrap(),
@@ -35093,6 +35093,8 @@ fn pushed_item_counts_control_use_eligibility_without_changing_selection() {
             if owned {
                 result.unwrap();
                 assert_eq!(world.flags(), [13]);
+                let used = before["items"]["4"]["used"].as_u64().unwrap() + 1;
+                before["items"]["4"]["used"] = serde_json::json!(used);
             } else {
                 assert!(format!("{:#}", result.unwrap_err()).contains("item not owned"));
                 assert_eq!(world.flags(), [12]);
@@ -46518,4 +46520,157 @@ fn ai_admission_obeys_mode_delay_clearance_and_releases_owned_nodes() {
         assert_eq!(world.actors()[0].attributes()[Attribute::Collide], collide);
         assert_eq!(world.reserve_walk_node(ids[1], 0, 1).unwrap(), admitted);
     }
+}
+
+#[test]
+fn item_used_tracks_completed_use_through_public_callers_and_snapshots() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    struct Store;
+    impl cyrus_game::preferences::PreferenceStore for Store {
+        fn load(
+            &self,
+            _: cyrus_game::preferences::PreferenceKey,
+        ) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let preferences = Preferences::new(Store);
+    let asset = inventory_asset(&[(0, 1), (4, 3), (5, 2)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    assert_eq!(
+        run_item_count_native(&ScriptHud::default(), Native::ItemUsed, &[-1]).unwrap(),
+        0
+    );
+    for id in [0, 4, 5] {
+        assert_eq!(
+            run_item_count_native(&hud, Native::ItemUsed, &[id]).unwrap(),
+            0
+        );
+    }
+    for id in [6, -1, 65536] {
+        let mut world = item_count_world(Native::ItemUsed, &[id]);
+        let error = world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(&format!("ItemUsed({})", id as u32)));
+        assert_eq!(world.flags(), [12]);
+    }
+    for (id, initial) in [(0, 0), (4, 0x7fff_ffff_u32), (4, u32::MAX)] {
+        let mut snapshot = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
+        snapshot["inventory"]["items"][id.to_string()]["used"] = serde_json::json!(initial);
+        let restored = ScriptHud::from_snapshot(
+            &asset,
+            &preferences,
+            serde_json::from_value(snapshot).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            run_item_count_native(&restored, Native::ItemUsed, &[id]).unwrap(),
+            initial as i32
+        );
+        let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+            let function_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: Native::UseItem,
+                param_count: 1,
+                kind: CallKind::Function,
+            });
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+                Operation::ObjectCall {
+                    call: Call {
+                        function_id,
+                        function: Native::UseItem,
+                        target: Object::Player,
+                        kind: CallKind::Function,
+                        arguments: vec![Value::Integer { value: id }],
+                    },
+                },
+                Operation::Increment {
+                    destination: Place::Flag { index: 0 },
+                    delta: 1,
+                },
+                Operation::End { target: 0 },
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(n, operation)| {
+                (
+                    n as u32,
+                    Step {
+                        next: n as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+        });
+        for _ in 0..2 {
+            world
+                .advance(
+                    world.id(0).unwrap(),
+                    ScriptStage::OrdinaryMain,
+                    ScriptInputs {
+                        hud: Some(&restored),
+                        shell_execution: Some(false),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            run_item_count_native(&restored, Native::ItemUsed, &[id]).unwrap(),
+            initial.wrapping_add(1) as i32
+        );
+        let roundtrip =
+            ScriptHud::from_snapshot(&asset, &preferences, restored.snapshot().unwrap()).unwrap();
+        assert_eq!(
+            run_item_count_native(&roundtrip, Native::ItemUsed, &[id]).unwrap(),
+            initial.wrapping_add(1) as i32
+        );
+        run_item_count_native(&roundtrip, Native::RemoveItem, &[id]).unwrap();
+        assert_eq!(
+            run_item_count_native(&roundtrip, Native::ItemUsed, &[id]).unwrap(),
+            initial.wrapping_add(1) as i32
+        );
+    }
+    let mut legacy = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
+    legacy["inventory"]["items"]["4"]
+        .as_object_mut()
+        .unwrap()
+        .remove("used");
+    let legacy = ScriptHud::from_snapshot(
+        &asset,
+        &preferences,
+        serde_json::from_value(legacy).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        format!(
+            "{:#}",
+            run_item_count_native(&legacy, Native::ItemUsed, &[4]).unwrap_err()
+        )
+        .contains("no use history")
+    );
 }

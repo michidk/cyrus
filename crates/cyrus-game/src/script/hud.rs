@@ -382,6 +382,18 @@ impl ScriptHud {
         }
     }
 
+    /// Read a completed-use word; closed item processing skips lookup.
+    pub(super) fn item_used(&self, id: u32) -> Result<i32> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_ref() {
+            Some(items) => items.item_used(id),
+            None => Ok(0),
+        }
+    }
+
     /// Restore a saved count, or return zero without lookup while item processing is closed.
     pub(super) fn pop_item(&self, id: u32) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

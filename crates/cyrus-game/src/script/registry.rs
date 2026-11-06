@@ -5940,6 +5940,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.spawn_shell(name)?;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function == Native::ItemUsed {
+            let [item] = arguments else {
+                anyhow::bail!("ItemUsed requires one argument")
+            };
+            let value = self
+                .inputs
+                .hud
+                .context("ItemUsed inventory host unavailable")?
+                .item_used(item.integer()? as u32)?;
+            return Ok(CallResult::Complete(value));
+        }
         if kind == CallKind::Function && function == Native::UseItem {
             let [item] = arguments else {
                 anyhow::bail!("UseItem requires one argument")

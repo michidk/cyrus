@@ -71,9 +71,7 @@ impl GameHost<'_, '_, '_, '_> {
         let used = hud.begin_item_use(item)?;
         if item == 0 {
             hud.toggle_compass();
-            return Ok(());
-        }
-        if used.item_type == WEAPON_ITEM {
+        } else if used.item_type == WEAPON_ITEM {
             self.registry.actors[selected].attributes[Attribute::Weapon] = item as u8;
             self.draw_sword(player_id)?;
             // Only a draw that began is consumed.
@@ -84,8 +82,7 @@ impl GameHost<'_, '_, '_, '_> {
             if control.living_state != LivingState::DRAWING_SWORD {
                 return Ok(());
             }
-        }
-        if used.item_type == TORCH_ITEM {
+        } else if used.item_type == TORCH_ITEM {
             let torch = self.torch_inputs(selected, Native::UseItem)?;
             let ticks = self
                 .inputs
@@ -105,8 +102,7 @@ impl GameHost<'_, '_, '_, '_> {
                 return Ok(());
             }
             control.held_item = Some(item as u8);
-        }
-        if item == ISLAND_MAP_ITEM {
+        } else if item == ISLAND_MAP_ITEM {
             self.registry.globals.island_map_request = true;
         }
         if let Some((name, limit)) = used.script

@@ -38,6 +38,13 @@ Verified: item use shares the receiver torch-transition predicate. Action states
 ordinary inventory effects. Explicit use retains an attached rope. These gates
 follow preservation's `IsLightingOrUnlighting` and item-use contracts.
 
+Verified: `ItemUsed` reads a wrapping completion counter independently of item
+ownership. Completed use, including compass use, increments it after script and
+drop effects. Refusal and burning-torch dousing leave it unchanged. New inventories
+start at zero; session snapshots preserve the word. Legacy snapshots without use
+history retain an unavailable counter instead of inventing past uses. This follows
+preservation's [ItemUsed contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#itemused).
+
 ## Module guide
 
 | Module | Responsibility |

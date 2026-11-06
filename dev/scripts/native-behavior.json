@@ -5830,18 +5830,19 @@
     },
     {
       "native": "ItemUsed",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
       "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory",
+      "tests": ["crates/cyrus-game/tests/script_registry.rs::item_used_tracks_completed_use_through_public_callers_and_snapshots"],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
-        "https://github.com/michidk/redguard-preservation/pull/285"
+        "https://github.com/michidk/redguard-preservation/pull/285",
+        "https://github.com/michidk/redguard-preservation/pull/300"
       ],
-      "limits": "Verified independent installed function parms1/exact lowercase binding/full118-byte native/117-byte ordered lookup/31-byte string copy. Disabled0/no lookup; enabled full unsigned key/first-equal match/first-greater stop, returns raw stored word unchanged/no type-quantity filter/receiver ignored. Missing writes original error context/source-name copy and requests179.4032 original contexts/10 effective controls:3 callers/3 enables/7 keys/8 finite lists/4 raw words/2 patterns. Full mapped memory/write order-domain/calls/canary; return/five regs/EDX/stack on returning paths. Copy executes original instructions; sole controlled runtime-error boundary stopped at exact request, no error continuation/unwind claim. Unknown runtime-error effects/item word producer/lifecycle/malformed-cyclic lists/VM/natural original/native/browser/exhaustive domain. Production unchanged; no inventory/gameplay/render/Cargo/runtime.",
+      "limits": "Verified original query contract and completion producer. Production public callers read raw wrapping words, skip closed lookup, retain snapshot history and report missing IDs or unknown legacy history. Original CPU witness covers 29 use/query cases and two increment controls. Native/browser isolated callers cover logical inventory effects; natural scene, artwork, audio and timing parity remain unknown.",
       "reviewed_revision": "84f5166fa7b28e875f7d435da523960769eb0f4e"
     },
     {

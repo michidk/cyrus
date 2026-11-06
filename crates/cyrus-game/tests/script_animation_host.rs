@@ -3956,8 +3956,7 @@ fn inventory_snapshot_restores_direct_state_without_acquisition_or_selection_rep
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
     let mut saved = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
-    saved["items"]["1"] =
-        serde_json::json!({"count": 77, "total": 2, "player_max": 3, "hidden": true});
+    saved["items"]["1"] = serde_json::json!({"count": 77, "total": 2, "player_max": 3, "hidden": true, "used": 0x8000_0001_u32});
     saved["items"]["2"]["count"] = 0.into();
     saved["items"]["65535"]["count"] = 9.into();
     saved["selected"] = 2.into();

@@ -50,6 +50,8 @@ struct SavedItem {
     total: u32,
     player_max: u32,
     hidden: bool,
+    #[serde(default)]
+    used: Option<u32>,
 }
 
 /// What using an owned item starts: its type code and its use script with the instance limit.
@@ -66,6 +68,7 @@ pub struct Inventory {
     items: BTreeMap<u16, InventoryItem>,
     selected: Option<u16>,
     saved_counts: BTreeMap<u16, SavedCount>,
+    used: BTreeMap<u16, Option<u32>>,
 }
 impl Inventory {
     /// Capture every item, including hidden, empty and final installed records.
@@ -84,6 +87,7 @@ impl Inventory {
                             total: item.total,
                             player_max: item.player_max,
                             hidden: item.hidden,
+                            used: self.used[&id],
                         },
                     )
                 })
@@ -140,18 +144,21 @@ impl Inventory {
             );
         }
         let mut items = hud.inventory.clone();
+        let mut used = BTreeMap::new();
         for (id, saved) in snapshot.items {
             let item = items.get_mut(&id).expect("validated inventory census");
             item.count = saved.count;
             item.total = saved.total;
             item.player_max = saved.player_max;
             item.hidden = saved.hidden;
+            used.insert(id, saved.used);
         }
         Ok(Self {
             definitions: hud.inventory.clone(),
             items,
             selected: snapshot.selected,
             saved_counts: snapshot.saved_counts,
+            used,
         })
     }
 
@@ -161,6 +168,7 @@ impl Inventory {
             items: hud.inventory.clone(),
             selected: hud.inventory.keys().next().copied(),
             saved_counts: BTreeMap::new(),
+            used: hud.inventory.keys().map(|&id| (id, Some(0))).collect(),
         };
         for &id in &hud.start_items {
             inventory
@@ -308,6 +316,18 @@ impl Inventory {
         Ok(())
     }
 
+    /// ItemUsed returns the raw wrapping completion word, independently of ownership.
+    pub(super) fn item_used(&self, id: u32) -> Result<i32> {
+        let key = u16::try_from(id)
+            .with_context(|| format!("ItemUsed({id}): ITEM.INI identifier outside u16 range"))?;
+        let used = self
+            .used
+            .get(&key)
+            .with_context(|| format!("ItemUsed({id}): ITEM.INI definition absent"))?
+            .with_context(|| format!("ItemUsed({id}): legacy inventory has no use history"))?;
+        Ok(used as i32)
+    }
+
     pub(super) fn begin_use_definition(&self, id: u16) -> bool {
         self.items.contains_key(&id)
     }
@@ -344,6 +364,9 @@ impl Inventory {
         }
         if flags & REMOVE_AFTER_USE != 0 {
             self.clear(id)?;
+        }
+        if let Some(used) = self.used.get_mut(&id).expect("validated item use") {
+            *used = used.wrapping_add(1);
         }
         Ok(())
     }
