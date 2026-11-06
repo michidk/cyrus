@@ -173,6 +173,7 @@ module where it is defined and regenerate.
 - `src/script/living_state.rs` — The actor's living-state byte (`extra_flag`): its current special action. Names follow
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 - `src/script/maintenance.rs` — Ordered sound maintenance follows preservation's engine/sound.md.
+- `src/script/map_updates.rs` — The original's changed-actor list: actors whose map-cell membership must be refreshed before the
 - `src/script/markers.rs` — Marker queries use preservation's SOUP node-marker distance contract: a loaded world's own
 - `src/script/menu.rs` — Scripted choice menu: the items `menuAddItem` collects, the highlight `menuProc` moves with the
 - `src/script/mod.rs` — Game-owned SOUP hosts and supported camera-centered ordinary actor updates.
