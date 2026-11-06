@@ -286,7 +286,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
     }) {
         let mut scripts = cache();
         scripts.actors.get_mut("LOGIC").unwrap().namespace = None;
-        scripts.definition.references = vec![Property::AngleVy];
+        scripts.definition.references = vec![Property::AngleVy, Property::Address];
         let kill = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
             name: Native::KillMe,
@@ -319,7 +319,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
                         formula: Formula {
                             first: Value::Read {
                                 place: Place::Property {
-                                    object: target.clone(),
+                                    object: Object::Named { string: 0 },
                                     reference: 0,
                                 },
                             },
@@ -336,9 +336,9 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
                 },
             ),
             (
-                3,
+                4,
                 Step {
-                    next: 4,
+                    next: 5,
                     operation: Operation::Assign {
                         destination: Place::Local { index: 0 },
                         formula: Formula {
@@ -354,13 +354,31 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
                 },
             ),
             (
-                4,
+                5,
                 Step {
-                    next: 5,
-                    operation: Operation::End { target: 3 },
+                    next: 6,
+                    operation: Operation::End { target: 4 },
                 },
             ),
         ]);
+        actor.program.steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 1 },
+                    formula: Formula {
+                        first: Value::Read {
+                            place: Place::Property {
+                                object: Object::Named { string: 0 },
+                                reference: 1,
+                            },
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        );
         scripts.actors.insert("PROJECTILE".into(), actor);
         for placement in &mut scripts.instances {
             placement.object_type = 1;
@@ -400,7 +418,13 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         )?;
         assert_eq!(
             world.actors()[reader.index].runtime().unwrap().variables(),
-            &[111, 0]
+            &[
+                cyrus_script::ScriptValue::Integer(111),
+                cyrus_script::ScriptValue::Actor(cyrus_script::ActorReference {
+                    generation: first.generation,
+                    index: first.index
+                })
+            ]
         );
         assert!(world.actors()[first.index].control_state().unwrap().killed);
         assert_eq!(world.spatial(first)?.query_pose()?.angles[1], 111);
@@ -507,6 +531,12 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
                 20,
             )
             .expect_err("retired target must not return its old pose or a duplicate's pose");
+        let captured = world.actors()[fresh.index].runtime().unwrap().variables()[1].actor()?;
+        assert_eq!(
+            captured.index, first.index,
+            "address itself does not dereference the retired record"
+        );
+        assert_eq!(captured.generation, first.generation);
         let message = format!("{error:#}");
         assert!(
             message.contains("world 7")
@@ -520,7 +550,10 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         );
         assert_eq!(
             world.actors()[fresh.index].runtime().unwrap().variables(),
-            &[0, 0]
+            &[
+                cyrus_script::ScriptValue::Integer(0),
+                cyrus_script::ScriptValue::Actor(captured)
+            ]
         );
         assert_eq!(world.flags(), &[12]);
     }
@@ -3490,10 +3523,11 @@ fn assign_call(next: u32, function_id: u16, function: Native, arguments: &[i32])
 
 /// Runs the given native calls in order on one logical actor and returns its first local.
 fn run_native_calls(calls: &[(Native, &[i32])]) -> anyhow::Result<i32> {
-    Ok(run_native_world(calls)?.actors()[0]
+    run_native_world(calls)?.actors()[0]
         .runtime()
         .unwrap()
-        .variables()[0])
+        .variables()[0]
+        .integer()
 }
 
 fn run_native_world(calls: &[(Native, &[i32])]) -> anyhow::Result<ScriptWorld> {
@@ -6097,7 +6131,11 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             .current
             .as_ref()
             .unwrap();
-        [0, 1].map(|index| world.actors()[index].runtime().unwrap().variables()[0])
+        [0, 1].map(|index| {
+            world.actors()[index].runtime().unwrap().variables()[0]
+                .integer()
+                .unwrap()
+        })
     };
     // A manual one-second step guarantees an admitted simulation step for every update.
     app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
@@ -15744,7 +15782,7 @@ fn keyboard_walk_session(verify_drno: bool) {
                 .resource_mut::<cyrus_game::cheats::Cheats>()
                 .execute("drno", Some(enabled))
                 .unwrap();
-            let before_local = player_local(&app);
+            let before_local = player_local(&app).integer().unwrap();
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
                 .press(KeyCode::ArrowUp);
@@ -18001,6 +18039,309 @@ fn heading_property_scripts(reference: u16, object: Object) -> Scripts {
     scripts
 }
 
+fn actor_reference_step(
+    world: &mut ScriptWorld,
+    id: cyrus_game::script::ScriptActorId,
+) -> anyhow::Result<()> {
+    world.advance(
+        id,
+        ScriptStage::Body(Thread::Main),
+        cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        None,
+        None,
+        20,
+    )
+}
+
+fn actor_reference_scripts(object: Object) -> Scripts {
+    let mut scripts = heading_property_scripts(295, Object::Me);
+    scripts.definition.references[294] = Property::Address;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.variables = vec![0; 3];
+    actor.instance_variables = vec![vec![0; 3]; 2];
+    let read = |object, reference| Value::Read {
+        place: Place::Property { object, reference },
+    };
+    let assign = |index, first| Operation::Assign {
+        destination: Place::Local { index },
+        formula: Formula {
+            first,
+            rest: vec![],
+        },
+    };
+    actor.program.steps = [
+        assign(0, read(object, 294)),
+        assign(
+            1,
+            Value::Read {
+                place: Place::Local { index: 0 },
+            },
+        ),
+        Operation::Yield,
+        assign(2, read(Object::Local { index: 1 }, 295)),
+        Operation::End { target: 4 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, operation)| {
+        (
+            i as u32,
+            Step {
+                next: i as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
+    use cyrus_script::{ActorReference, ScriptValue};
+    for (object, expected) in [
+        (Object::Me, 1),
+        (Object::Named { string: 0 }, 0),
+        (Object::Player, 2),
+        (Object::Camera, 4),
+    ] {
+        let mut scripts = actor_reference_scripts(object);
+        add_standalone_receivers(&mut scripts);
+        for name in ["CYRUS", "GREMLIN", "CAMERA"] {
+            scripts.actors.get_mut(name).unwrap().instance_variables = vec![vec![0; 3]];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        assert_eq!(
+            world.actors()[1].runtime().unwrap().variables(),
+            [
+                ScriptValue::Actor(ActorReference {
+                    generation: 17,
+                    index: expected
+                }),
+                ScriptValue::Actor(ActorReference {
+                    generation: 17,
+                    index: expected
+                }),
+                ScriptValue::Integer(0),
+            ]
+        );
+    }
+}
+
+#[test]
+fn actor_reference_address_rejects_temporary_separate_actor_identity() {
+    for object_type in [2, 6] {
+        let mut scripts = actor_reference_scripts(Object::Me);
+        scripts.instances[1].object_type = object_type;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let id = world.id(1).unwrap();
+        let error = actor_reference_step(&mut world, id)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("temporary or unallocated reference identity unsupported"),
+            "{error}"
+        );
+        assert_eq!(world.actors()[1].runtime().unwrap().variables(), [0, 0, 0]);
+        assert_eq!(
+            actor_reference_step(&mut world, id)
+                .unwrap_err()
+                .to_string(),
+            error
+        );
+    }
+}
+
+#[test]
+fn actor_reference_local_property_routes_to_captured_actor_and_rejects_integer_alias() {
+    let scripts = actor_reference_scripts(Object::Named { string: 0 });
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(1).unwrap();
+    actor_reference_step(&mut world, id).unwrap();
+    actor_reference_step(&mut world, id).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().variables()[2], 1536);
+    let mut scripts = actor_reference_scripts(Object::Me);
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.steps.get_mut(&0).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Integer { value: 3 },
+            rest: vec![],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let id = world.id(1).unwrap();
+    actor_reference_step(&mut world, id).unwrap();
+    let error = actor_reference_step(&mut world, id)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("integer is not an actor identity"),
+        "{error}"
+    );
+    assert_eq!(world.actors()[1].runtime().unwrap().variables()[2], 0);
+    assert_eq!(
+        actor_reference_step(&mut world, id)
+            .unwrap_err()
+            .to_string(),
+        error
+    );
+}
+
+#[test]
+fn actor_reference_native_target_preserves_receiver_and_failure_continuations() {
+    for invalid_argument in [false, true] {
+        let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
+        let function_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::SetRotation,
+            kind: CallKind::Function,
+            param_count: 3,
+        });
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.program.steps.get_mut(&3).unwrap().operation = Operation::ObjectCall {
+            call: Call {
+                function_id,
+                function: Native::SetRotation,
+                kind: CallKind::Function,
+                target: Object::Local { index: 0 },
+                arguments: vec![
+                    if invalid_argument {
+                        Value::Read {
+                            place: Place::Property {
+                                object: Object::Me,
+                                reference: 294,
+                            },
+                        }
+                    } else {
+                        Value::Integer { value: 0 }
+                    },
+                    Value::Integer { value: 512 },
+                    Value::Integer { value: 0 },
+                ],
+            },
+        };
+        actor.program.steps.get_mut(&4).unwrap().operation = Operation::Assign {
+            destination: Place::Local { index: 2 },
+            formula: Formula {
+                first: Value::Integer { value: 23 },
+                rest: vec![],
+            },
+        };
+        actor.program.steps.insert(
+            5,
+            Step {
+                next: 6,
+                operation: Operation::End { target: 5 },
+            },
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        let result = actor_reference_step(&mut world, id);
+        assert!(world.actors().iter().all(|actor| actor.runtime().is_some()));
+        if invalid_argument {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("integer operand required"), "{error}");
+            assert_eq!(world.actors()[1].runtime().unwrap().variables()[2], 0);
+            assert_eq!(
+                world.spatial(world.id(0).unwrap()).unwrap().local.angles[1],
+                1536
+            );
+            assert_eq!(
+                actor_reference_step(&mut world, id)
+                    .unwrap_err()
+                    .to_string(),
+                error
+            );
+        } else {
+            result.unwrap();
+            assert_eq!(world.actors()[1].runtime().unwrap().variables()[2], 23);
+            assert_eq!(
+                world.spatial(world.id(0).unwrap()).unwrap().local.angles[1],
+                512
+            );
+            assert_eq!(world.spatial(id).unwrap().local.angles[1], 0);
+        }
+    }
+}
+
+#[test]
+fn actor_reference_snapshot_rebinds_live_identity_and_rejects_stale_generation() {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [0; 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, _) = static_model_fixture_session(scripts.clone(), None, [0; 3], false);
+    let id = world.id(1).unwrap();
+    actor_reference_step(&mut world, id).unwrap();
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = world.snapshot(&sources).unwrap();
+    let mut invalid = serde_json::to_value(&saved).unwrap();
+    invalid["actors"][1]["runtime"]["state"]["variables"][1]["generation"] = 999.into();
+    let before = world.inspect(0, 10);
+    let error = ScriptWorld::from_snapshot(
+        serde_json::from_value(invalid).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 101,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .err()
+    .unwrap();
+    assert!(
+        format!("{error:#}").contains("stale or absent saved owner"),
+        "{error:#}"
+    );
+    assert_eq!(world.inspect(0, 10), before);
+    let mut restored = ScriptWorld::from_snapshot(
+        saved,
+        &sources,
+        WorldRestoreContext {
+            generation: 101,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        restored.actors()[1].runtime().unwrap().variables()[1]
+            .actor()
+            .unwrap()
+            .generation,
+        101
+    );
+    let restored_id = restored.id(1).unwrap();
+    actor_reference_step(&mut restored, restored_id).unwrap();
+    assert_eq!(restored.actors()[1].runtime().unwrap().variables()[2], 1536);
+}
+
 #[test]
 fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
     for reference in [0, 38, 294] {
@@ -18047,7 +18388,6 @@ fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
 fn heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes() {
     for (spatial, name, write, expected) in [
         (false, Property::AngleVy, false, "spatial owner unavailable"),
-        (true, Property::Address, false, "unsupported"),
         (true, Property::AngleVy, true, "unsupported"),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
@@ -34511,7 +34851,7 @@ fn run_item_count_native(
         [13],
         "successful native continues its caller"
     );
-    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    world.actors()[0].runtime().unwrap().variables()[0].integer()
 }
 
 #[test]
@@ -36415,7 +36755,7 @@ fn dragon_breath_once(flags: u8) -> (anyhow::Result<i32>, usize, f64) {
             Some(&mut cyrus_game::random::EngineRandom::from_state(1)),
             100,
         )
-        .map(|_| world.actors()[0].runtime().unwrap().variables()[0]);
+        .and_then(|_| world.actors()[0].runtime().unwrap().variables()[0].integer());
     (result, world.actors().len() - census, distance)
 }
 

@@ -96,11 +96,7 @@ use std::sync::Arc;
 pub use weapon::{CombatEntryInputs, WeaponInputs};
 
 /// Runtime identity is independent of render nodes and original object-name lookup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub struct ScriptActorId {
-    pub generation: u64,
-    pub index: usize,
-}
+pub use cyrus_script::ActorReference as ScriptActorId;
 
 /// Index of the selected player: CYRUS, or GREMLIN while the swap state is set. The standalone player
 /// roles are the only candidates, so a world without the selected role has no selected player.
@@ -4815,7 +4811,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(player.index)
     }
 
-    fn target_index(&self, target: &Target) -> Result<usize> {
+    fn target_reference(&self, target: &Target) -> Result<ScriptActorId> {
         let index = match target {
             Target::Me => Some(self.index),
             Target::Named(name) => self.registry.names.values().copied().find(|&index| {
@@ -4830,15 +4826,22 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
-            // Logical variable targets use runtime identifiers; original raw actor
-            // references are not represented by this mapping.
-            Target::Variable(value) => i16::try_from(*value)
-                .ok()
-                .and_then(|identifier| self.registry.names.get(&identifier).copied()),
+            Target::Actor(reference) => {
+                anyhow::ensure!(
+                    reference.generation == self.generation
+                        && reference.index < self.registry.actors.len(),
+                    "object target {target:?}: stale or absent actor reference"
+                );
+                Some(reference.index)
+            }
         };
         let index = index.with_context(|| format!("object target {target:?}: receiver absent"))?;
+        self.registry.id(index)
+    }
+
+    fn target_index(&self, target: &Target) -> Result<usize> {
         self.registry
-            .resolve(self.registry.id(index)?)
+            .resolve(self.target_reference(target)?)
             .with_context(|| format!("object target {target:?}"))
     }
 }
@@ -4928,6 +4931,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     self.world, self.index
                 )
             })
+    }
+
+    fn read_value(&mut self, target: &Target, reference: u16) -> Result<cyrus_script::ScriptValue> {
+        if self.property(target, reference)? == Property::Address {
+            let actor = if matches!(target, Target::Player) {
+                self.registry.id(self.property_receiver(target)?)?
+            } else {
+                self.target_reference(target)?
+            };
+            anyhow::ensure!(
+                self.registry.actors[actor.index]
+                    .runtime_identifier
+                    .is_some(),
+                "property address: world {} actor {} temporary or unallocated reference identity unsupported",
+                self.world,
+                actor.index
+            );
+            return Ok(cyrus_script::ScriptValue::Actor(actor));
+        }
+        self.read_property(target, reference)
+            .map(cyrus_script::ScriptValue::Integer)
     }
 
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {

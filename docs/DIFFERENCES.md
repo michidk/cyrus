@@ -108,10 +108,13 @@ has no runtime, runs no script, draws no model and holds no light, sound or task
 actor table, spatial state and snapshots are index-parallel, so removing a record would shift every later
 identity for no player-visible gain. **Inferred:** the observable result (no update, no model, no light, no
 sound) is the same; only memory and one skipped table entry per update remain, a technical limit the
-faithful mode does not reproduce. Direct actor handles and script targets reject references to a created object after
-cleanup with an explicit unsupported error; the retained diagnostic record is not a
-live receiver. **Unknown:** the result of dereferencing the original's freed record,
-and parity between logical variable identifiers and original raw actor references.
+faithful mode does not reproduce. Direct actor handles and dereferencing script targets reject references to a created
+object after cleanup with an explicit unsupported error; the retained diagnostic
+record is not a live receiver. **Verified:** `address` reads return a logical actor
+reference without dereferencing it, including a retired object's retained namespace.
+Locals preserve that reference instead of converting it to `MyId`, and world restore
+rebinds its generation. **Unknown:** the result of dereferencing the original's freed
+record and reference aliasing after reusable-pool allocation, which remains unsupported.
 
 ## Book picture after the ending
 

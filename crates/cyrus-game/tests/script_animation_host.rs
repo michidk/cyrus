@@ -2472,7 +2472,7 @@ fn hud_call(
         "{:?}",
         world.actors()[0].failure()
     );
-    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    world.actors()[0].runtime().unwrap().variables()[0].integer()
 }
 
 fn hud_calls(
@@ -2530,7 +2530,7 @@ fn hud_calls(
         "{:?}",
         world.actors()[0].failure()
     );
-    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    world.actors()[0].runtime().unwrap().variables()[0].integer()
 }
 
 #[test]
@@ -2666,7 +2666,9 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
             "{:?}",
             world.actors()[0].failure()
         );
-        variable = world.actors()[0].runtime().unwrap().variables()[0];
+        variable = world.actors()[0].runtime().unwrap().variables()[0]
+            .integer()
+            .unwrap();
         if world.flags() == [7] {
             break;
         }

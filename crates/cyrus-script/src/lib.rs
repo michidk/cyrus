@@ -39,7 +39,66 @@ pub enum Target {
     Player,
     Camera,
     Named(String),
-    Variable(i32),
+    Actor(ActorReference),
+}
+
+/// Host-owned actor identity. These fields are logical allocation identities,
+/// never original addresses, runtime object identifiers or renderer handles.
+/// Hosts validate liveness on use and explicitly rebind identities on restore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActorReference {
+    pub generation: u64,
+    pub index: usize,
+}
+
+/// A stored VM word has numeric or actor-reference semantics. Integer snapshots
+/// retain their existing representation; references serialize logical identities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ScriptValue {
+    Integer(i32),
+    Actor(ActorReference),
+}
+impl ScriptValue {
+    pub fn integer(self) -> Result<i32> {
+        match self {
+            Self::Integer(value) => Ok(value),
+            Self::Actor(_) => anyhow::bail!("actor reference cannot be used as an integer"),
+        }
+    }
+    pub fn actor(self) -> Result<ActorReference> {
+        match self {
+            Self::Actor(reference) => Ok(reference),
+            Self::Integer(_) => {
+                anyhow::bail!("actor reference required; integer is not an actor identity")
+            }
+        }
+    }
+}
+impl PartialEq<i32> for ScriptValue {
+    fn eq(&self, other: &i32) -> bool {
+        matches!(self, Self::Integer(value) if value == other)
+    }
+}
+impl From<ScriptValue> for Argument {
+    fn from(value: ScriptValue) -> Self {
+        match value {
+            ScriptValue::Integer(value) => Self::Integer(value),
+            ScriptValue::Actor(reference) => Self::Actor(reference),
+        }
+    }
+}
+impl Argument {
+    pub fn scalar(&self) -> Result<ScriptValue> {
+        match self {
+            Self::Integer(value) => Ok(ScriptValue::Integer(*value)),
+            Self::Actor(reference) => Ok(ScriptValue::Actor(*reference)),
+            Self::String(_) => anyhow::bail!("scalar operand required"),
+        }
+    }
+    pub fn actor(&self) -> Result<ActorReference> {
+        self.scalar()?.actor()
+    }
 }
 
 /// Byte offset of a program's base within its world's RASC data, not a runtime pointer.
@@ -76,6 +135,7 @@ pub enum Route {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Argument {
     Integer(i32),
+    Actor(ActorReference),
     String(String),
 }
 impl Argument {
@@ -196,6 +256,11 @@ pub trait Host {
     fn cancel(&mut self, task: u64) -> Result<()> {
         anyhow::bail!("task {task} cancellation unsupported")
     }
+    /// Typed property boundary. Numeric-only hosts need no reference encoding.
+    fn read_value(&mut self, target: &Target, reference: u16) -> Result<ScriptValue> {
+        self.read_property(target, reference)
+            .map(ScriptValue::Integer)
+    }
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         anyhow::bail!("property {target:?}.{reference} unsupported")
     }
@@ -213,7 +278,7 @@ struct Continuation {
 /// Actor-local state is shared by its two continuations. Host tasks are owned separately.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
-    variables: Vec<i32>,
+    variables: Vec<ScriptValue>,
     return_to: Option<u32>,
     script_return: u8,
     saved_return: u8,
@@ -260,7 +325,7 @@ impl Runtime {
             },
         ];
         let state = State {
-            variables,
+            variables: variables.into_iter().map(ScriptValue::Integer).collect(),
             return_to: None,
             script_return: 0,
             saved_return: 0,
@@ -292,7 +357,7 @@ impl Runtime {
     pub fn state(&self) -> &State {
         &self.state
     }
-    pub fn variables(&self) -> &[i32] {
+    pub fn variables(&self) -> &[ScriptValue] {
         &self.state.variables
     }
     pub fn program_counter(&self, thread: Thread) -> Option<u32> {
@@ -454,8 +519,11 @@ impl Runtime {
                     self.write(destination, value, flags, host)?;
                 }
                 Operation::Increment { destination, delta } => {
-                    let value = self.read(destination, flags, host)?.wrapping_add(*delta);
-                    self.write(destination, value, flags, host)?;
+                    let value = self
+                        .read(destination, flags, host)?
+                        .integer()?
+                        .wrapping_add(*delta);
+                    self.write(destination, ScriptValue::Integer(value), flags, host)?;
                 }
                 Operation::If { conditions, target } => {
                     if !self.condition(conditions, flags, host)? {
@@ -550,16 +618,17 @@ impl Runtime {
                     .context("object string absent")?
                     .clone(),
             ),
-            Object::Local { index } => Target::Variable(
-                *self
-                    .state
+            Object::Local { index } => Target::Actor(
+                self.state
                     .variables
                     .get(usize::from(*index))
-                    .context("object local absent")?,
+                    .copied()
+                    .context("object local absent")?
+                    .actor()?,
             ),
         })
     }
-    fn read(&self, place: &Place, flags: &[i32], host: &mut dyn Host) -> Result<i32> {
+    fn read(&self, place: &Place, flags: &[i32], host: &mut dyn Host) -> Result<ScriptValue> {
         match place {
             Place::Local { index } => self
                 .state
@@ -570,16 +639,17 @@ impl Runtime {
             Place::Flag { index } => flags
                 .get(usize::from(*index))
                 .copied()
-                .context("global flag absent"),
+                .context("global flag absent")
+                .map(ScriptValue::Integer),
             Place::Property { object, reference } => {
-                host.read_property(&self.target(object)?, *reference)
+                host.read_value(&self.target(object)?, *reference)
             }
         }
     }
     fn write(
         &mut self,
         place: &Place,
-        value: i32,
+        value: ScriptValue,
         flags: &mut [i32],
         host: &mut dyn Host,
     ) -> Result<()> {
@@ -594,10 +664,10 @@ impl Runtime {
             Place::Flag { index } => {
                 *flags
                     .get_mut(usize::from(*index))
-                    .context("global flag absent")? = value
+                    .context("global flag absent")? = value.integer()?
             }
             Place::Property { object, reference } => {
-                host.write_property(&self.target(object)?, *reference, value)?
+                host.write_property(&self.target(object)?, *reference, value.integer()?)?
             }
         }
         Ok(())

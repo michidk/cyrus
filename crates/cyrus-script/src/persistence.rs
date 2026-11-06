@@ -11,7 +11,8 @@ use std::{
 };
 
 /// A versioned VM snapshot including exact immutable source programs for compatibility.
-/// Contains no world/actor identity, gameplay globals or native task implementation state.
+/// Contains logical actor references in locals, but no host pointers, gameplay
+/// globals or native task implementation state. Hosts must rebind references.
 /// Save it only as part of its owning actor/world document, outside the installation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -111,6 +112,31 @@ impl Runtime {
 }
 
 impl Snapshot {
+    /// Rebind logical actor identities before committing a replacement world.
+    /// The host validates allocation identity; this operation is atomic on error
+    /// and runs no saved instructions or native effects.
+    pub fn rebind_actor_references(
+        &mut self,
+        mut rebind: impl FnMut(crate::ActorReference) -> Result<crate::ActorReference>,
+    ) -> Result<()> {
+        self.validate()?;
+        let variables = self
+            .state
+            .variables
+            .iter()
+            .map(|value| {
+                Ok(match value {
+                    crate::ScriptValue::Actor(reference) => {
+                        crate::ScriptValue::Actor(rebind(*reference)?)
+                    }
+                    value => *value,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.state.variables = variables;
+        Ok(())
+    }
+
     /// Validate saved structure and expose native-call contracts without evaluation.
     /// This includes paused slots. It does not validate installed source identity;
     /// the host must still use `Runtime::from_snapshot` before committing a candidate.

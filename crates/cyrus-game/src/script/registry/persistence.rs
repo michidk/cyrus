@@ -548,7 +548,7 @@ impl ActorSnapshot {
                 })
             })
             .transpose()?;
-        let (runtime, tasks) = if let Some(vm) = self.runtime {
+        let (runtime, tasks) = if let Some(mut vm) = self.runtime {
             let tokens: BTreeMap<_, _> = vm.task_tokens().map(|token| (token, token)).collect();
             let tasks = super::super::NativeTasks::from_snapshot(
                 self.tasks,
@@ -565,6 +565,9 @@ impl ActorSnapshot {
                 .actors
                 .get(actor.name())
                 .context("saved actor program absent")?;
+            vm.rebind_actor_references(|reference| {
+                (context.rebind)(reference.generation, reference.index)
+            })?;
             let runtime = Runtime::from_snapshot(
                 CodeOrigin(definition.code_origin),
                 vm,

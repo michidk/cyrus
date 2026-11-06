@@ -141,3 +141,19 @@ restoring its native continuation, before reevaluating operands. Empty and pause
 slots save the current native scratch without replacing the shared elapsed value,
 following preservation's
 [native command contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#point-navigation-command-state).
+
+`ScriptValue` preserves integer or actor-reference identity in locals and plain
+assignments. `Host::read_value` supplies typed property values, while numeric
+hosts can continue implementing `read_property`. Native operands carry
+`Argument::Actor`; object-local targets require that reference rather than
+looking up a numeric `MyId`. Hosts validate generation, allocation and liveness
+before dereferencing. Integer locals keep their existing JSON representation;
+reference locals serialize logical generation/index identities, never pointers.
+The game snapshot owner rebinds these identities before committing a restored
+world through `Snapshot::rebind_actor_references`.
+
+Reference equality and inequality compare identities. Arithmetic, ordering,
+numeric property writes and global-flag storage of references remain explicitly
+unsupported. Numeric native parameters reject references. Failure retains the
+current continuation and is not retried. This implements preservation's object
+and reference encodings without exposing host addresses as integers.

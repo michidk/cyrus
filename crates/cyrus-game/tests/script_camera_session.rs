@@ -614,7 +614,7 @@ fn is_within_view_compares_the_horizontal_camera_distance_with_the_installed_dis
             angles: [0; 3],
         })?;
         run(&mut world, 0, BODY, Some(&ScriptHud::default()))?;
-        Ok(world.actors()[0].runtime().unwrap().variables()[0])
+        world.actors()[0].runtime().unwrap().variables()[0].integer()
     };
     // A 3-4-5 offset: the boundary is inclusive and one less excludes it.
     assert_eq!(

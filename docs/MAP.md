@@ -318,7 +318,7 @@ module where it is defined and regenerate.
 - `src/property.rs` — SOUP object properties: the `[refs]` list of the installed `SOUP386.DEF`.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
-- `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
+- `src/values.rs` — Typed actor references and original integer formula and condition evaluation.
 
 ## `cyrus-session` — Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.
 

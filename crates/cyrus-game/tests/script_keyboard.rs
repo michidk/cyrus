@@ -434,7 +434,7 @@ fn press(world: &mut ScriptWorld, keys: ScriptKeys) -> anyhow::Result<i32> {
         None,
         10,
     )?;
-    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    world.actors()[0].runtime().unwrap().variables()[0].integer()
 }
 
 const R: u32 = 1 << (b'r' - b'a');

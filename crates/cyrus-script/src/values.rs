@@ -1,5 +1,5 @@
-//! SOUP formula and condition evaluation in the original integer domain.
-use super::{Argument, Host, Runtime};
+//! Typed actor references and original integer formula and condition evaluation.
+use super::{Argument, Host, Runtime, ScriptValue};
 use crate::program::{Call, CallKind, Condition, Formula, Value};
 use anyhow::{Context, Result};
 
@@ -32,10 +32,13 @@ impl Runtime {
             Value::String { index } => {
                 Argument::String(host.native_string_parameter(*index, strings)?)
             }
-            Value::Read { place } => Argument::Integer(self.read(place, flags, host)?),
+            Value::Read { place } => self.read(place, flags, host)?.into(),
             Value::Update { place, delta } => {
-                let value = self.read(place, flags, host)?.wrapping_add(*delta);
-                self.write(place, value, flags, host)?;
+                let value = self
+                    .read(place, flags, host)?
+                    .integer()?
+                    .wrapping_add(*delta);
+                self.write(place, ScriptValue::Integer(value), flags, host)?;
                 Argument::Integer(value)
             }
             Value::Call { call } | Value::ObjectCall { call } => {
@@ -64,29 +67,30 @@ impl Runtime {
         formula: &Formula,
         flags: &mut [i32],
         host: &mut dyn Host,
-    ) -> Result<i32> {
+    ) -> Result<ScriptValue> {
         let program = std::sync::Arc::clone(&self.program);
         let mut result = self
             .value(&formula.first, flags, host, &program.strings)?
-            .integer()?;
+            .scalar()?;
         for (operator, value) in &formula.rest {
+            let lhs = result.integer()?;
             let rhs = self
                 .value(value, flags, host, &program.strings)?
                 .integer()?;
-            result = match operator {
-                1 => result.wrapping_add(rhs),
-                2 => result.wrapping_sub(rhs),
-                3 => result.wrapping_mul(rhs),
-                4 => (result as u32)
+            result = ScriptValue::Integer(match operator {
+                1 => lhs.wrapping_add(rhs),
+                2 => lhs.wrapping_sub(rhs),
+                3 => lhs.wrapping_mul(rhs),
+                4 => (lhs as u32)
                     .checked_div(rhs as u32)
                     .context("SOUP division by zero")? as i32,
-                5 => result.wrapping_shl(rhs as u32),
-                6 => result.wrapping_shr(rhs as u32),
-                7 => result & rhs,
-                8 => result | rhs,
-                9 => result ^ rhs,
+                5 => lhs.wrapping_shl(rhs as u32),
+                6 => lhs.wrapping_shr(rhs as u32),
+                7 => lhs & rhs,
+                8 => lhs | rhs,
+                9 => lhs ^ rhs,
                 _ => anyhow::bail!("invalid formula operator {operator}"),
-            };
+            });
         }
         Ok(result)
     }
@@ -103,17 +107,17 @@ impl Runtime {
         for (index, condition) in conditions.iter().enumerate() {
             let lhs = self
                 .value(&condition.lhs, flags, host, &program.strings)?
-                .integer()?;
+                .scalar()?;
             let rhs = self
                 .value(&condition.rhs, flags, host, &program.strings)?
-                .integer()?;
+                .scalar()?;
             let value = match condition.comparison {
                 0 => lhs == rhs,
                 1 => lhs != rhs,
-                2 => lhs < rhs,
-                3 => lhs > rhs,
-                4 => lhs <= rhs,
-                5 => lhs >= rhs,
+                2 => lhs.integer()? < rhs.integer()?,
+                3 => lhs.integer()? > rhs.integer()?,
+                4 => lhs.integer()? <= rhs.integer()?,
+                5 => lhs.integer()? >= rhs.integer()?,
                 comparison => anyhow::bail!("invalid comparison {comparison}"),
             };
             result = match (index, previous) {

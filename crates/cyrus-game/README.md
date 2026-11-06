@@ -458,3 +458,14 @@ Master receivers and duplicate target masters remain explicitly unsupported
 because separate ordinary/master memberships and original tree traversal order
 are not represented. Original-instruction witnesses cover control flow with
 controlled matrix services; natural native/browser gameplay is not established.
+
+Verified: the installed `address` property yields the resolved actor identity for
+Me, Named, the selected Player and Camera without requiring spatial state. The
+VM preserves it through local copies, native operands and object-local targets.
+These targets validate generation and reject retired created actors instead of
+resolving `MyId` through namespaces. World restore explicitly rebinds saved
+reference locals; malformed saved identities fail before replacing the world.
+This follows preservation's [reference encoding](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#reference-name-encoding).
+`OffsetLocation` and `WaitLineUp` remain separate native-handler work. References
+in arithmetic or global flags, raw pointer integers, temporary separate-actor
+addresses and pool-slot reuse remain unsupported; no numeric host-address encoding is exposed.
