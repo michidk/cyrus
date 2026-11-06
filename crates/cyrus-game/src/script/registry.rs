@@ -7508,6 +7508,46 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // AtNodeLocation compares a receiver location with the receiver's own position; the height
         // limit is half the actor's total Y extent (positive plus negative extent).
+        // AtNodePosition(x, y, z, distance): the wrapping differences between the point and the
+        // receiver's local position (the position AtNodeLocation reads) go through the shared
+        // rounded distance helper unshifted, with no vertical adjustment; the signed result is at
+        // most the full signed distance. An overflowing length converts to the integer-indefinite
+        // value and is compared like any other signed result.
+        if function == Native::AtNodePosition {
+            let [x, y, z, distance] = arguments else {
+                anyhow::bail!("AtNodePosition requires four arguments")
+            };
+            let point = [x.integer()?, y.integer()?, z.integer()?];
+            let position = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("AtNodePosition: spatial state not prepared")?
+                .actor(self.index)?
+                .local
+                .position;
+            let result = cyrus_collision::distance::rounded_distance_or_indefinite(
+                std::array::from_fn(|axis| point[axis].wrapping_sub(position[axis])),
+            );
+            return Ok(CallResult::Complete(i32::from(
+                result <= distance.integer()?,
+            )));
+        }
+        // ReloadPosition(): the local position is copied unchanged into the previous-position
+        // history and zero is returned. The original also refreshes the model's single-precision
+        // coordinates from the shifted position; cyrus positions models from the local position at
+        // publication, so no separate store exists (**Inferred**).
+        if function == Native::ReloadPosition {
+            anyhow::ensure!(arguments.is_empty(), "ReloadPosition requires no arguments");
+            let spatial = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("ReloadPosition: spatial state not prepared")?
+                .actor_mut(self.index)?;
+            spatial.previous_local_position = spatial.local.position;
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::AtNodeLocation {
             let [location, distance] = arguments else {
                 anyhow::bail!("AtNodeLocation requires two arguments")

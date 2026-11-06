@@ -4230,6 +4230,80 @@ fn set_rotation_masks_the_angles_and_rebuilds_the_matrix_from_them() {
 }
 
 #[test]
+fn at_node_position_compares_the_unshifted_distance_and_treats_overflow_as_indefinite() {
+    let origin = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    let call = |offset: [i32; 3], distance: i32| {
+        let [x, y, z] = std::array::from_fn(|axis| origin[axis].wrapping_add(offset[axis]));
+        let world =
+            run_native_world_with(&[(Native::AtNodePosition, &[x, y, z, distance])], true).unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    // A 3-4-5 offset in raw units: nothing is shifted and the bound is inclusive.
+    assert_eq!(call([3, 4, 0], 5), 1, "distance equals the limit");
+    assert_eq!(call([3, 4, 0], 4), 0, "distance exceeds the limit");
+    // The vertical difference counts here: 2-3-6 has length 7.
+    assert_eq!(call([2, 6, 3], 7), 1);
+    assert_eq!(call([2, 6, 3], 6), 0, "the vertical axis is not dropped");
+    assert_eq!(call([0, 0, 0], 0), 1);
+    assert_eq!(
+        call([3, 4, 0], -1),
+        0,
+        "a negative limit is compared as signed"
+    );
+    // A length beyond the signed range converts to the integer-indefinite minimum.
+    let far = [i32::MIN; 3];
+    assert_eq!(
+        call(far, i32::MIN),
+        1,
+        "indefinite compares as the signed minimum"
+    );
+    assert_eq!(call(far, 0), 1);
+    let error = run_native_world(&[(Native::AtNodePosition, &[0, 0, 0, 1])])
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("AtNodePosition: spatial state not prepared"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn reload_position_copies_the_local_position_into_the_history_and_changes_nothing_else() {
+    // SetPosition writes both; SetStartPosition then moves only the local x back to the start, so
+    // the history lags until ReloadPosition.
+    let prefix = [
+        (Native::SetPosition, &[1000, 2000, 3000][..]),
+        (Native::SetStartPosition, &[1, 0, 0][..]),
+    ];
+    let before = run_native_world_with(&prefix, true).unwrap();
+    let before = before.spatial(before.id(0).unwrap()).unwrap();
+    assert_ne!(
+        before.local.position, before.previous_local_position,
+        "the history lags the local position before the reload"
+    );
+    let mut calls = prefix.to_vec();
+    calls.push((Native::ReloadPosition, &[][..]));
+    let world = run_native_world_with(&calls, true).unwrap();
+    let after = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(
+        after.local.position, before.local.position,
+        "the local position is unchanged"
+    );
+    assert_eq!(after.previous_local_position, after.local.position);
+    assert_eq!(after.local.angles, before.local.angles);
+    let error = run_native_world(&[(Native::ReloadPosition, &[][..])])
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("ReloadPosition: spatial state not prepared"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let light = |calls: &[(Native, &[i32])]| {

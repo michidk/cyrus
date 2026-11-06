@@ -11,6 +11,18 @@ pub fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
     Ok(length as i32)
 }
 
+/// `rounded_distance` for natives that compare the converted result without a separate overflow
+/// check: a length that does not fit a signed 32-bit integer converts to the x87 integer-indefinite
+/// value, the signed minimum, instead of failing.
+pub fn rounded_distance_or_indefinite(differences: [i32; 3]) -> i32 {
+    let length = single_precision_length(differences).round_ties_even();
+    if f64::from(length) <= f64::from(i32::MAX) {
+        length as i32
+    } else {
+        i32::MIN
+    }
+}
+
 /// The sphere/segment query for a segment whose endpoints coincide: whether the point lies inside
 /// or on the sphere. Coordinate differences wrap at 32 bits and are stored as single precision;
 /// the squares add, the sum is stored as single precision and truncates to an integer, the signed
@@ -74,5 +86,27 @@ mod point_in_sphere_tests {
         assert!(point_in_sphere([0; 3], [0; 3], 0));
         // The sum no longer fits an integer: the signed minimum makes the residual wrap negative.
         assert!(!point_in_sphere([0, 0, 0], [50_000, 50_000, 0], 100));
+    }
+}
+
+#[cfg(test)]
+mod indefinite_tests {
+    use super::{rounded_distance, rounded_distance_or_indefinite};
+
+    #[test]
+    fn a_representable_length_matches_the_checked_distance() {
+        for differences in [[0; 3], [3, 4, 0], [-3, 0, 4], [100, 200, -300]] {
+            assert_eq!(
+                rounded_distance_or_indefinite(differences),
+                rounded_distance(differences).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn an_overflowing_length_is_the_signed_minimum_where_the_checked_distance_fails() {
+        let far = [i32::MIN, i32::MIN, i32::MIN];
+        assert!(rounded_distance(far).is_err());
+        assert_eq!(rounded_distance_or_indefinite(far), i32::MIN);
     }
 }
