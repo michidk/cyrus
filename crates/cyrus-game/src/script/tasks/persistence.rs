@@ -292,6 +292,7 @@ impl Task {
             Self::MoveNodePosition => (Native::MoveNodePosition, 4, None),
             Self::FaceAngle => (Native::FaceAngle, 1, None),
             Self::FacePos => (Native::FacePos, 2, None),
+            Self::FaceObject => (Native::FaceObject, 1, None),
             Self::Backward => (Native::MoveBackward, 1, None),
             Self::WalkBackward => (Native::WalkBackward, 1, None),
             Self::Forward => (Native::MoveForward, 1, None),

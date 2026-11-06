@@ -188,6 +188,8 @@ pub(super) enum FaceTarget {
     Angle(i32),
     /// A local Q8 X/Z point.
     Point([i32; 2]),
+    /// An actor's local X/Z, read on every step (`FaceObject`).
+    Actor(cyrus_script::ActorReference),
 }
 
 /// Which point wrapper a move task steps: the node wrapper claims walk nodes along routes, the
@@ -655,6 +657,8 @@ enum Task {
     FaceAngle,
     /// `FacePos(x, z)`: `FaceAngle` toward a point, snapping onto it within the facing threshold.
     FacePos,
+    /// `FaceObject(target)`: `FacePos` toward the target actor's local X/Z.
+    FaceObject,
     Backward,
     /// `WalkBackward`: `MoveBackward` outside deep water with its own groups, step attributes and
     /// step check.
@@ -1383,11 +1387,14 @@ impl Task {
                     .context("projectileAI requires the receiver's update owner")?;
                 !host.projectile()?
             }
-            Self::FaceAngle | Self::FacePos => {
+            Self::FaceAngle | Self::FacePos | Self::FaceObject => {
                 let target = match (&*self, arguments) {
                     (Self::FaceAngle, [angle]) => FaceTarget::Angle(angle.integer()?),
                     (Self::FacePos, [x, z]) => FaceTarget::Point([x.integer()?, z.integer()?]),
-                    _ => anyhow::bail!("FaceAngle takes one argument and FacePos two"),
+                    (Self::FaceObject, [Argument::Actor(actor)]) => FaceTarget::Actor(*actor),
+                    _ => anyhow::bail!(
+                        "FaceAngle takes one argument, FacePos two and FaceObject one actor reference"
+                    ),
                 };
                 let host = services
                     .point
@@ -3115,6 +3122,8 @@ impl NativeTasks {
             Task::FaceAngle
         } else if function == Native::FacePos {
             Task::FacePos
+        } else if function == Native::FaceObject {
+            Task::FaceObject
         } else if function == Native::FacePlayer {
             Task::FacePlayer
         } else if function == Native::FacePlayerInertia {
@@ -3273,6 +3282,7 @@ impl NativeTasks {
         [
             Native::FaceAngle,
             Native::FacePos,
+            Native::FaceObject,
             Native::PlayerOffsettask,
             Native::PlayerTilt,
             Native::PlayerTiltRevx,
@@ -3296,6 +3306,7 @@ impl NativeTasks {
             Some(
                 Task::FaceAngle
                     | Task::FacePos
+                    | Task::FaceObject
                     | Task::PlayerTilt
                     | Task::PlayerTiltRevx
                     | Task::PlayerOffset

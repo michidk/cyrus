@@ -19481,6 +19481,82 @@ fn reply_sender_writes_nothing_without_a_value_a_selection_or_a_distinct_sender(
     }
 }
 
+fn face_object_world(turn_rate: u8, start: u32) -> ScriptWorld {
+    let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::FaceObject,
+        kind: CallKind::Task,
+        param_count: 1,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.attributes[Attribute::TurnSpeed] = turn_rate;
+    actor.program.steps.get_mut(&3).unwrap().operation = Operation::Call {
+        call: Call {
+            function_id,
+            function: Native::FaceObject,
+            kind: CallKind::Task,
+            target: Object::Me,
+            arguments: vec![Value::Read {
+                place: Place::Local { index: 0 },
+            }],
+        },
+    };
+    // Actor 1 starts facing `start`; actor 0 lies far along +Z of it, so the bearing is zero.
+    scripts.instances[0].map_position = [0, 0, 2000];
+    scripts.instances[1].map_position = [0, 0, 0];
+    scripts.instances[1].angles[1] = start;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    world.prepare_spatial().unwrap();
+    world
+}
+
+fn face_object_step(world: &mut ScriptWorld, stage: ScriptStage) {
+    let hud = cyrus_game::script::ScriptHud::default();
+    let mut sounds =
+        |_: cyrus_game::script::ScriptActorId, _: cyrus_game::script::ScriptSound| Ok(());
+    let id = world.id(1).unwrap();
+    world
+        .advance(
+            id,
+            stage,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            Some(&mut sounds),
+            None,
+            20,
+        )
+        .unwrap();
+}
+
+#[test]
+fn face_object_turns_one_step_per_pass_toward_the_target_actor_and_a_zero_rate_ends_it() {
+    // The first body pass captures the reference; the second starts the task and takes the first
+    // step; each later task pass takes one more.
+    let mut world = face_object_world(16, 1000);
+    let id = world.id(1).unwrap();
+    face_object_step(&mut world, ScriptStage::Body(Thread::Main));
+    face_object_step(&mut world, ScriptStage::Body(Thread::Main));
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 984);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    face_object_step(&mut world, ScriptStage::Tasks);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 968);
+    // A zero turn rate ends the task on its first pass without reading the target.
+    let mut world = face_object_world(0, 1000);
+    let id = world.id(1).unwrap();
+    face_object_step(&mut world, ScriptStage::Body(Thread::Main));
+    face_object_step(&mut world, ScriptStage::Body(Thread::Main));
+    face_object_step(&mut world, ScriptStage::Tasks);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 1000);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
+}
+
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};

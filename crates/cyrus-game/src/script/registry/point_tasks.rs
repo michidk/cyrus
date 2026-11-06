@@ -264,6 +264,22 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                 self.registry
                     .face_ordinary_point(id, [x, 0, z], inputs, &mut **sounds)
             }
+            FaceTarget::Actor(actor) => {
+                // The target's local X/Z are read on every step; a stale or absent target is an
+                // explicit error (the original dereferences it).
+                let position = self
+                    .registry
+                    .spatial(actor)
+                    .context("FaceObject target")?
+                    .local
+                    .position;
+                self.registry.face_ordinary_point(
+                    id,
+                    [position[0], 0, position[2]],
+                    inputs,
+                    &mut **sounds,
+                )
+            }
         }
     }
 }
