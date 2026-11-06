@@ -5525,7 +5525,6 @@ fn turn_to_pos_snaps_within_the_threshold_or_turns_one_step_toward_the_point() {
         let id = world.id(0).unwrap();
         let origin = world.spatial(id).unwrap().local.position;
         let point = [origin[0] + offset[0], origin[2] + offset[2]];
-        let mut data = data;
         let Operation::Assign { formula, .. } = &mut data
             .actors
             .get_mut("ACTOR")
