@@ -1,5 +1,6 @@
 //! Receiver-owned packed movement counter uses public property dispatch.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Attribute, Thread};
@@ -403,7 +404,7 @@ fn living_refusal_retains_seed_without_support_or_sound_admission() {
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.flags(), [73]);
 }

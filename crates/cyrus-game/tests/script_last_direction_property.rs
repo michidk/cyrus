@@ -1,5 +1,6 @@
 //! Receiver-owned movement classification uses public property dispatch.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::OrdinaryForwardAmountInputs;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -201,7 +202,7 @@ fn last_direction_routes_low_bytes_and_continues_without_changing_other_state() 
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                0
+                MotionDirection::NONE
             );
         }
     }
@@ -441,7 +442,7 @@ fn last_direction_observes_a_real_running_producer_and_pre_store_refusal() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
     }
 }

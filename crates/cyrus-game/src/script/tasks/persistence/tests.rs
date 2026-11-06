@@ -1,6 +1,7 @@
 //! Native continuations resume through VM calls and explicit restored service bindings.
 use super::*;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::tasks::{
     FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
@@ -2024,8 +2025,8 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
         let mut position = [0; 3];
         let mut angles = [0; 3];
         let mut counters = 0;
-        let mut direction = 0;
-        let mut classification = 0;
+        let mut direction = MotionDirection::NONE;
+        let mut classification = MotionDirection::NONE;
         let mut called = 0;
         let mut frame = None;
         let mut updates = vec![];
@@ -2090,8 +2091,8 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
                 .unwrap();
             assert_eq!(done, elapsed == 3);
             assert_eq!(position, [0, 0, z]);
-            assert_eq!(direction, 6);
-            assert_eq!(classification, 6);
+            assert_eq!(direction, MotionDirection::WALK_FORWARD);
+            assert_eq!(classification, MotionDirection::WALK_FORWARD);
             assert_eq!(called, if available { 4 } else { 0 });
             assert_eq!(
                 counters,
@@ -4119,8 +4120,8 @@ fn walk_backward_matches_the_original_routine() {
         let mut position = [0; 3];
         let mut angles = [0, heading as i32, 0];
         let mut counters = (counter as u8) << 6;
-        let mut direction = 0;
-        let mut classification = 0;
+        let mut direction = MotionDirection::NONE;
+        let mut classification = MotionDirection::NONE;
         let mut called = 0;
         let mut frame = None;
         let mut updates = vec![];
@@ -4191,7 +4192,11 @@ fn walk_backward_matches_the_original_routine() {
         assert!(done, "{label}");
         assert_eq!(position, [x as i32, y as i32, z as i32], "{label}");
         assert_eq!(counters, byte as u8, "{label}");
-        assert_eq!((direction, called), (7, 8), "{label}");
+        assert_eq!(
+            (direction, called),
+            (MotionDirection::WALK_BACKWARD, 8),
+            "{label}"
+        );
     }
     // Refusals leave the receiver untouched: lifecycle byte 15 and a blocked step check.
     for (state, admission) in [
@@ -4217,7 +4222,7 @@ fn walk_backward_matches_the_original_routine() {
         let (done, position, counters, direction, called) = run(0, 0, 256, state, admission);
         assert_eq!(
             (done, position, counters, direction, called),
-            (true, [0; 3], 0, 0, 0)
+            (true, [0; 3], 0, MotionDirection::NONE, 0)
         );
     }
 }
@@ -4252,8 +4257,8 @@ fn walk_forward_native_snapshot_preserves_variant_and_rebinds_the_task_token() {
 fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
     use crate::script::tasks::{LocomotionAdmission, LocomotionCall, MotionCall};
     let mut counters = 48;
-    let mut direction = 0;
-    let mut classification = 0;
+    let mut direction = MotionDirection::NONE;
+    let mut classification = MotionDirection::NONE;
     let mut called = 0;
     assert!(
         Task::WalkForward
@@ -4288,8 +4293,11 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
             )
             .unwrap()
     );
-    assert_eq!((direction, counters, called), (0, 48, 0));
-    assert_eq!(classification, 0);
+    assert_eq!(
+        (direction, counters, called),
+        (MotionDirection::NONE, 48, 0)
+    );
+    assert_eq!(classification, MotionDirection::NONE);
 }
 
 #[test]
@@ -4297,8 +4305,8 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
     use crate::script::tasks::{LocomotionAdmission, LocomotionCall, MotionCall};
     for (probe, expected) in [(Some(false), Some(true)), (None, None)] {
         let mut counters = 48;
-        let mut direction = 0;
-        let mut classification = 0;
+        let mut direction = MotionDirection::NONE;
+        let mut classification = MotionDirection::NONE;
         let mut called = 0;
         let result = Task::Forward.complete(
             &[Argument::Integer(4)],
@@ -4337,8 +4345,8 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
                 format!("{:#}", result.unwrap_err()).contains("edge probe input unavailable")
             ),
         }
-        assert_eq!((direction, called), (2, 0));
-        assert_eq!(classification, 2);
+        assert_eq!((direction, called), (MotionDirection::FORWARD, 0));
+        assert_eq!(classification, MotionDirection::FORWARD);
     }
 }
 

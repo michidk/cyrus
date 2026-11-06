@@ -1,5 +1,6 @@
 //! Deep sidesteps retain classification before edge and lateral admission.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Thread};
@@ -354,7 +355,11 @@ fn terrain(steep: bool) -> cyrus_collision::ground::TerrainGround {
     .unwrap()
 }
 
-fn assert_stationary(world: &ScriptWorld, direction: u8, classification: u8) {
+fn assert_stationary(
+    world: &ScriptWorld,
+    direction: MotionDirection,
+    classification: MotionDirection,
+) {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(control.motion_direction, direction);
     assert_eq!(control.motion_classification, classification);
@@ -362,7 +367,15 @@ fn assert_stationary(world: &ScriptWorld, direction: u8, classification: u8) {
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
     assert_eq!(
         world.spatial(world.id(0).unwrap()).unwrap().local.position,
-        [if direction == 4 { 82432 } else { 49664 }, 0, 256000]
+        [
+            if direction == MotionDirection::LEFT {
+                82432
+            } else {
+                49664
+            },
+            0,
+            256000,
+        ]
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
     assert_eq!(world.flags(), [12]);
@@ -370,7 +383,10 @@ fn assert_stationary(world: &ScriptWorld, direction: u8, classification: u8) {
 
 #[test]
 fn deep_sidestep_acceptance_preserves_classification_motion_and_real_wait_poll() {
-    for (group, class, called, counter, x) in [(24, 4, 1, 1, 81408), (26, 5, 2, 4, 50688)] {
+    for (group, class, called, counter, x) in [
+        (24, MotionDirection::LEFT, 1, 1, 81408),
+        (26, MotionDirection::RIGHT, 2, 4, 50688),
+    ] {
         let (mut world, data) = fixture(group, 7);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(false));
@@ -396,7 +412,7 @@ fn deep_sidestep_acceptance_preserves_classification_motion_and_real_wait_poll()
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         advance(&mut world, ScriptStage::Tasks).unwrap();
         continue_sidestep(&mut world, Some(geometry(&scene, &data, &prepared, 128))).unwrap();
@@ -412,7 +428,7 @@ fn deep_sidestep_acceptance_preserves_classification_motion_and_real_wait_poll()
 
 #[test]
 fn deep_sidestep_blocked_edge_retains_classification_and_skips_invalid_lateral_support() {
-    for (group, class) in [(24, 4), (26, 5)] {
+    for (group, class) in [(24, MotionDirection::LEFT), (26, MotionDirection::RIGHT)] {
         let (mut world, data) = fixture(group, 0);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(true));
@@ -452,7 +468,7 @@ fn deep_sidestep_blocked_edge_retains_classification_and_skips_invalid_lateral_s
 
 #[test]
 fn deep_sidestep_missing_geometry_retains_direction_and_classification_prefix() {
-    for (group, class) in [(24, 4), (26, 5)] {
+    for (group, class) in [(24, MotionDirection::LEFT), (26, MotionDirection::RIGHT)] {
         let (mut world, _) = fixture(group, 7);
         continue_sidestep(&mut world, None).unwrap();
         assert_stationary(&world, class, class);
@@ -461,7 +477,10 @@ fn deep_sidestep_missing_geometry_retains_direction_and_classification_prefix() 
 
 #[test]
 fn deep_sidestep_support_refusal_after_clear_edge_retains_classification() {
-    for (group, class, body_marker, transition_marker) in [(24, 4, 0x20, 0), (26, 5, 0x40, 0)] {
+    for (group, class, body_marker, transition_marker) in [
+        (24, MotionDirection::LEFT, 0x20, 0),
+        (26, MotionDirection::RIGHT, 0x40, 0),
+    ] {
         let (mut world, data) = fixture(group, 0);
         let scene = ordinary_collision_scene(world.world, models());
         let id = world.id(0).unwrap();
@@ -483,7 +502,7 @@ fn deep_sidestep_support_refusal_after_clear_edge_retains_classification() {
 
 #[test]
 fn deep_sidestep_edge_and_lateral_failures_both_retain_classification_prefix() {
-    for (group, class) in [(24, 4), (26, 5)] {
+    for (group, class) in [(24, MotionDirection::LEFT), (26, MotionDirection::RIGHT)] {
         let (mut world, data) = fixture(group, 0);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(false));

@@ -9,6 +9,7 @@ use crate::player::input::PlayerInput;
 use crate::rope::{Attachment, PumpKeys};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::decision::heading_difference;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
@@ -297,7 +298,10 @@ impl ScriptWorld {
             .context("rope attach control unavailable")?;
         let airborne = control.queued_motion > JumpMotion::STANDING
             || control.falling_state > JumpMotion::STANDING;
-        let backward = matches!(control.motion_classification, 3 | 7);
+        let backward = matches!(
+            control.motion_classification,
+            MotionDirection::BACKWARD | MotionDirection::WALK_BACKWARD
+        );
         control.rope_attached = true;
         control.falling_state = JumpMotion::NONE;
         control.queued_motion = JumpMotion::NONE;
@@ -774,7 +778,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("rope release control unavailable")?
-            .motion_classification = 2;
+            .motion_classification = MotionDirection::FORWARD;
         Ok(())
     }
 

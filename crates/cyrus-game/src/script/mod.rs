@@ -112,7 +112,7 @@ pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};
 pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};
 pub mod locomotion;
-pub use locomotion::StepDirection;
+pub use locomotion::{MotionDirection, StepDirection};
 mod maintenance;
 mod markers;
 mod menu;

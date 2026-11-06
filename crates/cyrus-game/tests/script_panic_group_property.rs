@@ -1,5 +1,6 @@
 //! Receiver-owned panic-group stored default uses public property dispatch.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{AnimationGroup, Thread};
@@ -190,7 +191,7 @@ fn panic_group_routes_signed_words_without_a_playback_allocation() {
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                0
+                MotionDirection::NONE
             );
         }
     }

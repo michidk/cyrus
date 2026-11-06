@@ -680,6 +680,7 @@ impl crate::script::CombatTauntSource for PreparedTaunt<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::MotionDirection;
     use crate::script::registry::{
         ActorControlState, ScriptActor, ScriptActorSource, ScriptAnimation,
     };
@@ -1113,7 +1114,7 @@ mod tests {
             control.falling_state = falling;
             control.sliding_state = sliding;
             control.queued_motion = queued;
-            control.motion_direction = 3;
+            control.motion_direction = MotionDirection::BACKWARD;
             control.motion_companion = 9;
             let mut globals = Default::default();
             let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
@@ -1134,7 +1135,7 @@ mod tests {
             );
             receiver.cleanup(id, 0, &mut |_, _| Ok(())).unwrap();
             let control = receiver.actor.control.as_ref().unwrap();
-            assert_eq!(control.motion_direction, 3);
+            assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
             assert_eq!(control.motion_companion, 9);
         }
     }

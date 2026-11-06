@@ -1,5 +1,6 @@
 //! Native running and walking retain independent movement classifications.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{
     OrdinaryForwardAmountInputs, OrdinaryMovement, ScriptHud, ScriptInputs, ScriptSound,
     ScriptStage, ScriptWorld,
@@ -254,7 +255,10 @@ fn advance(
 
 #[test]
 fn native_running_and_walking_publish_receiver_classification_and_resume_the_caller() {
-    for (name, class, step) in [("MoveForward", 2, 2048), ("WalkForward", 6, 1024)] {
+    for (name, class, step) in [
+        ("MoveForward", MotionDirection::FORWARD, 2048),
+        ("WalkForward", MotionDirection::WALK_FORWARD, 1024),
+    ] {
         let mut world = fixture(name, true, false, false, 0);
         let id = world.id(0).unwrap();
         advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
@@ -275,7 +279,7 @@ fn native_running_and_walking_publish_receiver_classification_and_resume_the_cal
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                0
+                MotionDirection::NONE
             );
             assert_eq!(
                 world.spatial(id).unwrap().local.position,
@@ -309,7 +313,7 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         assert_eq!(
             world.spatial(world.id(0).unwrap()).unwrap().local.position,
@@ -326,7 +330,7 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
             Ok(())
@@ -338,7 +342,10 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
 
 #[test]
 fn missing_group_and_pending_group_retain_classification_without_startup() {
-    for (name, class) in [("MoveForward", 2), ("WalkForward", 6)] {
+    for (name, class) in [
+        ("MoveForward", MotionDirection::FORWARD),
+        ("WalkForward", MotionDirection::WALK_FORWARD),
+    ] {
         for (present, pending) in [(false, false), (true, true)] {
             let mut world = fixture(name, present, pending, false, 0);
             advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
@@ -361,7 +368,10 @@ fn missing_group_and_pending_group_retain_classification_without_startup() {
 
 #[test]
 fn failed_native_animation_callback_keeps_classification_and_stops_the_caller() {
-    for (name, class) in [("MoveForward", 2), ("WalkForward", 6)] {
+    for (name, class) in [
+        ("MoveForward", MotionDirection::FORWARD),
+        ("WalkForward", MotionDirection::WALK_FORWARD),
+    ] {
         let mut world = fixture(name, true, false, true, 0);
         let mut calls = 0;
         let error = advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
@@ -386,7 +396,10 @@ fn failed_native_animation_callback_keeps_classification_and_stops_the_caller() 
 
 #[test]
 fn native_poll_rewrites_classification_after_another_public_movement_producer() {
-    for (name, class) in [("MoveForward", 2), ("WalkForward", 6)] {
+    for (name, class) in [
+        ("MoveForward", MotionDirection::FORWARD),
+        ("WalkForward", MotionDirection::WALK_FORWARD),
+    ] {
         let mut world = fixture(name, true, false, false, 0);
         advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
             Ok(())
@@ -414,7 +427,7 @@ fn native_poll_rewrites_classification_after_another_public_movement_producer() 
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                2
+                MotionDirection::FORWARD
             );
         } else {
             let hud = ScriptHud::default();
@@ -439,7 +452,7 @@ fn native_poll_rewrites_classification_after_another_public_movement_producer() 
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                6
+                MotionDirection::WALK_FORWARD
             );
         }
         advance(&mut world, ScriptStage::Tasks, &mut |_, _| Ok(())).unwrap();

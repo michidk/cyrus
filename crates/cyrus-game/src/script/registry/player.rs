@@ -11,6 +11,7 @@ use crate::player::{
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
@@ -1141,7 +1142,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .context("walking control unavailable")?
-                .motion_classification = 6;
+                .motion_classification = MotionDirection::WALK_FORWARD;
             let surface = self.actor_surface(id)?;
             let event_context = super::effects::ActorEventContext::capture(self, id);
             let event_camera = &mut self.camera;

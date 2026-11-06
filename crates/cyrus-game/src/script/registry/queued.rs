@@ -2,6 +2,7 @@
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use cyrus_assets::surface::Surface;
@@ -369,7 +370,7 @@ impl super::ScriptWorld {
             .control
             .as_mut()
             .expect("validated displacement control");
-        control.motion_direction = 2;
+        control.motion_direction = MotionDirection::FORWARD;
         control.move_counter |= StepDirection::Forward.counter_mask();
         self.globals.locomotion_called |= StepDirection::Forward.called_flag();
         if suppressed {
@@ -430,13 +431,13 @@ impl super::ScriptWorld {
             .control
             .as_mut()
             .expect("validated control")
-            .motion_direction = 3;
+            .motion_direction = MotionDirection::BACKWARD;
         if self.actors[index]
             .surface
             .is_some_and(Surface::is_deep_water)
             && !self.edge_probe_clear(
                 id,
-                3,
+                MotionDirection::BACKWARD,
                 query.context("backward jump edge scene unavailable")?.scene,
             )?
         {
@@ -513,7 +514,11 @@ impl super::ScriptWorld {
             return Ok(());
         }
         let backward = control.rope_speed < 0;
-        control.motion_classification = if backward { 3 } else { 2 };
+        control.motion_classification = if backward {
+            MotionDirection::BACKWARD
+        } else {
+            MotionDirection::FORWARD
+        };
         control.move_counter |= if backward {
             StepDirection::Backward
         } else {
@@ -776,12 +781,12 @@ impl super::ScriptWorld {
             .control
             .as_mut()
             .expect("validated jump control")
-            .motion_classification = 2;
+            .motion_classification = MotionDirection::FORWARD;
         actor
             .control
             .as_mut()
             .expect("validated jump control")
-            .motion_direction = 2;
+            .motion_direction = MotionDirection::FORWARD;
         Ok(true)
     }
 

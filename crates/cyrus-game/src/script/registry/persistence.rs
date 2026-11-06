@@ -24,8 +24,8 @@ struct ControlSnapshot {
     sliding_state: u8,
     falling_state: JumpMotion,
     queued_motion: JumpMotion,
-    motion_direction: u8,
-    motion_classification: u8,
+    motion_direction: crate::script::MotionDirection,
+    motion_classification: crate::script::MotionDirection,
     directional_state: [u32; 2],
     action_transition_counter: u8,
     #[serde(default)]

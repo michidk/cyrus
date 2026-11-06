@@ -57,8 +57,39 @@ pub enum BackwardAdmission {
     Proceed { group: AnimationGroup, step: u8 },
 }
 
-/// Motion-direction byte value `MoveBackward` stores once admitted.
-pub const BACKWARD_MOTION_DIRECTION: u8 = 7;
+/// Motion-direction byte, also retained as the movement classification that `last_direction`
+/// exposes (preservation SOUP.md and player.md). Movement producers store it once admitted; the
+/// deep-water probe steps forward for 2 and 6, backward for 3 and 7, left for 4 and right for 5.
+/// Other values, including those scripts write, are retained.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct MotionDirection(u8);
+
+impl MotionDirection {
+    pub const NONE: Self = Self(0);
+    /// Ordinary forward running (`MoveForward`) and queued forward movement.
+    pub const FORWARD: Self = Self(2);
+    /// Queued backward movement after a rope release with a negative speed.
+    pub const BACKWARD: Self = Self(3);
+    pub const LEFT: Self = Self(4);
+    pub const RIGHT: Self = Self(5);
+    /// Ordinary forward walking.
+    pub const WALK_FORWARD: Self = Self(6);
+    /// `MoveBackward`.
+    pub const WALK_BACKWARD: Self = Self(7);
+    /// Runs the selected player's ledge update before the falling and queued-motion branch.
+    pub const LEDGE: Self = Self(15);
+    /// The left circle step.
+    pub const CIRCLE_LEFT: Self = Self(25);
+
+    pub const fn from_byte(byte: u8) -> Self {
+        Self(byte)
+    }
+
+    pub const fn byte(self) -> u8 {
+        self.0
+    }
+}
 
 /// Admission and group choice. `blocked_ahead_30` is evaluated only in combat stance, as the
 /// original probes only then.
@@ -122,10 +153,10 @@ pub enum Strafe {
 
 impl Strafe {
     /// Motion-direction byte stored once admitted.
-    pub fn motion_direction(self) -> u8 {
+    pub fn motion_direction(self) -> MotionDirection {
         match self {
-            Self::Left => 4,
-            Self::Right => 5,
+            Self::Left => MotionDirection::LEFT,
+            Self::Right => MotionDirection::RIGHT,
         }
     }
 
@@ -310,9 +341,6 @@ pub fn strafe_translation(
     let distance = distance.wrapping_mul(frame_scale) >> 8;
     (distance > 0).then_some((heading, distance))
 }
-
-/// Motion-direction byte `MoveForward` stores once admitted.
-pub const FORWARD_MOTION_DIRECTION: u8 = 2;
 
 /// Admission of `MoveForward` before its forward step check, per preservation's engine/SOUP.md:
 /// no rope, sliding, falling or queued motion, and no lifecycle test.

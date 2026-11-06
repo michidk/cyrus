@@ -1,5 +1,6 @@
 //! Backward and lateral native tasks retain receiver-owned classifications.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{
     OrdinaryForwardAmountInputs, ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld,
 };
@@ -298,10 +299,18 @@ fn advance_with_lateral(
 #[test]
 fn native_backward_and_strafes_publish_classification_and_resume_the_caller() {
     for (name, class, delta) in [
-        ("MoveBackward", 7, [0, 0, -3072]),
-        ("WalkBackward", 7, [0, 0, -3072]),
-        ("MoveLeft", 4, [-1024, 0, 0]),
-        ("MoveRight", 5, [1024, 0, 0]),
+        (
+            "MoveBackward",
+            MotionDirection::WALK_BACKWARD,
+            [0, 0, -3072],
+        ),
+        (
+            "WalkBackward",
+            MotionDirection::WALK_BACKWARD,
+            [0, 0, -3072],
+        ),
+        ("MoveLeft", MotionDirection::LEFT, [-1024, 0, 0]),
+        ("MoveRight", MotionDirection::RIGHT, [1024, 0, 0]),
     ] {
         let mut world = fixture(name, true, false, false, 0);
         let id = world.id(0).unwrap();
@@ -323,7 +332,7 @@ fn native_backward_and_strafes_publish_classification_and_resume_the_caller() {
                     .control_state()
                     .unwrap()
                     .motion_classification,
-                0
+                MotionDirection::NONE
             );
             assert_eq!(
                 world.spatial(id).unwrap().local.position,
@@ -357,7 +366,7 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         assert_eq!(
             world.spatial(world.id(0).unwrap()).unwrap().local.position,
@@ -374,7 +383,7 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
             Ok(())
@@ -387,10 +396,10 @@ fn native_refusal_keeps_classification_zero_and_still_releases_the_caller() {
 #[test]
 fn missing_group_and_pending_group_retain_classification_without_startup() {
     for (name, class) in [
-        ("MoveBackward", 7),
-        ("WalkBackward", 7),
-        ("MoveLeft", 4),
-        ("MoveRight", 5),
+        ("MoveBackward", MotionDirection::WALK_BACKWARD),
+        ("WalkBackward", MotionDirection::WALK_BACKWARD),
+        ("MoveLeft", MotionDirection::LEFT),
+        ("MoveRight", MotionDirection::RIGHT),
     ] {
         for (present, pending) in [(false, false), (true, true)] {
             let mut world = fixture(name, present, pending, false, 0);
@@ -415,10 +424,10 @@ fn missing_group_and_pending_group_retain_classification_without_startup() {
 #[test]
 fn failed_native_animation_callback_keeps_classification_and_stops_the_caller() {
     for (name, class) in [
-        ("MoveBackward", 7),
-        ("WalkBackward", 7),
-        ("MoveLeft", 4),
-        ("MoveRight", 5),
+        ("MoveBackward", MotionDirection::WALK_BACKWARD),
+        ("WalkBackward", MotionDirection::WALK_BACKWARD),
+        ("MoveLeft", MotionDirection::LEFT),
+        ("MoveRight", MotionDirection::RIGHT),
     ] {
         let mut world = fixture(name, true, false, true, 0);
         let mut calls = 0;
@@ -445,10 +454,10 @@ fn failed_native_animation_callback_keeps_classification_and_stops_the_caller() 
 #[test]
 fn native_poll_rewrites_classification_after_another_public_movement_producer() {
     for (name, class) in [
-        ("MoveBackward", 7),
-        ("WalkBackward", 7),
-        ("MoveLeft", 4),
-        ("MoveRight", 5),
+        ("MoveBackward", MotionDirection::WALK_BACKWARD),
+        ("WalkBackward", MotionDirection::WALK_BACKWARD),
+        ("MoveLeft", MotionDirection::LEFT),
+        ("MoveRight", MotionDirection::RIGHT),
     ] {
         let mut world = fixture(name, true, false, false, 0);
         advance(&mut world, ScriptStage::Body(Thread::Main), &mut |_, _| {
@@ -476,7 +485,7 @@ fn native_poll_rewrites_classification_after_another_public_movement_producer() 
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            2
+            MotionDirection::FORWARD
         );
         advance(&mut world, ScriptStage::Tasks, &mut |_, _| Ok(())).unwrap();
         assert_eq!(
@@ -493,7 +502,10 @@ fn native_poll_rewrites_classification_after_another_public_movement_producer() 
 
 #[test]
 fn refused_lateral_query_retains_strafe_classification_and_releases_caller() {
-    for (name, class) in [("MoveLeft", 4), ("MoveRight", 5)] {
+    for (name, class) in [
+        ("MoveLeft", MotionDirection::LEFT),
+        ("MoveRight", MotionDirection::RIGHT),
+    ] {
         let mut world = fixture(name, true, false, true, 0);
         advance_with_lateral(
             &mut world,
@@ -539,7 +551,7 @@ fn dry_walk_backward_missing_support_fails_before_classification_store() {
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
     assert!(world.actors()[0].runtime().unwrap().failure().is_some());

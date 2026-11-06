@@ -4,6 +4,7 @@ use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
 use cyrus_script::Native;
@@ -5733,7 +5734,7 @@ fn move_backward_requests_the_walk_group_then_steps_along_the_reversed_heading()
     assert!(moved >= 2048 && moved % 2048 == 0, "moved {moved}");
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        7
+        MotionDirection::WALK_BACKWARD
     );
     stage(&mut world, id, BODY);
     assert_eq!(
@@ -5833,7 +5834,11 @@ fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            if name == Native::MoveLeft { 4 } else { 5 }
+            if name == Native::MoveLeft {
+                MotionDirection::LEFT
+            } else {
+                MotionDirection::RIGHT
+            }
         );
     }
 }
@@ -5871,7 +5876,11 @@ fn a_blocked_lateral_step_completes_without_moving_or_requesting_a_group() {
         assert_eq!(world.spatial(id).unwrap().local.position, start, "{name}");
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            if name == Native::MoveLeft { 4 } else { 5 }
+            if name == Native::MoveLeft {
+                MotionDirection::LEFT
+            } else {
+                MotionDirection::RIGHT
+            }
         );
     }
 }
@@ -5904,7 +5913,11 @@ fn ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes() 
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             control.motion_direction,
-            if name == Native::MoveLeft { 4 } else { 5 }
+            if name == Native::MoveLeft {
+                MotionDirection::LEFT
+            } else {
+                MotionDirection::RIGHT
+            }
         );
     }
 }
@@ -5987,7 +6000,7 @@ fn move_forward_steps_along_the_heading_when_the_step_check_passes() {
     assert!(moved >= 2048 && moved % 2048 == 0, "moved {moved}");
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        2
+        MotionDirection::FORWARD
     );
     stage(&mut world, id, BODY);
     assert_eq!(world.flags(), [9]);
@@ -6011,7 +6024,7 @@ fn move_forward_blocked_by_its_step_check_never_moves_and_keeps_the_direction_cl
     assert_eq!(world.spatial(id).unwrap().local.position, start);
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        0
+        MotionDirection::NONE
     );
 }
 
@@ -6168,7 +6181,7 @@ fn directional_motion_and_forward_tasks_share_the_same_packed_counter() {
     world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     assert_eq!(
         world.apply_ordinary_directional_motion(id, 2, 0).unwrap(),
-        Some(2)
+        Some(MotionDirection::FORWARD)
     );
     assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 48);
     assert_eq!(
@@ -6301,7 +6314,7 @@ fn walk_forward_without_collision_attribute_bits_passes_its_step_checks() {
     forward_stage(&mut world, id, BODY, &locomotion_hud(), None).unwrap();
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        6
+        MotionDirection::WALK_FORWARD
     );
 }
 
@@ -6315,7 +6328,7 @@ fn walk_forward_requires_live_geometry_instead_of_a_sampled_forward_result() {
     );
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
 }
@@ -6326,7 +6339,7 @@ fn walk_forward_delegates_to_move_forward_before_its_own_step_check_in_deep_wate
     forward_stage(&mut world, id, BODY, &locomotion_hud(), Some(false)).unwrap();
     assert_eq!(
         world.actors()[0].control_state().unwrap().motion_direction,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
 }
@@ -6346,7 +6359,7 @@ fn walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll(
         .unwrap();
         assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
         let control = world.actors()[id.index].control_state().unwrap();
-        assert_eq!(control.motion_direction, 6);
+        assert_eq!(control.motion_direction, MotionDirection::WALK_FORWARD);
         assert_eq!(control.move_counter, ((index + 1).min(3) as u8) << 4);
         assert_eq!(control.last_collide.bits() & 0xff, 0);
     }

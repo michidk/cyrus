@@ -1,6 +1,7 @@
 //! The nonplayer step hazard test follows the original's destination surface classification.
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use crate::script::AiType;
+use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_collision::ground::SurfaceClass;
@@ -122,16 +123,16 @@ impl ScriptWorld {
     pub fn edge_probe_clear(
         &self,
         id: ScriptActorId,
-        direction: u8,
+        direction: MotionDirection,
         scene: &crate::player::data::PlayerScene,
     ) -> Result<bool> {
         let Some(terrain) = &scene.terrain else {
             return Ok(true);
         };
         let offset = match direction {
-            4 => [-0x4000, 0, 0],
-            5 => [0x4000, 0, 0],
-            3 | 7 => [0, 0, -0x4000],
+            MotionDirection::LEFT => [-0x4000, 0, 0],
+            MotionDirection::RIGHT => [0x4000, 0, 0],
+            MotionDirection::BACKWARD | MotionDirection::WALK_BACKWARD => [0, 0, -0x4000],
             _ => [0, 0, 0x4000],
         };
         let spatial = self.spatial(id)?;

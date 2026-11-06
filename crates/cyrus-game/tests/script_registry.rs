@@ -9,6 +9,7 @@ use cyrus_game::script::CombatFlags;
 use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::PointPhase;
 use cyrus_game::script::StepDirection;
 use cyrus_game::script::{ExecutorState, ScriptStage, ScriptWorld};
@@ -10673,7 +10674,7 @@ fn ordinary_ground_prevalidation_queries_retained_support_and_restores_local_mot
             .control_state()
             .unwrap()
             .motion_direction,
-        0
+        MotionDirection::NONE
     );
 }
 
@@ -11156,7 +11157,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
             control.fall_origin_y,
             control.motion_direction
         ),
-        (JumpMotion::STANDING, 0, origin[1], 2)
+        (JumpMotion::STANDING, 0, origin[1], MotionDirection::FORWARD)
     );
     assert!(
         !world
@@ -11587,7 +11588,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
         world
             .apply_ordinary_directional_motion(id, 2, 4096)
             .unwrap(),
-        Some(2)
+        Some(MotionDirection::FORWARD)
     );
     assert_eq!(
         world.spatial(id).unwrap().local.position,
@@ -11599,7 +11600,10 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
         .unwrap()
     );
     let control = world.actors()[id.index].control_state().unwrap();
-    assert_eq!((control.motion_direction, control.move_counter), (2, 48));
+    assert_eq!(
+        (control.motion_direction, control.move_counter),
+        (MotionDirection::FORWARD, 48)
+    );
     let y = world.spatial(id).unwrap().local.position[1];
     let environment = ObstacleEnvironment {
         selected_player: None,
@@ -11690,15 +11694,15 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
 fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translation() {
     use cyrus_game::script::{OrdinaryDirectionalMotion, ordinary_directional_motion};
     for (motion, direction, step, heading) in [
-        (2, 2, StepDirection::Forward, 2000),
-        (6, 2, StepDirection::Forward, 2000),
-        (8, 2, StepDirection::Forward, 2000),
-        (9, 2, StepDirection::Forward, 2000),
-        (24, 2, StepDirection::Forward, 2000),
-        (3, 3, StepDirection::Backward, 976),
-        (7, 3, StepDirection::Backward, 976),
-        (4, 4, StepDirection::Left, 464),
-        (5, 5, StepDirection::Right, 1488),
+        (2, MotionDirection::FORWARD, StepDirection::Forward, 2000),
+        (6, MotionDirection::FORWARD, StepDirection::Forward, 2000),
+        (8, MotionDirection::FORWARD, StepDirection::Forward, 2000),
+        (9, MotionDirection::FORWARD, StepDirection::Forward, 2000),
+        (24, MotionDirection::FORWARD, StepDirection::Forward, 2000),
+        (3, MotionDirection::BACKWARD, StepDirection::Backward, 976),
+        (7, MotionDirection::BACKWARD, StepDirection::Backward, 976),
+        (4, MotionDirection::LEFT, StepDirection::Left, 464),
+        (5, MotionDirection::RIGHT, StepDirection::Right, 1488),
     ] {
         assert_eq!(
             ordinary_directional_motion(motion | 128, 2000, 4096, Surface::DEEPWATER, false),
@@ -14758,7 +14762,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                         control.motion_direction,
                         control.weapon_drawn
                     ),
-                    (6, LivingState::ORDINARY, 0, false)
+                    (6, LivingState::ORDINARY, MotionDirection::NONE, false)
                 );
                 assert_eq!(
                     control.combat.as_ref().unwrap().flags.bits(),
@@ -16036,7 +16040,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
             .control_state()
             .unwrap()
             .motion_direction,
-        4
+        MotionDirection::LEFT
     );
 }
 
@@ -16146,7 +16150,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
             .control_state()
             .unwrap()
             .motion_direction,
-        2
+        MotionDirection::FORWARD
     );
 }
 
@@ -16266,7 +16270,7 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
             .control_state()
             .unwrap()
             .motion_direction,
-        2
+        MotionDirection::FORWARD
     );
 }
 
@@ -16617,7 +16621,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
             .control_state()
             .unwrap()
             .motion_direction,
-        7
+        MotionDirection::WALK_BACKWARD
     );
 }
 
@@ -16743,7 +16747,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
             .control_state()
             .unwrap()
             .motion_direction,
-        7
+        MotionDirection::WALK_BACKWARD
     );
 }
 
@@ -17035,7 +17039,11 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
             control.motion_direction,
             control.move_counter
         ),
-        (6, 2, 0x30)
+        (
+            MotionDirection::WALK_FORWARD,
+            MotionDirection::FORWARD,
+            0x30
+        )
     );
     assert!(cues.iter().any(|(id, cue)| *id == player
         && matches!(
@@ -24642,7 +24650,7 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
                     .control_state()
                     .unwrap()
                     .motion_direction,
-                0
+                MotionDirection::NONE
             );
             world.finish_ordinary_script_response(id, Some(1)).unwrap();
         }
@@ -25051,7 +25059,7 @@ fn forward_amount_advances_shared_counter_and_called_state_without_translation()
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.move_counter, counter);
-        assert_eq!(control.motion_direction, 2);
+        assert_eq!(control.motion_direction, MotionDirection::FORWARD);
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
         assert_eq!(world.spatial(id).unwrap().local.position, before.position);
         assert_eq!(world.spatial(id).unwrap().local.angles, before.angles);
@@ -25143,7 +25151,7 @@ fn forward_amount_guards_precede_animation_and_geometry_and_keep_shared_state() 
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.move_counter, 0xC3);
-        assert_eq!(control.motion_direction, 99);
+        assert_eq!(control.motion_direction, MotionDirection::from_byte(99));
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
     }
 }
@@ -25171,7 +25179,7 @@ fn forward_amount_waits_for_current_animation_without_advancing_counter() {
             expected
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.motion_direction, 2);
+        assert_eq!(control.motion_direction, MotionDirection::FORWARD);
         assert_eq!(control.move_counter, counter);
         let state = world.inspect(0, 1);
         assert_eq!(state["globals"]["locomotion_called"], called);
@@ -25208,7 +25216,7 @@ fn forward_amount_requires_live_step_geometry_only_below_saturated_counter() {
             assert!(error.contains("step geometry unavailable"), "{error}");
             assert_eq!(
                 world.actors()[0].control_state().unwrap().motion_direction,
-                99
+                MotionDirection::from_byte(99)
             );
             assert_eq!(
                 world.actors()[0].control_state().unwrap().move_counter,
@@ -25324,9 +25332,30 @@ fn synchronous_movement_retains_duration_and_animation_wait_results_without_task
 fn synchronous_backward_and_combat_strafes_use_existing_real_movement() {
     use cyrus_game::script::{CombatControlState, OrdinaryMovement, ScriptHud, ScriptInputs};
     for (movement, group, position, direction, counter, called) in [
-        (OrdinaryMovement::Backward, 19, [0, 0, -768], 7, 0x40, 8),
-        (OrdinaryMovement::Left, 18, [-256, 0, 0], 4, 1, 1),
-        (OrdinaryMovement::Right, 18, [256, 0, 0], 5, 4, 2),
+        (
+            OrdinaryMovement::Backward,
+            19,
+            [0, 0, -768],
+            MotionDirection::WALK_BACKWARD,
+            0x40,
+            8,
+        ),
+        (
+            OrdinaryMovement::Left,
+            18,
+            [-256, 0, 0],
+            MotionDirection::LEFT,
+            1,
+            1,
+        ),
+        (
+            OrdinaryMovement::Right,
+            18,
+            [256, 0, 0],
+            MotionDirection::RIGHT,
+            4,
+            2,
+        ),
     ] {
         let mut world = forward_amount_world(group, false, true, |actor| {
             if matches!(movement, OrdinaryMovement::Left | OrdinaryMovement::Right) {
@@ -25756,7 +25785,7 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
     let after = world.spatial(id).unwrap().local.position;
     assert_ne!(after, start);
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_direction, 2);
+    assert_eq!(control.motion_direction, MotionDirection::FORWARD);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
     // The forward-called flag ends the continuation for the rest of the update.
     world
@@ -25769,7 +25798,7 @@ fn forward_continuation_walks_on_once_per_update_without_requesting_a_group() {
 fn backward_continuation_sets_its_own_called_flag() {
     use cyrus_game::script::{ScriptHud, ScriptInputs};
     {
-        let (group, flag, direction) = (93, 8, 3);
+        let (group, flag, direction) = (93, 8, MotionDirection::BACKWARD);
         let (mut world, _scripts, _data) = spacing_fixture_group(group, |_| {});
         world.ordinary_actors([0, 0]).unwrap();
         let id = world.id(0).unwrap();
@@ -25808,11 +25837,11 @@ fn walk_continuation_steps_and_geometry_steps_wait_for_their_check() {
     // (group, moves without collision geometry, motion direction, called flag when it moved);
     // every step here needs the collision geometry for its step check.
     for (group, moves, direction, flag) in [
-        (20, false, 6, 0),
-        (31, false, 6, 0),
-        (22, false, 7, 0),
-        (24, false, 4, 0),
-        (27, false, 5, 0),
+        (20, false, MotionDirection::WALK_FORWARD, 0),
+        (31, false, MotionDirection::WALK_FORWARD, 0),
+        (22, false, MotionDirection::WALK_BACKWARD, 0),
+        (24, false, MotionDirection::LEFT, 0),
+        (27, false, MotionDirection::RIGHT, 0),
     ] {
         let (mut world, _scripts, _data) = spacing_fixture_group(group, |_| {});
         world.ordinary_actors([0, 0]).unwrap();
@@ -28068,9 +28097,10 @@ fn retained_point_facing_ignores_live_target_and_preserves_y_on_horizontal_snap(
 #[test]
 fn disengaged_combat_uses_retained_point_and_real_forward_or_walk_movement() {
     use cyrus_game::script::{OrdinarySlopeInputs, ScriptHud, ScriptInputs};
-    for (distance, position, group, direction) in
-        [(500000, [0, 0, 2048], 18, 2), (500001, [0, 0, 1024], 20, 6)]
-    {
+    for (distance, position, group, direction) in [
+        (500000, [0, 0, 2048], 18, MotionDirection::FORWARD),
+        (500001, [0, 0, 1024], 20, MotionDirection::WALK_FORWARD),
+    ] {
         let (mut world, _, _) = retained_point_fixture(group, 8, 12, |saved| {
             saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
             saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 0, 0]);
@@ -30972,7 +31002,7 @@ fn coordinate_walking_restores_only_overshoot_owned_state_at_inclusive_boundarie
         }
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            2
+            MotionDirection::FORWARD
         );
         assert_eq!(after["map_updates"], serde_json::json!([]));
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
@@ -33708,7 +33738,14 @@ fn selected_health_ledge_reset_uses_torch_counter_independently_of_weapon_state(
                 control.actions,
                 if torch == 0 { [128, 255] } else { [0, 0] }
             );
-            assert_eq!(control.motion_direction, if torch == 0 { 7 } else { 0 });
+            assert_eq!(
+                control.motion_direction,
+                if torch == 0 {
+                    MotionDirection::WALK_BACKWARD
+                } else {
+                    MotionDirection::NONE
+                }
+            );
             assert_eq!(control.torch_burning, torch);
             assert_eq!(control.weapon_drawn, weapon_drawn);
             assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
@@ -33755,7 +33792,7 @@ fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or
         .unwrap();
     let control = world.actors()[index].control_state().unwrap();
     assert_eq!(control.living_state, LivingState::DROPPING);
-    assert_eq!(control.motion_direction, 0);
+    assert_eq!(control.motion_direction, MotionDirection::NONE);
     assert_eq!(control.actions, [0, 0]);
     assert_eq!(control.action_transition_counter, 0);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
@@ -40395,7 +40432,7 @@ fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.queued_motion, control.motion_direction),
-            (queued, 2)
+            (queued, MotionDirection::FORWARD)
         );
         assert!(!control.stable_position_valid);
         assert_eq!(
@@ -40475,7 +40512,7 @@ fn script_jump_refusals_return_zero_without_changing_jump_state() {
                 control.sliding_distance,
                 control.motion_direction
             ),
-            (17, 99, 0)
+            (17, 99, MotionDirection::NONE)
         );
     }
     for surface in [2, 4] {
@@ -42477,9 +42514,9 @@ fn tick_rope_classification_with_timing(
 fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_motion() {
     use cyrus_game::player::input::PlayerInput;
     for (forward, backward, speed, classification) in [
-        (false, false, 0, 2),
-        (true, false, 64, 2),
-        (false, true, -64, 3),
+        (false, false, 0, MotionDirection::FORWARD),
+        (true, false, 64, MotionDirection::FORWARD),
+        (false, true, -64, MotionDirection::BACKWARD),
     ] {
         let (_, mut world, data, scene) = rope_classification_fixture();
         let player = world.selected_player().unwrap();
@@ -42581,7 +42618,7 @@ fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_que
         .control_state()
         .unwrap()
         .motion_classification;
-    assert_eq!(before, 2);
+    assert_eq!(before, MotionDirection::FORWARD);
     tick_rope_classification(
         &mut world,
         &data,
@@ -42604,7 +42641,7 @@ fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_que
         (control.queued_motion.byte(), control.jump_selector),
         (24, 24)
     );
-    assert_eq!(control.motion_classification, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     let failure = world.actors()[player.index].failure().unwrap().to_owned();
     tick_rope_classification(&mut world, &data, &scene, PlayerInput::default(), false);
     assert_eq!(
@@ -42614,7 +42651,7 @@ fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_que
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
         (control.queued_motion.byte(), control.motion_classification),
-        (24, 2)
+        (24, MotionDirection::FORWARD)
     );
 }
 
@@ -42708,7 +42745,7 @@ fn detached_rope_countdown_fixture_with(
         ),
         (0, 0, 24)
     );
-    assert_eq!(control.motion_classification, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     (world, data, scene)
 }
 
@@ -42729,7 +42766,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
             control.jump_selector,
             control.motion_classification
         ),
-        (24, 24, 2)
+        (24, 24, MotionDirection::FORWARD)
     );
     // A second live sample must not request the sounding initialization again while queued.
     sample_rope_jump_controller(&mut world, &data, &scene, &jump, true).unwrap();
@@ -42740,7 +42777,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
             control.jump_selector,
             control.motion_classification
         ),
-        (24, 24, 2)
+        (24, 24, MotionDirection::FORWARD)
     );
     assert!(world.actors()[player.index].failure().is_none());
 }
@@ -42766,7 +42803,7 @@ fn forced_countdown_jump_sound_failure_retains_queue_before_classification_and_b
             control.jump_selector,
             control.motion_classification
         ),
-        (24, 24, 2)
+        (24, 24, MotionDirection::FORWARD)
     );
     let failure = world.actors()[player.index].failure().unwrap().to_owned();
     assert!(failure.contains("forced countdown sound rejected"));
@@ -42780,7 +42817,7 @@ fn forced_countdown_jump_sound_failure_retains_queue_before_classification_and_b
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
 }
 
@@ -42842,7 +42879,7 @@ fn rope_regrab_fixture() -> (
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     // Complete the authored finite animation through the public stage, without ticking controls.
     for _ in 0..4 {
@@ -42896,7 +42933,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
             control.falling_state.byte(),
             control.motion_classification
         ),
-        (1, 0, 0, 2)
+        (1, 0, 0, MotionDirection::FORWARD)
     );
     // Re-enter airborne motion through the same controller while one exclusion tick remains.
     sample_rope_jump_controller(
@@ -42946,7 +42983,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
             control.falling_state.byte(),
             control.motion_classification
         ),
-        (0, 0, 0, 2)
+        (0, 0, 0, MotionDirection::FORWARD)
     );
 }
 
@@ -42978,7 +43015,7 @@ fn rope_expiry_uses_full_nominal_ticks_and_retains_classification_on_grab_failur
                 control.queued_motion.byte(),
                 control.motion_classification
             ),
-            (0, 24, 2)
+            (0, 24, MotionDirection::FORWARD)
         );
         let failure = world.actors()[player.index].failure().unwrap().to_owned();
         tick_rope_classification_with_timing(
@@ -43126,7 +43163,7 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         assert!(
             world
@@ -43136,7 +43173,7 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.motion_classification),
-            (queued, 2)
+            (queued, MotionDirection::FORWARD)
         );
         assert!(
             !world
@@ -43152,14 +43189,14 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            2
+            MotionDirection::FORWARD
         );
         assert_eq!(
             world.actors()[1]
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
     }
 }
@@ -43173,14 +43210,14 @@ fn script_jump_returns_before_landing_with_receiver_classification_two() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.motion_classification),
-            (queued, 2)
+            (queued, MotionDirection::FORWARD)
         );
         assert_eq!(
             world.actors()[1]
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
     }
     let (mut world, _) = public_jump_classification_fixture(0, true);
@@ -43191,7 +43228,7 @@ fn script_jump_returns_before_landing_with_receiver_classification_two() {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (control.queued_motion.byte(), control.motion_classification),
-        (0, 0)
+        (0, MotionDirection::NONE)
     );
 }
 
@@ -43228,7 +43265,7 @@ fn normal_and_script_jump_initialization_failure_precedes_classification_write()
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.motion_classification),
-            (1, 0)
+            (1, MotionDirection::NONE)
         );
         assert!(world.actors()[0].animation_failure().is_some());
         assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 4);
@@ -43238,7 +43275,7 @@ fn normal_and_script_jump_initialization_failure_precedes_classification_write()
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
     }
 }
@@ -43340,7 +43377,7 @@ fn queued_jump_lifetime_fixture(
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     (world, data)
 }
@@ -43351,7 +43388,7 @@ fn queued_jump_lifetime_sample(world: &ScriptWorld) -> (u8, u8, u8, u8) {
         control.fall_timer,
         control.queued_motion.byte(),
         control.falling_state.byte(),
-        control.motion_classification,
+        control.motion_classification.byte(),
     )
 }
 
@@ -43429,7 +43466,7 @@ fn public_jump_continuation_and_landing_retain_classification_two() {
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
 }
 
@@ -43647,7 +43684,7 @@ fn selected_hang_fixture_with_point_task(
             control.living_state.byte(),
             control.queued_motion.byte()
         ),
-        (2, 15, 0)
+        (MotionDirection::FORWARD, 15, 0)
     );
     (world, data, scene)
 }
@@ -43727,7 +43764,7 @@ fn selected_public_jump_hang_release_retains_nonzero_classification_and_continue
             control.action_transition_counter,
             control.queued_motion.byte()
         ),
-        (2, 0, 6, 0)
+        (MotionDirection::FORWARD, 0, 6, 0)
     );
     assert_eq!(world.spatial(player).unwrap().local.position, before);
     advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
@@ -43738,14 +43775,14 @@ fn selected_public_jump_hang_release_retains_nonzero_classification_and_continue
             control.living_state.byte(),
             control.queued_motion.byte()
         ),
-        (2, 0, 1)
+        (MotionDirection::FORWARD, 0, 1)
     );
     assert_eq!(
         world.actors()[0]
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
 }
 
@@ -43763,7 +43800,7 @@ fn selected_public_jump_hang_surface_refusal_retains_classification() {
             control.action_transition_counter,
             control.queued_motion.byte()
         ),
-        (2, 15, 0, 0)
+        (MotionDirection::FORWARD, 15, 0, 0)
     );
     world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
@@ -43772,7 +43809,7 @@ fn selected_public_jump_hang_surface_refusal_retains_classification() {
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     assert_eq!(
         world.actors()[player.index]
@@ -43798,7 +43835,7 @@ fn selected_public_jump_hang_sound_failure_precedes_drop_completion() {
             control.action_transition_counter,
             control.queued_motion.byte()
         ),
-        (2, 17, 0, 0)
+        (MotionDirection::FORWARD, 17, 0, 0)
     );
     assert!(world.actors()[player.index].animation_failure().is_some());
     assert!(advance_selected_hang_script(&mut world, &data, &scene, false).is_err());
@@ -43807,7 +43844,7 @@ fn selected_public_jump_hang_sound_failure_precedes_drop_completion() {
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
 }
 
@@ -44757,7 +44794,7 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
             world.actors()[0].failure()
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.motion_direction, 3);
+        assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
         assert_eq!(control.move_counter & 0xc0, 0x40);
         assert!(
             world.actors()[0]
@@ -45899,7 +45936,11 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
             Ok(())
         }
     }
-    for (enabled, known_keys, expected) in [(false, true, 2), (true, true, 0), (true, false, 2)] {
+    for (enabled, known_keys, expected) in [
+        (false, true, MotionDirection::FORWARD),
+        (true, true, MotionDirection::NONE),
+        (true, false, MotionDirection::FORWARD),
+    ] {
         let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
             scripts.updates.final_version = true;
             scripts.definition.references = vec![cyrus_script::Property::LastDirection];
@@ -45956,7 +45997,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            2
+            MotionDirection::FORWARD
         );
         let mut cheats = Cheats::new(Memory);
         cheats
@@ -46025,7 +46066,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
                     100,
                 )
                 .unwrap();
-            assert_eq!(world.flags()[0], i32::from(expected));
+            assert_eq!(world.flags()[0], i32::from(expected.byte()));
         } else {
             assert!(actor.failure().unwrap().contains("debug navigation keys"));
         }
@@ -47663,7 +47704,11 @@ fn ai_progress_strict_heading_gate_calls_real_movement_and_registers_position() 
         assert_eq!(result.unwrap(), 1, "heading {heading}");
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
-            if admitted { 2 } else { 0 },
+            if admitted {
+                MotionDirection::FORWARD
+            } else {
+                MotionDirection::NONE
+            },
             "heading {heading}"
         );
         assert_eq!(

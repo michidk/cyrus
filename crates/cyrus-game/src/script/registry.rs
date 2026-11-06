@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use super::locomotion::MotionDirection;
 use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::CombatFlags;
@@ -393,9 +394,9 @@ pub struct ActorControlState {
     pub sliding_state: u8,
     pub falling_state: JumpMotion,
     pub queued_motion: JumpMotion,
-    pub motion_direction: u8,
+    pub motion_direction: MotionDirection,
     /// Retained movement-helper classification, distinct from displacement direction.
-    pub motion_classification: u8,
+    pub motion_classification: MotionDirection,
     /// The pending (`action_flag`) and accepted (`action`) directional action words.
     pub actions: ActionWords,
     /// Allocator-zero action-transition counter; state-17 reset assigns six.
@@ -4345,16 +4346,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     && super::locomotion::backward_admission(state, || false)
                         != super::locomotion::BackwardAdmission::Refused =>
             {
-                Some(7)
+                Some(MotionDirection::WALK_BACKWARD)
             }
             LocomotionOperation::Strafe(strafe)
                 if super::locomotion::strafe_admission(state, strafe)
                     != super::locomotion::StrafeAdmission::Refused =>
             {
-                Some(match strafe {
-                    super::locomotion::Strafe::Left => 4,
-                    super::locomotion::Strafe::Right => 5,
-                })
+                Some(strafe.motion_direction())
             }
             _ => None,
         };
@@ -4603,7 +4601,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         {
                             admission.edge_probe_clear = Some(self.registry.edge_probe_clear(
                                 id,
-                                super::locomotion::FORWARD_MOTION_DIRECTION,
+                                super::locomotion::MotionDirection::FORWARD,
                                 geometry.ground.scene,
                             )?);
                         }
@@ -5015,7 +5013,6 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
         Property::RopeWait => &mut control.motion_companion,
         Property::ExtraTime => &mut control.extra_time,
         Property::SlideFlag => &mut control.sliding_state,
-        Property::LastDirection => &mut control.motion_classification,
         Property::MoveCounter => &mut control.move_counter,
         Property::OriginTime => &mut control.fall_timer,
         Property::ActionTime => &mut control.jump_window,
@@ -5228,7 +5225,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if matches!(
             name,
-            Property::AiType | Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+            Property::AiType
+                | Property::ExtraFlag
+                | Property::FallFlag
+                | Property::JumpFlag
+                | Property::LastDirection
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5239,6 +5240,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Property::AiType => control.ai_type.byte(),
                 Property::ExtraFlag => control.living_state.byte(),
                 Property::FallFlag => control.falling_state.byte(),
+                Property::LastDirection => control.motion_classification.byte(),
                 _ => control.queued_motion.byte(),
             }));
         }
@@ -5338,7 +5340,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if matches!(
             name,
-            Property::AiType | Property::ExtraFlag | Property::FallFlag | Property::JumpFlag
+            Property::AiType
+                | Property::ExtraFlag
+                | Property::FallFlag
+                | Property::JumpFlag
+                | Property::LastDirection
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5350,6 +5356,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Property::AiType => control.ai_type = super::AiType::from_byte(byte),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
+                Property::LastDirection => {
+                    control.motion_classification = MotionDirection::from_byte(byte)
+                }
                 _ => control.queued_motion = JumpMotion::from_byte(byte),
             }
             return Ok(());

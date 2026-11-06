@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::TauntType;
@@ -255,7 +256,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated control");
         if control.living_state != LivingState::ORDINARY {
-            control.motion_direction = 0;
+            control.motion_direction = MotionDirection::NONE;
             control.actions = Default::default();
         }
         Ok(())

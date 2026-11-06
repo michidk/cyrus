@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
@@ -106,7 +107,7 @@ impl ScriptWorld {
             .context("surface transition control unavailable")?;
         // shortcut: the retained direction is normalised, so the raw forward motion bytes 8, 9 and
         // 24 read as forward here; upgrade when the raw motion byte is retained.
-        let forward = control.motion_direction == 2;
+        let forward = control.motion_direction == MotionDirection::FORWARD;
         let torch = control.torch_burning != 0;
         if deep(stored) {
             self.request_ordinary_group(
@@ -491,7 +492,7 @@ impl ScriptWorld {
                 .as_ref()
                 .context("fall entry control unavailable")?
                 .motion_direction;
-            self.apply_ordinary_directional_motion(id, direction, 4096)?;
+            self.apply_ordinary_directional_motion(id, direction.byte(), 4096)?;
         }
         let path = query.animations.actor(self.actors[id.index].name())?["model_load_path"]
             .as_str()
@@ -663,7 +664,7 @@ impl ScriptWorld {
         control.sliding_state = 0;
         control.queued_motion = JumpMotion::NONE;
         control.falling_state = JumpMotion::NONE;
-        control.motion_classification = 0;
+        control.motion_classification = MotionDirection::NONE;
         self.actors[id.index].sync_falling_motion();
         Ok(true)
     }

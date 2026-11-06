@@ -1,5 +1,6 @@
 //! Forward amount queries retain classification before animation admission.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{OrdinaryForwardAmountInputs, ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Thread};
@@ -265,7 +266,7 @@ fn admitted_amount_sets_receiver_classification_without_translating_or_touching_
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(
         world
@@ -274,15 +275,15 @@ fn admitted_amount_sets_receiver_classification_without_translating_or_touching_
         512
     );
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 2);
-    assert_eq!(control.motion_direction, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
+    assert_eq!(control.motion_direction, MotionDirection::FORWARD);
     assert_eq!(control.move_counter, 0x10);
     assert_eq!(
         world.actors()[1]
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.spatial(id).unwrap().local.position, position);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
@@ -309,8 +310,8 @@ fn living_refusal_precedes_classification_animation_and_support_requirements() {
         0
     );
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 0);
-    assert_eq!(control.motion_direction, 0);
+    assert_eq!(control.motion_classification, MotionDirection::NONE);
+    assert_eq!(control.motion_direction, MotionDirection::NONE);
     assert_eq!(control.move_counter, 0);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
 }
@@ -335,7 +336,7 @@ fn unavailable_support_does_not_publish_running_classification() {
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
 }
@@ -356,7 +357,7 @@ fn missing_group_keeps_classification_but_does_not_advance_startup() {
     );
     assert!(error.contains("animation group 18 unavailable"), "{error}");
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     assert_eq!(control.move_counter, 0);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
 }
@@ -381,7 +382,7 @@ fn failed_sound_callback_keeps_classification_and_stops_before_startup() {
     );
     assert!(error.contains("authored sound refused"), "{error}");
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     assert_eq!(control.move_counter, 0);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
     assert!(world.actors()[0].animation_failure().is_some());
@@ -400,7 +401,7 @@ fn pending_animation_keeps_running_classification_before_startup_admission() {
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     assert_eq!(
         world
@@ -409,7 +410,7 @@ fn pending_animation_keeps_running_classification_before_startup_admission() {
         1
     );
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 2);
+    assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     assert_eq!(control.move_counter, 0);
     let state = world.inspect(0, 1);
     assert_eq!(state["globals"]["locomotion_called"], 0);

@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::JumpMotion;
+use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
@@ -82,7 +83,7 @@ pub fn ordinary_falling_request(
 /// Selected directional state writes and optional local Q8 translation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OrdinaryDirectionalMotion {
-    pub direction: u8,
+    pub direction: MotionDirection,
     /// Direction whose `move_counter` field the motion saturates and whose called flag it sets.
     pub step: StepDirection,
     pub heading: u16,
@@ -99,10 +100,10 @@ pub fn ordinary_directional_motion(
     model_controls_motion: bool,
 ) -> Option<OrdinaryDirectionalMotion> {
     let (direction, step, offset) = match motion & 127 {
-        2 | 6 | 8 | 9 | 24 => (2, StepDirection::Forward, 0),
-        3 | 7 => (3, StepDirection::Backward, 1024),
-        4 => (4, StepDirection::Left, 512),
-        5 => (5, StepDirection::Right, 1536),
+        2 | 6 | 8 | 9 | 24 => (MotionDirection::FORWARD, StepDirection::Forward, 0),
+        3 | 7 => (MotionDirection::BACKWARD, StepDirection::Backward, 1024),
+        4 => (MotionDirection::LEFT, StepDirection::Left, 512),
+        5 => (MotionDirection::RIGHT, StepDirection::Right, 1536),
         _ => return None,
     };
     let distance = if surface.is_deep_water() {
@@ -597,7 +598,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         motion: u8,
         distance: i32,
-    ) -> Result<Option<u8>> {
+    ) -> Result<Option<MotionDirection>> {
         let index = self.resolve(id)?;
         if !matches!(motion & 127, 2..=9 | 24) {
             return Ok(None);

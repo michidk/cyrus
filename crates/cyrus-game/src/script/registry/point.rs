@@ -14,6 +14,7 @@ use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
+use crate::script::MotionDirection;
 use crate::script::PointPhase;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
@@ -370,7 +371,7 @@ impl ScriptWorld {
         );
         // Motion direction 15 runs a ledge update that only the selected player has; any other
         // actor takes the falling and queued-motion branch unchanged.
-        let ledge_direction = control.motion_direction == 15;
+        let ledge_direction = control.motion_direction == MotionDirection::LEDGE;
         if ledge_direction {
             self.step_point_ledge(
                 id,

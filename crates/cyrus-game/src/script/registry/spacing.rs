@@ -4,6 +4,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
@@ -638,7 +639,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .context("forward amount control unavailable")?
-                .motion_classification = 2;
+                .motion_classification = MotionDirection::FORWARD;
             ensure!(
                 self.actors[index]
                     .animation
@@ -652,7 +653,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .context("forward amount control unavailable")?
-                .motion_direction = 2;
+                .motion_direction = MotionDirection::FORWARD;
             self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
             let animation = &self.actors[index]
                 .animation
@@ -752,17 +753,17 @@ impl Continuation {
     }
 
     /// The motion direction the original stores for this step.
-    fn direction(self) -> u8 {
+    fn direction(self) -> MotionDirection {
         use super::super::locomotion::Strafe;
         match self {
-            Self::Forward => 2,
-            Self::Backward => 3,
-            Self::Walk => 6,
-            Self::WalkBackward => 7,
+            Self::Forward => MotionDirection::FORWARD,
+            Self::Backward => MotionDirection::BACKWARD,
+            Self::Walk => MotionDirection::WALK_FORWARD,
+            Self::WalkBackward => MotionDirection::WALK_BACKWARD,
             Self::Sidestep(strafe) => strafe.motion_direction(),
             // The original stores 25 for the left circle and the right strafe's 5 for the right.
-            Self::Circle(Strafe::Left) => 25,
-            Self::Circle(Strafe::Right) => 5,
+            Self::Circle(Strafe::Left) => MotionDirection::CIRCLE_LEFT,
+            Self::Circle(Strafe::Right) => MotionDirection::RIGHT,
         }
     }
 }

@@ -1,4 +1,5 @@
 //! Lunge and ordinary continuation retain classification at their own admission boundaries.
+use crate::script::MotionDirection;
 use crate::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_assets::script::*;
 use cyrus_script::program::*;
@@ -278,14 +279,14 @@ fn lunge_stores_classification_without_creating_a_task_or_requesting_animation()
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            2
+            MotionDirection::FORWARD
         );
         assert_eq!(
             world.actors()[1]
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         assert_eq!(
             world.spatial(world.id(0).unwrap()).unwrap().local.position,
@@ -307,7 +308,7 @@ fn lunge_stores_classification_without_creating_a_task_or_requesting_animation()
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     assert_eq!(world.flags(), [12]);
 }
@@ -322,7 +323,7 @@ fn lunge_refuses_before_classification_for_slide_or_rejected_startup_check() {
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         assert_eq!(
             world.spatial(world.id(0).unwrap()).unwrap().local.position,
@@ -342,7 +343,7 @@ fn lunge_missing_animation_timing_retains_admitted_classification_before_failure
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 0);
     assert_eq!(
@@ -354,7 +355,10 @@ fn lunge_missing_animation_timing_retains_admitted_classification_before_failure
 
 #[test]
 fn forward_and_backward_continuation_store_classification_once_and_preserve_script_poll() {
-    for (group, class, delta) in [(18, 2, 2048), (19, 3, -3072)] {
+    for (group, class, delta) in [
+        (18, MotionDirection::FORWARD, 2048),
+        (19, MotionDirection::BACKWARD, -3072),
+    ] {
         let mut world = fixture(group, 0, true);
         advance(&mut world, ScriptStage::Tasks).unwrap();
         assert_eq!(
@@ -362,7 +366,7 @@ fn forward_and_backward_continuation_store_classification_once_and_preserve_scri
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         continuation(&mut world).unwrap();
         assert_eq!(
@@ -394,7 +398,12 @@ fn forward_and_backward_continuation_store_classification_once_and_preserve_scri
 
 #[test]
 fn dry_walk_and_sidestep_keep_classification_when_support_service_is_unavailable() {
-    for (group, class) in [(20, 6), (22, 7), (24, 4), (26, 5)] {
+    for (group, class) in [
+        (20, MotionDirection::WALK_FORWARD),
+        (22, MotionDirection::WALK_BACKWARD),
+        (24, MotionDirection::LEFT),
+        (26, MotionDirection::RIGHT),
+    ] {
         let mut world = fixture(group, 0, true);
         continuation(&mut world).unwrap();
         assert_eq!(
@@ -421,7 +430,7 @@ fn refused_continuation_preserves_classification_and_late_spatial_failure_retain
             .control_state()
             .unwrap()
             .motion_classification,
-        0
+        MotionDirection::NONE
     );
     let mut failed = fixture(18, 0, false);
     let error = continuation(&mut failed).unwrap_err();
@@ -431,7 +440,7 @@ fn refused_continuation_preserves_classification_and_late_spatial_failure_retain
             .control_state()
             .unwrap()
             .motion_classification,
-        2
+        MotionDirection::FORWARD
     );
     assert_eq!(failed.actors()[0].control_state().unwrap().move_counter, 16);
     assert_eq!(failed.flags(), [12]);

@@ -1,4 +1,5 @@
 //! Actor-owned native task tokens share waits and animation requests.
+use super::locomotion::MotionDirection;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_script::Native;
@@ -324,8 +325,8 @@ pub(super) struct LocomotionAdmission {
 
 pub(super) struct MotionCall<'a> {
     /// Retained movement-helper classification, independent of displacement direction.
-    pub classification: &'a mut u8,
-    pub direction: &'a mut u8,
+    pub classification: &'a mut MotionDirection,
+    pub direction: &'a mut MotionDirection,
     pub counters: &'a mut u8,
 }
 
@@ -1570,8 +1571,8 @@ impl Task {
             }
             Self::Backward | Self::WalkBackward => {
                 use super::locomotion::{
-                    BACKWARD_MOTION_DIRECTION, BackwardAdmission, backward_admission,
-                    backward_translation, continues, walk_backward_admitted,
+                    BackwardAdmission, backward_admission, backward_translation, continues,
+                    walk_backward_admitted,
                 };
                 let [duration] = arguments else {
                     anyhow::bail!("MoveBackward requires one argument")
@@ -1599,8 +1600,8 @@ impl Task {
                     let receiver = receiver
                         .as_mut()
                         .context("WalkBackward motion state unavailable")?;
-                    *receiver.classification = 7;
-                    *receiver.direction = BACKWARD_MOTION_DIRECTION;
+                    *receiver.classification = MotionDirection::WALK_BACKWARD;
+                    *receiver.direction = MotionDirection::WALK_BACKWARD;
                     if state.holding_weapon || state.combat_mode {
                         (
                             AnimationGroup::FIGHT_BACK,
@@ -1626,7 +1627,7 @@ impl Task {
                         *receiver
                             .as_mut()
                             .context("MoveBackward motion state unavailable")?
-                            .classification = 7;
+                            .classification = MotionDirection::WALK_BACKWARD;
                     }
                     anyhow::ensure!(
                         !(probe_needed && motion.admission.blocked_ahead_30.is_none()),
@@ -1638,7 +1639,7 @@ impl Task {
                     *receiver
                         .as_mut()
                         .context("MoveBackward motion state unavailable")?
-                        .direction = BACKWARD_MOTION_DIRECTION;
+                        .direction = MotionDirection::WALK_BACKWARD;
                     let BackwardAdmission::Proceed { group, step } = admission else {
                         return Ok(true);
                     };
@@ -1703,8 +1704,7 @@ impl Task {
                     "MoveForward"
                 };
                 use super::locomotion::{
-                    FORWARD_MOTION_DIRECTION, ForwardPlan, continues, forward_admitted,
-                    forward_plan, forward_translation,
+                    ForwardPlan, continues, forward_admitted, forward_plan, forward_translation,
                 };
                 let [duration] = arguments else {
                     anyhow::bail!("{name} requires one argument")
@@ -1738,8 +1738,13 @@ impl Task {
                 {
                     return Ok(true);
                 }
-                *receiver.classification = if walking { 6 } else { 2 };
-                *receiver.direction = if walking { 6 } else { FORWARD_MOTION_DIRECTION };
+                let direction = if walking {
+                    MotionDirection::WALK_FORWARD
+                } else {
+                    MotionDirection::FORWARD
+                };
+                *receiver.classification = direction;
+                *receiver.direction = direction;
                 let mut halved = false;
                 let (group, step) =
                     if lunge {
@@ -1860,10 +1865,7 @@ impl Task {
                 let receiver = motion
                     .motion
                     .with_context(|| format!("{name} motion state unavailable"))?;
-                *receiver.classification = match strafe {
-                    super::locomotion::Strafe::Left => 4,
-                    super::locomotion::Strafe::Right => 5,
-                };
+                *receiver.classification = strafe.motion_direction();
                 *receiver.direction = strafe.motion_direction();
                 let input = animation.as_mut().with_context(|| {
                     format!("{name} requires prepared animation and explicit nominal ticks")

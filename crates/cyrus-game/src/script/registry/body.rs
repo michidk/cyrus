@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::MotionDirection;
 use anyhow::{Context, Result, ensure};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::ground::SurfaceClass;
@@ -57,7 +58,8 @@ impl ScriptWorld {
             .radius;
         let radius = if control.living_state == LivingState::HANGING {
             initial >> 1
-        } else if (control.falling_state != JumpMotion::NONE && control.motion_direction == 3)
+        } else if (control.falling_state != JumpMotion::NONE
+            && control.motion_direction == MotionDirection::BACKWARD)
             || control.falling_state.kind() != JumpMotion::NONE
             || control.queued_motion.kind() != JumpMotion::NONE
         {

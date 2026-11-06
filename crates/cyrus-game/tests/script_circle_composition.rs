@@ -1,5 +1,6 @@
 //! Circle continuation admits lateral support before classification and motion.
 use cyrus_assets::script::*;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Thread};
@@ -325,8 +326,8 @@ fn geometry<'a>(
 
 fn assert_unmoved(world: &ScriptWorld) {
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.motion_classification, 0);
-    assert_eq!(control.motion_direction, 0);
+    assert_eq!(control.motion_classification, MotionDirection::NONE);
+    assert_eq!(control.motion_direction, MotionDirection::NONE);
     assert_eq!(control.move_counter, 0);
     assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
     assert_eq!(
@@ -355,7 +356,10 @@ fn circle_without_geometry_preserves_state_before_and_after_real_task_poll() {
 
 #[test]
 fn circle_admitted_by_public_ai_type_stores_receiver_classification_and_moves_once() {
-    for (group, class, called, counter, x) in [(94, 25, 1, 1, -1024), (95, 5, 2, 4, 1024)] {
+    for (group, class, called, counter, x) in [
+        (94, MotionDirection::CIRCLE_LEFT, 1, 1, -1024),
+        (95, MotionDirection::RIGHT, 2, 4, 1024),
+    ] {
         let (mut world, data) = fixture(group, 7);
         let scene = ordinary_collision_scene(world.world, models());
         let id = world.id(0).unwrap();
@@ -374,7 +378,7 @@ fn circle_admitted_by_public_ai_type_stores_receiver_classification_and_moves_on
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         advance(&mut world, ScriptStage::Tasks).unwrap();
         continue_circle(&mut world, Some(geometry(&scene, &data, &prepared))).unwrap();

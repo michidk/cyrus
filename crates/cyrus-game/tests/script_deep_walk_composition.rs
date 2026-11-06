@@ -1,6 +1,7 @@
 //! Deep walking checks its edge before classification and support.
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
+use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Thread};
@@ -353,7 +354,11 @@ fn terrain(steep: bool) -> cyrus_collision::ground::TerrainGround {
     .unwrap()
 }
 
-fn assert_stationary(world: &ScriptWorld, direction: u8, classification: u8) {
+fn assert_stationary(
+    world: &ScriptWorld,
+    direction: MotionDirection,
+    classification: MotionDirection,
+) {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(control.motion_direction, direction);
     assert_eq!(control.motion_classification, classification);
@@ -369,7 +374,10 @@ fn assert_stationary(world: &ScriptWorld, direction: u8, classification: u8) {
 
 #[test]
 fn deep_walk_acceptance_stores_classification_after_edge_and_preserves_real_wait_poll() {
-    for (group, class, called, counter, z) in [(20, 6, 4, 16, 256768), (22, 7, 8, 64, 253440)] {
+    for (group, class, called, counter, z) in [
+        (20, MotionDirection::WALK_FORWARD, 4, 16, 256768),
+        (22, MotionDirection::WALK_BACKWARD, 8, 64, 253440),
+    ] {
         let (mut world, data) = fixture(group, 7);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(false));
@@ -391,7 +399,7 @@ fn deep_walk_acceptance_stores_classification_after_edge_and_preserves_real_wait
                 .control_state()
                 .unwrap()
                 .motion_classification,
-            0
+            MotionDirection::NONE
         );
         advance(&mut world, ScriptStage::Tasks).unwrap();
         continue_walk(&mut world, Some(geometry(&scene, &data, &prepared, 128))).unwrap();
@@ -407,7 +415,10 @@ fn deep_walk_acceptance_stores_classification_after_edge_and_preserves_real_wait
 
 #[test]
 fn deep_walk_blocked_edge_short_circuits_invalid_support_without_storing_classification() {
-    for (group, class, z) in [(20, 6, 1064), (22, 7, 936)] {
+    for (group, class, z) in [
+        (20, MotionDirection::WALK_FORWARD, 1064),
+        (22, MotionDirection::WALK_BACKWARD, 936),
+    ] {
         let (mut world, data) = fixture(group, 0);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(true));
@@ -431,7 +442,7 @@ fn deep_walk_blocked_edge_short_circuits_invalid_support_without_storing_classif
                 Some(geometry(&scene, &data, &prepared, u32::MAX)),
             )
             .unwrap();
-            assert_stationary(&world, class, 0);
+            assert_stationary(&world, class, MotionDirection::NONE);
             assert_eq!(
                 world.actors()[0]
                     .control_state()
@@ -447,16 +458,22 @@ fn deep_walk_blocked_edge_short_circuits_invalid_support_without_storing_classif
 
 #[test]
 fn deep_walk_missing_geometry_keeps_only_direction_prefix() {
-    for (group, class) in [(20, 6), (22, 7)] {
+    for (group, class) in [
+        (20, MotionDirection::WALK_FORWARD),
+        (22, MotionDirection::WALK_BACKWARD),
+    ] {
         let (mut world, _) = fixture(group, 7);
         continue_walk(&mut world, None).unwrap();
-        assert_stationary(&world, class, 0);
+        assert_stationary(&world, class, MotionDirection::NONE);
     }
 }
 
 #[test]
 fn deep_walk_support_refusal_after_clear_edge_retains_classification() {
-    for (group, class, body_marker, transition_marker) in [(20, 6, 0x80, 0), (22, 7, 0, 1)] {
+    for (group, class, body_marker, transition_marker) in [
+        (20, MotionDirection::WALK_FORWARD, 0x80, 0),
+        (22, MotionDirection::WALK_BACKWARD, 0, 1),
+    ] {
         let (mut world, data) = fixture(group, 0);
         let scene = ordinary_collision_scene(world.world, models());
         let id = world.id(0).unwrap();
@@ -478,7 +495,10 @@ fn deep_walk_support_refusal_after_clear_edge_retains_classification() {
 
 #[test]
 fn deep_walk_edge_failure_precedes_store_but_support_failure_retains_store() {
-    for (group, class) in [(20, 6), (22, 7)] {
+    for (group, class) in [
+        (20, MotionDirection::WALK_FORWARD),
+        (22, MotionDirection::WALK_BACKWARD),
+    ] {
         let (mut world, data) = fixture(group, 0);
         let mut scene = ordinary_collision_scene(world.world, models());
         scene.terrain = Some(terrain(false));
@@ -489,7 +509,7 @@ fn deep_walk_edge_failure_precedes_store_but_support_failure_retains_store() {
         let error =
             continue_walk(&mut world, Some(geometry(&scene, &data, &prepared, 128))).unwrap_err();
         assert!(format!("{error:#}").contains("edge probe SURFACE.INI assignments unavailable"));
-        assert_stationary(&world, class, 0);
+        assert_stationary(&world, class, MotionDirection::NONE);
         scene.terrain = None;
         scene.world = 999;
         let error =
