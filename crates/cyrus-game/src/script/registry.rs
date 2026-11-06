@@ -8078,6 +8078,25 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .face_ordinary_angle(id, angle as u16, inputs, &mut **sounds)?;
             return Ok(CallResult::Complete(difference));
         }
+        // TurnToPos(x, z) snaps onto a point within the facing threshold (returning zero) or turns
+        // one ordinary step toward its bearing and returns the turn's value; the same owner as
+        // the FacePos task, without that task's zero-turn-rate completion.
+        if kind == CallKind::Function && function == Native::TurnToPos {
+            let [x, z] = arguments else {
+                anyhow::bail!("TurnToPos requires two arguments")
+            };
+            let point = [x.integer()?, 0, z.integer()?];
+            let id = self.registry.id(self.index)?;
+            let inputs = self.registry.point_facing_inputs(id, self.inputs)?;
+            let sounds = self
+                .sounds
+                .as_mut()
+                .context("TurnToPos requires synchronous sounds")?;
+            let value = self
+                .registry
+                .face_ordinary_point(id, point, inputs, &mut **sounds)?;
+            return Ok(CallResult::Complete(value));
+        }
         if kind == CallKind::Function && function == Native::PlayerForceTalk {
             let [distance] = arguments else {
                 anyhow::bail!("PlayerForceTalk requires one argument")

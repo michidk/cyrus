@@ -3677,17 +3677,19 @@
     },
     {
       "native": "TurnToPos",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Two-argument function snapping onto a near point or turning one ordinary step toward its bearing",
+      "caller": "ScriptWorld::advance -> Runtime function value -> GameHost::call (TurnToPos) -> face_ordinary_point",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::turn_to_pos_snaps_within_the_threshold_or_turns_one_step_toward_the_point"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/commit/5a8c800"
       ],
-      "limits": "Verified installed two-argument declaration/exact native binding/full original handler. Original CPU chain passes3252 selected contexts:778 returns,30 queue-diagnostic stops,2444 exact TurnToAngle-entry stops; eight effective semantic instruction controls. Original planar helper passes361 selected signed pairs/five effective controls; original hardware-atan producer fills513 entries under explicit flag0/fninit. Exact X/Z stores with Y retained, signed inclusive scaled-speed proximity, queue state/error ordering, negated masked planar delegation receiver/angle verified. Full constructed actor arena/queue/error memory compared; preserved-register/stack checks on returning paths. Unknown deeper TurnToAngle effects/continuation, natural initialization/software atan, INT_MIN/full joint domain, malformed state/lifecycle/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance.",
-      "reviewed_revision": "8e53f23e46134894bb67557b590ac70add7a1ab5"
+      "limits": "Verified installed two-argument declaration/exact native binding/full original handler. Original CPU chain passes3252 selected contexts:778 returns,30 queue-diagnostic stops,2444 exact TurnToAngle-entry stops; eight effective semantic instruction controls. Original planar helper passes361 selected signed pairs/five effective controls; original hardware-atan producer fills513 entries under explicit flag0/fninit. Exact X/Z stores with Y retained, signed inclusive scaled-speed proximity, queue state/error ordering, negated masked planar delegation receiver/angle verified. Full constructed actor arena/queue/error memory compared; preserved-register/stack checks on returning paths. Unknown deeper TurnToAngle effects/continuation, natural initialization/software atan, INT_MIN/full joint domain, malformed state/lifecycle/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance. Verified (routed ScriptWorld test; preservation SOUP.md TurnToPos native boundary): within the horizontal threshold ((speed + 1) scaled by the movement scale) the exact X and Z are written, Y is unchanged, the receiver is registered for position processing and zero is returned; otherwise the receiver turns one ordinary step toward the bearing of the point without moving and the turn's signed difference is returned (-1000 from yaw 1000 toward bearing zero in the test). Reuses the ordinary point-facing owner of the FacePos task. Unknown: the selected player as receiver is an explicit error (camera feedback unavailable); no native-run or browser comparison; the position-processing capacity diagnostic is not exercised.",
+      "reviewed_revision": "af6f2c17b738de885fe81a71b201f77f4c630948"
     },
     {
       "native": "PointAt",

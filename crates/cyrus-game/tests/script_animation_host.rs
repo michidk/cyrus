@@ -5478,6 +5478,98 @@ fn turn_to_angle_takes_one_ordinary_step_and_returns_the_signed_difference() {
     }
 }
 
+#[test]
+fn turn_to_pos_snaps_within_the_threshold_or_turns_one_step_toward_the_point() {
+    let hud = cyrus_game::script::ScriptHud::default();
+    // (offset from the receiver in Q8, start yaw, yaw after, returned value, snapped)
+    for (offset, start, after, returned, snapped) in [
+        // Within the threshold ((0 + 1) << 8 at scale 256): exact X and Z, no turn, zero.
+        ([100, 0, -50], 400, 400, 0, true),
+        // Far along +Z the bearing is zero; from 1000 the first step is down by the rate.
+        ([0, 0, 1_000_000], 1000, 984, -1000, false),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Me,
+                            function: Native::TurnToPos,
+                            arguments: vec![
+                                Value::Integer { value: 0 },
+                                Value::Integer { value: 0 },
+                            ],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::Yield,
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: Native::TurnToPos,
+            param_count: 2,
+            kind: CallKind::Function,
+        });
+        data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::TurnSpeed] = 16;
+        data.instances[0].angles[1] = start as u32;
+        data.content_id = data.content_identity().unwrap();
+        // The point is the receiver's own position plus the offset, so the script's literal
+        // arguments are rewritten once the position is known.
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local.position;
+        let point = [origin[0] + offset[0], origin[2] + offset[2]];
+        let mut data = data;
+        let Operation::Assign { formula, .. } = &mut data
+            .actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation
+        else {
+            unreachable!()
+        };
+        let Value::Call { call } = &mut formula.first else {
+            unreachable!()
+        };
+        call.arguments = point.map(|value| Value::Integer { value }).to_vec();
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let inputs = cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            ..Default::default()
+        };
+        let mut sounds =
+            |_: cyrus_game::script::ScriptActorId, _: cyrus_game::script::ScriptSound| Ok(());
+        world
+            .advance(id, BODY, inputs, Some(&mut sounds), None, 30)
+            .unwrap();
+        let local = world.spatial(id).unwrap().local;
+        assert_eq!(local.angles[1], after, "offset {offset:?}");
+        assert_eq!(world.flags()[0], returned, "offset {offset:?}");
+        if snapped {
+            assert_eq!([local.position[0], local.position[2]], point);
+            assert_eq!(local.position[1], origin[1], "Y is unchanged");
+        } else {
+            assert_eq!(local.position, origin, "a turn does not move the receiver");
+        }
+    }
+}
+
 fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {
