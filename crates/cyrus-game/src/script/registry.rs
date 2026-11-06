@@ -41,6 +41,7 @@ mod flat;
 pub use flat::ActorFlatDraw;
 mod follow;
 pub(super) mod ground;
+pub use ground::GroundKind;
 pub(super) mod hazard;
 mod item_use;
 mod late;
@@ -423,9 +424,9 @@ pub struct ActorControlState {
     pub last_collide_count: u8,
     /// Original low-word overlap contact identifier; zero also denotes a static placement.
     pub overlap_contact_identifier: u16,
-    /// Kind of the last ground-response record the selected player's ordinary support query chose:
-    /// 0 none, 0x20 a model or actor face, 0x40 terrain. `PlayerOnScape` reads it.
-    pub ground_kind: u8,
+    /// Kind of the last ground-response record the selected player's ordinary support query chose.
+    /// `PlayerOnScape` reads it.
+    pub ground_kind: ground::GroundKind,
     pub rope_attached: bool,
     /// The speed word queued motion 24 turns into a horizontal move after a rope release: the
     /// installed jump-off speed plus the node's measured speed, negative for a backward jump.
@@ -6900,7 +6901,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_ref()
                 .context("PlayerOnScape: selected-player control unavailable")?;
             return Ok(CallResult::Complete(i32::from(
-                control.ground_kind == super::registry::ground::TERRAIN_KIND,
+                control.ground_kind == super::registry::ground::GroundKind::TERRAIN,
             )));
         }
         // PlayerHanging reports whether the selected player is hanging from this receiver's

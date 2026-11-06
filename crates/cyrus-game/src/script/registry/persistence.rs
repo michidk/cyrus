@@ -198,7 +198,7 @@ impl ControlSnapshot {
             ])),
             last_collide_count: self.collision_response_age,
             overlap_contact_identifier: self.overlap_contact_identifier,
-            ground_kind: 0,
+            ground_kind: Default::default(),
             rope_attached: self.rope_attached,
             rope_speed: self.rope_speed,
             torch_burning: self.torch_burning,

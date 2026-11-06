@@ -16887,7 +16887,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     // The response kind a PlayerOnScape reads: an actor face is not terrain.
     assert_eq!(
         world.actors()[index].control_state().unwrap().ground_kind,
-        0x20
+        cyrus_game::script::GroundKind::FACE
     );
     let fallback = world
         .query_ordinary_ground(

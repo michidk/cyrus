@@ -517,16 +517,24 @@ impl OrdinaryStableProbe {
     }
 }
 
-/// Kind byte of the original's ground-response record for a selected support: 0x40 for terrain.
-pub(super) const TERRAIN_KIND: u8 = 0x40;
+/// Kind byte of the selected player's ground-response record (preservation SOUP.md
+/// "PlayerOnScape"). The ground update clears it and sets the kind of the chosen support.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(transparent)]
+pub struct GroundKind(u8);
 
-/// Kind byte of the ground-response record: zero without support, 0x40 for terrain and 0x20 for any
-/// model or actor face.
-fn ground_kind(support: Option<&SelectedSupport>) -> u8 {
+impl GroundKind {
+    pub const NONE: Self = Self(0);
+    /// A model or actor face.
+    pub const FACE: Self = Self(0x20);
+    pub const TERRAIN: Self = Self(0x40);
+}
+
+fn ground_kind(support: Option<&SelectedSupport>) -> GroundKind {
     match support.map(SelectedSupport::source) {
-        None => 0,
-        Some(SupportSource::Terrain) => TERRAIN_KIND,
-        Some(_) => 0x20,
+        None => GroundKind::NONE,
+        Some(SupportSource::Terrain) => GroundKind::TERRAIN,
+        Some(_) => GroundKind::FACE,
     }
 }
 
@@ -541,13 +549,16 @@ mod kind_tests {
             normal: [0, 256, 0],
             actor_height: 0,
         };
-        assert_eq!(ground_kind(None), 0);
-        assert_eq!(ground_kind(Some(&support(SupportSource::Terrain))), 0x40);
+        assert_eq!(ground_kind(None), GroundKind::NONE);
+        assert_eq!(
+            ground_kind(Some(&support(SupportSource::Terrain))),
+            GroundKind::TERRAIN
+        );
         for source in [
             SupportSource::Model { model: 1, face: 2 },
             SupportSource::Actor { actor: 1, face: 2 },
         ] {
-            assert_eq!(ground_kind(Some(&support(source))), 0x20);
+            assert_eq!(ground_kind(Some(&support(source))), GroundKind::FACE);
         }
     }
 }
