@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::JumpMotion;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
@@ -94,7 +95,7 @@ pub fn ordinary_directional_motion(
     motion: u8,
     heading: u16,
     distance: i32,
-    surface: u8,
+    surface: cyrus_assets::surface::Surface,
     model_controls_motion: bool,
 ) -> Option<OrdinaryDirectionalMotion> {
     let (direction, step, offset) = match motion & 127 {
@@ -104,7 +105,7 @@ pub fn ordinary_directional_motion(
         5 => (5, StepDirection::Right, 1536),
         _ => return None,
     };
-    let distance = if matches!(surface, 2 | 4) {
+    let distance = if surface.is_deep_water() {
         distance >> 1
     } else {
         distance
@@ -1003,10 +1004,10 @@ pub enum OrdinaryLandingDecision {
 pub fn ordinary_landing_decision(
     local_y: i32,
     origin_y: i32,
-    surface: u8,
+    surface: cyrus_assets::surface::Surface,
     settings: OrdinaryLandingSettings,
 ) -> OrdinaryLandingDecision {
-    let distance = if (1..=4).contains(&surface) {
+    let distance = if surface.is_water() {
         0
     } else {
         local_y.wrapping_sub(origin_y).wrapping_abs()
@@ -1014,7 +1015,7 @@ pub fn ordinary_landing_decision(
     if distance > settings.death_height.wrapping_mul(256) {
         OrdinaryLandingDecision::Fatal
     } else if distance > settings.hurt_height.wrapping_mul(256) {
-        if matches!(surface, 1..=5 | 11) {
+        if surface.is_water() || matches!(surface, Surface::LAVA | Surface::GLOOP) {
             OrdinaryLandingDecision::HurtExcluded
         } else {
             OrdinaryLandingDecision::Hurt {

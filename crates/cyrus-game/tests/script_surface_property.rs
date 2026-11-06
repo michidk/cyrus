@@ -204,13 +204,13 @@ fn surface_property_keeps_low_byte_and_native_water_query_reads_the_same_receive
             assert_eq!(world.flags(), [deep]);
             assert_eq!(
                 world.actor_surface(world.id(receiver).unwrap()).unwrap(),
-                byte as u8
+                cyrus_assets::surface::Surface::from_byte(byte as u8)
             );
             assert_eq!(
                 world
                     .actor_surface(world.id(1 - receiver).unwrap())
                     .unwrap(),
-                0
+                cyrus_assets::surface::Surface::UNKNOWN
             );
             assert_eq!(
                 serde_json::to_value(world.actors()[receiver].control_state().unwrap()).unwrap(),

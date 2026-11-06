@@ -1,5 +1,6 @@
 //! Presentation observes explicit logical stages without advancing scripts itself.
 use bevy::{asset::AssetApp, prelude::*};
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::Scripts};
 use cyrus_game::script::{
     ScriptActors, ScriptBinding, ScriptPlugin, ScriptScene, ScriptStage, Thread,
@@ -320,7 +321,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .current
         .as_mut()
         .unwrap()
-        .set_actor_surface(id, 7)
+        .set_actor_surface(id, Surface::WOOD)
         .unwrap();
     let root = app
         .world_mut()
@@ -344,7 +345,11 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .id();
     let unknown = app
         .world_mut()
-        .spawn((Name::new("B_001_ACTOR"), ChildOf(root), SoundSurface(11)))
+        .spawn((
+            Name::new("B_001_ACTOR"),
+            ChildOf(root),
+            SoundSurface(Surface::GLOOP),
+        ))
         .id();
     let playback = AnimationPlayback::new(
         animation_handle.clone(),
@@ -371,12 +376,12 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .drain()
         .collect();
     assert!(cues.iter().any(|cue| matches!(cue, SoundCue::Animation {
-        actor, position: None, surface: Some(7), sound: cyrus_world::animation::AnimationSound::Play { effect: 200, .. }
+        actor, position: None, surface: Some(Surface::WOOD), sound: cyrus_world::animation::AnimationSound::Play { effect: 200, .. }
     } if *actor == node)), "binding and surface projection must precede playback in the same update");
     assert_eq!(app.world().get::<ScriptBinding>(node).unwrap().actor, id);
     assert_eq!(
         app.world().get::<SoundSurface>(node),
-        Some(&SoundSurface(7))
+        Some(&SoundSurface(Surface::WOOD))
     );
     assert!(app.world().get::<ScriptBinding>(unrelated).is_none());
     assert!(app.world().get::<ScriptBinding>(wrong_actor).is_none());
@@ -472,12 +477,12 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .current
         .as_mut()
         .unwrap()
-        .set_actor_surface(id, 8)
+        .set_actor_surface(id, Surface::TILE)
         .unwrap();
     app.update();
     assert_eq!(
         app.world().get::<SoundSurface>(node),
-        Some(&SoundSurface(8))
+        Some(&SoundSurface(Surface::TILE))
     );
 
     let model = app

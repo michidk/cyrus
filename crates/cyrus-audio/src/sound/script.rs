@@ -314,7 +314,9 @@ impl SoundFrame<'_, '_> {
                             continue;
                         };
                         let index = match surface {
-                            Some(0) => u8::try_from(*requested).ok().map(usize::from),
+                            Some(cyrus_assets::surface::Surface::UNKNOWN) => {
+                                u8::try_from(*requested).ok().map(usize::from)
+                            }
                             Some(surface) => {
                                 let Some(surfaces) = surfaces.as_deref() else {
                                     warn_once!("sound: SURFACE.INI remaps are unavailable");

@@ -5,6 +5,7 @@ use crate::script::tasks::{
     FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
 };
+use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
 use cyrus_script::{
     AnimationGroup, Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread,
@@ -4308,7 +4309,7 @@ fn deep_water_forward_needs_the_edge_probe_and_a_failing_probe_completes_the_cal
             NativeServices {
                 locomotion: Some(LocomotionCall {
                     state: Ok(crate::script::locomotion::BackwardState {
-                        surface: 2,
+                        surface: Surface::DEEPWATER,
                         ..Default::default()
                     }),
                     admission: LocomotionAdmission {

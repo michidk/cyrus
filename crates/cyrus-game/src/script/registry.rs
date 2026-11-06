@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use cyrus_assets::script::TauntType;
+use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
 use cyrus_script::program::{Call, CallKind, Operation};
 use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
@@ -468,7 +469,7 @@ pub struct ScriptActor {
     unavailable: Option<String>,
     attributes: Attributes,
     control: Option<ActorControlState>,
-    surface: Option<u8>,
+    surface: Option<cyrus_assets::surface::Surface>,
     model: model::ModelState,
     collision: Option<ground::OrdinaryCollisionShape>,
     player_movement: Option<player::PlayerMovement>,
@@ -508,7 +509,7 @@ impl ScriptActor {
         actor.runtime_identifier = Some(0);
         actor.attributes = template.attributes.clone();
         actor.control = Some(ActorControlState::default());
-        actor.surface = Some(0);
+        actor.surface = Some(Surface::UNKNOWN);
         actor
     }
 
@@ -1233,7 +1234,7 @@ impl ScriptWorld {
                         &source,
                         ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
                     ))
-                .then_some(0),
+                .then_some(Surface::UNKNOWN),
                 source,
                 control,
                 runtime_identifier,
@@ -2032,7 +2033,7 @@ impl ScriptWorld {
     }
 
     /// Read stored actor surface state; unsupported object paths have no established value.
-    pub fn actor_surface(&self, id: ScriptActorId) -> Result<u8> {
+    pub fn actor_surface(&self, id: ScriptActorId) -> Result<Surface> {
         let index = self.resolve(id)?;
         self.actors[index].surface.with_context(|| {
             format!(
@@ -2120,7 +2121,11 @@ impl ScriptWorld {
 
     /// Commit the actor driver's stored surface, including assignments before a failed transition.
     /// SOUP water predicates consume this value without querying terrain again.
-    pub fn set_actor_surface(&mut self, id: ScriptActorId, surface: u8) -> Result<()> {
+    pub fn set_actor_surface(
+        &mut self,
+        id: ScriptActorId,
+        surface: cyrus_assets::surface::Surface,
+    ) -> Result<()> {
         let index = self.resolve(id)?;
         self.actors[index].surface = Some(surface);
         Ok(())
@@ -2341,7 +2346,9 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .is_some_and(|control| control.ai_type != AiType::DEAD)
-            && matches!(self.actors[index].surface, Some(2 | 4))
+            && self.actors[index]
+                .surface
+                .is_some_and(Surface::is_deep_water)
         {
             self.cleanup_actor_weapon(id, id, ticks, sounds)?;
         }
@@ -2375,7 +2382,7 @@ impl ScriptWorld {
             } else {
                 AnimationGroup::DEATH_FIGHT_HARD_END
             }
-        } else if selected && matches!(actor.surface, Some(2 | 4)) {
+        } else if selected && actor.surface.is_some_and(Surface::is_deep_water) {
             // The selected player in deep water treads water after the weapon cleanup above.
             AnimationGroup::SWIM_IDLE
         } else if control.rope_attached {
@@ -4067,7 +4074,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
-            surface: actor.surface.unwrap_or(0),
+            surface: actor.surface.unwrap_or_default(),
             torch_burning: control.torch_burning != 0,
             step_adjustment: actor.attributes[Attribute::StepType],
             step_attribute: actor.attributes[Attribute::BackwardSpeed],
@@ -4106,11 +4113,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             return Ok(admission);
         };
         let state = self.locomotion_state().map_err(anyhow::Error::msg)?;
-        let walking = matches!(operation, LocomotionOperation::WalkForward)
-            && !matches!(state.surface, 2 | 4);
+        let walking =
+            matches!(operation, LocomotionOperation::WalkForward) && !state.surface.is_deep_water();
         admission.walk_forward_mode = walking;
         let walking_backward = matches!(operation, LocomotionOperation::WalkBackward)
-            && !matches!(state.surface, 2 | 4);
+            && !state.surface.is_deep_water();
         admission.walk_backward_mode = walking_backward;
         admission.forward_admitted = Some(super::locomotion::forward_admitted(&state));
         // Backward and lateral classifications precede their live refusal queries.
@@ -4927,7 +4934,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if name == Property::UnderSurface {
             let index = self.property_receiver(target)?;
             let id = self.registry.id(index)?;
-            return self.registry.actor_surface(id).map(i32::from);
+            return self
+                .registry
+                .actor_surface(id)
+                .map(|surface| i32::from(surface.byte()));
         }
         if matches!(
             name,
@@ -5047,7 +5057,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let index = self.property_receiver(target)?;
             let id = self.registry.id(index)?;
             self.registry.actor_surface(id)?;
-            return self.registry.set_actor_surface(id, value as u8);
+            return self
+                .registry
+                .set_actor_surface(id, Surface::from_byte(value as u8));
         }
         if matches!(
             name,
@@ -7331,11 +7343,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[player.index].model.support.actor == Some(receiver),
             )));
         }
-        // Surface classes 1..=4 are the water classes, 2 and 4 the deep ones, 5 lava.
-        let surface_test: Option<fn(u8) -> bool> = match function {
-            Native::IsInDeepWater => Some(|surface| matches!(surface, 2 | 4)),
-            Native::IsInWater => Some(|surface| (1..=4).contains(&surface)),
-            Native::IsInLava => Some(|surface| surface == 5),
+        let surface_test: Option<fn(Surface) -> bool> = match function {
+            Native::IsInDeepWater => Some(|surface| surface.is_deep_water()),
+            Native::IsInWater => Some(|surface| surface.is_water()),
+            Native::IsInLava => Some(|surface| surface == Surface::LAVA),
             _ => None,
         };
         if let Some(test) = surface_test {
@@ -7911,7 +7922,7 @@ mod fighting_tests {
                     ai_type: if dead { AiType::DEAD } else { AiType::NONE },
                     ..Default::default()
                 }),
-                surface: Some(0),
+                surface: Some(Surface::UNKNOWN),
                 model: Default::default(),
                 collision: None,
                 player_movement: None,
@@ -8062,7 +8073,7 @@ mod selector_tests {
             unavailable: None,
             attributes: Attributes::default(),
             control: Some(ActorControlState::default()),
-            surface: Some(0),
+            surface: Some(Surface::UNKNOWN),
             model: Default::default(),
             collision: None,
             player_movement: None,

@@ -43,7 +43,7 @@ impl ScriptWorld {
                     | AnimationGroup::FIGHT_LAND_RIGHT
                     | AnimationGroup::FIGHT_LAND_LEFT
             )
-        ) || matches!(surface, 2 | 4)
+        ) || surface.is_deep_water()
             || control.rope_attached
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE

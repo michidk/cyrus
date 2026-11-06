@@ -1,7 +1,7 @@
 //! Collision-facing model records follow preservation's current-model lifecycle.
 //!
 //! Position and geometry have distinct lifetimes; see the [engine contract].
-//! Automatic model preparation applies surface 1–4 displacement using the matching
+//! Automatic model preparation applies water-surface displacement using the matching
 //! player scene's terrain and effective swim depth, and dispatches water effects
 //! through the shared pool without drawing random values. Selected attr105-one
 //! prepasses clear direction before null-source health; surface5/11 retains its
@@ -17,6 +17,7 @@ use crate::script::LivingState;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
+use cyrus_assets::surface::Surface;
 use cyrus_collision::actor_models::ActorModelCollision;
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -706,7 +707,8 @@ impl ScriptWorld {
                 None
             } else {
                 let surface = actor.surface.context("model surface unavailable")?;
-                matches!(surface, 1..=5 | 11).then_some(surface)
+                (surface.is_water() || matches!(surface, Surface::LAVA | Surface::GLOOP))
+                    .then_some(surface)
             };
             if water_surface.is_some() {
                 ensure!(
@@ -725,14 +727,14 @@ impl ScriptWorld {
             let selected = self.selected_player_index() == Some(index);
             if selected
                 && self.actors[index].attributes()[Attribute::PlayerType] == 1
-                && let Some(1..=4) = water_surface
+                && water_surface.is_some_and(Surface::is_water)
             {
                 self.actors[index]
                     .control
                     .as_mut()
                     .expect("validated control")
                     .actions = Default::default();
-                if matches!(water_surface, Some(2 | 4)) {
+                if water_surface.is_some_and(Surface::is_deep_water) {
                     self.apply_selected_death_health(
                         id,
                         -255,
@@ -768,7 +770,7 @@ impl ScriptWorld {
                 radius,
                 animation,
             });
-            if let Some(surface @ 1..=4) = water_surface {
+            if let Some(surface) = water_surface.filter(|surface| surface.is_water()) {
                 self.position_water_model(id, surface, pose, previous_position, scene)?;
                 continue;
             }
@@ -795,7 +797,7 @@ impl ScriptWorld {
                 if let Some(current) = self.actors[index].model.current.as_mut() {
                     current.position[1] = y;
                 }
-                if selected && surface == 5 {
+                if selected && surface == Surface::LAVA {
                     self.set_model_death_mode_one()?;
                 }
                 let control = self.actors[index]
@@ -859,7 +861,7 @@ impl ScriptWorld {
     fn position_water_model(
         &mut self,
         id: ScriptActorId,
-        surface: u8,
+        surface: cyrus_assets::surface::Surface,
         pose: Pose,
         previous: Option<[f32; 3]>,
         scene: Option<&crate::player::data::PlayerScene>,
@@ -877,8 +879,8 @@ impl ScriptWorld {
             None
         };
         let inhibited = health.is_some_and(|health| health.hit_inhibited());
-        let y = if surface == 1 || inhibited {
-            let progress = if surface != 1 {
+        let y = if surface == Surface::WATER || inhibited {
+            let progress = if surface != Surface::WATER {
                 health
                     .and_then(|health| health.death())
                     .context("water model death progress unavailable")?
@@ -891,7 +893,7 @@ impl ScriptWorld {
                 .wrapping_add(progress as i32) as f32
         } else {
             let mut coverage =
-                if surface == 2 {
+                if surface == Surface::DEEPWATER {
                     256
                 } else {
                     let scene = scene.context("water model terrain scene unavailable")?;
@@ -956,7 +958,7 @@ impl ScriptWorld {
         if let Some(current) = self.actors[index].model.current.as_mut() {
             current.position[1] = y;
         }
-        if surface != 1 && !inhibited {
+        if surface != Surface::WATER && !inhibited {
             let old_y = previous
                 .context("water model prior coordinates unavailable; recapture session")?[1];
             let difference = f64::from(float_to_model_integer(f64::from(old_y))) - f64::from(y);

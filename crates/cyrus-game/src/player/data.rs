@@ -58,7 +58,7 @@ impl PlayerScene {
         &self,
         support: &cyrus_collision::ground::SelectedSupport,
         position: [i64; 3],
-    ) -> anyhow::Result<u8> {
+    ) -> anyhow::Result<cyrus_assets::surface::Surface> {
         match support.source() {
             cyrus_collision::ground::SupportSource::Model { model, face } => {
                 self.static_collision.face_surface(model, face)

@@ -16,8 +16,8 @@ pub struct BackwardState {
     pub holding_weapon: bool,
     /// Combat flag `0x04`.
     pub combat_mode: bool,
-    /// Actor surface value; 2 and 4 are deep water.
-    pub surface: u8,
+    /// The actor's stored surface class.
+    pub surface: cyrus_assets::surface::Surface,
     pub torch_burning: bool,
     /// Attribute bytes 9 (ordinary) and 18 (combat stance) give the step length.
     pub step_attribute: u8,
@@ -79,7 +79,7 @@ pub fn backward_admission(
             step: state.combat_step_attribute,
         };
     }
-    let group = if matches!(state.surface, 2 | 4) {
+    let group = if state.surface.is_deep_water() {
         AnimationGroup::SWIM_BACKWARD
     } else if state.torch_burning {
         AnimationGroup::WALK_BACKWARD_TORCH
@@ -255,7 +255,7 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
         StrafeAdmission::Ledge {
             group: strafe.ledge_group(),
         }
-    } else if matches!(state.surface, 2 | 4) {
+    } else if state.surface.is_deep_water() {
         StrafeAdmission::DeepWater {
             group: AnimationGroup::SWIM_BACKWARD,
         }
@@ -344,7 +344,7 @@ pub fn forward_plan(state: &BackwardState) -> ForwardPlan {
             step: state.forward_combat_step_attribute,
         };
     }
-    if matches!(state.surface, 2 | 4) {
+    if state.surface.is_deep_water() {
         return ForwardPlan::NeedsEdgeProbe;
     }
     let group = if state.torch_burning {
@@ -428,6 +428,7 @@ pub fn continues(duration: i32, elapsed: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cyrus_assets::surface::Surface;
 
     #[test]
     fn initial_distance_ramps_preserve_other_directions_and_stop_at_three() {
@@ -541,14 +542,14 @@ mod tests {
         );
         assert_eq!(
             group(BackwardState {
-                surface: 2,
+                surface: Surface::DEEPWATER,
                 ..ready()
             }),
             (AnimationGroup::SWIM_BACKWARD, 8)
         );
         assert_eq!(
             group(BackwardState {
-                surface: 4,
+                surface: Surface::SCAPEDEEPWATER,
                 torch_burning: true,
                 ..ready()
             }),
@@ -564,7 +565,7 @@ mod tests {
         assert_eq!(
             group(BackwardState {
                 combat_mode: true,
-                surface: 2,
+                surface: Surface::DEEPWATER,
                 ..ready()
             }),
             (AnimationGroup::FIGHT_BACK, 18)
@@ -683,7 +684,7 @@ mod tests {
                 group: AnimationGroup::SHIMMY_LEFT_LEDGE
             }
         );
-        for surface in [2, 4] {
+        for surface in [Surface::DEEPWATER, Surface::SCAPEDEEPWATER] {
             assert_eq!(
                 strafe_admission(BackwardState { surface, ..ready() }, Strafe::Right),
                 StrafeAdmission::DeepWater {
@@ -1870,7 +1871,10 @@ mod tests {
             }
         );
         assert_eq!(
-            forward_plan(&BackwardState { surface: 2, ..base }),
+            forward_plan(&BackwardState {
+                surface: Surface::DEEPWATER,
+                ..base
+            }),
             ForwardPlan::NeedsEdgeProbe
         );
         let combat = BackwardState {
@@ -1894,7 +1898,7 @@ mod tests {
         // A deep-water combat actor still takes the combat branch.
         assert_eq!(
             forward_plan(&BackwardState {
-                surface: 4,
+                surface: Surface::SCAPEDEEPWATER,
                 ..combat
             }),
             ForwardPlan::Proceed {

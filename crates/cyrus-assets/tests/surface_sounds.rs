@@ -1,4 +1,5 @@
 use cyrus_assets::sound::SurfaceSounds;
+use cyrus_assets::surface::Surface;
 
 #[test]
 fn cache_rejects_missing_rows_short_rows_and_invalid_effect_ids() {
@@ -20,12 +21,15 @@ fn remaps_survive_cache_roundtrip_with_unknown_bypass_and_checked_operands() {
     let cached: SurfaceSounds =
         serde_json::from_slice(&serde_json::to_vec(&parsed).unwrap()).unwrap();
     assert_eq!(cached, parsed);
-    assert_eq!(cached.animation_sound(7, 200), Some(1));
-    assert_eq!(cached.animation_sound(7, 201), Some(600));
-    assert_eq!(cached.animation_sound(0, 0), Some(0));
-    assert_eq!(cached.animation_sound(8, 200), Some(200));
+    assert_eq!(cached.animation_sound(Surface::WOOD, 200), Some(1));
+    assert_eq!(cached.animation_sound(Surface::WOOD, 201), Some(600));
+    assert_eq!(cached.animation_sound(Surface::UNKNOWN, 0), Some(0));
+    assert_eq!(cached.animation_sound(Surface::TILE, 200), Some(200));
     for (surface, source) in [(12, 0), (255, 0), (0, -1), (7, -1), (7, 256)] {
-        assert_eq!(cached.animation_sound(surface, source), None);
+        assert_eq!(
+            cached.animation_sound(Surface::from_byte(surface), source),
+            None
+        );
     }
     assert!(
         SurfaceSounds::parse("[surfaces]\n[wood]\n256=1")

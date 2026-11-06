@@ -1,5 +1,6 @@
 //! Deep walking checks its edge before classification and support.
 use cyrus_assets::script::*;
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
 use cyrus_script::{Attribute, Thread};
@@ -383,7 +384,7 @@ fn deep_walk_acceptance_stores_classification_after_edge_and_preserves_real_wait
         assert_eq!(control.move_counter, counter);
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], called);
         assert_eq!(world.spatial(id).unwrap().local.position, [66048, 0, z]);
-        assert_eq!(world.actor_surface(id).unwrap(), 2);
+        assert_eq!(world.actor_surface(id).unwrap(), Surface::DEEPWATER);
         assert_eq!(
             world.actors()[1]
                 .control_state()

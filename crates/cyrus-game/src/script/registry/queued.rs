@@ -4,6 +4,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
@@ -200,7 +201,7 @@ impl super::ScriptWorld {
                 control.living_state,
                 LivingState::ORDINARY | LivingState::HANGING
             )
-            || (actor.attributes[Attribute::PlayerType] == 1 && (1..=4).contains(&surface))
+            || (actor.attributes[Attribute::PlayerType] == 1 && surface.is_water())
         {
             return Ok(false);
         }
@@ -234,7 +235,7 @@ impl super::ScriptWorld {
             .current_group()
             .context("Jump current group unavailable")?;
         if (selected && self.globals.conditional_ticks()? != 0)
-            || matches!(surface, 2 | 4)
+            || surface.is_deep_water()
             || actor.tasks.is_active()
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
@@ -250,9 +251,7 @@ impl super::ScriptWorld {
                     | AnimationGroup::FIGHT_LAND_RIGHT
                     | AnimationGroup::FIGHT_LAND_LEFT
             )
-            || (selected
-                && actor.attributes[Attribute::PlayerType] == 1
-                && (1..=4).contains(&surface))
+            || (selected && actor.attributes[Attribute::PlayerType] == 1 && surface.is_water())
         {
             return Ok(false);
         }
@@ -432,7 +431,9 @@ impl super::ScriptWorld {
             .as_mut()
             .expect("validated control")
             .motion_direction = 3;
-        if matches!(self.actors[index].surface, Some(2 | 4))
+        if self.actors[index]
+            .surface
+            .is_some_and(Surface::is_deep_water)
             && !self.edge_probe_clear(
                 id,
                 3,

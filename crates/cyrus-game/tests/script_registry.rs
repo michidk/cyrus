@@ -1,6 +1,7 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::AiType;
 use cyrus_game::script::CollisionFlags;
 use cyrus_game::script::CombatFlags;
@@ -267,8 +268,8 @@ fn killed_map_actor_keeps_its_named_pose() -> anyhow::Result<()> {
     assert!(world.actors()[0].control_state().unwrap().killed);
     let killed = world.id(0)?;
     assert_eq!(world.spatial(killed)?.query_pose()?.angles[1], 111);
-    world.set_actor_surface(killed, 7)?;
-    assert_eq!(world.actor_surface(killed)?, 7);
+    world.set_actor_surface(killed, Surface::WOOD)?;
+    assert_eq!(world.actor_surface(killed)?, Surface::WOOD);
     assert_eq!(world.actors()[1].runtime().unwrap().variables(), &[111]);
     Ok(())
 }
@@ -401,8 +402,8 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         );
         assert!(world.actors()[first.index].control_state().unwrap().killed);
         assert_eq!(world.spatial(first)?.query_pose()?.angles[1], 111);
-        world.set_actor_surface(first, 7)?;
-        assert_eq!(world.actor_surface(first)?, 7);
+        world.set_actor_surface(first, Surface::WOOD)?;
+        assert_eq!(world.actor_surface(first)?, Surface::WOOD);
         world.update_created(
             inputs,
             &mut cyrus_game::random::EngineRandom::from_state(42),
@@ -465,7 +466,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         let before = world.inspect(0, 64);
         for result in [
             world.spatial(first).map(|_| ()),
-            world.set_actor_surface(first, 9),
+            world.set_actor_surface(first, Surface::SCAPE),
             world.snapshot_spatial(first),
             world.advance(
                 first,
@@ -5100,7 +5101,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             cyrus_world::sound::SoundCue::Animation {
                 actor,
                 sound: cyrus_world::animation::AnimationSound::Play { effect, .. },
-                surface: Some(0),
+                surface: Some(Surface::UNKNOWN),
                 position: Some([2560, 5120, 7680]),
             } => (*actor, *effect),
             _ => panic!("unexpected initialization cue: {cue:?}"),
@@ -5486,18 +5487,18 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             let mut actors = app.world_mut().resource_mut::<ScriptActors>();
             let world = actors.current.as_mut().unwrap();
             let id = world.id(0).unwrap();
-            world.set_actor_surface(id, 0).unwrap();
+            world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
             assert!(world.retain_ordinary_water_position(id).unwrap());
             let rollback = world
                 .capture_ordinary_rollback(id, &mut |_, _| Ok(()))
                 .unwrap();
-            world.set_actor_surface(id, 1).unwrap();
+            world.set_actor_surface(id, Surface::WATER).unwrap();
             assert!(
                 world
                     .rollback_ordinary_water(id, None, &rollback, &mut |_, _| Ok(()))
                     .unwrap()
             );
-            world.set_actor_surface(id, 0).unwrap();
+            world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
         }
         let before = response(&app);
         assert_eq!(before.1, 1);
@@ -5680,7 +5681,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
                 world.actors()[0].control_state().unwrap().torch_burning,
                 200
             );
-            world.set_actor_surface(id, 0).unwrap();
+            world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
             world
                 .select_map_animation_default(id, false, 0, &mut |_, _| Ok(()))
                 .unwrap();
@@ -5713,7 +5714,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
                 1
             );
             let control = world.actors()[0].control_state().unwrap();
-            assert_eq!(world.actor_surface(id).unwrap(), 0);
+            assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
             assert_eq!(control.living_state, LivingState::ORDINARY);
             assert_eq!(control.torch_burning, if step < 6 { 200 } else { 199 });
             assert_eq!(
@@ -5852,7 +5853,9 @@ fn surface_class_queries_read_receivers_stored_surface_without_a_support_query()
             let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
             let first = world.id(0).unwrap();
             let second = world.id(1).unwrap();
-            world.set_actor_surface(first, surface).unwrap();
+            world
+                .set_actor_surface(first, Surface::from_byte(surface))
+                .unwrap();
             world.step(first, Thread::Main, 20).unwrap();
             assert_eq!(world.flags(), [i32::from(hit(surface))]);
             world.step(second, Thread::Main, 20).unwrap();
@@ -5868,7 +5871,7 @@ fn surface_class_queries_read_receivers_stored_surface_without_a_support_query()
                             generation: 2,
                             index: 0
                         },
-                        surface
+                        Surface::from_byte(surface)
                     )
                     .is_err()
             );
@@ -6114,7 +6117,9 @@ fn positional_sound_uses_the_routed_receivers_pose_and_returns_zero() {
         world.refresh_families().unwrap();
         let caller = world.id(1).unwrap();
         let receiver = world.id(0).unwrap();
-        world.set_actor_surface(receiver, surface).unwrap();
+        world
+            .set_actor_surface(receiver, Surface::from_byte(surface))
+            .unwrap();
         let mut cues = Vec::new();
         world
             .advance(
@@ -7240,14 +7245,16 @@ fn model_positioning_allows_known_dry_surfaces_with_collision_enabled() {
     let (mut world, data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
     for surface in [0, 6, 7, 8, 9, 10] {
-        world.set_actor_surface(id, surface).unwrap();
+        world
+            .set_actor_surface(id, Surface::from_byte(surface))
+            .unwrap();
         world.refresh_model_presentations(&data, &[id]).unwrap();
         assert_eq!(
             world.model_presentation(id).unwrap().unwrap().pose.position,
             [2560, 5120, 7680]
         );
     }
-    world.set_actor_surface(id, 2).unwrap();
+    world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
     assert!(
         world
             .refresh_model_presentations(&data, &[id])
@@ -7363,7 +7370,7 @@ fn ordinary_ground_retains_live_owner_excludes_self_and_has_no_player_fallback()
             static_placement: None,
         }
     );
-    assert_eq!(world.actor_surface(id).unwrap(), 0);
+    assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
     let inputs = ScriptInputs {
         nominal_ticks: Some(0),
         frame_scale: Some(256),
@@ -8039,7 +8046,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 .bits(),
             flags
         );
-        assert_eq!(world.actor_surface(id).unwrap(), 0);
+        assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
         let residue = |normal| RuntimeBodyContact {
             source: SupportSource::Model { model: 0, face: 0 },
             point: [0; 3],
@@ -9064,7 +9071,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
             .unwrap();
     }
     world.refresh_model_presentations(&data, &ids).unwrap();
-    world.set_actor_surface(ids[0], 0).unwrap();
+    world.set_actor_surface(ids[0], Surface::UNKNOWN).unwrap();
     let y = world.spatial(ids[0]).unwrap().local.position[1];
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
     let query = world
@@ -10844,7 +10851,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .unwrap(),
         None
     );
-    world.set_actor_surface(id, 2).unwrap();
+    world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
     let before = world.spatial(id).unwrap().local;
     assert_eq!(
         world
@@ -10894,7 +10901,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .unwrap()
     );
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 90);
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     let decision = world
         .resolve_ordinary_landing_damage(
             id,
@@ -10959,7 +10966,7 @@ fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translati
         (5, 5, StepDirection::Right, 1488),
     ] {
         assert_eq!(
-            ordinary_directional_motion(motion | 128, 2000, 4096, 2, false),
+            ordinary_directional_motion(motion | 128, 2000, 4096, Surface::DEEPWATER, false),
             Some(OrdinaryDirectionalMotion {
                 direction,
                 step,
@@ -10968,7 +10975,7 @@ fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translati
             })
         );
         assert_eq!(
-            ordinary_directional_motion(motion, 2000, 4096, 0, true),
+            ordinary_directional_motion(motion, 2000, 4096, Surface::UNKNOWN, true),
             Some(OrdinaryDirectionalMotion {
                 direction,
                 step,
@@ -10978,22 +10985,25 @@ fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translati
         );
     }
     for motion in [0, 1, 10, 23, 25, 127] {
-        assert_eq!(ordinary_directional_motion(motion, 0, 4096, 0, false), None);
+        assert_eq!(
+            ordinary_directional_motion(motion, 0, 4096, Surface::UNKNOWN, false),
+            None
+        );
     }
     assert_eq!(
-        ordinary_directional_motion(2, 0, -1, 4, false)
+        ordinary_directional_motion(2, 0, -1, Surface::SCAPEDEEPWATER, false)
             .unwrap()
             .distance,
         None
     );
     assert_eq!(
-        ordinary_directional_motion(2, 0, 4097, 4, false)
+        ordinary_directional_motion(2, 0, 4097, Surface::SCAPEDEEPWATER, false)
             .unwrap()
             .distance,
         Some(2048)
     );
     assert_eq!(
-        ordinary_directional_motion(2, 0, 4097, 3, false)
+        ordinary_directional_motion(2, 0, 4097, Surface::SCAPEWATER, false)
             .unwrap()
             .distance,
         Some(4097)
@@ -11011,18 +11021,27 @@ fn ordinary_landing_decision_uses_strict_installed_thresholds_and_water() {
         hurt_zap: 10,
     };
     let decide = |distance, surface| ordinary_landing_decision(distance, 0, surface, settings);
-    assert_eq!(decide(300 * 256, 0), D::Ordinary);
-    assert_eq!(decide(300 * 256 + 1, 0), D::Hurt { health_change: -10 });
-    assert_eq!(decide(-(600 * 256), 0), D::Hurt { health_change: -10 });
-    assert_eq!(decide(-(600 * 256 + 1), 0), D::Fatal);
-    assert_eq!(decide(300 * 256 + 1, 11), D::HurtExcluded);
-    assert_eq!(decide(300 * 256 + 1, 5), D::HurtExcluded);
-    for surface in 1..=4 {
-        assert_eq!(decide(600 * 256 + 1, surface), D::Ordinary);
-    }
-    assert_eq!(decide(600 * 256 + 1, 5), D::Fatal);
+    assert_eq!(decide(300 * 256, Surface::UNKNOWN), D::Ordinary);
     assert_eq!(
-        ordinary_landing_decision(i32::MIN, i32::MAX, 0, settings),
+        decide(300 * 256 + 1, Surface::UNKNOWN),
+        D::Hurt { health_change: -10 }
+    );
+    assert_eq!(
+        decide(-(600 * 256), Surface::UNKNOWN),
+        D::Hurt { health_change: -10 }
+    );
+    assert_eq!(decide(-(600 * 256 + 1), Surface::UNKNOWN), D::Fatal);
+    assert_eq!(decide(300 * 256 + 1, Surface::GLOOP), D::HurtExcluded);
+    assert_eq!(decide(300 * 256 + 1, Surface::LAVA), D::HurtExcluded);
+    for surface in 1..=4 {
+        assert_eq!(
+            decide(600 * 256 + 1, Surface::from_byte(surface)),
+            D::Ordinary
+        );
+    }
+    assert_eq!(decide(600 * 256 + 1, Surface::LAVA), D::Fatal);
+    assert_eq!(
+        ordinary_landing_decision(i32::MIN, i32::MAX, Surface::UNKNOWN, settings),
         D::Ordinary
     );
 }
@@ -11275,7 +11294,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
     let before = world.spatial(id).unwrap().local.position;
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     assert!(world.retain_ordinary_water_position(id).unwrap());
     world.apply_ordinary_directional_motion(id, 2, 512).unwrap();
     world.snapshot_spatial(id).unwrap();
@@ -11292,7 +11311,7 @@ fn ordinary_water_rollback_restores_retained_position_frame_and_flags() {
             .rollback_ordinary_water(id, Some(id), &snapshot, &mut |_, _| Ok(()))
             .unwrap()
     );
-    world.set_actor_surface(id, 1).unwrap();
+    world.set_actor_surface(id, Surface::WATER).unwrap();
     world
         .advance(
             id,
@@ -12037,7 +12056,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
     world
         .refresh_model_presentations(&data, &[first, second])
         .unwrap();
-    world.set_actor_surface(first, 7).unwrap();
+    world.set_actor_surface(first, Surface::WOOD).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let mut random = cyrus_game::random::EngineRandom::default();
@@ -12081,7 +12100,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
             [2560, 4608, 7680]
         );
         assert_eq!(world.model_support(first).unwrap().actor, Some(second));
-        assert_eq!(world.actor_surface(first).unwrap(), 0);
+        assert_eq!(world.actor_surface(first).unwrap(), Surface::UNKNOWN);
         let control = world.actors()[0].control_state().unwrap();
         assert!(control.stable_position_valid);
         assert_eq!(control.stable_local_position, [2560, 4608, 7680]);
@@ -12093,12 +12112,12 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
 fn ordinary_script_wrapper_counts_and_clears_prior_response_marks() {
     let (mut world, _, _) = static_model_fixture(cache());
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     world.retain_ordinary_water_position(id).unwrap();
     let snapshot = world
         .capture_ordinary_rollback(id, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(id, 1).unwrap();
+    world.set_actor_surface(id, Surface::WATER).unwrap();
     let mark = |world: &mut ScriptWorld| {
         assert!(
             world
@@ -12148,12 +12167,12 @@ fn drno_leaves_the_response_timers_of_a_skipped_actor_untouched() {
     scripts.updates.task_system = false;
     let (mut world, _, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     world.retain_ordinary_water_position(id).unwrap();
     let snapshot = world
         .capture_ordinary_rollback(id, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(id, 1).unwrap();
+    world.set_actor_surface(id, Surface::WATER).unwrap();
     assert!(
         world
             .rollback_ordinary_water(id, None, &snapshot, &mut |_, _| Ok(()))
@@ -13882,7 +13901,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                 world
                     .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
                     .unwrap();
-                world.set_actor_surface(id, 7).unwrap();
+                world.set_actor_surface(id, Surface::WOOD).unwrap();
                 let inputs = CombatEntryInputs {
                     weapon: WeaponInputs {
                         selected_player: player,
@@ -14345,7 +14364,10 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
                     .position,
                 [2560, 5120, 7680]
             );
-            assert_eq!(world.actor_surface(world.id(index).unwrap()).unwrap(), 0);
+            assert_eq!(
+                world.actor_surface(world.id(index).unwrap()).unwrap(),
+                Surface::UNKNOWN
+            );
             assert_eq!(actor.attributes()[Attribute::Weight], 64);
         }
         assert_eq!(world.flags(), [42]);
@@ -15003,7 +15025,7 @@ fn keyboard_walk_session(verify_drno: bool) {
         .resource_mut::<Messages<SoundCue>>()
         .drain()
         .collect();
-    assert!(cues.iter().any(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 9, .. }, surface: Some(0), .. } if *actor == player)), "{cues:?}");
+    assert!(cues.iter().any(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 9, .. }, surface: Some(Surface::UNKNOWN), .. } if *actor == player)), "{cues:?}");
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .release(KeyCode::ArrowUp);
@@ -15137,7 +15159,9 @@ fn keyboard_walk_session(verify_drno: bool) {
     {
         let mut actors = app.world_mut().resource_mut::<ScriptActors>();
         let world = actors.current.as_mut().unwrap();
-        world.set_actor_surface(player_id, 3).unwrap();
+        world
+            .set_actor_surface(player_id, Surface::SCAPEWATER)
+            .unwrap();
         world
             .initialize_camera_pose(cyrus_game::script::camera::CameraPose {
                 position: [0; 3],
@@ -15436,7 +15460,7 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
     world.begin_player_movement_update(player, 0).unwrap();
-    world.set_actor_surface(player, 2).unwrap();
+    world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
     let held = cyrus_game::player::input::PlayerInput {
         forward: true,
         walk: true,
@@ -16178,7 +16202,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
             .unwrap()
     );
     assert_eq!(world.spatial(player).unwrap().local.position, before);
-    assert_eq!(world.actor_surface(player).unwrap(), 0);
+    assert_eq!(world.actor_surface(player).unwrap(), Surface::UNKNOWN);
     assert_eq!(history.ticks(), 12);
     let spheres = world.ordinary_overlap_spheres(player, &data).unwrap();
     assert!(!spheres.is_empty());
@@ -16277,7 +16301,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
             cue,
             cyrus_game::script::ScriptSound::Animation {
                 sound: cyrus_world::animation::AnimationSound::Play { .. },
-                surface: Some(0),
+                surface: Some(Surface::UNKNOWN),
                 position: Some([2816, -1536, 7680])
             }
         )));
@@ -17716,7 +17740,7 @@ fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
     let (mut world, data) = family_model_fixture(4);
     let root = world.id(0).unwrap();
     let child = world.id(1).unwrap();
-    world.set_actor_surface(child, 2).unwrap();
+    world.set_actor_surface(child, Surface::DEEPWATER).unwrap();
     world.refresh_families().unwrap();
     world
         .refresh_model_presentations(&data, &[root, child])
@@ -19332,7 +19356,14 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 )
                 .unwrap();
             world
-                .set_actor_surface(player, if mode == 6 { 2 } else { 0 })
+                .set_actor_surface(
+                    player,
+                    if mode == 6 {
+                        Surface::DEEPWATER
+                    } else {
+                        Surface::UNKNOWN
+                    },
+                )
                 .unwrap();
         }
         let hud = ScriptHud::default();
@@ -19413,7 +19444,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
         if (9..=11).contains(&mode) || matches!(mode, 4 | 6) {
             // Effect mode is retained independently of later ground-surface updates.
             if mode == 6 {
-                world.set_actor_surface(player, 0).unwrap();
+                world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
             }
             world.prepare_player_model_resources(player, &data).unwrap();
             let map = world.id(0).unwrap();
@@ -22710,7 +22741,9 @@ fn forward_amount_uses_live_combat_action_surface_torch_and_suppression() {
                 control["combat"] = serde_json::to_value(state).unwrap();
             });
             let id = world.id(0).unwrap();
-            world.set_actor_surface(id, surface).unwrap();
+            world
+                .set_actor_surface(id, Surface::from_byte(surface))
+                .unwrap();
             let mut inputs = forward_amount_inputs();
             inputs.holding_weapon = weapon;
             inputs.frame_scale = scale;
@@ -22845,7 +22878,7 @@ fn forward_amount_requires_live_step_geometry_only_below_saturated_counter() {
 fn forward_amount_halves_deep_water_before_the_shared_startup_ramp() {
     let mut world = forward_amount_world(142, false, true, |_| {});
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 2).unwrap();
+    world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
     for expected in [256, 341, 512, 1024] {
         assert_eq!(
             world
@@ -23472,7 +23505,7 @@ fn a_swimming_continuation_waits_for_its_edge_probe() {
     let (mut world, _scripts, _data) = spacing_fixture_group(92, |_| {});
     world.ordinary_actors([0, 0]).unwrap();
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 2).unwrap();
+    world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
     let hud = ScriptHud::default();
     let start = world.spatial(id).unwrap().local.position;
     world
@@ -33317,7 +33350,9 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, surface).unwrap();
+        world
+            .set_actor_surface(player, Surface::from_byte(surface))
+            .unwrap();
         let logical = world.spatial(player).unwrap().local.position;
         world
             .refresh_automatic_models(
@@ -33973,7 +34008,9 @@ fn goldfinger_replaces_the_water_branches_and_the_last_tick_of_the_torch_burn() 
         (control.living_state, control.torch_burning)
     };
     let burn = |world: &mut ScriptWorld, surface: u8, counter: u8, retained: bool| {
-        world.set_actor_surface(player, surface).unwrap();
+        world
+            .set_actor_surface(player, Surface::from_byte(surface))
+            .unwrap();
         world.set_selected_torch(counter).unwrap();
         world
             .advance_torch_burn(
@@ -34625,7 +34662,7 @@ fn ending_activation_keeps_the_action_press_consumed_until_release() {
             let state = ActivationActor {
                 state: LivingState::ORDINARY,
                 on_rope: false,
-                water_state: 0,
+                water_state: Surface::UNKNOWN,
                 torch_burning: 0,
                 weapon_assigned: true,
                 weapon_drawn: false,
@@ -36349,7 +36386,7 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
     world
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let start_y = world.spatial(id).unwrap().local.position[1];
@@ -36425,11 +36462,18 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
         .unwrap(),
     );
     scene.collision.texture_surfaces = Some(Default::default());
-    assert_eq!(world.actor_surface(id).unwrap(), 0);
+    assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
     step(&mut world, &scene);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.falling_state, JumpMotion::NONE);
-    assert_eq!(world.actor_surface(id).unwrap(), if water { 4 } else { 0 });
+    assert_eq!(
+        world.actor_surface(id).unwrap(),
+        if water {
+            Surface::SCAPEDEEPWATER
+        } else {
+            Surface::UNKNOWN
+        }
+    );
     assert_eq!(
         world.actors()[id.index].attributes()[Attribute::Health],
         if water || !fatal_distance { 100 } else { 0 }
@@ -36483,7 +36527,7 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
         saved["actors"][0]["control"]["stable_local_position"] = serde_json::json!(stable);
     });
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 7).unwrap();
+    world.set_actor_surface(id, Surface::WOOD).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let mut random = cyrus_game::random::EngineRandom::default();
@@ -36771,7 +36815,7 @@ fn a_support_miss_in_a_jump_group_carries_the_last_displacement_into_the_fall() 
         saved["actors"][0]["control"]["stable_local_position"] = serde_json::json!(stable);
     });
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 7).unwrap();
+    world.set_actor_surface(id, Surface::WOOD).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 50;
     let start = world.spatial(id).unwrap().local.position;
@@ -37198,13 +37242,15 @@ fn surface_transition(
     if forward {
         world.apply_ordinary_directional_motion(id, 2, 512).unwrap();
     }
-    world.set_actor_surface(id, stored).unwrap();
+    world
+        .set_actor_surface(id, Surface::from_byte(stored))
+        .unwrap();
     let mut sounds = Vec::new();
     world
         .selected_surface_transition(
             id,
-            previous,
-            returned,
+            Surface::from_byte(previous),
+            Surface::from_byte(returned),
             1,
             &mut EngineRandom::default(),
             None,
@@ -37445,7 +37491,9 @@ fn script_jump_refusals_return_zero_without_changing_jump_state() {
     for surface in [2, 4] {
         let (mut world, _, _) = script_jump_fixture(0, |_| {});
         let id = world.id(0).unwrap();
-        world.set_actor_surface(id, surface).unwrap();
+        world
+            .set_actor_surface(id, Surface::from_byte(surface))
+            .unwrap();
         world
             .advance(
                 id,
@@ -37576,7 +37624,7 @@ fn selected_script_jump_group_nineteen_sets_cooldown_and_heading_write() {
             100,
         )
         .unwrap();
-    world.set_actor_surface(player, 0).unwrap();
+    world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     let activation = ActivationInputs {
         player,
         actors: BTreeMap::new(),
@@ -37708,7 +37756,7 @@ fn selected_script_jump_hang_release_clears_support_without_starting_jump_motion
             100,
         )
         .unwrap();
-    world.set_actor_surface(player, 0).unwrap();
+    world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     let activation = ActivationInputs {
         player,
         actors: BTreeMap::new(),
@@ -40037,7 +40085,7 @@ fn public_jump_classification_fixture(
             100,
         )
         .unwrap();
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     (world, data)
 }
 
@@ -40147,7 +40195,7 @@ fn script_jump_returns_before_landing_with_receiver_classification_two() {
     }
     let (mut world, _) = public_jump_classification_fixture(0, true);
     let id = world.id(0).unwrap();
-    world.set_actor_surface(id, 2).unwrap();
+    world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
     invoke_public_script_jump(&mut world, true).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 1);
     let control = world.actors()[0].control_state().unwrap();
@@ -40294,7 +40342,7 @@ fn queued_jump_lifetime_fixture(
             100,
         )
         .unwrap();
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     invoke_public_script_jump(&mut world, false).unwrap();
     world.snapshot_spatial(id).unwrap();
     assert_eq!(
@@ -40600,7 +40648,7 @@ fn selected_hang_fixture_with_point_task(
         },
     );
     let player = world.selected_player().unwrap();
-    world.set_actor_surface(player, 0).unwrap();
+    world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
@@ -40715,7 +40763,7 @@ fn selected_public_jump_hang_release_retains_nonzero_classification_and_continue
 fn selected_public_jump_hang_surface_refusal_retains_classification() {
     let (mut world, data, scene) = selected_hang_classification_fixture();
     let player = world.selected_player().unwrap();
-    world.set_actor_surface(player, 2).unwrap();
+    world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
     advance_selected_hang_script(&mut world, &data, &scene, true).unwrap();
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
@@ -40727,7 +40775,7 @@ fn selected_public_jump_hang_surface_refusal_retains_classification() {
         ),
         (2, 15, 0, 0)
     );
-    world.set_actor_surface(player, 0).unwrap();
+    world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     advance_selected_hang_script(&mut world, &data, &scene, false).unwrap();
     assert_eq!(
         world.actors()[player.index]

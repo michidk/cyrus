@@ -429,7 +429,7 @@ impl ScriptWorld {
         let admitted = !living.is_ledge()
             && living != LivingState::LANDED_ON_ACTOR
             && living != LivingState::BOUNCING_FROM_ACTOR
-            && !matches!(surface, 2 | 4)
+            && !surface.is_deep_water()
             && other_has_group;
         let actor = &mut self.actors[id.index];
         let control = actor.control.as_mut().expect("checked above");

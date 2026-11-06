@@ -54,7 +54,7 @@ impl ScriptWorld {
                 self.world
             )
         })?;
-        if matches!(surface, 2 | 4) {
+        if surface.is_deep_water() {
             if control.living_state == LivingState::HANGING {
                 self.ledge_hang_release(id, query, environment, timing, sounds)?;
                 self.ledge_transition(id, query, environment, timing, sounds)?;

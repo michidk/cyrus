@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute};
 
 /// Shared engine gates for a caller-admitted weapon operation.
@@ -41,7 +42,7 @@ impl super::ScriptActor {
             .control
             .as_mut()
             .context("HandItem receiver control unavailable")?;
-        if matches!(surface, 2 | 4)
+        if surface.is_deep_water()
             || control.living_state.is_ledge()
             || control.living_state.is_actor_bounce()
             || control.falling_state != JumpMotion::NONE
@@ -358,7 +359,7 @@ impl<'a> CombatReceiver<'a> {
         if control.living_state.is_ledge()
             || matches!(
                 actor.surface.context("weapon draw surface unavailable")?,
-                2 | 4
+                Surface::DEEPWATER | Surface::SCAPEDEEPWATER
             )
         {
             return Ok(());
@@ -707,7 +708,7 @@ mod tests {
             created_retired: false,
             unavailable: None,
             attributes: cyrus_script::Attributes::default(),
-            surface: Some(0),
+            surface: Some(Surface::UNKNOWN),
             control: Some(ActorControlState {
                 combat: Some(Default::default()),
                 ..Default::default()

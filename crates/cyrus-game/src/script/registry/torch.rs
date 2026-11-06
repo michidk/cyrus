@@ -8,6 +8,7 @@ use super::{GameHost, ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -48,7 +49,7 @@ impl ScriptWorld {
         let actor = &self.actors[index];
         let control = actor.control.as_ref().expect("gated control");
         let animating = lighting_or_dousing(actor);
-        let refused = matches!(actor.surface, Some(1..=4))
+        let refused = actor.surface.is_some_and(Surface::is_water)
             || control.torch_burning != 0
             || animating
             || inputs.drawing
@@ -121,14 +122,14 @@ impl ScriptWorld {
                 .torch_burning = 100;
             return Ok(());
         }
-        let surface = actor.surface.unwrap_or(0);
+        let surface = actor.surface.unwrap_or_default();
         let control = self.actors[index]
             .control
             .as_mut()
             .expect("checked control");
-        if matches!(surface, 2 | 4) {
+        if surface.is_deep_water() {
             control.torch_burning = 0;
-        } else if (1..=4).contains(&surface) {
+        } else if surface.is_water() {
             self.unlight_torch(id, inputs, ticks, sounds)?;
         } else {
             control.torch_burning = control.torch_burning.saturating_sub(ticks.min(255) as u8);
@@ -164,7 +165,7 @@ impl ScriptWorld {
         if !inputs.item_system_ready || actor.animation.is_none() || inputs.shell {
             return Ok(());
         }
-        if matches!(actor.surface, Some(2 | 4)) || inputs.holding {
+        if actor.surface.is_some_and(Surface::is_deep_water) || inputs.holding {
             self.actors[index]
                 .control
                 .as_mut()

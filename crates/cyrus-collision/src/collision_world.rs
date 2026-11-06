@@ -15,6 +15,7 @@ use bevy::math::{Mat3, Vec3};
 pub use body::{PrimaryBodyQuery, ResidualBodyQuery, RuntimeBodyContact};
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::StaticPlacement;
+use cyrus_assets::surface::Surface;
 use std::collections::BTreeMap;
 
 /// Caller-admitted forward geometry. Body and ground probes share the proposed
@@ -50,7 +51,7 @@ pub struct StaticCollision {
     models: BTreeMap<String, Model>,
     cells: BTreeMap<(i32, i32), Vec<usize>>,
     unsupported: BTreeMap<String, String>,
-    texture_surfaces: Option<BTreeMap<u16, u8>>,
+    texture_surfaces: Option<BTreeMap<u16, Surface>>,
 }
 
 /// Original candidate-list separation; indices identify authored static placements.
@@ -141,7 +142,7 @@ impl StaticCollision {
             scene
                 .texture_surfaces
                 .as_ref()
-                .is_none_or(|table| table.values().all(|value| *value < 12)),
+                .is_none_or(|table| table.values().all(|value| value.byte() < 12)),
             "texture surface code outside 0..11"
         );
         let mut cells: BTreeMap<_, Vec<_>> = BTreeMap::new();
@@ -215,7 +216,7 @@ impl StaticCollision {
 
     /// Resolve contact material through the installed SURFACE.INI assignment table.
     /// Version-4/5 solid-color faces resolve to surface zero.
-    pub fn face_surface(&self, placement: usize, face: usize) -> anyhow::Result<u8> {
+    pub fn face_surface(&self, placement: usize, face: usize) -> anyhow::Result<Surface> {
         let record = self
             .placements
             .get(placement)

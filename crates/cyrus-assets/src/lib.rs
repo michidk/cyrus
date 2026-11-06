@@ -499,6 +499,7 @@ pub mod sound;
 pub mod sound_export;
 #[cfg(feature = "parsers")]
 pub mod startup;
+pub mod surface;
 
 #[cfg(feature = "parsers")]
 pub mod music;

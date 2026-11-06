@@ -9,6 +9,7 @@ use cyrus_assets::music::read_track;
 use cyrus_assets::music::world_track;
 use cyrus_assets::sound::SoundSettings;
 use cyrus_assets::sound::slider_volume;
+use cyrus_assets::surface::Surface;
 use cyrus_audio::music::redbook_gain;
 use cyrus_audio::sound::distance_volume;
 use cyrus_audio::sound::heading;
@@ -348,7 +349,10 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
         .insert_resource(AudioListener(GlobalTransform::default()));
     let known = app
         .world_mut()
-        .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(0)))
+        .spawn((
+            GlobalTransform::from_translation(Vec3::Z),
+            SoundSurface(Surface::UNKNOWN),
+        ))
         .id();
     let unknown = app
         .world_mut()
@@ -358,7 +362,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
         app.world_mut().write_message(SoundCue::Animation {
             position: None,
             actor,
-            surface: (actor == known).then_some(0),
+            surface: (actor == known).then_some(cyrus_assets::surface::Surface::UNKNOWN),
             sound: AnimationSound::Play {
                 effect: 0,
                 rate_offset_hz: 0,
@@ -377,7 +381,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     app.world_mut().write_message(SoundCue::Animation {
         position: None,
         actor: known,
-        surface: Some(0),
+        surface: Some(Surface::UNKNOWN),
         sound: AnimationSound::Stop,
     });
     app.update();
@@ -398,7 +402,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     app.world_mut().write_message(SoundCue::Animation {
         position: None,
         actor: known,
-        surface: Some(0),
+        surface: Some(Surface::UNKNOWN),
         sound: AnimationSound::Play {
             effect: 0,
             rate_offset_hz: 0,

@@ -3,6 +3,7 @@ use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::CollisionSubobject;
 use cyrus_assets::collision::StaticPlacement;
+use cyrus_assets::surface::Surface;
 use cyrus_collision::collision_world::StaticCollision;
 use cyrus_collision::ground::GroundProbe;
 use cyrus_collision::ground::SupportSource;
@@ -331,13 +332,13 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
     assert_eq!(world.face_texture(0, 0).unwrap(), Some([42, 3]));
     assert!(world.face_surface(0, 0).is_err());
     assert!(world.face_texture(0, 1).is_err());
-    scene.texture_surfaces = Some([(((42 << 7) | 3), 7)].into());
+    scene.texture_surfaces = Some([(((42 << 7) | 3), Surface::WOOD)].into());
     assert_eq!(
         StaticCollision::new(&scene)
             .unwrap()
             .face_surface(0, 0)
             .unwrap(),
-        7
+        Surface::WOOD
     );
     scene.texture_surfaces = Some(Default::default());
     assert_eq!(
@@ -345,9 +346,9 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .unwrap()
             .face_surface(0, 0)
             .unwrap(),
-        0
+        Surface::UNKNOWN
     );
-    scene.texture_surfaces = Some([(((42 << 7) | 3), 12)].into());
+    scene.texture_surfaces = Some([(((42 << 7) | 3), Surface::from_byte(12))].into());
     assert!(StaticCollision::new(&scene).is_err());
     scene.texture_surfaces = Some(Default::default());
     scene.models.get_mut("floor").unwrap().geometry.textures = Some(vec![None]);
@@ -363,7 +364,7 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .unwrap()
             .face_surface(0, 0)
             .unwrap(),
-        0
+        Surface::UNKNOWN
     );
     scene.models.get_mut("floor").unwrap().geometry.version = Some(*b"v4.0");
     assert_eq!(
@@ -371,7 +372,7 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .unwrap()
             .face_surface(0, 0)
             .unwrap(),
-        0
+        Surface::UNKNOWN
     );
     scene.models.get_mut("floor").unwrap().geometry.version = Some(*b"v2.7");
     assert!(

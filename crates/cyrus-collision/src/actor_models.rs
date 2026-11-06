@@ -2,6 +2,7 @@
 use crate::collision_mesh::{CollisionMesh, ModelPose, WorldSegmentContact};
 use anyhow::{Context, Result};
 use cyrus_assets::collision::ActorCollisionModels;
+use cyrus_assets::surface::Surface;
 use std::collections::BTreeMap;
 
 struct Model {
@@ -197,8 +198,8 @@ impl ActorModelCollision {
         &self,
         actor: usize,
         face: usize,
-        assignments: Option<&BTreeMap<u16, u8>>,
-    ) -> Result<u8> {
+        assignments: Option<&BTreeMap<u16, Surface>>,
+    ) -> Result<Surface> {
         let model = self.model(actor)?;
         super::collision_mesh::face_surface(
             model.version,

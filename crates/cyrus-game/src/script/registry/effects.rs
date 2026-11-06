@@ -14,6 +14,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
+use cyrus_assets::surface::Surface;
 use cyrus_world::heading::wrap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -257,18 +258,18 @@ impl EnvironmentalEffects {
 pub struct ActorEvent {
     pub actor: ScriptActorId,
     pub flags: u32,
-    pub surface: Option<u8>,
+    pub surface: Option<cyrus_assets::surface::Surface>,
     pub position: Option<[i32; 3]>,
 }
 
 /// Event bits that spawn an effect, in evaluation order: (bit, required stored surface,
 /// descriptor). The surfaces are lava (5), water (1) twice and sand (6); descriptor 0x2500 is also
 /// the one the landing check requests through the same effect point.
-const ACTOR_EVENT_EFFECTS: [(u32, u8, u32); 4] = [
-    (1, 5, 0x2580),
-    (2, 1, 0x2500),
-    (4, 1, 0x2500),
-    (8, 6, 0x2700),
+const ACTOR_EVENT_EFFECTS: [(u32, Surface, u32); 4] = [
+    (1, Surface::LAVA, 0x2580),
+    (2, Surface::WATER, 0x2500),
+    (4, Surface::WATER, 0x2500),
+    (8, Surface::SAND, 0x2700),
 ];
 /// Event bit that adds a camera shake impulse, after the effect bits.
 const ACTOR_EVENT_SHAKE: u32 = 0x10;
@@ -310,7 +311,7 @@ fn displaced(point: [i32; 3], index: usize, distance: f64) -> [i32; 3] {
 /// never query collision, camera or pool services.
 pub(super) struct ActorEventContext {
     actor: ScriptActorId,
-    surface: Option<u8>,
+    surface: Option<cyrus_assets::surface::Surface>,
     position: Option<[i32; 3]>,
     height: Option<i32>,
     camera_ready: bool,

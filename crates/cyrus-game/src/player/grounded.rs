@@ -2,6 +2,7 @@
 use super::data::PlayerScene;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
+use cyrus_assets::surface::Surface;
 use cyrus_collision::{
     collision_world::StaticCandidates,
     ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
@@ -25,7 +26,7 @@ pub struct GroundedUpdate {
 /// Player-local walking state; shared support history and veto remain caller-owned.
 pub struct GroundedWalk {
     pub position: [i64; 3],
-    pub surface: u8,
+    pub surface: cyrus_assets::surface::Surface,
     pub startup: super::walk::WalkingStartup,
 }
 
@@ -63,7 +64,7 @@ impl GroundedWalk {
         animation: &mut cyrus_world::animation::ActorAnimation,
         sounds: &mut dyn FnMut(
             cyrus_world::animation::AnimationSound,
-            u8,
+            Surface,
             [i64; 3],
         ) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
@@ -225,7 +226,7 @@ impl GroundedWalk {
         animation: &mut cyrus_world::animation::ActorAnimation,
         sounds: &mut dyn FnMut(
             cyrus_world::animation::AnimationSound,
-            u8,
+            Surface,
             [i64; 3],
         ) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<super::walk::WalkingStep>> {
@@ -317,7 +318,7 @@ impl StaticGroundQuery<'_> {
         &self,
         position: [i64; 3],
         history: &mut SupportHistory,
-        surface: &mut u8,
+        surface: &mut Surface,
         surface_veto: &mut i32,
     ) -> anyhow::Result<Option<SelectedSupport>> {
         let definition = self
@@ -347,21 +348,22 @@ impl StaticGroundQuery<'_> {
         if self.collision_attribute & 4 != 0 {
             let previous = *surface;
             let resolved = if self.surface_update == SurfaceUpdate::Excluded {
-                0
+                Surface::UNKNOWN
             } else {
                 selected
                     .as_ref()
                     .map(|support| self.scene.support_surface(support, position))
                     .transpose()?
-                    .unwrap_or(0)
+                    .unwrap_or_default()
             };
             if self.surface_update == SurfaceUpdate::Assign {
                 *surface = resolved;
-                *surface_veto = i32::from(matches!(resolved, 5 | 11));
+                *surface_veto = i32::from(matches!(resolved, Surface::LAVA | Surface::GLOOP));
             }
             anyhow::ensure!(
                 resolved == previous
-                    || (!(1..=5).contains(&previous) && !(1..=5).contains(surface)),
+                    || (!(previous.is_water() || previous == Surface::LAVA)
+                        && !(surface.is_water() || *surface == Surface::LAVA)),
                 "world {} ground query: water/lava transition effects unsupported",
                 self.scene.world
             );
@@ -375,7 +377,7 @@ impl StaticGroundQuery<'_> {
         &self,
         proposed: [i64; 3],
         history: &mut SupportHistory,
-        surface: &mut u8,
+        surface: &mut Surface,
         surface_veto: &mut i32,
     ) -> anyhow::Result<Option<SelectedSupport>> {
         let definition = self

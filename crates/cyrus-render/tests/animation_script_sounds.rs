@@ -1,5 +1,6 @@
 //! Script-request cues share the ordinary actor's sound handler and tick input.
 use cyrus_assets::animation::Animations;
+use cyrus_assets::surface::Surface;
 use cyrus_script::AnimationGroup;
 use serde_json::json;
 
@@ -122,7 +123,10 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
         app.world_mut().resource_mut::<AnimationRequest>().0 = source;
         let actor = app
             .world_mut()
-            .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(0)))
+            .spawn((
+                GlobalTransform::from_translation(Vec3::Z),
+                SoundSurface(Surface::UNKNOWN),
+            ))
             .id();
         if let Some(group) = group {
             app.world_mut().entity_mut(actor).insert(group);

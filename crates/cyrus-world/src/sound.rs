@@ -24,7 +24,7 @@ pub enum SoundCue {
         sound: crate::animation::AnimationSound,
         /// None leaves Play unsupported; Stop and Forget do not need a surface.
         /// Zero bypasses remapping. Other codes select the installed SURFACE.INI row.
-        surface: Option<u8>,
+        surface: Option<cyrus_assets::surface::Surface>,
         /// Logical emitter position captured at command emission, in signed Q8
         /// coordinates. None retains the presentation-only transform lookup.
         position: Option<[i32; 3]>,
@@ -39,7 +39,7 @@ pub struct PlayerAnimationSource;
 /// The SURFACE.INI surface type of the face an actor stands on (preservation
 /// `docs/engine/sound.md`), set by the code that knows the ground; 0 means no remap.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SoundSurface(pub u8);
+pub struct SoundSurface(pub cyrus_assets::surface::Surface);
 
 /// One synchronous AmbientSound invocation, using original Q8 emitter coordinates.
 /// The remembered channel is a sample slot, not an effect or scene entity identity.
@@ -91,7 +91,7 @@ pub enum ScriptSound {
     /// Surface captured by the logical actor host when its animation command runs.
     Animation {
         sound: crate::animation::AnimationSound,
-        surface: Option<u8>,
+        surface: Option<cyrus_assets::surface::Surface>,
         /// Logical emitter position captured at command emission, in signed Q8
         /// coordinates. None retains the presentation-only transform lookup.
         position: Option<[i32; 3]>,

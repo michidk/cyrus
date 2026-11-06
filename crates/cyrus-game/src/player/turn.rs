@@ -132,7 +132,7 @@ pub struct GroundTurnInput {
     pub forward_or_backward: bool,
     /// Living state 0 or 27 with the falling and queued-motion bytes zero.
     pub eligible: bool,
-    /// The player holds a drawn weapon with a combat record, or stands on surface 2 or 4: the
+    /// The player holds a drawn weapon with a combat record, or stands in deep water: the
     /// heading still turns but no turn animation is requested.
     pub animation_barred: bool,
 }

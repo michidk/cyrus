@@ -6,6 +6,7 @@ use bevy::{
     audio::{AudioPlayer, AudioSource, Decodable, Volume},
     prelude::*,
 };
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_audio::sound::{Panned, RestoredDialogueAssets, SoundPlugin, dialogue::DialogueClip};
 use cyrus_game::{
@@ -474,7 +475,7 @@ fn exercise_runtime_session(
                 model: "TEST".into(),
                 frame: 1,
             },
-            cyrus_world::sound::SoundSurface(7),
+            cyrus_world::sound::SoundSurface(Surface::WOOD),
             ScriptBinding {
                 actor: cyrus_game::script::ScriptActorId {
                     generation: player_actor.generation,
@@ -1184,7 +1185,7 @@ fn exercise_runtime_session(
             .get::<cyrus_world::sound::SoundSurface>(replacement_node)
             .unwrap()
             .0,
-        7
+        Surface::WOOD
     );
 
     let generation = app

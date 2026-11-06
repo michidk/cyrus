@@ -19,7 +19,7 @@ pub struct EntityBindingSnapshot {
     name: String,
     role: String,
     displayed: Option<(String, usize)>,
-    surface: Option<u8>,
+    surface: Option<cyrus_assets::surface::Surface>,
     transform: Option<[u32; 10]>,
     visibility: Option<u8>,
 }

@@ -90,7 +90,11 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
         bank.surface_sounds,
         cyrus_assets::audio::read_surface_sounds(&install).unwrap()
     );
-    assert_eq!(bank.surface_sounds.animation_sound(7, 4), Some(89));
+    assert_eq!(
+        bank.surface_sounds
+            .animation_sound(cyrus_assets::surface::Surface::WOOD, 4),
+        Some(89)
+    );
     let mut old_bank = sounds.clone();
     old_bank.as_object_mut().unwrap().remove("surface_sounds");
     assert!(serde_json::from_value::<cyrus_assets::sound::SoundBank>(old_bank).is_err());

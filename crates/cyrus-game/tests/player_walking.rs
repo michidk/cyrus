@@ -1,5 +1,6 @@
 //! Walking request ordering against the production animation interpreter.
 use cyrus_assets::collision::CollisionGeometry;
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{
     animation::Animations,
     collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement},
@@ -51,7 +52,7 @@ fn player_entry_preserves_selected_frame_and_does_not_start_the_ordinary_idle_de
 
 #[test]
 fn ordinary_default_replacement_retains_its_frame_when_the_next_stage_delays() {
-    let scene = ground_scene(6);
+    let scene = ground_scene(Surface::SAND);
     let (_, data) = data(serde_json::json!([
         {"group_index":0,"anim_type":0,"anim_id":1,"commands":[
             {"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]},
@@ -205,7 +206,7 @@ fn missing_walk_group_preserves_startup_and_zero_speed_uses_runtime_fallback() {
     assert_eq!(walk.advance(0, 25, 128, true), 1);
 }
 
-fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
+fn ground_scene(surface: Surface) -> cyrus_game::player::data::PlayerScene {
     use cyrus_game::player::data::PlayerScene;
     let (definition, _) = data(serde_json::json!([]));
     let collision = CollisionScene {
@@ -261,11 +262,46 @@ fn forward_query_commits_surface_state_before_admission() {
     };
     let position = [512 * 256, -64 * 256, 512 * 256];
     for (material, policy, collision_attribute, accepted, expected_surface, expected_veto) in [
-        (6, SurfaceUpdate::Assign, 6, true, 6, 0),
-        (11, SurfaceUpdate::Assign, 6, false, 11, 1),
-        (6, SurfaceUpdate::QueryOnly, 6, false, 11, 1),
-        (6, SurfaceUpdate::Excluded, 6, false, 11, 1),
-        (6, SurfaceUpdate::Assign, 2, false, 11, 1),
+        (
+            Surface::SAND,
+            SurfaceUpdate::Assign,
+            6,
+            true,
+            Surface::SAND,
+            0,
+        ),
+        (
+            Surface::GLOOP,
+            SurfaceUpdate::Assign,
+            6,
+            false,
+            Surface::GLOOP,
+            1,
+        ),
+        (
+            Surface::SAND,
+            SurfaceUpdate::QueryOnly,
+            6,
+            false,
+            Surface::GLOOP,
+            1,
+        ),
+        (
+            Surface::SAND,
+            SurfaceUpdate::Excluded,
+            6,
+            false,
+            Surface::GLOOP,
+            1,
+        ),
+        (
+            Surface::SAND,
+            SurfaceUpdate::Assign,
+            2,
+            false,
+            Surface::GLOOP,
+            1,
+        ),
     ] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
@@ -278,7 +314,7 @@ fn forward_query_commits_surface_state_before_admission() {
             surface_update: policy,
         };
         let mut history = SupportHistory::new(0, 0);
-        let (mut surface, mut veto) = (11, 1);
+        let (mut surface, mut veto) = (Surface::GLOOP, 1);
         let support = query
             .forward_support(position, &mut history, &mut surface, &mut veto)
             .unwrap();
@@ -294,7 +330,7 @@ fn forward_query_commits_surface_state_before_admission() {
 fn support_miss_commits_history_and_clears_assigned_surface() {
     use bevy::math::Mat3;
     use cyrus_game::player::grounded::{StaticGroundQuery, SurfaceUpdate};
-    let mut scene = ground_scene(6);
+    let mut scene = ground_scene(Surface::SAND);
     scene.terrain = None;
     let candidates = StaticCandidates {
         faces: vec![],
@@ -310,7 +346,7 @@ fn support_miss_commits_history_and_clears_assigned_surface() {
         surface_update: SurfaceUpdate::Assign,
     };
     let mut history = SupportHistory::new(1, 4);
-    let (mut surface, mut veto) = (11, 1);
+    let (mut surface, mut veto) = (Surface::GLOOP, 1);
     assert!(
         query
             .support(
@@ -323,14 +359,14 @@ fn support_miss_commits_history_and_clears_assigned_surface() {
             .is_none()
     );
     assert_eq!(history.ticks(), 12);
-    assert_eq!((surface, veto), (0, 0));
+    assert_eq!((surface, veto), (Surface::UNKNOWN, 0));
 }
 
 #[test]
 fn steep_forward_probe_stops_before_support_state_updates() {
     use bevy::math::Mat3;
     use cyrus_game::player::grounded::{StaticGroundQuery, SurfaceUpdate};
-    let mut scene = ground_scene(6);
+    let mut scene = ground_scene(Surface::SAND);
     // Raise the local slope without overflowing the original i16 grid.
     let mut heights = vec![0; 256 * 256];
     for row in 0..256 {
@@ -355,7 +391,7 @@ fn steep_forward_probe_stops_before_support_state_updates() {
         surface_update: SurfaceUpdate::Assign,
     };
     let mut history = SupportHistory::new(3, 4);
-    let (mut surface, mut veto) = (11, 1);
+    let (mut surface, mut veto) = (Surface::GLOOP, 1);
     assert!(
         query
             .forward_support(
@@ -367,7 +403,7 @@ fn steep_forward_probe_stops_before_support_state_updates() {
             .unwrap()
             .is_none()
     );
-    assert_eq!((history.ticks(), surface, veto), (3, 11, 1));
+    assert_eq!((history.ticks(), surface, veto), (3, Surface::GLOOP, 1));
 }
 
 #[test]
@@ -380,7 +416,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
         faces: vec![],
         actors: vec![],
     };
-    for (material, accepted) in [(6, true), (11, false)] {
+    for (material, accepted) in [(Surface::SAND, true), (Surface::GLOOP, false)] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
             scene: &scene,
@@ -406,7 +442,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
         let initial = [512 * 256, -64 * 256, 512 * 256];
         let mut walk = GroundedWalk {
             position: initial,
-            surface: 0,
+            surface: Surface::UNKNOWN,
             startup: WalkingStartup::new(1).unwrap(),
         };
         let mut history = SupportHistory::new(0, 0);
@@ -445,7 +481,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
                     effect: 7,
                     rate_offset_hz: 0,
                 },
-                6,
+                Surface::SAND,
                 initial,
             )]
         } else {
@@ -476,7 +512,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
 fn grounded_response_assigns_height_after_translation() {
     use bevy::math::Mat3;
     use cyrus_game::player::grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate};
-    let scene = ground_scene(6);
+    let scene = ground_scene(Surface::SAND);
     let candidates = StaticCandidates {
         faces: vec![],
         actors: vec![],
@@ -493,7 +529,7 @@ fn grounded_response_assigns_height_after_translation() {
     let previous = [512 * 256, -60 * 256, 512 * 256];
     let mut walk = GroundedWalk {
         position: [previous[0], previous[1], previous[2] + 512],
-        surface: 0,
+        surface: Surface::UNKNOWN,
         startup: WalkingStartup::new(1).unwrap(),
     };
     let mut heading = 0;
@@ -502,7 +538,7 @@ fn grounded_response_assigns_height_after_translation() {
     walk.resolve_ground(&query, previous, &mut heading, &mut history, &mut veto)
         .unwrap();
     assert_eq!(walk.position, [previous[0], -64 * 256, previous[2] + 512]);
-    assert_eq!((walk.surface, veto, heading), (6, 0, 0));
+    assert_eq!((walk.surface, veto, heading), (Surface::SAND, 0, 0));
 }
 
 #[test]
@@ -529,7 +565,7 @@ fn body_normal_conversion_rounds_before_classification_without_normalizing() {
 fn stationary_grounded_update_separates_remaining_wall_overlap() {
     use bevy::math::Mat3;
     use cyrus_game::player::grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate};
-    let mut scene = ground_scene(6);
+    let mut scene = ground_scene(Surface::SAND);
     scene.collision.models.insert(
         "wall".into(),
         CollisionModel {
@@ -579,7 +615,7 @@ fn stationary_grounded_update_separates_remaining_wall_overlap() {
     };
     let mut walk = GroundedWalk {
         position: previous,
-        surface: 6,
+        surface: Surface::SAND,
         startup: WalkingStartup::new(1).unwrap(),
     };
     walk.resolve_ground(
@@ -609,7 +645,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
     use cyrus_game::player::grounded::{
         ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
     };
-    let scene = ground_scene(6);
+    let scene = ground_scene(Surface::SAND);
     let candidates = StaticCandidates {
         faces: vec![],
         actors: vec![],
@@ -633,7 +669,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
     let start = [512 * 256, -64 * 256, 512 * 256];
     let mut walk = GroundedWalk {
         position: start,
-        surface: 6,
+        surface: Surface::SAND,
         startup: WalkingStartup::new(1).unwrap(),
     };
     let mut input = GroundedUpdate {
@@ -714,7 +750,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
     use cyrus_game::player::grounded::{
         ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
     };
-    for (surface, expected_next) in [(6, 1024), (11, 512)] {
+    for (surface, expected_next) in [(Surface::SAND, 1024), (Surface::GLOOP, 512)] {
         let scene = ground_scene(surface);
         let candidates = StaticCandidates {
             faces: vec![],
@@ -748,7 +784,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
         let start = [512 * 256, -64 * 256, 512 * 256];
         let mut walk = GroundedWalk {
             position: start,
-            surface: 0,
+            surface: Surface::UNKNOWN,
             startup: WalkingStartup::new(1).unwrap(),
         };
         assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
@@ -869,7 +905,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
             },
         );
     }
-    let mut scene = ground_scene(6);
+    let mut scene = ground_scene(Surface::SAND);
     scene.definition.as_mut().unwrap().ordinary_default_group = AnimationGroup::PANIC;
     // IDLE has no radius: selecting candidates before animation advances must fail.
     scene.model_radii.insert("WALK".into(), 100.0);
@@ -957,7 +993,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
     assert_eq!((pose.model.as_str(), pose.frame), ("WALK", 1));
     assert_eq!(
         app.world().get::<SoundSurface>(player),
-        Some(&SoundSurface(6))
+        Some(&SoundSurface(Surface::SAND))
     );
     assert!(
         (app.world().get::<Transform>(player).unwrap().translation.z - 1194.0 / 5120.0).abs()

@@ -15,6 +15,7 @@ use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
+use cyrus_assets::surface::Surface;
 use cyrus_collision::ground::SupportHistory;
 use cyrus_script::{AnimationGroup, Attribute, Native};
 use cyrus_world::animation::AnimationSound;
@@ -31,7 +32,7 @@ pub(super) struct PlayerMovement {
 pub(crate) struct GroundedPresentation {
     pub pose: PlayerPose,
     pub frame: Option<ModelFrame>,
-    pub surface: u8,
+    pub surface: cyrus_assets::surface::Surface,
 }
 
 /// Held Faithful keyboard sample and the independently retained walk-mode toggle.
@@ -656,7 +657,7 @@ impl ScriptWorld {
     }
 
     /// Ordinary keyboard ground turn of the selected player, with its
-    /// turn animation (not requested while a weapon is held or on surface 2 or 4) and roll, following preservation's
+    /// turn animation (not requested while a weapon is held or in deep water) and roll, following preservation's
     /// [ground-turn rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-turn-eligibility-and-animation).
     /// The installed `mouse_turn` is 0; a SYSTEM.INI edited to enable mouse
     /// turning is not detected (the setting is not exported) and is ignored.
@@ -669,7 +670,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        let animation_barred = holding_weapon || matches!(self.actor_surface(id)?, 2 | 4);
+        let animation_barred = holding_weapon || self.actor_surface(id)?.is_deep_water();
         let control = self.actors[index]
             .control
             .as_ref()
@@ -1029,12 +1030,13 @@ impl ScriptWorld {
                 .as_ref()
                 .map(|support| query.scene.support_surface(support, position))
                 .transpose()?
-                .unwrap_or(0);
+                .unwrap_or_default();
             self.set_actor_surface(id, surface)?;
-            self.surface_veto = Some(matches!(surface, 5 | 11));
+            self.surface_veto = Some(matches!(surface, Surface::LAVA | Surface::GLOOP));
             ensure!(
                 previous == surface
-                    || (!(1..=5).contains(&previous) && !(1..=5).contains(&surface)),
+                    || (!(previous.is_water() || previous == Surface::LAVA)
+                        && !(surface.is_water() || surface == Surface::LAVA)),
                 "player forward query: water/lava transition effects unsupported"
             );
         }
@@ -1195,7 +1197,7 @@ impl ScriptWorld {
         data: &Animations,
         tick: &GroundedTick,
         entry: Option<&PlayerPose>,
-        sounds: &mut dyn FnMut(AnimationSound, u8, [i64; 3]) -> Result<()>,
+        sounds: &mut dyn FnMut(AnimationSound, Surface, [i64; 3]) -> Result<()>,
     ) -> Result<GroundedPresentation> {
         let index = self.resolve(tick.actor)?;
         ensure!(
@@ -1430,16 +1432,18 @@ impl PlayerMovement {
 }
 
 /// Whether the held walk key steps through the scripted `WalkForward` helper: an armed stance (group
-/// 31) and deep water (surfaces 2 and 4, where it becomes `MoveForward`) do; the unarmed dry walk is
+/// 31) and deep water (where it becomes `MoveForward`) do; the unarmed dry walk is
 /// the controller's own walking stage.
-fn walk_forward_is_scripted(armed: bool, surface: u8) -> bool {
-    armed || matches!(surface, 2 | 4)
+fn walk_forward_is_scripted(armed: bool, surface: cyrus_assets::surface::Surface) -> bool {
+    armed || surface.is_deep_water()
 }
 
-/// The jump entry the key arbitration starts refuses while the player is in deep water (surface 2
-/// or 4) or in `anim_fight_land`, `anim_fight_land_attack`, `anim_fight_land_right` or `anim_fight_land_left` (preservation player.md "Jump-key arbitration").
-fn jump_key_refused(surface: u8, group: Option<AnimationGroup>) -> bool {
-    matches!(surface, 2 | 4)
+/// The jump entry the key arbitration starts refuses while the player is in deep water or in `anim_fight_land`, `anim_fight_land_attack`, `anim_fight_land_right` or `anim_fight_land_left` (preservation player.md "Jump-key arbitration").
+fn jump_key_refused(
+    surface: cyrus_assets::surface::Surface,
+    group: Option<AnimationGroup>,
+) -> bool {
+    surface.is_deep_water()
         || matches!(
             group,
             Some(
@@ -1508,23 +1512,35 @@ mod airborne_tests {
 
     #[test]
     fn the_walk_key_steps_through_the_helper_when_armed_or_swimming() {
-        assert!(super::walk_forward_is_scripted(true, 0));
-        assert!(super::walk_forward_is_scripted(false, 2));
-        assert!(super::walk_forward_is_scripted(false, 4));
-        assert!(!super::walk_forward_is_scripted(false, 0));
-        assert!(!super::walk_forward_is_scripted(false, 3));
+        assert!(super::walk_forward_is_scripted(true, Surface::UNKNOWN));
+        assert!(super::walk_forward_is_scripted(false, Surface::DEEPWATER));
+        assert!(super::walk_forward_is_scripted(
+            false,
+            Surface::SCAPEDEEPWATER
+        ));
+        assert!(!super::walk_forward_is_scripted(false, Surface::UNKNOWN));
+        assert!(!super::walk_forward_is_scripted(false, Surface::SCAPEWATER));
     }
 
     #[test]
     fn the_jump_key_entry_is_refused_in_deep_water_and_landing_groups() {
-        assert!(super::jump_key_refused(4, Some(AnimationGroup::SWIM_IDLE)));
-        assert!(super::jump_key_refused(2, None));
         assert!(super::jump_key_refused(
-            0,
+            Surface::SCAPEDEEPWATER,
+            Some(AnimationGroup::SWIM_IDLE)
+        ));
+        assert!(super::jump_key_refused(Surface::DEEPWATER, None));
+        assert!(super::jump_key_refused(
+            Surface::UNKNOWN,
             Some(AnimationGroup::FIGHT_LAND_RIGHT)
         ));
-        assert!(!super::jump_key_refused(1, Some(AnimationGroup::SWIM_IDLE)));
-        assert!(!super::jump_key_refused(0, Some(AnimationGroup::RUN)));
+        assert!(!super::jump_key_refused(
+            Surface::WATER,
+            Some(AnimationGroup::SWIM_IDLE)
+        ));
+        assert!(!super::jump_key_refused(
+            Surface::UNKNOWN,
+            Some(AnimationGroup::RUN)
+        ));
     }
 
     #[test]

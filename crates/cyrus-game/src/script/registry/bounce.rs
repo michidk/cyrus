@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 
@@ -96,10 +97,10 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
     fn set_living_state(&mut self, state: LivingState) {
         self.control_mut().living_state = state;
     }
-    fn surface(&self) -> u8 {
+    fn surface(&self) -> Surface {
         self.host.registry.actors[self.id.index]
             .surface
-            .unwrap_or(0)
+            .unwrap_or_default()
     }
     fn holding_weapon(&mut self) -> Result<bool> {
         Ok(self

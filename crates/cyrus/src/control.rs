@@ -736,6 +736,7 @@ fn parse_key(name: &str) -> Option<KeyCode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cyrus_assets::surface::Surface;
     use cyrus_control::Request;
     use std::sync::mpsc::channel;
 
@@ -1181,7 +1182,7 @@ mod tests {
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
             actor,
-            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(0)
+            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(Surface::UNKNOWN)
         } if actor == entity));
         assert_eq!(
             app.world()
@@ -1212,7 +1213,7 @@ mod tests {
             .collect();
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
-            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(0)
+            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(Surface::UNKNOWN)
         } if actor == entity));
     }
 }

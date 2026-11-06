@@ -1,4 +1,5 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
@@ -286,7 +287,7 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
                     effect: -17,
                     rate_offset_hz: -64
                 },
-                surface: Some(0),
+                surface: Some(Surface::UNKNOWN),
             }
         )]
     );
@@ -1199,7 +1200,7 @@ fn activation_world_with_attributes(
     let actor = ActivationActor {
         state: LivingState::ORDINARY,
         on_rope: false,
-        water_state: 0,
+        water_state: Surface::UNKNOWN,
         torch_burning: 0,
         weapon_assigned: false,
         weapon_drawn: false,
@@ -1494,14 +1495,18 @@ fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
         } else {
             LivingState::ORDINARY
         };
-        player.water_state = if gate == 4 { 4 } else { 0 };
+        player.water_state = if gate == 4 {
+            Surface::SCAPEDEEPWATER
+        } else {
+            Surface::UNKNOWN
+        };
         assert_eq!(
             world.activation_overlay(&inputs, 0, false, 24).unwrap(),
             ActivationOverlay::Hidden
         );
         assert_eq!(world.activation().prompt(), Some("Open"));
     }
-    inputs.actors.get_mut(&2).unwrap().water_state = 0;
+    inputs.actors.get_mut(&2).unwrap().water_state = Surface::UNKNOWN;
     assert_eq!(
         world.activation_overlay(&inputs, 0, true, 24).unwrap(),
         ActivationOverlay::Prompt("Open".into())
@@ -3487,7 +3492,7 @@ fn hand_item_rejects_known_gates_before_lookup_and_requires_known_shell_admissio
     for (surface, holding, shell) in [(2, 0, false), (4, 0, false), (0, 1, false), (0, 0, true)] {
         let mut world = hand_item_world(-1, holding);
         world
-            .set_actor_surface(world.id(1).unwrap(), surface)
+            .set_actor_surface(world.id(1).unwrap(), Surface::from_byte(surface))
             .unwrap();
         world
             .advance(
@@ -3830,7 +3835,7 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
                 .unwrap_err();
             assert!(error.to_string().contains("lockout unavailable"));
             assert_eq!(world.animation_frame(id).unwrap(), Some(3));
-            assert_eq!(world.actor_surface(id).unwrap(), 0);
+            assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
             let control = world.actors()[index].control_state().unwrap();
             assert_eq!(control.combat.is_some(), combat);
             assert_eq!(control.combat_death_default, combat.then_some(0));
@@ -4626,14 +4631,14 @@ fn ordinary_activation_uses_live_player_and_installed_text_without_inspection_in
     call(&mut world, false).unwrap();
     assert_eq!(world.flags(), [0]);
     assert_eq!(world.activation().owner(), None);
-    world.set_actor_surface(player, 2).unwrap();
+    world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
     assert_eq!(
         world
             .ordinary_activation_overlay(&hud, 0, false, 24)
             .unwrap(),
         ActivationOverlay::Hidden
     );
-    world.set_actor_surface(player, 0).unwrap();
+    world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
     assert_eq!(
         world
             .ordinary_activation_overlay(&hud, 0, false, 24)
@@ -5835,7 +5840,7 @@ fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
 fn deep_water_strafes_need_the_edge_probe_after_the_lateral_step_check() {
     for name in [Native::MoveLeft, Native::MoveRight] {
         let (mut world, id) = strafe_world(name, 8);
-        world.set_actor_surface(id, 2).unwrap();
+        world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
         let hud = locomotion_hud();
         let error = strafe_stage(&mut world, id, BODY, &hud, Some(true)).unwrap_err();
         assert!(
@@ -5844,7 +5849,9 @@ fn deep_water_strafes_need_the_edge_probe_after_the_lateral_step_check() {
         );
         // A blocked lateral step completes before the probe is consulted.
         let (mut world, id) = strafe_world(name, 8);
-        world.set_actor_surface(id, 4).unwrap();
+        world
+            .set_actor_surface(id, Surface::SCAPEDEEPWATER)
+            .unwrap();
         strafe_stage(&mut world, id, BODY, &hud, Some(false)).unwrap();
     }
 }
@@ -6156,7 +6163,7 @@ fn forward_task_stops_reading_the_step_check_after_three_steps() {
 #[test]
 fn directional_motion_and_forward_tasks_share_the_same_packed_counter() {
     let (mut world, id, _) = move_forward_world(8);
-    world.set_actor_surface(id, 0).unwrap();
+    world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     assert_eq!(
         world.apply_ordinary_directional_motion(id, 2, 0).unwrap(),
         Some(2)
@@ -6187,7 +6194,7 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
         world
             .bind_animation(id, &animation, AnimationGroup::IDLE1)
             .unwrap();
-        world.set_actor_surface(id, 0).unwrap();
+        world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
         world.apply_ordinary_directional_motion(id, 3, 0).unwrap();
         assert_eq!(
             world.actors()[index].control_state().unwrap().move_counter,
@@ -6280,7 +6287,9 @@ fn walk_forward_world_with(
             AnimationGroup::PANIC,
         )
         .unwrap();
-    world.set_actor_surface(id, surface).unwrap();
+    world
+        .set_actor_surface(id, Surface::from_byte(surface))
+        .unwrap();
     (world, id)
 }
 

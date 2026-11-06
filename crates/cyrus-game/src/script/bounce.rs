@@ -7,6 +7,7 @@
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::AnimationGroup;
 use cyrus_world::heading::wrap;
 
@@ -45,7 +46,7 @@ pub trait BouncePort {
     fn living_state(&self) -> LivingState;
     fn set_living_state(&mut self, state: LivingState);
     /// The actor's surface value; 2 and 4 are deep water.
-    fn surface(&self) -> u8;
+    fn surface(&self) -> Surface;
     /// The ordinary holding-weapon predicate.
     fn holding_weapon(&mut self) -> Result<bool>;
     /// The combat record's stance bit (`0x04`), which a drawn weapon raises.
@@ -91,7 +92,7 @@ pub fn step<P: BouncePort + ?Sized>(
             || living == LivingState::BOUNCE_ENTRY
             || living == LivingState::BOUNCE_RISING
             || living.is_ledge()
-            || matches!(port.surface(), 2 | 4)
+            || port.surface().is_deep_water()
             || arguments.power == 0
         {
             return Ok(true);
@@ -285,7 +286,7 @@ mod tests {
     struct Actor {
         item_ready: bool,
         living: LivingState,
-        surface: u8,
+        surface: cyrus_assets::surface::Surface,
         holding: bool,
         drawn: bool,
         torch: bool,
@@ -315,7 +316,7 @@ mod tests {
         fn set_living_state(&mut self, state: LivingState) {
             self.living = state;
         }
-        fn surface(&self) -> u8 {
+        fn surface(&self) -> Surface {
             self.surface
         }
         fn holding_weapon(&mut self) -> Result<bool> {
@@ -409,7 +410,7 @@ mod tests {
                 ..ready()
             },
             Actor {
-                surface: 4,
+                surface: Surface::SCAPEDEEPWATER,
                 ..ready()
             },
         ] {

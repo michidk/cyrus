@@ -1,5 +1,6 @@
 use super::*;
 use cyrus_assets::effects::{EffectImage, Effects};
+use cyrus_assets::surface::Surface;
 use cyrus_game::{
     clock::ClockStep,
     random::EngineRandom,
@@ -84,7 +85,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 100,
             )
             .unwrap();
-        world.set_actor_surface(player, 2).unwrap();
+        world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
         world
             .initialize_camera_pose(CameraPose {
                 position: [0; 3],
@@ -415,13 +416,17 @@ fn actor_events_spawn_surface_effects_in_bit_order_and_shake_the_camera() {
     };
     // A stored surface that no set bit names spawns nothing, and the shake bit needs no surface.
     world
-        .apply_actor_events(&[event(0x0f, Some(0)), event(0x10, None)])
+        .apply_actor_events(&[event(0x0f, Some(Surface::UNKNOWN)), event(0x10, None)])
         .unwrap();
     assert!(world.environmental_effects().unwrap().is_empty());
     assert_eq!(world.camera().unwrap().shake, 32);
     // Water takes both of its bits, lava and sand one each, in emission order.
     world
-        .apply_actor_events(&[event(6, Some(1)), event(1, Some(5)), event(8, Some(6))])
+        .apply_actor_events(&[
+            event(6, Some(Surface::WATER)),
+            event(1, Some(Surface::LAVA)),
+            event(8, Some(Surface::SAND)),
+        ])
         .unwrap();
     let active = world
         .environmental_effects()
@@ -467,7 +472,7 @@ fn animation_stage_commits_actor_events_before_a_later_sound_failure() {
     world
         .initialize_map_animation(actor, &data, 0, &mut |_, _| Ok(()))
         .unwrap();
-    world.set_actor_surface(actor, 1).unwrap();
+    world.set_actor_surface(actor, Surface::WATER).unwrap();
     world
         .initialize_camera_pose(CameraPose {
             position: [0; 3],
@@ -605,7 +610,7 @@ fn animation_events_without_matching_bits_need_no_external_sound_or_effect_servi
                 {"opcode":0,"frame_reference":1},{"opcode":1}
             ]
         }]);
-        world.set_actor_surface(actor, 0).unwrap();
+        world.set_actor_surface(actor, Surface::UNKNOWN).unwrap();
         world
             .initialize_map_animation(actor, &data, 0, &mut |_, _| {
                 panic!("actor event reached audio adapter")
@@ -786,7 +791,7 @@ fn selected_death_animation_events_allocate_before_the_death_controller_effect()
     world
         .advance(player, ScriptStage::Entry, timing, None, None, 100)
         .unwrap();
-    world.set_actor_surface(player, 2).unwrap();
+    world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
     world
         .initialize_camera_pose(CameraPose {
             position: [0; 3],
@@ -821,7 +826,7 @@ fn selected_death_animation_events_allocate_before_the_death_controller_effect()
     );
     // The retained death mode chooses its own effect; the current surface gates the
     // authored animation event independently.
-    world.set_actor_surface(player, 5).unwrap();
+    world.set_actor_surface(player, Surface::LAVA).unwrap();
     let prepared = world
         .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player])
         .unwrap();
@@ -934,7 +939,7 @@ fn initialization_events_allocate_before_water_model_effects_in_the_shared_pool(
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, 2).unwrap();
+        world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
         world
             .initialize_camera_pose(CameraPose {
                 position: [0; 3],
@@ -950,7 +955,7 @@ fn initialization_events_allocate_before_water_model_effects_in_the_shared_pool(
         world
             .prepare_ordinary_collision_shape(actor, &data, &scene)
             .unwrap();
-        world.set_actor_surface(actor, 5).unwrap();
+        world.set_actor_surface(actor, Surface::LAVA).unwrap();
         let definition = data.metadata["actors"]
             .as_array_mut()
             .unwrap()
@@ -969,7 +974,7 @@ fn initialization_events_allocate_before_water_model_effects_in_the_shared_pool(
                 panic!("actor event reached audio adapter")
             })
             .unwrap();
-        world.set_actor_surface(actor, 0).unwrap();
+        world.set_actor_surface(actor, Surface::UNKNOWN).unwrap();
         let hud = ScriptHud::default();
         world
             .refresh_automatic_models(

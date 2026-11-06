@@ -2,6 +2,7 @@
 use super::GameHost;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute, Native};
 
 /// Item-type codes of ITEM.INI that `UseItem` treats specially.
@@ -64,7 +65,7 @@ impl GameHost<'_, '_, '_, '_> {
             group,
             Some(AnimationGroup::LIGHT_TORCH | AnimationGroup::UNLIGHT_TORCH)
         );
-        let deep_water = matches!(player.surface, Some(2 | 4));
+        let deep_water = player.surface.is_some_and(Surface::is_deep_water);
         if deep_water || holding || torch_change {
             return Ok(());
         }

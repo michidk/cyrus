@@ -109,8 +109,8 @@ pub(crate) fn prepare(
     collision.texture_surfaces = Some(
         (0..=u16::MAX)
             .filter_map(|key| {
-                let surface = surfaces.surface(key);
-                (surface != 0).then_some((key, surface))
+                let surface = crate::surface::Surface::from_byte(surfaces.surface(key));
+                (surface != crate::surface::Surface::UNKNOWN).then_some((key, surface))
             })
             .collect(),
     );

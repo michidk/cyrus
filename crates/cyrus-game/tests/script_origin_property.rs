@@ -1,5 +1,6 @@
 //! Retained fall origin is accessed through public script property dispatch.
 use cyrus_assets::script::*;
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
 use cyrus_script::program::*;
@@ -289,7 +290,7 @@ fn script_written_origin_controls_the_public_landing_damage_threshold() {
         world.prepare_spatial().unwrap();
         let id = world.id(0).unwrap();
         assert!(world.begin_static_ordinary_fall(id, &data).unwrap());
-        world.set_actor_surface(id, 0).unwrap();
+        world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
         advance(&mut world, 0).unwrap();
         let mut sounds = 0;
         let decision = world

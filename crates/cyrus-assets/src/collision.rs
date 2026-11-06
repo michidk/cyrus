@@ -28,7 +28,7 @@ pub struct CollisionScene {
     /// Nonzero SURFACE.INI assignments keyed by packed texture set/image.
     /// Missing keys mean surface zero; a missing table means an old cache.
     #[serde(default)]
-    pub texture_surfaces: Option<BTreeMap<u16, u8>>,
+    pub texture_surfaces: Option<BTreeMap<u16, crate::surface::Surface>>,
 }
 
 /// Portable live static-model geometry, without mutable actor poses or flags.

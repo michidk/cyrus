@@ -1,6 +1,7 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use cyrus_assets::surface::Surface;
 use cyrus_script::Attribute;
 
 impl ScriptWorld {
@@ -252,7 +253,7 @@ impl ScriptWorld {
             }
             actor.attributes = Default::default();
             actor.control = Some(Default::default());
-            actor.surface = Some(0);
+            actor.surface = Some(Surface::UNKNOWN);
             let result = (|| -> Result<()> {
                 self.advance(
                     id,
@@ -333,7 +334,7 @@ impl ScriptWorld {
             }
             actor.attributes = Default::default();
             actor.control = Some(Default::default());
-            actor.surface = Some(0);
+            actor.surface = Some(Surface::UNKNOWN);
             let result = (|| -> Result<()> {
                 self.advance(
                     id,

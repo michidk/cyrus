@@ -1,5 +1,6 @@
 //! Ground support in original map coordinates, per preservation's engine/player.md.
 use bevy::math::DVec3;
+use cyrus_assets::surface::Surface;
 
 /// Decoded WLD heights in source row order. Engine Y is positive down.
 /// Queries within 15 grid cells of the camera read the live vertex cache the water update
@@ -49,7 +50,7 @@ impl LiveTerrain {
 /// Resolved terrain sound surface and original blend coverage, from zero through 256.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TerrainMaterial {
-    pub surface: u8,
+    pub surface: Surface,
     pub coverage: u16,
 }
 
@@ -346,7 +347,7 @@ impl TerrainGround {
     pub fn material(
         &self,
         position: [i64; 3],
-        assignments: &std::collections::BTreeMap<u16, u8>,
+        assignments: &std::collections::BTreeMap<u16, Surface>,
     ) -> anyhow::Result<Option<TerrainMaterial>> {
         let Some(texture) = self.texture(position)? else {
             return Ok(None);
@@ -355,7 +356,7 @@ impl TerrainGround {
         let base = assignments
             .get(&((302 << 7) | u16::from(image)))
             .copied()
-            .unwrap_or(0);
+            .unwrap_or_default();
         let u = ((position[0] >> 9) & 127) as i32;
         let v = 127 - ((position[2] >> 9) & 127) as i32;
         let (a, b) = match texture >> 6 {
@@ -392,12 +393,12 @@ impl TerrainGround {
             _ => 0,
         };
         let surface = match coverage {
-            256 => 4,
-            1..=255 => 3,
+            256 => Surface::SCAPEDEEPWATER,
+            1..=255 => Surface::SCAPEWATER,
             _ => match image {
-                6 | 52 => 6,
-                31 | 32 => 10,
-                5 | 7 | 30 if matches!(base, 1 | 2) => 6,
+                6 | 52 => Surface::SAND,
+                31 | 32 => Surface::ROCK,
+                5 | 7 | 30 if matches!(base, Surface::WATER | Surface::DEEPWATER) => Surface::SAND,
                 _ => base,
             },
         };
@@ -432,17 +433,17 @@ impl TerrainGround {
     /// The terrain half of the nonplayer deep-water and edge probe. A position fully covered by
     /// the blend mask (coverage 256) or without terrain is never blocked; a partly covered one
     /// reports the shoreline class and is not blocked either. Only an uncovered rock position
-    /// (surface 10, coverage 0) is blocked, and only where the terrain slope class is 2.
+    /// (rock surface, coverage 0) is blocked, and only where the terrain slope class is 2.
     /// Position keeps the original eight fractional bits.
     pub fn edge_blocked(
         &self,
         position: [i64; 3],
-        assignments: &std::collections::BTreeMap<u16, u8>,
+        assignments: &std::collections::BTreeMap<u16, Surface>,
     ) -> anyhow::Result<bool> {
         let Some(material) = self.material(position, assignments)? else {
             return Ok(false);
         };
-        if material.coverage != 0 || material.surface != 10 {
+        if material.coverage != 0 || material.surface != Surface::ROCK {
             return Ok(false);
         }
         Ok(self

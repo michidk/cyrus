@@ -5,6 +5,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
+use cyrus_assets::surface::Surface;
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
@@ -13,7 +14,7 @@ use cyrus_world::heading::wrap;
 type PointSupport = (
     super::super::OrdinaryGroundPrevalidation,
     Option<SelectedSupport>,
-    Option<(u8, u8)>,
+    Option<(Surface, Surface)>,
 );
 
 #[derive(Clone, Copy)]
@@ -35,7 +36,7 @@ impl ScriptWorld {
         scene: &crate::player::data::PlayerScene,
         support: Option<&SelectedSupport>,
         selected: bool,
-    ) -> Result<u8> {
+    ) -> Result<Surface> {
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -46,14 +47,14 @@ impl ScriptWorld {
                 .iter()
                 .any(|flags| flags & ActionWords::JUMPS != 0)
         {
-            return Ok(0);
+            return Ok(Surface::UNKNOWN);
         }
         let keep_stored = control.falling_state != JumpMotion::NONE
             || control.sliding_state != 0
             || control.living_state.is_actor_bounce();
         if keep_stored && !selected {
             // Only the selected player's transition handler reads the returned value.
-            return Ok(self.actors[id.index].surface.unwrap_or(0));
+            return Ok(self.actors[id.index].surface.unwrap_or_default());
         }
         let surface = support
             .map(|support| {
@@ -63,10 +64,10 @@ impl ScriptWorld {
                 )
             })
             .transpose()?
-            .unwrap_or(0);
+            .unwrap_or_default();
         if !keep_stored {
             self.set_actor_surface(id, surface)?;
-            self.surface_veto = Some(matches!(surface, 5 | 11));
+            self.surface_veto = Some(matches!(surface, Surface::LAVA | Surface::GLOOP));
         }
         Ok(surface)
     }
@@ -79,8 +80,8 @@ impl ScriptWorld {
     pub fn selected_surface_transition(
         &mut self,
         id: ScriptActorId,
-        previous: u8,
-        returned: u8,
+        previous: Surface,
+        returned: Surface,
         ticks: u32,
         random: &mut crate::random::EngineRandom,
         effect_height: Option<i32>,
@@ -89,11 +90,11 @@ impl ScriptWorld {
         if returned == previous {
             return Ok(());
         }
-        let stored = self.actors[id.index].surface.unwrap_or(0);
-        let in_water = |surface: u8| (1..=4).contains(&surface);
-        let deep = |surface: u8| matches!(surface, 2 | 4);
+        let stored = self.actors[id.index].surface.unwrap_or_default();
+        let in_water = |surface: Surface| surface.is_water();
+        let deep = |surface: Surface| surface.is_deep_water();
         if !in_water(stored) && !in_water(previous) {
-            if stored == 5 || previous == 5 {
+            if stored == Surface::LAVA || previous == Surface::LAVA {
                 self.spawn_transition_effect(id, 0x2580, effect_height)?;
             }
             return Ok(());
@@ -210,7 +211,7 @@ impl ScriptWorld {
             sounds,
         )?;
         // An allocator-zeroed actor has surface zero before its first update.
-        let previous = self.actors[id.index].surface.unwrap_or(0);
+        let previous = self.actors[id.index].surface.unwrap_or_default();
         let support = self.query_ordinary_ground(id, query)?;
         let updated = if self.actors[id.index].attributes[Attribute::Collide] & 4 != 0 {
             let selected = environment.selected_player == Some(id);

@@ -7,6 +7,7 @@ use bevy::{
         Transform, Vec3, With,
     },
 };
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{
     animation::Animations,
     install::GameInstall,
@@ -45,7 +46,7 @@ struct Fixture {
 #[serde(deny_unknown_fields)]
 struct Case {
     name: String,
-    initial_surface: u8,
+    initial_surface: Surface,
     collision_attribute: u8,
     group: AnimationGroup,
     #[serde(default)]
@@ -68,7 +69,7 @@ struct Step {
     heading: u16,
     ticks: u32,
     /// Deliberately change ECS state after emission to exercise the snapshot contract.
-    later_surface: Option<u8>,
+    later_surface: Option<Surface>,
     movement: Option<Movement>,
 }
 
@@ -486,9 +487,9 @@ fn play(
     app: &mut App,
     actor: Entity,
     sound: AnimationSound,
-    surface: u8,
+    surface: Surface,
     position_q8: [i64; 3],
-    later: Option<u8>,
+    later: Option<Surface>,
     bank: &[Vec<u8>],
 ) -> Result<Value> {
     let position = if matches!(sound, AnimationSound::Play { .. }) {
@@ -724,7 +725,7 @@ mod tests {
             .spawn((
                 cyrus_game::player::Player,
                 GlobalTransform::default(),
-                SoundSurface(0),
+                SoundSurface(Surface::UNKNOWN),
             ))
             .id();
         let mut case: Case = serde_json::from_value(json!({

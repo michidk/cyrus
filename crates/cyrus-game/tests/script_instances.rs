@@ -498,7 +498,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     let state = ActivationActor {
         state: LivingState::ORDINARY,
         on_rope: false,
-        water_state: 0,
+        water_state: cyrus_assets::surface::Surface::UNKNOWN,
         torch_burning: 0,
         weapon_assigned: false,
         weapon_drawn: false,

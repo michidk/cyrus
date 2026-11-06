@@ -1,5 +1,6 @@
 use super::*;
 use cyrus_assets::effects::{EffectImage, Effects};
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::{
     ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage, camera::CameraPose,
 };
@@ -74,7 +75,9 @@ fn water_models_use_installed_depth_and_strict_prior_height_effect_threshold() {
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, surface).unwrap();
+        world
+            .set_actor_surface(player, Surface::from_byte(surface))
+            .unwrap();
         world
             .initialize_camera_pose(CameraPose {
                 position: [0; 3],
@@ -183,7 +186,9 @@ fn selected_water_prepass_clears_direction_and_uses_null_source_death() {
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, surface).unwrap();
+        world
+            .set_actor_surface(player, Surface::from_byte(surface))
+            .unwrap();
         scene.terrain = Some(
             cyrus_collision::ground::TerrainGround::new(
                 vec![0; 256 * 256],
@@ -281,7 +286,9 @@ fn shoreline_models_sample_stored_map_units_and_double_partial_coverage() {
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, surface).unwrap();
+        world
+            .set_actor_surface(player, Surface::from_byte(surface))
+            .unwrap();
         scene.terrain = Some(
             cyrus_collision::ground::TerrainGround::new(
                 vec![0; 256 * 256],
@@ -355,7 +362,7 @@ fn water_models_reject_missing_depth_mismatched_scene_and_unknown_prior_height()
         world
             .prepare_model_admission(&Default::default(), scene.collision.placements.len())
             .unwrap();
-        world.set_actor_surface(player, 2).unwrap();
+        world.set_actor_surface(player, Surface::DEEPWATER).unwrap();
         if wrong_world {
             scene.world += 1;
         }

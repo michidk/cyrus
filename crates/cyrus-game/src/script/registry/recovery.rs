@@ -316,7 +316,7 @@ impl ScriptWorld {
             .context("ordinary water position control unavailable")?
             .falling_state
             != JumpMotion::NONE;
-        if matches!(self.actor_surface(id)?, 1..=4) && !falling {
+        if self.actor_surface(id)?.is_water() && !falling {
             return Ok(false);
         }
         let position = self.spatial(id)?.local.position;
@@ -349,7 +349,7 @@ impl ScriptWorld {
         if control.falling_state != JumpMotion::NONE || control.queued_motion != JumpMotion::NONE {
             return Ok(false);
         }
-        if !matches!(self.actor_surface(id)?, 1..=4) {
+        if !self.actor_surface(id)?.is_water() {
             return Ok(false);
         }
         let position = self

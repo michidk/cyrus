@@ -386,7 +386,10 @@ fn deep_sidestep_acceptance_preserves_classification_motion_and_real_wait_poll()
         assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], called);
         assert_eq!(world.spatial(id).unwrap().local.position, [x, 0, 256000]);
         assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
-        assert_eq!(world.actor_surface(id).unwrap(), 2);
+        assert_eq!(
+            world.actor_surface(id).unwrap(),
+            cyrus_assets::surface::Surface::DEEPWATER
+        );
         assert_eq!(
             world.actors()[1]
                 .control_state()

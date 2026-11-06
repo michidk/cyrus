@@ -31,7 +31,7 @@
 //! [`SceneSubmission`] and [`OrdinaryUpdates`]. Both [`OrdinaryPhase`] calls borrow
 //! the same host services; only simulation advances ordinary actors. Effect hosts
 //! use [`WorldClockSample::presentation_step`] so pending model preparation cannot
-//! admit an effect update. Surfaces 5 and 11 support model-only displacement and
+//! admit an effect update. Lava and gloop surfaces support model-only displacement and
 //! fatal health routing; other water displacement paths remain unsupported.
 //!
 //! Normal interpreter entry assigns the session native source before entry/task

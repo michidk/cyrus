@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute, Native};
 use cyrus_world::heading::wrap;
 
@@ -609,7 +610,7 @@ impl ScriptWorld {
             {
                 return Ok(0);
             }
-            let deep = matches!(actor.surface, Some(2 | 4));
+            let deep = actor.surface.is_some_and(Surface::is_deep_water);
             let combat = control.combat.as_ref();
             let (group, attribute) = if inputs.holding_weapon
                 || combat.is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE))
@@ -814,7 +815,7 @@ impl ScriptWorld {
             {
                 return Ok(());
             }
-            let deep = matches!(actor.surface, Some(2 | 4));
+            let deep = actor.surface.is_some_and(Surface::is_deep_water);
             let suppressed = animation.playback.translation_suppressed();
             let combat_stance = control
                 .combat

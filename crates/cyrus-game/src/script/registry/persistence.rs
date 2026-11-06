@@ -339,7 +339,7 @@ struct ActorSnapshot {
     unavailable: Option<String>,
     attributes: cyrus_script::Attributes,
     control: Option<ControlSnapshot>,
-    surface: Option<u8>,
+    surface: Option<cyrus_assets::surface::Surface>,
     model: model::ModelSnapshot,
     collision: Option<CollisionSnapshot>,
     player_movement: Option<player::PlayerMovementSnapshot>,

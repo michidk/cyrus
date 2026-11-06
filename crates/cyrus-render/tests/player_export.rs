@@ -1,5 +1,6 @@
 //! Installed player data, frame sources and the original walking release sequence.
 use cyrus_assets::install::GameInstall;
+use cyrus_assets::surface::Surface;
 use cyrus_game::player::data::PlayerScene;
 use cyrus_script::AnimationGroup;
 
@@ -47,8 +48,8 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     .unwrap();
     for key in 0..=u16::MAX {
         assert_eq!(
-            surfaces.get(&key).copied().unwrap_or(0),
-            source.surface(key)
+            surfaces.get(&key).copied().unwrap_or_default(),
+            cyrus_assets::surface::Surface::from_byte(source.surface(key))
         );
     }
     let material_position = [42008 * 256, 0, 40607 * 256];
@@ -65,7 +66,7 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         scene
             .support_surface(&material_support, material_position)
             .unwrap(),
-        6
+        cyrus_assets::surface::Surface::SAND
     );
     let source_model = rgpre::import::model3d::parse_3d_file(
         &std::fs::read(install.root.join("fxart/CYRSA001.3DC")).unwrap(),
@@ -103,7 +104,10 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         terrain.texture([42008 * 256, 0, 40607 * 256]).unwrap(),
         Some(89)
     );
-    assert_eq!(surfaces.get(&((302 << 7) | 25)), Some(&6));
+    assert_eq!(
+        surfaces.get(&((302 << 7) | 25)),
+        Some(&cyrus_assets::surface::Surface::SAND)
+    );
     let support = terrain.sample([10_448_896, -178_944, 10_502_144]).unwrap();
     assert_eq!(support.height, -680.0);
     assert_eq!(support.normal, [0, -256, 0]);
@@ -289,7 +293,7 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
     let definition = scene.definition.as_ref().unwrap();
     let mut walk = GroundedWalk {
         position: [10_448_896, -190_464, 10_509_994],
-        surface: 0,
+        surface: Surface::UNKNOWN,
         startup: WalkingStartup::new(definition.step_type).unwrap(),
     };
     for expected in [512, 682, 1024] {

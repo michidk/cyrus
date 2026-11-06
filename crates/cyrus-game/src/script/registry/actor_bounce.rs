@@ -8,6 +8,7 @@ use crate::script::bounce::{
 };
 use crate::script::{JumpMotion, LivingState};
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute};
 
 type Sounds<'s> = &'s mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>;
@@ -61,8 +62,8 @@ impl BouncePort for BouncingActor<'_, '_> {
     fn set_living_state(&mut self, state: LivingState) {
         self.control_mut().living_state = state;
     }
-    fn surface(&self) -> u8 {
-        self.world.actors[self.id.index].surface.unwrap_or(0)
+    fn surface(&self) -> Surface {
+        self.world.actors[self.id.index].surface.unwrap_or_default()
     }
     fn holding_weapon(&mut self) -> Result<bool> {
         Ok(self.holding)

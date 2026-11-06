@@ -1,5 +1,6 @@
 //! Receiver-owned collision-response low byte uses public property dispatch.
 use cyrus_assets::script::*;
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
 use cyrus_script::program::*;
@@ -292,12 +293,12 @@ fn response_fixture(value: i32, water_mark: bool) -> ScriptWorld {
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     if water_mark {
-        world.set_actor_surface(id, 0).unwrap();
+        world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
         assert!(world.retain_ordinary_water_position(id).unwrap());
         let rollback = world
             .capture_ordinary_rollback(id, &mut |_, _| Ok(()))
             .unwrap();
-        world.set_actor_surface(id, 1).unwrap();
+        world.set_actor_surface(id, Surface::WATER).unwrap();
         assert!(
             world
                 .rollback_ordinary_water(id, None, &rollback, &mut |_, _| Ok(()))

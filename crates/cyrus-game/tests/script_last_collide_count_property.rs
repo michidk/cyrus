@@ -1,5 +1,6 @@
 //! Receiver-owned collision-response age uses public property dispatch.
 use cyrus_assets::script::*;
+use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
 use cyrus_script::program::*;
@@ -249,12 +250,12 @@ fn response_fixture(seed: i32, marked: bool) -> ScriptWorld {
     advance(&mut world, 0).unwrap();
     let id = world.id(0).unwrap();
     if marked {
-        world.set_actor_surface(id, 0).unwrap();
+        world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
         assert!(world.retain_ordinary_water_position(id).unwrap());
         let rollback = world
             .capture_ordinary_rollback(id, &mut |_, _| Ok(()))
             .unwrap();
-        world.set_actor_surface(id, 1).unwrap();
+        world.set_actor_surface(id, Surface::WATER).unwrap();
         assert!(
             world
                 .rollback_ordinary_water(id, None, &rollback, &mut |_, _| Ok(()))

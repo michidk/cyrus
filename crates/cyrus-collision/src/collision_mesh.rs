@@ -8,6 +8,7 @@ use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
 use cyrus_assets::collision::CollisionGeometry;
 use cyrus_assets::collision::CollisionSubobject;
+use cyrus_assets::surface::Surface;
 
 /// Validated, prepared polygons shared by queries against instances of one model.
 pub struct CollisionMesh {
@@ -356,8 +357,8 @@ pub(crate) fn face_surface(
     version: Option<[u8; 4]>,
     textures: Option<&[Option<[u16; 2]>]>,
     face: usize,
-    assignments: Option<&std::collections::BTreeMap<u16, u8>>,
-) -> anyhow::Result<u8> {
+    assignments: Option<&std::collections::BTreeMap<u16, Surface>>,
+) -> anyhow::Result<Surface> {
     let texture = textures
         .context("missing face textures; re-export world")?
         .get(face)
@@ -367,7 +368,7 @@ pub(crate) fn face_surface(
             matches!(version, Some(value) if value == *b"v4.0" || value == *b"v5.0"),
             "solid-color model version unsupported"
         );
-        return Ok(0);
+        return Ok(Surface::UNKNOWN);
     };
     anyhow::ensure!(
         *set < 512 && *image < 128,
@@ -377,5 +378,5 @@ pub(crate) fn face_surface(
     Ok(assignments
         .get(&((*set << 7) | *image))
         .copied()
-        .unwrap_or(0))
+        .unwrap_or_default())
 }

@@ -77,10 +77,10 @@ impl SurfaceSounds {
     /// Resolve a signed animation operand; surface zero bypasses its configured row.
     /// Invalid classes or sources return None. Callers still validate the resolved
     /// effect against the loaded bank. Script, combat and speech sounds bypass this API.
-    pub fn animation_sound(&self, surface: u8, source: i16) -> Option<usize> {
+    pub fn animation_sound(&self, surface: crate::surface::Surface, source: i16) -> Option<usize> {
         let source = usize::from(u8::try_from(source).ok()?);
-        let row = self.0.get(usize::from(surface))?;
-        Some(if surface == 0 {
+        let row = self.0.get(usize::from(surface.byte()))?;
+        Some(if surface == crate::surface::Surface::UNKNOWN {
             source
         } else {
             usize::from(row[source])

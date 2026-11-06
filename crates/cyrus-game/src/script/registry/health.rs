@@ -7,6 +7,7 @@ use crate::script::LivingState;
 use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::TauntType;
+use cyrus_assets::surface::Surface;
 use cyrus_script::{AnimationGroup, Attribute};
 use serde::{Deserialize, Serialize};
 
@@ -824,7 +825,7 @@ impl ScriptWorld {
                     self.actors[index]
                         .surface
                         .context("selected death surface unavailable")?,
-                    2 | 4
+                    Surface::DEEPWATER | Surface::SCAPEDEEPWATER
                 ) {
                     self.globals
                         .selected_health

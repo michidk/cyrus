@@ -3,6 +3,7 @@ use super::ScriptActorId;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
+use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Argument};
 use cyrus_script::{Attribute, Attributes};
@@ -20,7 +21,7 @@ pub struct ActivationAnimation {
 pub struct ActivationActor {
     pub state: LivingState,
     pub on_rope: bool,
-    pub water_state: u8,
+    pub water_state: Surface,
     pub torch_burning: u8,
     pub weapon_assigned: bool,
     pub weapon_drawn: bool,
@@ -48,7 +49,7 @@ impl ActivationActor {
             ));
         item_system_ready
             && !shell_execution
-            && !matches!(actor.water_state, 2 | 4)
+            && !actor.water_state.is_deep_water()
             && !weapon_predicates(
                 actor.state,
                 actor.animation,
@@ -796,7 +797,7 @@ impl ActivationState {
             if inputs.dialogue_open
                 || player.on_rope
                 || player.on_edge()
-                || matches!(player.water_state, 2 | 4)
+                || player.water_state.is_deep_water()
                 || inputs.render_disabled
             {
                 return Ok(ActivationOverlay::Hidden);

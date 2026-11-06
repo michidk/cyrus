@@ -5,6 +5,7 @@ use bevy::{
     ecs::world::CommandQueue,
     prelude::*,
 };
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{audio::pcm_wav, sound::SoundSettings};
 use cyrus_audio::{
     persistence::AudioRestoreBindings,
@@ -201,7 +202,7 @@ fn silent_pool_retains_animation_owner_bindings_after_stop_all() -> Result<()> {
     app.world_mut().write_message(SoundCue::Animation {
         position: None,
         actor,
-        surface: Some(0),
+        surface: Some(Surface::UNKNOWN),
         sound: AnimationSound::Play {
             effect: 0,
             rate_offset_hz: 0,

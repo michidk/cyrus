@@ -3,6 +3,7 @@ use bevy::{
     audio::{AudioPlayer, AudioSource, Decodable, Source},
     prelude::*,
 };
+use cyrus_assets::surface::Surface;
 use cyrus_assets::{
     audio::pcm_wav,
     sound::{SoundSettings, SurfaceSounds},
@@ -51,7 +52,7 @@ fn fixture() -> (App, Entity) {
         .world_mut()
         .spawn((
             GlobalTransform::from_translation(Vec3::Z),
-            SoundSurface(7),
+            SoundSurface(Surface::WOOD),
             ScriptBinding {
                 actor: ScriptActorId {
                     generation: 17,
@@ -141,17 +142,23 @@ fn invalid_sources_targets_classes_and_unknown_ground_do_not_start_audio() {
         play(&mut app, actor, source);
         assert_eq!(playing(&mut app), 0);
     }
-    app.world_mut().entity_mut(actor).insert(SoundSurface(12));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::from_byte(12)));
     play(&mut app, actor, 0);
     assert_eq!(playing(&mut app), 0);
     app.world_mut().entity_mut(actor).remove::<SoundSurface>();
     play(&mut app, actor, 0);
     assert_eq!(playing(&mut app), 0);
-    app.world_mut().entity_mut(actor).insert(SoundSurface(7));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::WOOD));
     app.world_mut().remove_resource::<SurfaceSounds>();
     play(&mut app, actor, 200);
     assert_eq!(playing(&mut app), 0);
-    app.world_mut().entity_mut(actor).insert(SoundSurface(0));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::UNKNOWN));
     play(&mut app, actor, 0);
     assert_eq!(playing(&mut app), 1, "known zero needs no table");
 }
@@ -159,7 +166,9 @@ fn invalid_sources_targets_classes_and_unknown_ground_do_not_start_audio() {
 #[test]
 fn known_zero_and_script_flat_sounds_bypass_configured_remaps() {
     let (mut app, actor) = fixture();
-    app.world_mut().entity_mut(actor).insert(SoundSurface(0));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::UNKNOWN));
     play(&mut app, actor, 0);
     let handle = app
         .world_mut()
@@ -205,7 +214,7 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
             effect: 200,
             rate_offset_hz: 0,
         },
-        surface: Some(7),
+        surface: Some(Surface::WOOD),
     });
     app.world_mut().entity_mut(actor).remove::<SoundSurface>();
     app.update();
@@ -232,7 +241,9 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
         1,
         "Forget clears the animation handle without stopping its channel"
     );
-    app.world_mut().entity_mut(actor).insert(SoundSurface(7));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::WOOD));
     app.world_mut().write_message(SoundCue::Animation {
         position: None,
         actor,
@@ -255,9 +266,11 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
             effect: 200,
             rate_offset_hz: 0,
         },
-        surface: Some(7),
+        surface: Some(Surface::WOOD),
     });
-    app.world_mut().entity_mut(actor).insert(SoundSurface(0));
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(SoundSurface(Surface::UNKNOWN));
     app.update();
     assert_eq!(
         playing(&mut app),
@@ -284,7 +297,7 @@ fn animation_end_stops_the_current_occupant_of_its_reused_sample_slot() {
             effect: 200,
             rate_offset_hz: 0,
         },
-        surface: Some(7),
+        surface: Some(Surface::WOOD),
     });
     app.update();
     let finished = app
@@ -324,7 +337,7 @@ fn all_sample_stop_preserves_the_animation_handle_until_end_animation() {
             effect: 200,
             rate_offset_hz: 0,
         },
-        surface: Some(7),
+        surface: Some(Surface::WOOD),
     });
     app.update();
     app.world_mut()
@@ -479,7 +492,7 @@ fn animation_uses_emission_position_even_after_the_scene_transform_changes() {
             effect: 0,
             rate_offset_hz: 0,
         },
-        surface: Some(0),
+        surface: Some(Surface::UNKNOWN),
         position: Some([0, 0, 16_777_215]),
     });
     app.update();
@@ -654,7 +667,10 @@ fn separately_initialized_player_role_uses_player_samples_without_becoming_contr
         for _ in 0..10 {
             let other = app
                 .world_mut()
-                .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(7)))
+                .spawn((
+                    GlobalTransform::from_translation(Vec3::Z),
+                    SoundSurface(Surface::WOOD),
+                ))
                 .id();
             play(&mut app, other, 200);
         }

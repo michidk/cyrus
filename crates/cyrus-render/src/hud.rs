@@ -1395,6 +1395,7 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cyrus_assets::surface::Surface;
     use cyrus_game::player::input::{Action, Input, PlayerBindings};
     use cyrus_script::{AnimationGroup, Native};
     use std::collections::BTreeMap;
@@ -1820,7 +1821,7 @@ mod tests {
         let state = ActivationActor {
             state: cyrus_game::script::LivingState::ORDINARY,
             on_rope: false,
-            water_state: 0,
+            water_state: Surface::UNKNOWN,
             torch_burning: 0,
             weapon_assigned: false,
             weapon_drawn: false,
@@ -2297,7 +2298,7 @@ mod tests {
             let mut actors = app.world_mut().resource_mut::<ScriptActors>();
             let world = actors.current.as_mut().unwrap();
             let (id, _) = world.player_activation_state().unwrap();
-            world.set_actor_surface(id, 2).unwrap();
+            world.set_actor_surface(id, Surface::DEEPWATER).unwrap();
         }
         use_key(&mut app, true);
         assert!(
@@ -2439,8 +2440,8 @@ mod tests {
                 match gate {
                     0 => inputs.item_system_ready = false,
                     1 => inputs.shell_execution = true,
-                    2 => inputs.actors.get_mut(&1).unwrap().water_state = 2,
-                    3 => inputs.actors.get_mut(&1).unwrap().water_state = 4,
+                    2 => inputs.actors.get_mut(&1).unwrap().water_state = Surface::DEEPWATER,
+                    3 => inputs.actors.get_mut(&1).unwrap().water_state = Surface::SCAPEDEEPWATER,
                     4 => {
                         let actor = inputs.actors.get_mut(&1).unwrap();
                         actor.weapon_assigned = true;

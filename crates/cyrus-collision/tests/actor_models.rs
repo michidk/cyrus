@@ -3,6 +3,7 @@ use cyrus_assets::collision::{
     ActorCollisionModels, CollisionGeometry, CollisionModel, CollisionScene, CollisionSubobject,
     StaticPlacement,
 };
+use cyrus_assets::surface::Surface;
 use cyrus_collision::actor_models::ActorModelCollision;
 use cyrus_collision::candidates::{
     CandidateOwner, CandidateQuery, LiveActor, ModelBounds, ModelInstance,
@@ -446,9 +447,13 @@ fn live_support_retains_owner_and_duplicate_order_and_follows_supplied_pose() {
     assert_eq!(models.radius(42).unwrap(), 100.0);
     assert_eq!(
         models
-            .face_surface(42, 0, Some(&BTreeMap::from([((302 << 7) | 25, 6)])))
+            .face_surface(
+                42,
+                0,
+                Some(&BTreeMap::from([((302 << 7) | 25, Surface::SAND)]))
+            )
             .unwrap(),
-        6
+        Surface::SAND
     );
     assert!(
         statics
@@ -551,7 +556,7 @@ fn live_cache_missing_geometry_or_material_is_an_error_not_clearance() {
             .unwrap()
             .face_surface(0, 0, None)
             .unwrap(),
-        0
+        Surface::UNKNOWN
     );
 }
 
