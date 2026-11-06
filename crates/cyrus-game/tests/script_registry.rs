@@ -48403,3 +48403,6 @@ mod turn_selected_player_tests;
 
 #[path = "script_registry/move_above_me.rs"]
 mod move_above_me_tests;
+
+#[path = "script_registry/point_at.rs"]
+mod point_at_tests;

@@ -611,3 +611,11 @@ written directly with `angle & 2047` as its yaw and registered in the changed-ac
 source reports the original's diagnostic 137 before anything changes. The contract follows
 preservation's [MoveAboveMe](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#moveaboveme).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `PointAt()` turns the receiver to face the actor whose script is running the call (the
+caller, when the call is routed to a named object). The yaw is the original's bearing of the
+truncated differences between the two actors' stored model coordinates, written directly to the
+receiver's yaw without a matrix refresh or animation request; a call on the running actor itself
+has no difference and yaws to zero. The contract follows preservation's
+[PointAt](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pointat-native-boundary).
+Natural installed gameplay parity remains Unknown.

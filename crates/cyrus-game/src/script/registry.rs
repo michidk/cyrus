@@ -6677,6 +6677,40 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        // PointAt turns the receiver to face the actor whose script is running (the caller, for a
+        // routed call): the negated shared query bearing of the truncated stored model coordinate
+        // differences, written straight to the receiver's yaw without a matrix refresh.
+        if function == Native::PointAt {
+            anyhow::ensure!(arguments.is_empty(), "PointAt requires no arguments");
+            let source = self.registry.routed_caller.unwrap_or(self.index);
+            let stored = |index: usize, role: &str| {
+                self.registry.actors[index]
+                    .model
+                    .position
+                    .with_context(|| format!("PointAt: {role} stored model position unavailable"))
+            };
+            let (target, own) = (stored(source, "target")?, stored(self.index, "receiver")?);
+            // Extended-precision differences truncate toward zero; an unrepresentable one converts
+            // to the integer-indefinite value.
+            let truncate = |axis: usize| {
+                let difference = (f64::from(target[axis]) - f64::from(own[axis])).trunc();
+                if (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&difference) {
+                    difference as i32
+                } else {
+                    i32::MIN
+                }
+            };
+            // The original negates its bearing helper's angle; `query_bearing` is that helper negated.
+            let yaw = super::spatial::query_bearing(truncate(0), truncate(2));
+            self.registry
+                .spatial
+                .as_mut()
+                .context("PointAt: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .local
+                .angles[1] = i32::from(yaw);
+            return Ok(CallResult::Complete(0));
+        }
         // MoveAboveMe places the receiver relative to the actor whose script is running: the source
         // position plus the offset turned by the source's matrix, lowered by the receiver's
         // vertical extent and raised by the installed standing height. The selected player is

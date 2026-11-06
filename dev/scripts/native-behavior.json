@@ -3709,16 +3709,21 @@
     },
     {
       "native": "PointAt",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP spatial/facing dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Production named turn of the receiver toward the running script's actor",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ActorSpatial yaw write",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/point_at.rs::point_at_turns_the_routed_receiver_toward_the_calling_actor",
+        "crates/cyrus-game/tests/script_registry/point_at.rs::point_at_on_the_running_actor_itself_has_no_difference_and_yaws_to_zero"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/commit/603d4ea"
+        "https://github.com/michidk/redguard-preservation/commit/603d4ea",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6694554824",
+        "https://github.com/michidk/redguard-preservation/commit/102bde6"
       ],
-      "limits": "Verified installed zero-argument declaration/exact native binding/full113-byte handler. Original CPU handler/truncation/planar/absolute chain passes4374 selected finite binary32 target/receiver X/Z contexts, two receiver identities and three masked x87 controls; six effective original instruction mutations exit normally with complete output and semantic mismatch. Exact two-actor memory/result/CW/TOP compared. Shared target minus receiver float differences truncate before planar angle; negated masked yaw written directly, zero return, no animation/turning/matrix call. Dependency identities independently checked against accepted evidence. Unknown shared target producer/ownership/lifecycle, NaN/infinity/out-of-range conversion/INT_MIN/full domain, natural table initialization/software atan, VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance.",
+      "limits": "Verified published contract plus the recovered target: the shared pointing target is the actor whose script is executing the call (the caller of a routed call) and the coordinates are the actors' stored model coordinates. Public routed tests with literals derived from the original bearing helper cover the four axis directions, equal magnitudes in each quadrant, fractional differences truncating toward zero, only the receiver's yaw written (no other angle, position or matrix change), the caller continuing, and a call on the running actor itself (zero differences). A receiver or target without stored model coordinates (old snapshots) is an explicit error; an unrepresentable difference converts to the integer-indefinite value. The stored model coordinates are restored state in these tests; their refresh by the ordinary presentation update is not exercised here. Natural authored gameplay parity remains Unknown. The same recovered target is the likely source for the lineup family; ObjectLineUp is not implemented.",
       "reviewed_revision": "b88956c8e232d91ddb039a7d2d25deec3ae31d52"
     },
     {
