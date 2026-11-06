@@ -66,14 +66,25 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .offset_selected_player(self.index, offset, true)
     }
 
-    fn player_tilt(&mut self, angle: i32, strength: i32, divisor: i32) -> Result<()> {
+    fn player_tilt(
+        &mut self,
+        angle: i32,
+        strength: i32,
+        divisor: i32,
+        reversed: bool,
+    ) -> Result<()> {
+        let name = if reversed {
+            "PlayerTiltRevx"
+        } else {
+            "PlayerTilt"
+        };
         let id = ScriptActorId {
             generation: self.generation,
             index: self.index,
         };
         anyhow::ensure!(
             self.registry.actors[self.index].attributes[Attribute::Slave] == 0,
-            "PlayerTilt world {} actor {}: original diagnostic 137: slave receiver",
+            "{name} world {} actor {}: original diagnostic 137: slave receiver",
             self.registry.world,
             self.index
         );
@@ -83,13 +94,13 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
         let limit = extent(0).max(extent(2)).wrapping_shl(8) / 2;
         let player = self
             .selected_player()
-            .context("PlayerTilt selected player unavailable")?;
+            .with_context(|| format!("{name} selected player unavailable"))?;
         let associated = self.registry.model_support(player)?.actor == Some(id);
         let spatial = self
             .registry
             .spatial
             .as_ref()
-            .context("PlayerTilt spatial state unavailable")?;
+            .with_context(|| format!("{name} spatial state unavailable"))?;
         let receiver = spatial.actor(self.index)?;
         let mut targets = [0, 0];
         if associated {
@@ -99,8 +110,14 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                 effective[0].wrapping_sub(player_position[0]),
                 effective[2].wrapping_sub(player_position[2]),
             );
+            // PlayerTiltRevx leaves out the receiver heading and negates both targets.
+            let heading = if reversed {
+                0
+            } else {
+                receiver.local.angles[1]
+            };
             let a = (-i32::from(bearing))
-                .wrapping_add(receiver.local.angles[1])
+                .wrapping_add(heading)
                 .wrapping_add(angle)
                 & 2047;
             let pitch = -(if a < 1024 { 512 - a } else { a - 1536 });
@@ -111,6 +128,11 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             } else {
                 a - 2048
             };
+            let (pitch, roll) = if reversed {
+                (-pitch, -roll)
+            } else {
+                (pitch, roll)
+            };
             let distance = crate::script::spatial::rounded_distance([
                 receiver.local.position[0].wrapping_sub(player_position[0]),
                 0,
@@ -119,7 +141,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .min(limit);
             let reciprocal = 16_777_216i32
                 .checked_div(limit)
-                .context("PlayerTilt distance limit causes original division fault")?;
+                .with_context(|| format!("{name} distance limit causes original division fault"))?;
             let factor = reciprocal.wrapping_mul(distance) >> 16;
             let strength = strength.wrapping_mul(factor) >> 8;
             targets = [pitch, roll].map(|target| (target.wrapping_mul(strength) >> 8) & 2047);
@@ -131,7 +153,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
         let ticks = self
             .inputs
             .nominal_ticks
-            .context("PlayerTilt requires nominal_ticks")? as i32;
+            .with_context(|| format!("{name} requires nominal_ticks"))? as i32;
         let mut angles = current;
         for (axis, target) in [0, 2].into_iter().zip(targets) {
             let difference = tilt_difference(current[axis], target);
@@ -154,7 +176,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
             .unwrap()
             .actor_mut(self.index)?
             .refresh_rotation(angles)
-            .context("PlayerTilt orientation refresh")
+            .with_context(|| format!("{name} orientation refresh"))
     }
 
     fn dragon_breath(&mut self) -> Result<bool> {

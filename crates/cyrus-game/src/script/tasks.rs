@@ -225,8 +225,14 @@ pub(super) trait PointHost {
     /// the receiver's orientation.
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()>;
 
-    /// One persistent PlayerTilt orientation update.
-    fn player_tilt(&mut self, angle: i32, strength: i32, divisor: i32) -> Result<()>;
+    /// One persistent PlayerTilt orientation update; `reversed` selects PlayerTiltRevx's targets.
+    fn player_tilt(
+        &mut self,
+        angle: i32,
+        strength: i32,
+        divisor: i32,
+        reversed: bool,
+    ) -> Result<()>;
 
     /// One `DragonBreathTask` update: true while the receiver keeps breathing.
     fn dragon_breath(&mut self) -> Result<bool>;
@@ -620,6 +626,8 @@ enum Task {
     PlayerOffset,
     /// `PlayerTilt`: recomputes receiver tilt from the selected player each invocation.
     PlayerTilt,
+    /// `PlayerTiltRevx`: `PlayerTilt` with the reversed pitch and roll targets.
+    PlayerTiltRevx,
     /// `DragonBreathTask()`: the `DragonBreath` update every invocation, completing when it returns zero.
     DragonBreath,
     /// `projectileAI()`: one projectile flight step every invocation, completing when it ends.
@@ -1332,14 +1340,25 @@ impl Task {
                 host.player_offset([x.integer()?, y.integer()?, z.integer()?])?;
                 false
             }
-            Self::PlayerTilt => {
+            Self::PlayerTilt | Self::PlayerTiltRevx => {
+                let reversed = matches!(self, Self::PlayerTiltRevx);
+                let name = if reversed {
+                    "PlayerTiltRevx"
+                } else {
+                    "PlayerTilt"
+                };
                 let [angle, strength, divisor] = arguments else {
-                    anyhow::bail!("PlayerTilt requires three arguments")
+                    anyhow::bail!("{name} requires three arguments")
                 };
                 services
                     .point
-                    .context("PlayerTilt receiver owner unavailable")?
-                    .player_tilt(angle.integer()?, strength.integer()?, divisor.integer()?)?;
+                    .with_context(|| format!("{name} receiver owner unavailable"))?
+                    .player_tilt(
+                        angle.integer()?,
+                        strength.integer()?,
+                        divisor.integer()?,
+                        reversed,
+                    )?;
                 false
             }
             Self::DragonBreath => {
@@ -3001,6 +3020,12 @@ impl NativeTasks {
                 "PlayerTilt requires multitask encoding"
             );
             Task::PlayerTilt
+        } else if function == Native::PlayerTiltRevx {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "PlayerTiltRevx requires multitask encoding"
+            );
+            Task::PlayerTiltRevx
         } else if function == Native::DragonBreathTask {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
@@ -3189,6 +3214,7 @@ impl NativeTasks {
             Native::FacePos,
             Native::PlayerOffsettask,
             Native::PlayerTilt,
+            Native::PlayerTiltRevx,
             Native::DragonBreathTask,
             Native::ProjectileAI,
             Native::MoveMarker,
@@ -3210,6 +3236,7 @@ impl NativeTasks {
                 Task::FaceAngle
                     | Task::FacePos
                     | Task::PlayerTilt
+                    | Task::PlayerTiltRevx
                     | Task::PlayerOffset
                     | Task::DragonBreath
                     | Task::Projectile

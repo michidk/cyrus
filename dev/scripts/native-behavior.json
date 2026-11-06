@@ -4132,16 +4132,19 @@
     },
     {
       "native": "PlayerTiltRevx",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Direct named transform/player SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "caller": "GameHost::native_task_call/point_call -> Task::PlayerTilt -> PointHost::player_tilt; point_poll on later task passes",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_revx_public_call_negates_the_targets_and_ignores_the_receiver_heading",
+        "crates/cyrus-game/tests/script_registry/player_tilt.rs::player_tilt_revx_unassociated_receiver_relaxes_to_zero_like_player_tilt"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/commit/ce3da9d"
       ],
-      "limits": "Verified: independent installed three-argument multitask/exact binding/full717 native and original eligibility/effective-position/linked/bearing/metric/sqrt/angular-difference/magnitude helpers CPU execution.6480 target-specific contexts/14 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS.1152 actual result1 returns/864 diagnostic-copy entry stops/4464 orientation-refresh entry stops. Associated target angle is bearing+angle without receiver heading; unscaled pitch retained and roll negated before fixed-point strength scaling. Paired heading-only state changes tested. Original distance/step/divisor/minimum/shared-update arithmetic executes, no family behavior inferred. Full arena/error/player/multiplier/entryargs/canary/x87 CW/TOP; result/three preserved registers/stack on actual returns. No arbitrary helper returns or fabricated diagnostic/refresh effects/continuation. Original-produced bearing table hash verified under flag0/fninit only. Unknown zero-limit arithmetic/overflow domain/malformed pointers/unmasked exceptions/nonempty FPU stack/natural table initialization/software path/full domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
+      "limits": "Verified published contract: three-argument multitask routed through the persistent PlayerTilt task path. Targets use the bearing and angle without the receiver heading; pitch is 512 - a (a < 1024) else a - 1536, roll is -a (a < 512), a - 1024 (512 <= a < 1536), else 2048 - a, each the negation of PlayerTilt's target; distance limit, strength scaling, step and refresh rules are PlayerTilt's. Unassociated receivers relax to zero like PlayerTilt. Public routed-caller tests cover the four quadrant angles, heading independence, caller continuation and the persistent task slot. Unknown: natural authored callers, diagnostic-path continuation after the slave-receiver error, rendered tilt parity.",
       "reviewed_revision": "d58d1dc1865fa1f9d4bd66994c40af850248ae0a"
     },
     {

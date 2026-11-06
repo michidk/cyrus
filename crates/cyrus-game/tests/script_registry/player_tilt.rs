@@ -11,9 +11,19 @@ fn tilt_fixture(
     associated: bool,
     target: Object,
 ) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    tilt_fixture_for(Native::PlayerTilt, arguments, angles, associated, target)
+}
+
+fn tilt_fixture_for(
+    native: Native,
+    arguments: [i32; 3],
+    angles: [u16; 3],
+    associated: bool,
+    target: Object,
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
     let call = Call {
         function_id: 4,
-        function: Native::PlayerTilt,
+        function: native,
         kind: CallKind::Multitask,
         target: target.clone(),
         arguments: arguments
@@ -33,7 +43,7 @@ fn tilt_fixture(
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions.push(Function {
-        name: Native::PlayerTilt,
+        name: native,
         param_count: 3,
         kind: CallKind::Multitask,
     });
@@ -427,4 +437,46 @@ fn player_tilt_signed_storage_matches_original_full_width_result_stores() {
             [0, 0, expected]
         );
     }
+}
+
+/// `PlayerTiltRevx` uses the bearing and angle without the receiver heading and the negated
+/// `PlayerTilt` targets (pitch `512 - a` / `a - 1536`, roll `-a` / `a - 1024` / `2048 - a`).
+#[test]
+fn player_tilt_revx_public_call_negates_the_targets_and_ignores_the_receiver_heading() {
+    for (angle, expected) in [
+        (0, [254, 0, 0]),
+        (512, [0, 0, 1794]),
+        (1024, [1794, 0, 0]),
+        (1536, [0, 0, 254]),
+    ] {
+        for heading in [0, 300] {
+            let (mut world, _, _) = tilt_fixture_for(
+                Native::PlayerTiltRevx,
+                [angle, 256, 0],
+                [0, heading, 0],
+                true,
+                Object::Me,
+            );
+            tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+            let angles = world.spatial(world.id(0).unwrap()).unwrap().local.angles;
+            assert_eq!(
+                [angles[0], angles[2]],
+                [expected[0], expected[2]],
+                "angle {angle} heading {heading}"
+            );
+            assert_eq!(world.flags()[0], 91, "the caller continues");
+            assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        }
+    }
+}
+
+#[test]
+fn player_tilt_revx_unassociated_receiver_relaxes_to_zero_like_player_tilt() {
+    let run = |native| {
+        let (mut world, _, _) =
+            tilt_fixture_for(native, [0, 256, 4], [100, 37, 2040], false, Object::Me);
+        tilt_step(&mut world, ScriptStage::Body(Thread::Main), Some(1)).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles
+    };
+    assert_eq!(run(Native::PlayerTiltRevx), run(Native::PlayerTilt));
 }

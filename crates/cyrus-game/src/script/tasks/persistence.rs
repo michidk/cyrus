@@ -278,6 +278,7 @@ impl Task {
             Self::ScaledMove => (Native::SMove, 4, None),
             Self::ScaledRotate => (Native::SRotate, 4, None),
             Self::PlayerTilt => (Native::PlayerTilt, 3, Some(CallKind::Multitask)),
+            Self::PlayerTiltRevx => (Native::PlayerTiltRevx, 3, Some(CallKind::Multitask)),
             Self::PlayerOffset => (Native::PlayerOffsettask, 3, Some(CallKind::Multitask)),
             Self::DragonBreath => (Native::DragonBreathTask, 0, Some(CallKind::Multitask)),
             Self::Projectile => (Native::ProjectileAI, 0, None),
