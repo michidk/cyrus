@@ -5828,19 +5828,24 @@
     },
     {
       "native": "PopItem",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
-      "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Saved inventory count replacement/restoration and item-use eligibility",
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory saved-count owner",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_restore_once_and_preserve_other_inventory_state",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_skip_closed_lookup_and_fail_before_continuation_when_open",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_survive_hud_restoration_and_validate_saved_identifiers",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_control_use_eligibility_without_changing_selection"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/blob/31652ac/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: independent installed function1/exact native binding/full155-byte handler/full117-byte ordered lookup. Original instructions check disabled zero return, unsigned exact/early-stop list selection, pushed-flag clear/saved32-bit value restoration/current-value return, repeated successful call without further item writes, and missing-item diagnostic-copy entry after location store. Receiver independent; full mapped memory/nonstack write order/canary/exact returns/preserved registers/stack checked on returns. Unknown: diagnostic effects/return/continuation, natural list/saved-value producers/lifecycle/full joint domain/VM/production parity. Constructed duplicate/unsorted controls do not establish natural admission. Named production support remains missing. Rust/game runtime NOT RUN.",
-      "reviewed_revision": "24322d302a7fff41b237277e10588fcf3d22050f"
+      "limits": "Verified published contract: first push saves the raw count and sets its flag; repeated pushes retain the saved word while replacing and returning current bits. Pop clears the flag and restores once, retaining the saved word; later pops return current bits. Closed processing returns zero before lookup. No acquisition, drop or selection effects. Saved counts survive HUD restoration; legacy snapshots default empty and unknown saved IDs are rejected. Public caller fixtures cover repeated replacement, high-bit values, unchanged other fields, use ownership refusal/continuation and missing-ID failure before continuation. Identifiers beyond installed u16 definitions remain explicitly unsupported after the enabled gate. Unknown: natural authored call reachability, malformed lists, original diagnostic continuation and full rendered gameplay acceptance.",
+      "reviewed_revision": "3f54086b"
     },
     {
       "native": "PushAllItems",
@@ -5860,19 +5865,24 @@
     },
     {
       "native": "PushItem",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
-      "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Saved inventory count replacement/restoration and item-use eligibility",
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory saved-count owner",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_restore_once_and_preserve_other_inventory_state",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_skip_closed_lookup_and_fail_before_continuation_when_open",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_survive_hud_restoration_and_validate_saved_identifiers",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_control_use_eligibility_without_changing_selection"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/blob/1f56a04/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: independent installed function2/exact native binding/full168-byte native/full117-byte ordered lookup. Original instructions check disabled zero, unsigned ID selection/early-stop, first push saves current32-bit value and sets flag1, nonzero flag retains saved value/flag, supplied32-bit value always replaces current and returns. Differing second push retains first saved value. Full mapped memory/nonstack writes/canary/exact return/four preserved registers/stack checked on returns. Missing-item diagnostic-copy entry bounded after location store; no fabricated diagnostic effect/return. Unknown diagnostic continuation/error service, natural list/saved-state producer/lifecycle/full joint domain/VM/production parity. Duplicate/unsorted controls do not establish natural admission. Named production missing. Rust/game runtime NOT RUN.",
-      "reviewed_revision": "5ca6cfb93134b8ea61e1ab3eba4a561eb62418d1"
+      "limits": "Verified published contract: first push saves the raw count and sets its flag; repeated pushes retain the saved word while replacing and returning current bits. Pop clears the flag and restores once, retaining the saved word; later pops return current bits. Closed processing returns zero before lookup. No acquisition, drop or selection effects. Saved counts survive HUD restoration; legacy snapshots default empty and unknown saved IDs are rejected. Public caller fixtures cover repeated replacement, high-bit values, unchanged other fields, use ownership refusal/continuation and missing-ID failure before continuation. Identifiers beyond installed u16 definitions remain explicitly unsupported after the enabled gate. Unknown: natural authored call reachability, malformed lists, original diagnostic continuation and full rendered gameplay acceptance.",
+      "reviewed_revision": "3f54086b"
     },
     {
       "native": "SubItem",

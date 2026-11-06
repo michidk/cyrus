@@ -33892,18 +33892,282 @@ fn check_scripted_item_use(on_rope: bool) {
 }
 
 fn sub_item_world(item: i32, amount: i32) -> ScriptWorld {
+    item_count_world(Native::SubItem, &[item, amount])
+}
+
+fn run_item_count_native(
+    hud: &cyrus_game::script::ScriptHud,
+    native: Native,
+    arguments: &[i32],
+) -> anyhow::Result<i32> {
+    let mut world = item_count_world(native, arguments);
+    world.advance(
+        world.id(0).unwrap(),
+        ScriptStage::Body(Thread::Main),
+        cyrus_game::script::ScriptInputs {
+            hud: Some(hud),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    assert_eq!(
+        world.flags(),
+        [13],
+        "successful native continues its caller"
+    );
+    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+}
+
+#[test]
+fn pushed_item_counts_restore_once_and_preserve_other_inventory_state() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    let mut asset = inventory_asset(&[(0, 1), (4, 5), (5, 3)]);
+    asset.selected = Some(4);
+    let item = asset.inventory.get_mut(&4).unwrap();
+    item.flags = 1;
+    item.remove_drop_items = vec![5];
+    hud.configure(&asset, &Preferences::default());
+    let mut expected = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    for (native, arguments, result, count, pushed, saved) in [
+        (Native::PopItem, vec![4], 5, 5_u32, None, None),
+        (Native::PushItem, vec![4, 0], 0, 0, Some(true), Some(5)),
+        (
+            Native::PushItem,
+            vec![4, i32::MIN],
+            i32::MIN,
+            0x8000_0000,
+            Some(true),
+            Some(5),
+        ),
+        (Native::PopItem, vec![4], 5, 5, Some(false), Some(5)),
+        (Native::SubItem, vec![4, 2], 0, 3, Some(false), Some(5)),
+        (Native::PopItem, vec![4], 3, 3, Some(false), Some(5)),
+        (
+            Native::PushItem,
+            vec![4, -1],
+            -1,
+            u32::MAX,
+            Some(true),
+            Some(3),
+        ),
+        (Native::RemoveItem, vec![4], 0, 0, Some(true), Some(3)),
+        (Native::PopItem, vec![4], 3, 3, Some(false), Some(3)),
+    ] {
+        assert_eq!(
+            run_item_count_native(&hud, native, &arguments).unwrap(),
+            result
+        );
+        expected["items"]["4"]["count"] = serde_json::json!(count);
+        if let (Some(pushed), Some(saved)) = (pushed, saved) {
+            expected["saved_counts"]["4"] = serde_json::json!({"value": saved, "pushed": pushed});
+        }
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn pushed_item_counts_skip_closed_lookup_and_fail_before_continuation_when_open() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    for (native, arguments) in [
+        (Native::PushItem, vec![-1, -1]),
+        (Native::PopItem, vec![-1]),
+    ] {
+        assert_eq!(
+            run_item_count_native(&ScriptHud::default(), native, &arguments).unwrap(),
+            0
+        );
+    }
+    for item in [6, -1, 65536] {
+        for native in [Native::PushItem, Native::PopItem] {
+            let hud = ScriptHud::default();
+            hud.configure(&inventory_asset(&[(4, 5)]), &Preferences::default());
+            let before = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+            let arguments = if native == Native::PushItem {
+                vec![item, 0]
+            } else {
+                vec![item]
+            };
+            let mut world = item_count_world(native, &arguments);
+            let error = world
+                .advance(
+                    world.id(0).unwrap(),
+                    ScriptStage::Body(Thread::Main),
+                    cyrus_game::script::ScriptInputs {
+                        hud: Some(&hud),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap_err();
+            assert!(format!("{error:#}").contains(&format!("{native}({})", item as u32)));
+            assert_eq!(world.flags(), [12], "failed native does not continue");
+            assert_eq!(
+                serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+                before
+            );
+        }
+    }
+}
+
+#[test]
+fn pushed_item_counts_survive_hud_restoration_and_validate_saved_identifiers() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Inventory, ScriptHud},
+    };
+    let asset = inventory_asset(&[(4, 5)]);
+    struct EmptyStore;
+    impl cyrus_game::preferences::PreferenceStore for EmptyStore {
+        fn load(
+            &self,
+            _: cyrus_game::preferences::PreferenceKey,
+        ) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> anyhow::Result<()> {
+            panic!("count operations must not write preferences")
+        }
+    }
+    let preferences = Preferences::new(EmptyStore);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    run_item_count_native(&hud, Native::PushItem, &[4, 0]).unwrap();
+    let restored = ScriptHud::from_snapshot(&asset, &preferences, hud.snapshot().unwrap()).unwrap();
+    assert_eq!(
+        run_item_count_native(&restored, Native::PopItem, &[4]).unwrap(),
+        5
+    );
+    let mut snapshot = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    snapshot["saved_counts"]["6"] = serde_json::json!({"value": 7, "pushed": true});
+    let error = Inventory::from_snapshot(&asset, serde_json::from_value(snapshot).unwrap())
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("saved count item 6"));
+    let mut legacy = serde_json::to_value(restored.snapshot().unwrap()).unwrap();
+    legacy["inventory"]
+        .as_object_mut()
+        .unwrap()
+        .remove("saved_counts");
+    let restored = ScriptHud::from_snapshot(
+        &asset,
+        &preferences,
+        serde_json::from_value(legacy).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        run_item_count_native(&restored, Native::PopItem, &[4]).unwrap(),
+        5
+    );
+}
+
+#[test]
+fn pushed_item_counts_control_use_eligibility_without_changing_selection() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    let make_world = || {
+        player_walking_fixture_with(|scripts| {
+            let id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: Native::UseItem,
+                param_count: 1,
+                kind: CallKind::Function,
+            });
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+                (
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::ObjectCall {
+                            call: Call {
+                                function_id: id,
+                                function: Native::UseItem,
+                                target: Object::Player,
+                                kind: CallKind::Function,
+                                arguments: vec![Value::Integer { value: 4 }],
+                            },
+                        },
+                    },
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Increment {
+                            destination: Place::Flag { index: 0 },
+                            delta: 1,
+                        },
+                    },
+                ),
+                (
+                    2,
+                    Step {
+                        next: 3,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+        })
+    };
+    let asset = inventory_asset(&[(0, 1), (4, 5)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(
+        run_item_count_native(&hud, Native::PushItem, &[4, 0]).unwrap(),
+        0
+    );
+    for owned in [false, true] {
+        if owned {
+            assert_eq!(
+                run_item_count_native(&hud, Native::PopItem, &[4]).unwrap(),
+                5
+            );
+        }
+        let (_, mut world, _, _) = make_world();
+        let result = world.advance(
+            world.id(0).unwrap(),
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        );
+        if owned {
+            result.unwrap();
+            assert_eq!(world.flags(), [13]);
+        } else {
+            assert!(format!("{:#}", result.unwrap_err()).contains("item not owned"));
+            assert_eq!(world.flags(), [12]);
+        }
+        assert_eq!(hud.active_item().unwrap(), 0);
+    }
+}
+
+fn item_count_world(native: Native, arguments: &[i32]) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: Native::SubItem,
-        param_count: 2,
+        name: native,
+        param_count: arguments.len() as u8,
         kind: CallKind::Function,
     });
     let function_id = scripts.definition.functions.len() as u16 - 1;
     scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
-        (
-            0,
-            assign_call(1, function_id, Native::SubItem, &[item, amount]),
-        ),
+        (0, assign_call(1, function_id, native, arguments)),
         (
             1,
             Step {

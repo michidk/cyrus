@@ -46,6 +46,14 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: `PushItem` saves the first owned count and replaces only the current count;
+`PopItem` restores it once. Repeated pushes keep the first saved word, and subsequent
+pops return the current count. These counts govern ordinary item-use ownership.
+Session snapshots retain the saved word and pushed flag; older snapshots start
+without pushed counts. Closed item processing skips lookup. This follows preservation
+[PushItem](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushitem-saved-value-replacement)
+and [PopItem](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#popitem-saved-value-restoration).
+
 Verified: `SubItem` applies signed count subtraction without drop flags, dependent
 removal or selection changes. Its wrapping normalization preserves the signed
 minimum operand, and closed item processing skips lookup. This follows

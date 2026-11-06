@@ -33,6 +33,15 @@ pub struct InventorySnapshot {
     definitions: BTreeMap<u16, InventoryItem>,
     items: BTreeMap<u16, SavedItem>,
     selected: Option<u16>,
+    #[serde(default)]
+    saved_counts: BTreeMap<u16, SavedCount>,
+}
+
+/// PushItem keeps the first saved word until PopItem clears its flag.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct SavedCount {
+    value: u32,
+    pushed: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -56,6 +65,7 @@ pub struct Inventory {
     definitions: BTreeMap<u16, InventoryItem>,
     items: BTreeMap<u16, InventoryItem>,
     selected: Option<u16>,
+    saved_counts: BTreeMap<u16, SavedCount>,
 }
 impl Inventory {
     /// Capture every item, including hidden, empty and final installed records.
@@ -79,6 +89,7 @@ impl Inventory {
                 })
                 .collect(),
             selected: self.selected,
+            saved_counts: self.saved_counts.clone(),
         }
     }
 
@@ -122,6 +133,12 @@ impl Inventory {
                 "inventory snapshot selected item {id}: definition absent"
             );
         }
+        for id in snapshot.saved_counts.keys() {
+            anyhow::ensure!(
+                hud.inventory.contains_key(id),
+                "inventory snapshot saved count item {id}: definition absent"
+            );
+        }
         let mut items = hud.inventory.clone();
         for (id, saved) in snapshot.items {
             let item = items.get_mut(&id).expect("validated inventory census");
@@ -134,6 +151,7 @@ impl Inventory {
             definitions: hud.inventory.clone(),
             items,
             selected: snapshot.selected,
+            saved_counts: snapshot.saved_counts,
         })
     }
 
@@ -142,6 +160,7 @@ impl Inventory {
             definitions: hud.inventory.clone(),
             items: hud.inventory.clone(),
             selected: hud.inventory.keys().next().copied(),
+            saved_counts: BTreeMap::new(),
         };
         for &id in &hud.start_items {
             inventory
@@ -360,6 +379,45 @@ impl Inventory {
         };
         item.count = current.wrapping_sub(amount.min(current)) as u32;
         Ok(())
+    }
+
+    /// Replace only the owned word, retaining the first saved word across repeated pushes.
+    /// Preservation's SOUP PushItem contract uses unsigned identifiers and raw 32-bit values.
+    pub(super) fn push_count(&mut self, id: u32, value: i32) -> Result<i32> {
+        let key = u16::try_from(id)
+            .with_context(|| format!("PushItem({id}): ITEM.INI identifier outside u16 range"))?;
+        let item = self
+            .items
+            .get_mut(&key)
+            .with_context(|| format!("PushItem({id}): ITEM.INI definition absent"))?;
+        let saved = self.saved_counts.entry(key).or_insert(SavedCount {
+            value: 0,
+            pushed: false,
+        });
+        if !saved.pushed {
+            saved.value = item.count;
+            saved.pushed = true;
+        }
+        item.count = value as u32;
+        Ok(value)
+    }
+
+    /// Restore a pushed word once; later pops return the current word without restoring again.
+    /// The saved word survives restoration, following preservation's SOUP PopItem contract.
+    pub(super) fn pop_count(&mut self, id: u32) -> Result<i32> {
+        let key = u16::try_from(id)
+            .with_context(|| format!("PopItem({id}): ITEM.INI identifier outside u16 range"))?;
+        let item = self
+            .items
+            .get_mut(&key)
+            .with_context(|| format!("PopItem({id}): ITEM.INI definition absent"))?;
+        if let Some(saved) = self.saved_counts.get_mut(&key)
+            && saved.pushed
+        {
+            saved.pushed = false;
+            item.count = saved.value;
+        }
+        Ok(item.count as i32)
     }
 
     /// Empty one item's count directly: no dependent removal and no flag handling.

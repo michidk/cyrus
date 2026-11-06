@@ -358,6 +358,30 @@ impl ScriptHud {
         }
     }
 
+    /// Save the first owned count and replace it, or skip lookup while processing is closed.
+    pub(super) fn push_item(&self, id: u32, value: i32) -> Result<i32> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.push_count(id, value),
+            None => Ok(0),
+        }
+    }
+
+    /// Restore a saved count, or return zero without lookup while item processing is closed.
+    pub(super) fn pop_item(&self, id: u32) -> Result<i32> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.pop_count(id),
+            None => Ok(0),
+        }
+    }
+
     /// Empty one item's count without dependents. A closed inventory ignores the call.
     pub fn remove_item(&self, id: u16) -> Result<()> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
