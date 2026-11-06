@@ -473,6 +473,20 @@ These targets validate generation and reject retired created actors instead of
 resolving `MyId` through namespaces. World restore explicitly rebinds saved
 reference locals; malformed saved identities fail before replacing the world.
 This follows preservation's [reference encoding](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#reference-name-encoding).
-`OffsetLocation` and `WaitLineUp` remain separate native-handler work. References
+`WaitLineUp` remains separate native-handler work. References
 in arithmetic or global flags, raw pointer integers, temporary separate-actor
 addresses and pool-slot reuse remain unsupported; no numeric host-address encoding is exposed.
+
+Verified: `OffsetLocation(source, x, y, z)` accepts a typed actor reference, resolves
+source position before receiver position, transforms the offset with the source
+actor matrix and writes wrapping sums only to the receiver local position. It
+returns zero without updating history, registering a map update or publishing
+camera movement. Captured references survive generation rebinding on restore;
+retired sources fail without advancing the caller. Position selection retains
+slave alternate and linked-position precedence. Explicit SetRotation and
+ResetRotation rebuilds publish the attached source matrix immediately, retaining
+its resolved position until the next family refresh. Matrix conversion uses the
+existing nearest-even transform contract. This follows preservation's
+[OffsetLocation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#offsetlocation).
+Original instruction witnesses and public native/browser synthetic callers cover
+the bounded behavior; natural authored gameplay parity remains Unknown.

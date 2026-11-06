@@ -3784,17 +3784,25 @@
     },
     {
       "native": "OffsetLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Typed source-reference offset transformed into receiver local position",
+      "caller": "ScriptWorld::advance -> GameHost::call OffsetLocation -> query_position and actor Matrix::transform",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_public_values_preserve_source_receiver_and_local_only_writes",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_rotates_rounds_inputs_and_wraps_position_sums",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_errors_preserve_pose_and_continuation_and_remain_failed",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_resolves_source_before_receiver_and_uses_composed_source_matrix",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_reads_link_cache_without_refreshing_it_or_the_receiver",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_captured_source_survives_restore_but_not_created_actor_retirement",
+        "crates/cyrus-game/tests/script_registry.rs::offset_location_observes_an_attached_sources_immediate_rotation_rebuild"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/248"
+        "https://github.com/michidk/redguard-preservation/pull/248",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#offsetlocation"
       ],
-      "limits": "Verified installed4-argument native/full136-byte handler,91-byte position resolver and both predicates: source then receiver resolution, discard receiver result; source matrix transforms signed offset, wrapped source-resolved-position plus offset writes receiver local XYZ; return0/fourth-argument cleanup/no registration.900 original wrapper/predicate contexts/16 effective controls with transform controlled IO. Separately complete202-byte matrix helper432 original machine contexts/6 effective mutations match independent arithmetic reference across4 rounding modes/3 precision controls: single input and row-result stores, x87 intermediates, active-rounding signed conversion. Conditional incoming control word; composition tested in separate witnesses. Producers, malformed pointers, nonfinite matrices/unmasked exceptions/nonempty FPU stack, exhaustive domain, VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
-      "reviewed_revision": "c28b104f2cfff12f33677a5d257c2ff6eca6b62a"
+      "limits": "Verified original handler/resolver witness: 900 execution contexts and 16 effective controls; separate matrix helper witness: 432 cases and six effective controls. Production public callers cover typed references, local copy, self and routed receivers, source-before-receiver resolution, composed family matrix, linked position, nearest-even input rounding, wrapping sums, local-only writes, zero return and continuation, restore rebinding and retired source rejection. Native/browser synthetic callers exercise the real production dispatch. Unknown: natural authored original/native/browser gameplay parity, process FPU-mode initialization, malformed-pointer/freed-record behavior, pool aliasing and exhaustive numerical domain. Existing transform uses nearest-even; nonfinite/overflow conversions and unsupported reference identities fail explicitly."
     },
     {
       "native": "SetLocation",

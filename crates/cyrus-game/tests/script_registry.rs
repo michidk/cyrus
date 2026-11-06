@@ -18039,6 +18039,642 @@ fn heading_property_scripts(reference: u16, object: Object) -> Scripts {
     scripts
 }
 
+#[test]
+fn offset_location_resolves_source_before_receiver_and_uses_composed_source_matrix() {
+    for source_is_slave in [true, false] {
+        let mut scripts =
+            offset_location_scripts(Object::Named { string: 0 }, [256, 0, 512], Object::Me);
+        let mut receiver = scripts.actors["LOGIC"].clone();
+        receiver.header_index += 1;
+        receiver.code_origin += 100;
+        receiver.namespace = Some("receiver".into());
+        receiver.instances = 1;
+        receiver.instance_variables = vec![vec![0; 3]];
+        let rotation_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::SetRotation,
+            kind: CallKind::Function,
+            param_count: 3,
+        });
+        for key in (3..=5).rev() {
+            let mut step = receiver.program.steps.remove(&key).unwrap();
+            step.next += 1;
+            if let Operation::End { target } = &mut step.operation {
+                *target += 1;
+            }
+            receiver.program.steps.insert(key + 1, step);
+        }
+        receiver.program.steps.get_mut(&2).unwrap().operation = wait(
+            rotation_id,
+            Native::SetRotation,
+            CallKind::Function,
+            vec![
+                Value::Integer { value: 0 },
+                Value::Integer { value: 512 },
+                Value::Integer { value: 0 },
+            ],
+        );
+        receiver.program.steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::Yield,
+            },
+        );
+
+        let source = scripts.actors.get_mut("LOGIC").unwrap();
+        source.instances = 1;
+        source.instance_variables = vec![vec![0; 3]];
+        source.attributes[if source_is_slave {
+            Attribute::Slave
+        } else {
+            Attribute::Master
+        }] = 1;
+        receiver.attributes[if source_is_slave {
+            Attribute::Master
+        } else {
+            Attribute::Slave
+        }] = 1;
+        scripts.actors.insert("RECEIVER".into(), receiver);
+        scripts.instances[1].actor = "RECEIVER".into();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        let before = world.inspect(0, 10);
+        let error = actor_reference_step(&mut world, id)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(if source_is_slave {
+                "OffsetLocation source position"
+            } else {
+                "OffsetLocation receiver position"
+            }),
+            "{error}"
+        );
+        let after = world.inspect(0, 10);
+        for index in 0..2 {
+            assert_eq!(
+                after["actors"][index]["spatial"],
+                before["actors"][index]["spatial"]
+            );
+        }
+        assert_eq!(world.flags(), [12]);
+
+        // A fresh world with an explicitly refreshed family can execute the same public call.
+        let mut world = ScriptWorld::prepare(&scripts, 18).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        world.refresh_families().unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        assert_eq!(world.flags(), [77]);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            if source_is_slave {
+                [-5632, 5120, 3328]
+            } else {
+                [2816, 5120, 8192]
+            }
+        );
+    }
+}
+
+#[test]
+fn offset_location_captured_source_survives_restore_but_not_created_actor_retirement() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    for retire in [false, true] {
+        let mut scripts =
+            offset_location_scripts(Object::Named { string: 1 }, [256, -3, 7], Object::Me);
+        let kill = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::KillMe,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let mut source = scripts.actors["LOGIC"].clone();
+        source.header_index += 10;
+        source.code_origin += 1000;
+        source.namespace = Some("source".into());
+        source.instances = 1;
+        source.instance_variables = vec![vec![0; 3]];
+        source.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(kill, Native::KillMe, CallKind::Function, vec![]),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 1 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("SOURCE".into(), source);
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (mut world, data, _) =
+            static_model_fixture_session(scripts.clone(), None, [10, 20, 30], false);
+        let creator = world.id(0).unwrap();
+        let source = world
+            .create_object(creator, "SOURCE", [100, 200, 300], [0; 3])
+            .unwrap();
+        let caller = world.id(1).unwrap();
+        actor_reference_step(&mut world, caller).unwrap();
+        if retire {
+            world
+                .advance(
+                    source,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    Some(&mut |_, _| Ok(())),
+                    None,
+                    20,
+                )
+                .unwrap();
+            world
+                .update_created(
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    &mut cyrus_game::random::EngineRandom::from_state(42),
+                    &mut |_, _| Ok(()),
+                    20,
+                )
+                .unwrap();
+            assert!(world.actors()[source.index].runtime().is_none());
+        }
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let saved = world.snapshot(&sources).unwrap();
+        let mut restored = ScriptWorld::from_snapshot(
+            saved,
+            &sources,
+            WorldRestoreContext {
+                generation: 101,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let caller = restored.id(caller.index).unwrap();
+        let captured = restored.actors()[caller.index]
+            .runtime()
+            .unwrap()
+            .variables()[1]
+            .actor()
+            .unwrap();
+        assert_eq!(captured.generation, 101);
+        assert_eq!(captured.index, source.index);
+        let before = restored.inspect(0, 10);
+        let result = actor_reference_step(&mut restored, caller);
+        if retire {
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains("OffsetLocation source position")
+                    && error.contains("retired created receiver"),
+                "{error}"
+            );
+            let after = restored.inspect(0, 10);
+            assert_eq!(
+                after["actors"][caller.index]["spatial"],
+                before["actors"][caller.index]["spatial"]
+            );
+            assert_eq!(
+                after["actors"][caller.index]["main"],
+                before["actors"][caller.index]["main"]
+            );
+            assert_eq!(
+                actor_reference_step(&mut restored, caller)
+                    .unwrap_err()
+                    .to_string(),
+                error
+            );
+        } else {
+            result.unwrap();
+            assert_eq!(
+                restored.spatial(caller).unwrap().local.position,
+                [356, 197, 307]
+            );
+            assert_eq!(restored.flags(), [77]);
+        }
+    }
+}
+
+#[test]
+fn offset_location_reads_link_cache_without_refreshing_it_or_the_receiver() {
+    let mut scripts =
+        offset_location_scripts(Object::Named { string: 0 }, [256, -3, 7], Object::Me);
+    let offset_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::Offset,
+        kind: CallKind::Function,
+        param_count: 3,
+    });
+    let mut source = scripts.actors["LOGIC"].clone();
+    source.instances = 1;
+    source.instance_variables = vec![vec![0; 3]];
+    source.program.strings[0] = "receiver".into();
+    source.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::ObjectCall {
+                    call: Call {
+                        function_id: offset_id,
+                        function: Native::Offset,
+                        kind: CallKind::Function,
+                        target: Object::Named { string: 0 },
+                        arguments: vec![Value::Integer { value: 0 }; 3],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 1 },
+            },
+        ),
+    ]);
+    let mut receiver = scripts.actors["LOGIC"].clone();
+    receiver.header_index += 1;
+    receiver.code_origin += 100;
+    receiver.namespace = Some("receiver".into());
+    receiver.instances = 1;
+    receiver.instance_variables = vec![vec![0; 3]];
+    scripts.actors.insert("LOGIC".into(), source);
+    scripts.actors.insert("RECEIVER".into(), receiver);
+    scripts.instances[1].actor = "RECEIVER".into();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    world.prepare_spatial().unwrap();
+    let source = world.id(0).unwrap();
+    actor_reference_step(&mut world, source).unwrap();
+    world.snapshot_spatial(source).unwrap();
+    assert_eq!(world.spatial(source).unwrap().local.position, [0; 3]);
+    assert_eq!(
+        world.spatial(source).unwrap().linked_position(),
+        Some([2560, 5120, 7680])
+    );
+    let receiver = world.id(1).unwrap();
+    actor_reference_step(&mut world, receiver).unwrap();
+    actor_reference_step(&mut world, receiver).unwrap();
+    assert_eq!(
+        world.spatial(receiver).unwrap().local.position,
+        [2816, 5117, 7687]
+    );
+    assert_eq!(
+        world.spatial(source).unwrap().linked_position(),
+        Some([2560, 5120, 7680])
+    );
+}
+
+#[test]
+fn offset_location_observes_an_attached_sources_immediate_rotation_rebuild() {
+    for function in [Native::SetRotation, Native::ResetRotation] {
+        let mut scripts =
+            offset_location_scripts(Object::Named { string: 0 }, [256, 0, 512], Object::Me);
+        let rotation = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: function,
+            kind: CallKind::Function,
+            param_count: 3,
+        });
+        let mut receiver = scripts.actors["LOGIC"].clone();
+        receiver.header_index += 1;
+        receiver.code_origin += 100;
+        receiver.namespace = Some("receiver".into());
+        receiver.instances = 1;
+        receiver.instance_variables = vec![vec![0; 3]];
+        receiver.attributes[Attribute::Master] = 1;
+        let master_rotation = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::SetRotation,
+            kind: CallKind::Function,
+            param_count: 3,
+        });
+        for key in (3..=5).rev() {
+            let mut step = receiver.program.steps.remove(&key).unwrap();
+            step.next += 1;
+            if let Operation::End { target } = &mut step.operation {
+                *target += 1;
+            }
+            receiver.program.steps.insert(key + 1, step);
+        }
+        receiver.program.steps.get_mut(&2).unwrap().operation = wait(
+            master_rotation,
+            Native::SetRotation,
+            CallKind::Function,
+            vec![
+                Value::Integer { value: 0 },
+                Value::Integer { value: 1024 },
+                Value::Integer { value: 0 },
+            ],
+        );
+        receiver.program.steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::Yield,
+            },
+        );
+
+        let source = scripts.actors.get_mut("LOGIC").unwrap();
+        source.instances = 1;
+        source.instance_variables = vec![vec![0; 3]];
+        source.attributes[Attribute::Slave] = 1;
+        source.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(
+                        rotation,
+                        function,
+                        CallKind::Function,
+                        [
+                            0,
+                            if function == Native::SetRotation {
+                                1024
+                            } else {
+                                1
+                            },
+                            0,
+                        ]
+                        .map(|value| Value::Integer { value })
+                        .to_vec(),
+                    ),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 1 },
+                },
+            ),
+        ]);
+        scripts.actors.insert("RECEIVER".into(), receiver);
+        scripts.instances[0].angles[1] = 512;
+        scripts.instances[1].actor = "RECEIVER".into();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        world.prepare_spatial().unwrap();
+        let source = world.id(0).unwrap();
+        let receiver = world.id(1).unwrap();
+        actor_reference_step(&mut world, receiver).unwrap();
+        world.refresh_families().unwrap();
+        // Change the source matrix through its public native, without another family pass.
+        let before = world.spatial(source).unwrap().query_pose().unwrap();
+        actor_reference_step(&mut world, source).unwrap();
+        assert_eq!(
+            world
+                .spatial(source)
+                .unwrap()
+                .query_pose()
+                .unwrap()
+                .position,
+            before.position
+        );
+        actor_reference_step(&mut world, receiver).unwrap();
+        assert_eq!(
+            world.spatial(receiver).unwrap().local.position,
+            if function == Native::SetRotation {
+                [-768, 5120, -5120]
+            } else {
+                [-1024, 5120, -4352]
+            }
+        );
+    }
+}
+
+fn offset_location_scripts(source: Object, offset: [i32; 3], target: Object) -> Scripts {
+    let mut scripts = actor_reference_scripts(source);
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::OffsetLocation,
+        kind: CallKind::Function,
+        param_count: 4,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.program.strings.push("source".into());
+    actor.program.steps.get_mut(&3).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 2 },
+        formula: Formula {
+            first: if target == Object::Me {
+                Value::Call {
+                    call: Box::new(Call {
+                        function_id,
+                        function: Native::OffsetLocation,
+                        kind: CallKind::Function,
+                        target,
+                        arguments: std::iter::once(Value::Read {
+                            place: Place::Local { index: 1 },
+                        })
+                        .chain(offset.map(|value| Value::Integer { value }))
+                        .collect(),
+                    }),
+                }
+            } else {
+                Value::ObjectCall {
+                    call: Box::new(Call {
+                        function_id,
+                        function: Native::OffsetLocation,
+                        kind: CallKind::Function,
+                        target,
+                        arguments: std::iter::once(Value::Read {
+                            place: Place::Property {
+                                object: Object::Me,
+                                reference: 294,
+                            },
+                        })
+                        .chain(offset.map(|value| Value::Integer { value }))
+                        .collect(),
+                    }),
+                }
+            },
+            rest: vec![],
+        },
+    };
+    actor.program.steps.get_mut(&4).unwrap().operation = set_flag(77);
+    actor.program.steps.insert(
+        5,
+        Step {
+            next: 6,
+            operation: Operation::End { target: 5 },
+        },
+    );
+    scripts.instances[0].map_position = [10, 20, 30];
+    scripts.instances[0].angles = [0; 3];
+    scripts.instances[1].map_position = [4, 5, 6];
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn offset_location_public_values_preserve_source_receiver_and_local_only_writes() {
+    for (source, target, receiver, expected) in [
+        (
+            Object::Named { string: 0 },
+            Object::Me,
+            1,
+            [2816, 5117, 7687],
+        ),
+        (Object::Me, Object::Me, 1, [1280, 1277, 1543]),
+        (
+            Object::Me,
+            Object::Named { string: 0 },
+            0,
+            [2816, 5117, 7687],
+        ),
+    ] {
+        let scripts = offset_location_scripts(source, [256, -3, 7], target);
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        world.prepare_spatial().unwrap();
+        let caller = world.id(1).unwrap();
+        actor_reference_step(&mut world, caller).unwrap();
+        let before = world.inspect(0, 10);
+        let history = world
+            .spatial(world.id(receiver).unwrap())
+            .unwrap()
+            .previous_local_position;
+        actor_reference_step(&mut world, caller).unwrap();
+        assert_eq!(
+            world
+                .spatial(world.id(receiver).unwrap())
+                .unwrap()
+                .local
+                .position,
+            expected
+        );
+        assert_eq!(
+            world
+                .spatial(world.id(receiver).unwrap())
+                .unwrap()
+                .previous_local_position,
+            history
+        );
+        assert_eq!(world.actors()[1].runtime().unwrap().variables()[2], 0);
+        assert_eq!(world.flags(), [77]);
+        assert!(
+            world
+                .actors()
+                .iter()
+                .all(|actor| actor.runtime().unwrap().active_tasks() == 0)
+        );
+        let after = world.inspect(0, 10);
+        for index in 0..2 {
+            let mut expected_pose = before["actors"][index]["spatial"].clone();
+            if index == receiver {
+                expected_pose["local"]["position"] = serde_json::json!(expected);
+            }
+            assert_eq!(after["actors"][index]["spatial"], expected_pose);
+        }
+        // A pending map update would require geometry here. OffsetLocation registers none.
+        world.flush_map_updates([0; 3], false).unwrap();
+    }
+}
+
+#[test]
+fn offset_location_rotates_rounds_inputs_and_wraps_position_sums() {
+    for (yaw, offset, expected) in [
+        (512, [256, -3, 512], [2048, 5117, 7936]),
+        (0, [16_777_217, 0, 0], [16_779_776, 5120, 7680]),
+        (0, [2_147_483_520, 0, 0], [-2_147_481_216, 5120, 7680]),
+    ] {
+        let mut scripts = offset_location_scripts(Object::Named { string: 0 }, offset, Object::Me);
+        scripts.instances[0].angles[1] = yaw;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+    }
+}
+
+#[test]
+fn offset_location_errors_preserve_pose_and_continuation_and_remain_failed() {
+    for (integer_source, spatial, offset, expected) in [
+        (true, true, [0; 3], "actor reference required"),
+        (false, false, [0; 3], "OffsetLocation source position"),
+        (
+            false,
+            true,
+            [i32::MAX, 0, 0],
+            "OffsetLocation source matrix",
+        ),
+    ] {
+        let scripts = offset_location_scripts(Object::Me, offset, Object::Me);
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        if spatial {
+            world.prepare_spatial().unwrap();
+        }
+        let id = world.id(1).unwrap();
+        actor_reference_step(&mut world, id).unwrap();
+        if integer_source {
+            // Continue the captured reference fixture with an integer assignment, through the VM.
+            let mut scripts = scripts.clone();
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.program.steps.get_mut(&1).unwrap().operation = Operation::Assign {
+                destination: Place::Local { index: 1 },
+                formula: Formula {
+                    first: Value::Integer { value: 0 },
+                    rest: vec![],
+                },
+            };
+            scripts.content_id = scripts.content_identity().unwrap();
+            world = ScriptWorld::prepare(&scripts, 17).unwrap();
+            world.prepare_spatial().unwrap();
+            actor_reference_step(&mut world, id).unwrap();
+        }
+        let before = world.inspect(0, 10);
+        let error = actor_reference_step(&mut world, id)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+        assert_eq!(world.flags(), [12]);
+        let after = world.inspect(0, 10);
+        assert_eq!(
+            after["actors"][1]["spatial"],
+            before["actors"][1]["spatial"]
+        );
+        assert_eq!(after["actors"][1]["main"], before["actors"][1]["main"]);
+        assert_eq!(
+            actor_reference_step(&mut world, id)
+                .unwrap_err()
+                .to_string(),
+            error
+        );
+    }
+}
+
 fn actor_reference_step(
     world: &mut ScriptWorld,
     id: cyrus_game::script::ScriptActorId,

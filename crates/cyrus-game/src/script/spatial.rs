@@ -542,8 +542,12 @@ impl ActorSpatial {
         }
         self.angle_history = self.local.angles;
         self.local.matrix = Matrix::orientation(self.local.angles);
-        if self.parent.is_none() && self.effective.is_some() {
-            self.effective = Some(self.local);
+        if let Some(effective) = &mut self.effective {
+            if self.parent.is_none() {
+                *effective = self.local;
+            } else {
+                effective.matrix = self.local.matrix;
+            }
         }
         Ok(())
     }
@@ -754,8 +758,12 @@ impl ActorSpatial {
         self.local.angles = angles.map(|angle| (angle & 2047) as u16);
         self.angle_history = self.local.angles;
         self.local.matrix = Matrix::orientation(self.local.angles);
-        if self.parent.is_none() && self.effective.is_some() {
-            self.effective = Some(self.local);
+        if let Some(effective) = &mut self.effective {
+            if self.parent.is_none() {
+                *effective = self.local;
+            } else {
+                effective.matrix = self.local.matrix;
+            }
         }
         Ok(())
     }

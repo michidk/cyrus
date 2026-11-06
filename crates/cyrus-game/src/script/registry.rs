@@ -6348,6 +6348,37 @@ impl Host for GameHost<'_, '_, '_, '_> {
             target[2] = source[2];
             return Ok(CallResult::Complete(0));
         }
+        if function == Native::OffsetLocation {
+            let [source, x, y, z] = arguments else {
+                anyhow::bail!("OffsetLocation requires four arguments")
+            };
+            let source = source.actor().context("OffsetLocation source")?;
+            let offset = [x.integer()?, y.integer()?, z.integer()?];
+            let base = self
+                .registry
+                .query_position(source)
+                .context("OffsetLocation source position")?;
+            let receiver = self.registry.id(self.index)?;
+            // Receiver resolution precedes transformation even though its result is discarded.
+            self.registry
+                .query_position(receiver)
+                .context("OffsetLocation receiver position")?;
+            let transformed = self
+                .registry
+                .spatial(source)?
+                .query_pose()?
+                .matrix
+                .transform(offset)
+                .context("OffsetLocation source matrix")?;
+            self.registry
+                .spatial
+                .as_mut()
+                .context("OffsetLocation: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .local
+                .position = std::array::from_fn(|axis| base[axis].wrapping_add(transformed[axis]));
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::SetRotation {
             anyhow::ensure!(arguments.len() == 3, "SetRotation requires 3 arguments");
             let angles = [
