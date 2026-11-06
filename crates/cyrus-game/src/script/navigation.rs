@@ -64,13 +64,60 @@ pub(super) fn limit_point_displacement(
     Ok(displacement)
 }
 
+/// Point-navigation command phase. Preservation SOUP.md documents each phase by its behaviour;
+/// these names describe that behaviour. Other values are retained.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct PointPhase(u8);
+
+impl PointPhase {
+    /// Route initialization: claim the nearest free node, or (direct points) start turning.
+    pub const START: Self = Self(0);
+    /// Face the held next node.
+    pub const FACE_NEXT_NODE: Self = Self(1);
+    /// Walk to the held next node.
+    pub const WALK_TO_NEXT_NODE: Self = Self(2);
+    /// Monitor the route from the current node toward the destination.
+    pub const MONITOR_ROUTE: Self = Self(8);
+    /// Idle pause counted down in the point-command word.
+    pub const IDLE_PAUSE: Self = Self(9);
+    /// Walk straight to the destination.
+    pub const DIRECT_WALK: Self = Self(11);
+    /// Cross a leap link.
+    pub const LEAP_LINK: Self = Self(12);
+    /// Admit the default animation and complete at the destination.
+    pub const DIRECT_ARRIVE: Self = Self(21);
+    /// Turn toward the destination before walking straight to it.
+    pub const DIRECT_TURN: Self = Self(22);
+    /// Step back after a blocked route.
+    pub const BACK_OFF: Self = Self(24);
+    /// Wait for the default animation after backing off.
+    pub const BACK_OFF_SETTLE: Self = Self(25);
+    /// Detour after another actor's contact: return to the previous next node.
+    pub const DETOUR: Self = Self(27);
+
+    pub const fn from_byte(code: u8) -> Self {
+        Self(code)
+    }
+
+    pub const fn byte(self) -> u8 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for PointPhase {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 /// Actor-owned point-command fields, separate from shared scratch and native task slots.
 /// Common initialization establishes the command word; fresh allocation clears the rest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointCommandState {
     pub value: u32,
     pub word: u16,
-    pub phase: u8,
+    pub phase: PointPhase,
     pub counter: u8,
 }
 impl Default for PointCommandState {
@@ -78,7 +125,7 @@ impl Default for PointCommandState {
         Self {
             value: 0,
             word: u16::MAX,
-            phase: 0,
+            phase: PointPhase::START,
             counter: 0,
         }
     }

@@ -22,7 +22,7 @@ pub struct NativeCommandState {
     pub pause_ticks: u32,
     pub point_value: u32,
     pub point_word: u16,
-    pub point_phase: u8,
+    pub point_phase: super::PointPhase,
     pub point_counter: u8,
 }
 /// Four native words retained by a task slot, excluding the shared elapsed/point value.
@@ -33,7 +33,7 @@ pub(super) struct NativeTaskCommandState {
     continuation_direction: u32,
     pause_ticks: u32,
     point_word: u16,
-    point_phase: u8,
+    point_phase: super::PointPhase,
     point_counter: u8,
 }
 impl NativeTaskCommandState {

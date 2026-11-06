@@ -14,6 +14,7 @@ use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
+use crate::script::PointPhase;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_script::{AnimationGroup, Attribute};
@@ -233,7 +234,7 @@ impl ScriptWorld {
             control(self, index).point_command = super::super::PointCommandState {
                 value: 0,
                 word: 0,
-                phase: 0,
+                phase: PointPhase::START,
                 counter: 0,
             };
             let candidate = super::super::navigation::wander_candidate(
@@ -324,7 +325,7 @@ impl ScriptWorld {
         if control
             .last_collide
             .contains(crate::script::CollisionFlags::MANAGED_COLLISION)
-            && self.globals.native_command.point_phase != 27
+            && self.globals.native_command.point_phase != PointPhase::DETOUR
             && control.overlap_contact_identifier != 1
         {
             let draw = random
@@ -339,7 +340,7 @@ impl ScriptWorld {
                     .expect("admitted point control")
                     .navigation;
                 navigation.next = navigation.previous_next;
-                self.globals.native_command.point_phase = 27;
+                self.globals.native_command.point_phase = PointPhase::DETOUR;
             } else if draw == 2 {
                 self.globals.native_command.pause_ticks = 0x24;
                 return Ok(1);
@@ -361,7 +362,7 @@ impl ScriptWorld {
             0
         };
         if shared.point_counter > 8 {
-            shared.point_phase = 24;
+            shared.point_phase = PointPhase::BACK_OFF;
         }
         anyhow::ensure!(
             !self.globals.walk_route.target_exclusion,
@@ -390,7 +391,11 @@ impl ScriptWorld {
             || control.queued_motion != JumpMotion::NONE
             || ledge_direction
         {
-            shared.point_phase = u8::from(control.navigation.next != -1);
+            shared.point_phase = if control.navigation.next != -1 {
+                PointPhase::FACE_NEXT_NODE
+            } else {
+                PointPhase::START
+            };
             let actor = &mut self.actors[index];
             actor.attributes[Attribute::Collide] = 13;
             actor
@@ -401,7 +406,7 @@ impl ScriptWorld {
             return Ok(1);
         }
         let phase = shared.point_phase;
-        if matches!(phase, 11 | 22)
+        if matches!(phase, PointPhase::DIRECT_WALK | PointPhase::DIRECT_TURN)
             || !self.point_destination_arrived(index, destination, tolerance, inputs)?
         {
             return self.move_point_held_node(id, destination, tolerance, inputs, random, sounds);
@@ -546,12 +551,12 @@ impl ScriptWorld {
             word.wrapping_sub(ticks as u16)
         };
         if command.point_word == 0 {
-            command.point_phase = 2;
+            command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
             return Ok(());
         }
         let (_, holding_weapon) = self.spacing_weapon(id, inputs)?;
         if holding_weapon {
-            self.globals.native_command.point_phase = 2;
+            self.globals.native_command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
             return Ok(());
         }
         let animation = self.actors[id.index]
@@ -602,7 +607,8 @@ impl ScriptWorld {
         let navigation = control.navigation;
         // Phase zero selects its own map during route initialization.
         anyhow::ensure!(
-            navigation.map.is_some() || self.globals.native_command.point_phase == 0,
+            navigation.map.is_some()
+                || self.globals.native_command.point_phase == PointPhase::START,
             "ordinary combat routed point navigation unsupported: map selection"
         );
         actor.attributes[Attribute::Collide] = 12;
@@ -628,31 +634,51 @@ impl ScriptWorld {
                     .actor_mut(index)?
                     .local
                     .position = stable;
-            } else if !matches!(self.globals.native_command.point_phase, 24 | 25) {
-                self.globals.native_command.point_phase = 24;
+            } else if !matches!(
+                self.globals.native_command.point_phase,
+                PointPhase::BACK_OFF | PointPhase::BACK_OFF_SETTLE
+            ) {
+                self.globals.native_command.point_phase = PointPhase::BACK_OFF;
             }
         } else if restart {
             self.release_held_walk_nodes(id)?;
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
         }
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 0 | 1 | 2 | 8 | 9 | 11 | 12 | 21 | 22 | 24 | 25 | 27),
+            matches!(
+                phase,
+                PointPhase::START
+                    | PointPhase::FACE_NEXT_NODE
+                    | PointPhase::WALK_TO_NEXT_NODE
+                    | PointPhase::MONITOR_ROUTE
+                    | PointPhase::IDLE_PAUSE
+                    | PointPhase::DIRECT_WALK
+                    | PointPhase::LEAP_LINK
+                    | PointPhase::DIRECT_ARRIVE
+                    | PointPhase::DIRECT_TURN
+                    | PointPhase::BACK_OFF
+                    | PointPhase::BACK_OFF_SETTLE
+                    | PointPhase::DETOUR
+            ),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
-        if phase == 0 {
+        if phase == PointPhase::START {
             self.initialize_point_route(id)?;
-        } else if phase == 8 {
+        } else if phase == PointPhase::MONITOR_ROUTE {
             if let Some(result) = self.advance_point_route(id, point, inputs)? {
                 return Ok(result);
             }
-        } else if matches!(phase, 11 | 21 | 22) {
+        } else if matches!(
+            phase,
+            PointPhase::DIRECT_WALK | PointPhase::DIRECT_ARRIVE | PointPhase::DIRECT_TURN
+        ) {
             if let Some(result) = self.advance_point_direct(id, point, tolerance, inputs, sounds)? {
                 return Ok(result);
             }
-        } else if phase == 9 {
+        } else if phase == PointPhase::IDLE_PAUSE {
             self.advance_point_delay(id, inputs, random, sounds)?;
-        } else if phase == 24 {
+        } else if phase == PointPhase::BACK_OFF {
             // The back-off after a blocked route: one step backward, then wait for the default
             // animation group.
             self.release_held_walk_nodes(id)?;
@@ -671,26 +697,26 @@ impl ScriptWorld {
                     .as_mut()
                     .context("point back-off requires synchronous sounds")?,
             )?;
-            self.globals.native_command.point_phase = 25;
-        } else if phase == 25 {
+            self.globals.native_command.point_phase = PointPhase::BACK_OFF_SETTLE;
+        } else if phase == PointPhase::BACK_OFF_SETTLE {
             let playback = &self.actors[index]
                 .animation
                 .as_ref()
                 .context("point back-off animation unavailable")?
                 .playback;
             if playback.current_group() == Some(playback.default_group()) {
-                self.globals.native_command.point_phase = 0;
+                self.globals.native_command.point_phase = PointPhase::START;
             }
         } else if navigation.next == -1 {
             self.release_held_walk_nodes(id)?;
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
         } else {
             let destination = self
                 .walk_nodes
                 .as_ref()
                 .context("walk-node navigation not prepared")?
                 .position(navigation.map.expect("admitted point map"), navigation.next)?;
-            if phase == 2 {
+            if phase == PointPhase::WALK_TO_NEXT_NODE {
                 let exited = self.actors[index]
                     .animation
                     .as_ref()
@@ -728,12 +754,12 @@ impl ScriptWorld {
                             navigation.next,
                             super::super::WalkNodeSlot::Current,
                         )?;
-                        self.globals.native_command.point_phase = 8;
+                        self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
                     } else {
-                        self.globals.native_command.point_phase = 0;
+                        self.globals.native_command.point_phase = PointPhase::START;
                     }
                 }
-            } else if phase == 12 {
+            } else if phase == PointPhase::LEAP_LINK {
                 // A flagged link is crossed by a leap: claim the node on arrival, otherwise turn
                 // to it and start the leap once facing.
                 if self.point_destination_arrived(index, destination, tolerance, inputs)? {
@@ -742,7 +768,7 @@ impl ScriptWorld {
                         navigation.next,
                         super::super::WalkNodeSlot::Current,
                     )?;
-                    self.globals.native_command.point_phase = 8;
+                    self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
                 } else {
                     let facing_inputs = self.point_facing_inputs(id, inputs)?;
                     let sounds = sounds
@@ -774,7 +800,7 @@ impl ScriptWorld {
                         navigation.next,
                         super::super::WalkNodeSlot::Current,
                     )?;
-                    self.globals.native_command.point_phase = 8;
+                    self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
                 } else {
                     let facing_inputs = self.point_facing_inputs(id, inputs)?;
                     let facing = self.face_held_node(
@@ -784,13 +810,13 @@ impl ScriptWorld {
                         sounds.context("point facing requires synchronous sounds")?,
                     )?;
                     if facing == 0 {
-                        self.globals.native_command.point_phase = 2;
+                        self.globals.native_command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
                         let delay = self.actors[index].attributes[Attribute::NodeIdle];
                         if delay != 0 {
                             let random = random
                                 .context("point facing requires shared engine random stream")?;
                             if random.rnd(i32::from(delay))? == 0 {
-                                self.globals.native_command.point_phase = 9;
+                                self.globals.native_command.point_phase = PointPhase::IDLE_PAUSE;
                                 self.globals.native_command.point_word =
                                     ((random.draw() & 127) + 16) as u16;
                             }
@@ -826,7 +852,7 @@ impl ScriptWorld {
         if let Some((_, node)) = found {
             // The claim result never changes the initialization result.
             self.assign_walk_node(id, node as i32, super::super::WalkNodeSlot::Next)?;
-            self.globals.native_command.point_phase = 1;
+            self.globals.native_command.point_phase = PointPhase::FACE_NEXT_NODE;
         }
         Ok(())
     }
@@ -883,7 +909,7 @@ impl ScriptWorld {
             .navigation;
         if navigation.current == -1 {
             self.release_held_walk_nodes(id)?;
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
             return Ok(None);
         }
         let Some(destination) = self.nearest_current_walk_node(id, point)? else {
@@ -893,9 +919,9 @@ impl ScriptWorld {
         if destination == navigation.current {
             self.release_held_walk_nodes(id)?;
             if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
-                self.globals.native_command.point_phase = 21;
+                self.globals.native_command.point_phase = PointPhase::DIRECT_ARRIVE;
             } else if self.point_visibility(id, point, inputs)? {
-                self.globals.native_command.point_phase = 22;
+                self.globals.native_command.point_phase = PointPhase::DIRECT_TURN;
             } else {
                 return self.complete_point(id, 4).map(Some);
             }
@@ -909,9 +935,9 @@ impl ScriptWorld {
             }
             self.globals.native_command.point_phase = if self.globals.walk_route.link_flags[0] == 0
             {
-                1
+                PointPhase::FACE_NEXT_NODE
             } else {
-                12
+                PointPhase::LEAP_LINK
             };
         }
         Ok(None)
@@ -926,16 +952,16 @@ impl ScriptWorld {
         mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<Option<i32>> {
         let phase = self.globals.native_command.point_phase;
-        if phase == 21 {
+        if phase == PointPhase::DIRECT_ARRIVE {
             self.admit_point_default(id, inputs, sounds)?;
             return self.complete_point(id, 0).map(Some);
         }
         self.release_held_walk_nodes(id)?;
         if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
-            self.globals.native_command.point_phase = 21;
+            self.globals.native_command.point_phase = PointPhase::DIRECT_ARRIVE;
             return Ok(None);
         }
-        if phase == 22 {
+        if phase == PointPhase::DIRECT_TURN {
             let facing = self.point_facing_inputs(id, inputs)?;
             if self.face_ordinary_point(
                 id,
@@ -944,12 +970,12 @@ impl ScriptWorld {
                 sounds.context("point facing requires synchronous sounds")?,
             )? == 0
             {
-                self.globals.native_command.point_phase = 11;
+                self.globals.native_command.point_phase = PointPhase::DIRECT_WALK;
             }
             return Ok(None);
         }
         if !self.point_visibility(id, point, inputs)? {
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
             return Ok(None);
         }
         self.actors[id.index].attributes[Attribute::Collide] = 13;
@@ -960,7 +986,7 @@ impl ScriptWorld {
             .sliding_state
             != 0
         {
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
         }
         if self.walk_ordinary_point(
             id,
@@ -993,7 +1019,7 @@ impl ScriptWorld {
             self.map_updates.push(id.index);
         }
         if !self.point_visibility(id, point, inputs)? {
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
         }
         Ok(None)
     }

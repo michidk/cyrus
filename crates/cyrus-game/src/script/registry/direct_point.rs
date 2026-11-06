@@ -10,6 +10,7 @@ use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::AiType;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::PointPhase;
 use anyhow::{Context, Result};
 use cyrus_script::Attribute;
 
@@ -187,13 +188,13 @@ impl ScriptWorld {
             )?;
         }
         if motion_pending || hanging {
-            self.globals.native_command.point_phase = 0;
+            self.globals.native_command.point_phase = PointPhase::START;
             self.actors[index].attributes[Attribute::Collide] = 13;
             self.mark_direct_point_active(index);
             return Ok(1);
         }
         let phase = self.globals.native_command.point_phase;
-        if !matches!(phase, 11 | 22)
+        if !matches!(phase, PointPhase::DIRECT_WALK | PointPhase::DIRECT_TURN)
             && self.point_destination_arrived(index, destination, tolerance, inputs)?
         {
             if self.updates.animation_system
@@ -219,8 +220,8 @@ impl ScriptWorld {
         }
         self.actors[index].attributes[Attribute::Collide] = 12;
         match phase {
-            0 => self.globals.native_command.point_phase = 22,
-            22 => {
+            PointPhase::START => self.globals.native_command.point_phase = PointPhase::DIRECT_TURN,
+            PointPhase::DIRECT_TURN => {
                 let facing = self.point_facing_inputs(id, inputs)?;
                 let turning = self.face_ordinary_point(
                     id,
@@ -231,10 +232,10 @@ impl ScriptWorld {
                         .context("direct point facing requires synchronous sounds")?,
                 )?;
                 if turning == 0 {
-                    self.globals.native_command.point_phase = 11;
+                    self.globals.native_command.point_phase = PointPhase::DIRECT_WALK;
                 }
             }
-            11 => {
+            PointPhase::DIRECT_WALK => {
                 self.actors[index].attributes[Attribute::Collide] = 13;
                 let sliding = self.actors[index]
                     .control
@@ -243,7 +244,7 @@ impl ScriptWorld {
                     .sliding_state
                     != 0;
                 if sliding {
-                    self.globals.native_command.point_phase = 0;
+                    self.globals.native_command.point_phase = PointPhase::START;
                 }
                 let walking = self.walk_ordinary_point(
                     id,
@@ -282,12 +283,12 @@ impl ScriptWorld {
                     self.map_updates.push(index);
                 }
             }
-            9 => self.advance_point_delay(id, inputs, random, sounds)?,
-            21 => {
+            PointPhase::IDLE_PAUSE => self.advance_point_delay(id, inputs, random, sounds)?,
+            PointPhase::DIRECT_ARRIVE => {
                 self.admit_point_default(id, inputs, sounds)?;
                 return self.complete_point(id, 0);
             }
-            _ => self.globals.native_command.point_phase = 0,
+            _ => self.globals.native_command.point_phase = PointPhase::START,
         }
         self.mark_direct_point_active(index);
         Ok(1)

@@ -154,7 +154,9 @@ pub use registry::{
     OrdinaryCombatBranch, OrdinaryCombatCoordinationInput, WalkRouteExclusion, WorldLoopOutcome,
 };
 mod navigation;
-pub use navigation::{ActorNavigation, PointCommandState, WalkNodeSlot, WalkRouteState};
+pub use navigation::{
+    ActorNavigation, PointCommandState, PointPhase, WalkNodeSlot, WalkRouteState,
+};
 mod order;
 mod playback;
 mod quick_keys;

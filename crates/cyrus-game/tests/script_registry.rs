@@ -8,6 +8,7 @@ use cyrus_game::script::CombatFlags;
 use cyrus_game::script::CombatMessageCode;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::LivingState;
+use cyrus_game::script::PointPhase;
 use cyrus_game::script::StepDirection;
 use cyrus_game::script::{ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -25837,15 +25838,15 @@ fn direct_point_steps_turn_then_walk_complete_on_arrival_and_restart_from_unknow
     let far_ahead = [255, -257, 100_000];
     let here = [255, -257, -1];
     // Phase zero starts a turn; phase 22 finishes it and starts walking.
-    assert_eq!(run(0, far_ahead, false), (1, 22, 7));
-    assert_eq!(run(22, far_ahead, false), (1, 11, 7));
+    assert_eq!(run(0, far_ahead, false), (1, PointPhase::DIRECT_TURN, 7));
+    assert_eq!(run(22, far_ahead, false), (1, PointPhase::DIRECT_WALK, 7));
     // Arrival completes from phases that test it, and phase 21 completes unconditionally.
     assert_eq!(run(0, here, false).0, 0);
     assert_eq!(run(9, here, false).0, 0);
-    assert_eq!(run(21, far_ahead, false), (0, 21, 0));
+    assert_eq!(run(21, far_ahead, false), (0, PointPhase::DIRECT_ARRIVE, 0));
     // Unknown phases restart from zero; falling or queued motion interrupts any phase.
-    assert_eq!(run(5, far_ahead, false), (1, 0, 7));
-    assert_eq!(run(11, far_ahead, true), (1, 0, 7));
+    assert_eq!(run(5, far_ahead, false), (1, PointPhase::START, 7));
+    assert_eq!(run(11, far_ahead, true), (1, PointPhase::START, 7));
 }
 
 #[test]
@@ -26663,7 +26664,7 @@ fn native_command_slots_restore_and_pass_shared_state_between_actors() {
         pause_ticks: u32::MAX,
         point_value: 7654321,
         point_word: 4321,
-        point_phase: 67,
+        point_phase: PointPhase::from_byte(67),
         point_counter: 89,
     };
     saved["actors"][0]["native_commands"][0] = serde_json::to_value(retained).unwrap();
@@ -26705,7 +26706,7 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
         pause_ticks: 456,
         point_value: 789,
         point_word: 12,
-        point_phase: 34,
+        point_phase: PointPhase::from_byte(34),
         point_counter: 56,
     };
     for encoding in 0..3 {
@@ -27040,7 +27041,7 @@ fn point_wrapper_fixture(
         pause_ticks: pause,
         point_value: 987654,
         point_word: 321,
-        point_phase: 99,
+        point_phase: PointPhase::from_byte(99),
         point_counter: 88,
     })
     .unwrap();
@@ -27075,7 +27076,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
         PointCommandState {
             value: 0,
             word: 65535,
-            phase: 0,
+            phase: PointPhase::START,
             counter: 0
         }
     );
@@ -27101,7 +27102,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
             pause_ticks: 4,
             point_value: 1001,
             point_word: 50001,
-            point_phase: 11,
+            point_phase: PointPhase::DIRECT_WALK,
             point_counter: 21,
         }
     );
@@ -27112,7 +27113,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
         PointCommandState {
             value: 1002,
             word: 50002,
-            phase: 12,
+            phase: PointPhase::LEAP_LINK,
             counter: 22
         }
     );
@@ -27130,7 +27131,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
             pause_ticks: 1,
             point_value: 1002,
             point_word: 50002,
-            point_phase: 12,
+            point_phase: PointPhase::LEAP_LINK,
             point_counter: 22,
         }
     );
@@ -27305,7 +27306,7 @@ fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.point_command.phase, control.point_command.counter),
-            (expected_phase, expected_counter)
+            (PointPhase::from_byte(expected_phase), expected_counter)
         );
         assert_eq!(
             (control.point_command.value, control.point_command.word),
@@ -27674,7 +27675,7 @@ fn point_node_arrival_advances_even_when_claim_is_rejected_and_registers_once() 
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.point_command.phase, control.ai_type.byte()),
-            (expected_phase, 7)
+            (PointPhase::from_byte(expected_phase), 7)
         );
         assert_eq!(
             (
@@ -27736,7 +27737,7 @@ fn point_phase_twelve_claims_the_node_on_arrival_like_a_walked_link() {
         )
         .unwrap();
     let control = world.actors()[0].control_state().unwrap();
-    assert_eq!(control.point_command.phase, 8);
+    assert_eq!(control.point_command.phase, PointPhase::MONITOR_ROUTE);
     assert_eq!(
         (control.navigation.current, control.navigation.next),
         (1, -1)
@@ -27891,11 +27892,11 @@ fn point_phase_zero_claims_the_nearest_free_node_or_stays_in_phase_zero_without_
         if hit {
             assert_eq!(control.navigation.map, Some(0));
             assert_eq!(control.navigation.next, 0);
-            assert_eq!(control.point_command.phase, 1);
+            assert_eq!(control.point_command.phase, PointPhase::FACE_NEXT_NODE);
         } else {
             assert_eq!(control.navigation.map, None);
             assert_eq!(control.navigation.next, -1);
-            assert_eq!(control.point_command.phase, 0);
+            assert_eq!(control.point_command.phase, PointPhase::START);
         }
     }
 }
@@ -27970,7 +27971,7 @@ fn point_node_facing_turns_then_selects_walk_or_shared_random_delay() {
                     control.point_command.word,
                     control.ai_type.byte()
                 ),
-                (expected_phase, expected_word, 7)
+                (PointPhase::from_byte(expected_phase), expected_word, 7)
             );
             assert_eq!(
                 (
@@ -28063,7 +28064,7 @@ fn point_node_facing_sound_failure_precedes_heading_phase_and_random_changes() {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (control.point_command.phase, control.point_command.word),
-        (27, 65535)
+        (PointPhase::DETOUR, 65535)
     );
     assert_eq!(
         (
@@ -28112,11 +28113,14 @@ fn point_node_facing_requires_the_shared_random_owner_only_after_alignment() {
         )
         .unwrap_err();
     assert!(format!("{error:#}").contains("point facing requires shared engine random stream"));
-    assert_eq!(world.globals().native_command().point_phase, 2);
+    assert_eq!(
+        world.globals().native_command().point_phase,
+        PointPhase::WALK_TO_NEXT_NODE
+    );
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (control.point_command.phase, control.point_command.word),
-        (1, 65535)
+        (PointPhase::FACE_NEXT_NODE, 65535)
     );
     assert_eq!(
         (
@@ -28230,7 +28234,7 @@ fn point_delay_countdown_preserves_signed_word_comparison_and_weapon_exit() {
                 c.point_command.phase,
                 c.ai_type.byte()
             ),
-            (expected_word, expected_phase, 7)
+            (expected_word, PointPhase::from_byte(expected_phase), 7)
         );
         assert_eq!(
             (
@@ -28314,7 +28318,7 @@ fn point_delay_idle_uses_shared_draws_rejects_three_and_dispatches_before_return
                 c.point_command.phase,
                 c.ai_type.byte()
             ),
-            (15, 9, 7)
+            (15, PointPhase::IDLE_PAUSE, 7)
         );
         assert_eq!(
             (
@@ -28398,7 +28402,7 @@ fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_sa
             c.point_command.phase,
             c.ai_type.byte()
         ),
-        (16, 9, 0)
+        (16, PointPhase::IDLE_PAUSE, 0)
     );
     assert_eq!(
         (
@@ -28474,7 +28478,7 @@ fn point_delay_snapshot_resumes_countdown_and_zero_exit_needs_no_optional_owners
             c.point_command.phase,
             c.ai_type.byte()
         ),
-        (0, 2, 7)
+        (0, PointPhase::WALK_TO_NEXT_NODE, 7)
     );
     assert_eq!(
         (
@@ -28531,7 +28535,7 @@ fn point_delay_missing_random_or_sound_owner_preserves_failure_order() {
                 c.point_command.phase,
                 c.ai_type.byte()
             ),
-            (16, 9, 0)
+            (16, PointPhase::IDLE_PAUSE, 0)
         );
         assert_eq!(
             (
@@ -28774,7 +28778,7 @@ fn point_walking_continues_then_claims_or_releases_nodes_with_one_registration()
                 control.point_command.word,
                 control.ai_type.byte()
             ),
-            (phase, 1234, 7)
+            (PointPhase::from_byte(phase), 1234, 7)
         );
         assert_eq!(
             (
@@ -28845,7 +28849,7 @@ fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_resu
                 .unwrap()
                 .point_command
                 .phase,
-            phase
+            PointPhase::from_byte(phase)
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().move_counter,
@@ -28936,7 +28940,7 @@ fn point_walking_failed_post_snap_arrival_retains_held_nodes_and_history() {
             control.navigation.next,
             control.navigation.previous_next
         ),
-        (0, 0, 1, 99)
+        (PointPhase::START, 0, 1, 99)
     );
     assert_eq!(world.spatial(id).unwrap().local.position, [256, 200, -1792]);
     let after = movement_snapshot(&world, &scripts, &data);
@@ -43841,7 +43845,10 @@ fn direct_point_hanging_nonselected_receiver_retains_pending_without_services() 
             (control.living_state.byte(), control.ai_type.byte()),
             (15, 7)
         );
-        assert_eq!(world.globals().native_command().point_phase, 0);
+        assert_eq!(
+            world.globals().native_command().point_phase,
+            PointPhase::START
+        );
         assert_eq!(
             world.actors()[id.index].attributes()[cyrus_script::Attribute::Collide],
             13
@@ -43896,7 +43903,10 @@ fn direct_point_selected_hang_release_uses_receiver_collision_and_preserves_soun
                 ),
                 (0, 6, 7)
             );
-            assert_eq!(world.globals().native_command().point_phase, 0);
+            assert_eq!(
+                world.globals().native_command().point_phase,
+                PointPhase::START
+            );
         }
         assert_eq!(sounds, 1);
         assert_eq!(world.spatial(player).unwrap().local.position, before);
@@ -43918,10 +43928,16 @@ fn direct_point_native_task_releases_hanging_player_then_resumes_turn_phase() {
         ),
         (0, 6, 7)
     );
-    assert_eq!(world.globals().native_command().point_phase, 0);
+    assert_eq!(
+        world.globals().native_command().point_phase,
+        PointPhase::START
+    );
     assert_eq!(world.spatial(player).unwrap().local.position, before);
     advance_selected_hang_stage(&mut world, &data, &scene, false, ScriptStage::Tasks).unwrap();
-    assert_eq!(world.globals().native_command().point_phase, 22);
+    assert_eq!(
+        world.globals().native_command().point_phase,
+        PointPhase::DIRECT_TURN
+    );
     assert_eq!(world.spatial(player).unwrap().local.position, before);
 }
 
@@ -44063,7 +44079,10 @@ fn node_point_ledge_update_precedes_pending_exit_and_preserves_sound_failure() {
                 ),
                 (0, 6, 7)
             );
-            assert_eq!(world.globals().native_command().point_phase, 0);
+            assert_eq!(
+                world.globals().native_command().point_phase,
+                PointPhase::START
+            );
         }
         assert_eq!(sounds, 1);
         assert_eq!(world.spatial(player).unwrap().local.position, before);
@@ -44096,7 +44115,10 @@ fn node_point_ledge_excluded_player_needs_no_ledge_services() {
         (control.living_state.byte(), control.ai_type.byte()),
         (17, 7)
     );
-    assert_eq!(world.globals().native_command().point_phase, 0);
+    assert_eq!(
+        world.globals().native_command().point_phase,
+        PointPhase::START
+    );
     assert_eq!(world.spatial(player).unwrap().local.position, before);
 }
 
@@ -44138,5 +44160,8 @@ fn node_point_ledge_native_task_runs_transition_before_retaining_its_slot() {
             .active_tasks(),
         1
     );
-    assert_eq!(world.globals().native_command().point_phase, 0);
+    assert_eq!(
+        world.globals().native_command().point_phase,
+        PointPhase::START
+    );
 }
