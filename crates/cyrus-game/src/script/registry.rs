@@ -6146,6 +6146,56 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.fix_slave_angle(id, axis, angle)?;
             return Ok(CallResult::Complete(0));
         }
+        if function == Native::AttachMe {
+            let [group] = arguments else {
+                anyhow::bail!("AttachMe requires one argument")
+            };
+            let group = group.integer()?;
+            let attributes = &self.registry.actors[self.index].attributes;
+            if group == 0
+                || group == i32::from(attributes[Attribute::Slave])
+                || group == i32::from(attributes[Attribute::Master])
+            {
+                return Ok(CallResult::Complete(0));
+            }
+            anyhow::ensure!(
+                attributes[Attribute::Master] == 0,
+                "AttachMe: master receiver {} requires separate ordinary and master family records",
+                self.index
+            );
+            let spatial = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("AttachMe: spatial state not prepared")?;
+            if attributes[Attribute::Slave] != 0
+                && spatial.actor_mut(self.index)?.detach_from_family()?
+            {
+                self.registry.actors[self.index].attributes[Attribute::Slave] = 0;
+                if !self.registry.map_updates.contains(&self.index) {
+                    self.registry.map_updates.push(self.index);
+                }
+            }
+            let mut targets =
+                self.registry
+                    .actors
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, actor)| {
+                        (i32::from(actor.attributes[Attribute::Master]) == group).then_some(index)
+                    });
+            if let Some(target) = targets.next() {
+                anyhow::ensure!(
+                    targets.next().is_none(),
+                    "AttachMe: group {group} has multiple masters; family traversal order unavailable"
+                );
+                let no_rotation =
+                    self.registry.actors[self.index].attributes[Attribute::NoSlaveRot] != 0;
+                spatial.attach_ordinary(self.index, target, no_rotation)?;
+                self.registry.actors[self.index].attributes[Attribute::Slave] = group as u8;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         // DetachMe: an unattached receiver is unchanged; an attached master only loses its slave
         // byte; an attached non-master leaves its family, keeps its effective pose as its local
         // pose, loses its slave byte and registers a map update. A receiver with no family record

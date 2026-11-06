@@ -4112,6 +4112,149 @@ fn detach_me_changes_less_for_unattached_and_master_receivers_and_reports_missin
     );
 }
 
+fn attach_me_world(group: i32, slave_group: u8, no_rotation: bool) -> anyhow::Result<ScriptWorld> {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts(
+        Native::AttachMe,
+        vec![Value::Integer { value: group }],
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = 1;
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.attributes[Attribute::Slave] = slave_group;
+    slave.attributes[Attribute::Master] = 0;
+    slave.attributes[Attribute::NoSlaveRot] = u8::from(no_rotation);
+    let mut master = slave.clone();
+    master.attributes[Attribute::Slave] = 0;
+    master.attributes[Attribute::Master] = 1;
+    master.header_index = 1;
+    master.instances = 1;
+    master.namespace = Some("master".into());
+    master.instance_variables = vec![vec![9]];
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.instances = 1;
+    slave.instance_variables.truncate(1);
+    scripts.instances[1].actor = "MASTER".into();
+    scripts.actors.insert("MASTER".into(), master);
+    scripts.instances[0].angles = [10, 20, 30];
+    scripts.instances[1].angles = [0, 512, 0];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    world.advance(
+        world.id(0).unwrap(),
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    Ok(world)
+}
+
+#[test]
+fn attach_me_converts_ordinary_local_pose_and_refreshes_in_parent_order() {
+    let mut world = attach_me_world(1, 0, false).unwrap();
+    let id = world.id(0).unwrap();
+    let actor = world.spatial(id).unwrap();
+    let original = actor.effective.unwrap();
+    let parent = world.spatial(world.id(1).unwrap()).unwrap().local;
+    assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 1);
+    assert_eq!(actor.parent, Some(1));
+    assert_eq!(actor.local.angles, [10, 1556, 30]);
+    assert_eq!(actor.angle_history, [10, 1556, 30]);
+    let delta: [i32; 3] =
+        std::array::from_fn(|axis| original.position[axis] - parent.position[axis]);
+    assert_eq!(actor.local.position, [-delta[2], delta[1], delta[0]]);
+    assert_eq!(actor.previous_local_position, original.position);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+    world.refresh_families().unwrap();
+    assert_eq!(
+        world.spatial(id).unwrap().effective.unwrap().position,
+        original.position
+    );
+    assert_eq!(
+        world.spatial(id).unwrap().effective.unwrap().angles,
+        [10, 20, 30]
+    );
+}
+
+#[test]
+fn attach_me_preserves_rotation_when_disabled_and_does_not_truncate_target() {
+    let world = attach_me_world(1, 0, true).unwrap();
+    let actor = world.spatial(world.id(0).unwrap()).unwrap();
+    let original = actor.effective.unwrap();
+    assert_eq!(actor.local.angles, original.angles);
+    assert_eq!(actor.angle_history, original.angles);
+    assert_eq!(actor.local.matrix, original.matrix);
+    for group in [0, 1, -1, 256, 257, i32::MAX] {
+        let world = attach_me_world(group, 1, false).unwrap();
+        let actor = world.spatial(world.id(0).unwrap()).unwrap();
+        if group == 0 || group == 1 {
+            assert_eq!(actor.parent, Some(1));
+            assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 1);
+        } else {
+            assert_eq!(
+                actor.parent, None,
+                "missing target must retain detach effects"
+            );
+            assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 0);
+            assert_eq!(actor.local.position, actor.effective.unwrap().position);
+            assert_eq!(actor.local.angles, actor.effective.unwrap().angles);
+        }
+    }
+    assert_eq!(run_native_calls(&[(Native::AttachMe, &[0])]).unwrap(), 0);
+    let error = run_native_calls(&[(Native::AttachMe, &[1])]).unwrap_err();
+    assert!(format!("{error:#}").contains("AttachMe: spatial state not prepared"));
+}
+
+#[test]
+fn attach_me_guard_uses_current_master_and_slave_without_spatial_state() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (group, succeeds) in [(0, true), (7, true), (9, true), (8, false)] {
+        let mut scripts = random_scripts(
+            Native::AttachMe,
+            vec![Value::Integer { value: group }],
+            Object::Me,
+        );
+        scripts.definition.functions[1].param_count = 1;
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.attributes[Attribute::Master] = 7;
+        actor.attributes[Attribute::Slave] = 9;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let result = world.advance(
+            world.id(0).unwrap(),
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        );
+        if succeeds {
+            result.unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+        } else {
+            let error = result.unwrap_err();
+            assert!(
+                format!("{error:#}")
+                    .contains("requires separate ordinary and master family records")
+            );
+        }
+        assert_eq!(world.actors()[0].attributes()[Attribute::Master], 7);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 9);
+    }
+}
+
 /// One call of `function` with integer `arguments` by actor 0, whose `location_offsets` and
 /// rotation mode are set, on a world with spatial state.
 fn spatial_setter_world(

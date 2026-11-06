@@ -4449,18 +4449,22 @@
     },
     {
       "native": "AttachMe",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named one-argument family-group attachment control",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed ordinary non-master family attachment with full signed target lookup and detach-before-missing-target semantics",
+      "caller": "ScriptWorld::advance -> GameHost::call -> SpatialWorld::attach_ordinary",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::attach_me_converts_ordinary_local_pose_and_refreshes_in_parent_order",
+        "crates/cyrus-game/tests/script_registry.rs::attach_me_preserves_rotation_when_disabled_and_does_not_truncate_target",
+        "crates/cyrus-game/tests/script_registry.rs::attach_me_guard_uses_current_master_and_slave_without_spatial_state"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/190",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6604997817"
       ],
-      "limits": "Verified: canonical function takes one argument and returns zero. Original handler guard witness has 37 cases/four controls; zero/current slave/current master targets leave receiver unchanged. Another 54 control-path contexts/five controls trace detach-before-full-integer-target-lookup, ordinary membership reuse/allocation requests, group assignment and local/effective pose updates. Absent target can retain detach effects. Allocation/zero/detach-refresh/matrix/rotation/vector services are controlled boundaries with request arguments checked, not original helper arithmetic or production execution. Allocation failure, nonhead predecessor, malformed/cyclic structures and live original/native/browser acceptance remain outside this evidence. Named Rust handler remains absent; existing item/rope/attribute composition services do not implement this public call. Missing means named implementation only. No dedicated public rejection assertion or named production receipt located. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
+      "limits": "Verified original control witnesses cover 37 guards and 54 paths with controlled matrix/allocation services. Routed Rust tests cover unique ordinary attachment, parent-first refresh, rotation suppression, full integer target matching and detach effects on missing target. Master receivers and duplicate target masters explicitly error because separate membership records and original traversal order are unavailable. No natural original/native/browser gameplay acceptance or allocation-failure parity.",
       "reviewed_revision": "ec5fe00ce7e97f4a6189e57e34c69e3ddc735484"
     },
     {

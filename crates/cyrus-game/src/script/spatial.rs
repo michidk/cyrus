@@ -379,6 +379,45 @@ impl SpatialWorld {
             .with_context(|| format!("actor {index}: spatial state unavailable"))
     }
 
+    /// Attach a non-master receiver to a uniquely selected master, following
+    /// preservation's AttachMe conversion. Keeps its world pose until the next
+    /// family refresh and visits the new parent before the receiver.
+    pub(super) fn attach_ordinary(
+        &mut self,
+        index: usize,
+        target: usize,
+        no_rotation: bool,
+    ) -> Result<()> {
+        let parent = self.actor(target)?.query_pose()?;
+        let state = self.actor_mut(index)?;
+        let original = state.local;
+        let position = parent
+            .matrix
+            .inverse_transform(std::array::from_fn(|axis| {
+                original.position[axis].wrapping_sub(parent.position[axis])
+            }))?;
+        state.effective = Some(original);
+        state.local.position = position;
+        state.no_slave_rotation = no_rotation;
+        if !no_rotation {
+            state.local.angles = std::array::from_fn(|axis| {
+                wrap(original.angles[axis].wrapping_sub(parent.angles[axis]))
+            });
+            state.angle_history = state.local.angles;
+            state.local.matrix = parent.matrix;
+            state.local.matrix.rotate(state.local.angles);
+        }
+        state.parent = Some(target);
+        self.order.retain(|&actor| actor != index);
+        let parent_order = self
+            .order
+            .iter()
+            .position(|&actor| actor == target)
+            .context("AttachMe: master absent from family update order")?;
+        self.order.insert(parent_order + 1, index);
+        Ok(())
+    }
+
     /// One family pass. Does not run scripts or refresh ordinary root matrices.
     pub fn refresh_families(&mut self) -> Result<()> {
         self.refreshes = self.refreshes.saturating_add(1);

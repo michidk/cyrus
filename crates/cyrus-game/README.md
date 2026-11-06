@@ -437,3 +437,15 @@ states retain ordinary directional helper dispatch, allowing forward animation
 requests to remain queued during a climb without ordinary translation, following
 preservation
 [controller dispatch](https://github.com/michidk/redguard-preservation/blob/b1111cac9dc49f63e505373ecb39bbbe64dc768e/docs/engine/player.md#ordinary-controller-dispatch).
+
+Verified: `AttachMe(group)` dispatches ordinary non-master receivers. Zero and the
+current slave/master identity return zero without spatial state. Other targets
+detach first, then compare the full signed argument against master bytes. A
+unique target converts the receiver into its frame, retaining the effective
+pose until the next family update. The current `NoSlaveRot` attribute controls
+angle and matrix conversion. Missing targets retain detach effects. This follows
+preservation's [AttachMe contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#attachme).
+Master receivers and duplicate target masters remain explicitly unsupported
+because separate ordinary/master memberships and original tree traversal order
+are not represented. Original-instruction witnesses cover control flow with
+controlled matrix services; natural native/browser gameplay is not established.
