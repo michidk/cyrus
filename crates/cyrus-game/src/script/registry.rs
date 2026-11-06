@@ -6533,9 +6533,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("SetObjectLocation: spatial state not prepared")?
                 .actor_mut(self.index)?
                 .set_location_axes(location.integer()?, flags)?;
-            if !self.registry.map_updates.contains(&self.index) {
-                self.registry.map_updates.push(self.index);
-            }
+            let capacity = self.map_update_capacity();
+            self.registry.register_map_update(self.index, capacity)?;
             return Ok(CallResult::Complete(0));
         }
         if function == Native::SetPosition || function == Native::SetLocation {
@@ -6573,9 +6572,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         camera.current.position[axis].wrapping_add(delta);
                 }
             }
-            if !self.registry.map_updates.contains(&self.index) {
-                self.registry.map_updates.push(self.index);
-            }
+            let capacity = self.map_update_capacity();
+            self.registry.register_map_update(self.index, capacity)?;
             return Ok(CallResult::Complete(0));
         }
         // PlayerSnap(angle, x_offset, z_offset): the selected player's local X and Z are copied

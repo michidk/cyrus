@@ -1332,6 +1332,75 @@ fn at_pos_needs_the_installed_capacity_only_once_the_list_could_be_full() {
     );
 }
 
+/// The location setters and the argument lists that name an in-table entry.
+fn location_setters() -> [(cyrus_script::Native, Vec<i32>); 3] {
+    [
+        (
+            cyrus_script::Native::SetPosition,
+            vec![5 << 8, 6 << 8, 7 << 8],
+        ),
+        (cyrus_script::Native::SetLocation, vec![0]),
+        (cyrus_script::Native::SetObjectLocation, vec![0, 1, 1, 1]),
+    ]
+}
+
+#[test]
+fn location_setters_register_the_receiver_once_in_the_changed_actor_list() {
+    for (native, arguments) in location_setters() {
+        // Each receiver runs the call twice, so the second call meets the existing entry.
+        let mut at = native_call_world(native, arguments, 3, 2, 0, Object::Me);
+        for index in 0..3 {
+            at.step(index, false).unwrap();
+        }
+        assert_eq!(at.world.pending_map_updates(), [0, 1, 2], "{native}");
+    }
+}
+
+#[test]
+fn location_setters_report_error_196_after_the_store_when_the_list_is_full() {
+    for (native, arguments) in location_setters() {
+        let mut at = native_call_world(native, arguments, 34, 2, 0, Object::Me);
+        let mut scene = cyrus_game::player::data::PlayerScene { ..scene() };
+        scene.settings.max_remap_objects = Some(32);
+        at.scene = scene;
+        for index in 0..32 {
+            at.step(index, true).unwrap();
+        }
+        assert_eq!(at.world.pending_map_updates().len(), 32, "{native}");
+        let before = at.position(32);
+        let error = format!("{:#}", at.step(32, true).unwrap_err());
+        assert!(
+            error.contains("original runtime error 196"),
+            "{native}: {error}"
+        );
+        // The coordinate stores precede the registration: SetPosition's point is in place, and
+        // the others store their (unchanged) location; the list holds the same 32 actors.
+        if native == cyrus_script::Native::SetPosition {
+            assert_eq!(at.position(32), [5 << 8, 6 << 8, 7 << 8]);
+            assert_ne!(at.position(32), before);
+        } else {
+            assert_eq!(at.position(32), before, "{native}");
+        }
+        assert_eq!(at.world.pending_map_updates().len(), 32, "{native}");
+        assert!(!at.world.pending_map_updates().contains(&32), "{native}");
+    }
+}
+
+#[test]
+fn location_setters_need_the_installed_capacity_only_once_the_list_could_be_full() {
+    for (native, arguments) in location_setters() {
+        let mut at = native_call_world(native, arguments, 34, 2, 0, Object::Me);
+        for index in 0..32 {
+            at.step(index, false).unwrap();
+        }
+        let error = format!("{:#}", at.step(32, false).unwrap_err());
+        assert!(
+            error.contains("installed capacity is unavailable"),
+            "{native}: {error}"
+        );
+    }
+}
+
 #[test]
 fn at_pos_routed_call_moves_the_named_receiver_and_continues_the_caller() {
     let origin = at_pos_world(2, [0; 3], 2, 0).position(0);
