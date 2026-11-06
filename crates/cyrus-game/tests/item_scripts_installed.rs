@@ -266,9 +266,18 @@ fn installed_flask_second_use_ends_the_throw_loop() {
     world
         .run_quick_keys(inputs, &mut random, &mut |_, _| Ok(()))
         .unwrap();
-    for _ in 0..80 {
+    for _ in 0..300 {
         tick(&mut world, &mut random);
     }
+    // The throw branch needs the script return byte to be one, which only combat message
+    // handling sets; nothing in the loop does, so no thrown object is ever created.
+    assert!(
+        world
+            .actors()
+            .iter()
+            .all(|actor| !matches!(actor.source, ScriptActorSource::Created(_))),
+        "the idle throw loop creates no object"
+    );
     assert_eq!(world.running_shells("iflask"), 1, "the first use loops");
     assert_eq!(world.flags()[THROWING_FLAG], 1, "the throw flag is set");
     world.globals_mut().end_item_use_attempt();
