@@ -3639,6 +3639,8 @@
       "scope": "Production named point-arrival snap through the shared ordinary arrival helper and the capacity-checked changed-actor list",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::arrive_ordinary_point_bounded",
       "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::the_world_loop_flush_reports_registrations_past_the_installed_capacity_as_error_196",
+        "crates/cyrus-game/tests/script_goto_location.rs::the_world_loop_flush_needs_the_installed_capacity_only_past_the_floor",
         "crates/cyrus-game/tests/script_goto_location.rs::at_pos_snaps_onto_a_point_strictly_inside_one_and_a_half_speed_steps",
         "crates/cyrus-game/tests/script_goto_location.rs::at_pos_measures_height_from_the_receivers_vertical_offset",
         "crates/cyrus-game/tests/script_goto_location.rs::at_pos_registers_the_receiver_once_and_a_full_list_is_error_196_after_the_position_store",
@@ -3651,7 +3653,7 @@
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6693416401",
         "https://github.com/michidk/redguard-preservation/commit/b69c175"
       ],
-      "limits": "Verified published contract plus the recovered changed-actor list facts. Public routed calls cover: strict threshold of movement speed times 384 shifted right eight bits (equality does not arrive), the low eight bits of each argument discarded in the stored position including Y, the receiver's positive Y extent added to its own height before the difference, a named receiver moved while the caller continues, registration once per actor, and error 196 for the first actor past the installed capacity after the position stores. The capacity is the effective max_remap_objects (at least 32) carried in the player scene settings; below 32 registered actors no capacity lookup is needed, and a larger list without it is an explicit error. Other natives still register without the capacity check. Absent old caches carry no capacity. A distance conversion overflow remains an explicit error rather than the original integer-indefinite value. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified published contract plus the recovered changed-actor list facts. Public routed calls cover: strict threshold of movement speed times 384 shifted right eight bits (equality does not arrive), the low eight bits of each argument discarded in the stored position including Y, the receiver's positive Y extent added to its own height before the difference, a named receiver moved while the caller continues, registration once per actor, and error 196 for the first actor past the installed capacity after the position stores. The capacity is the effective max_remap_objects (at least 32) carried in the player scene settings; below 32 registered actors no capacity lookup is needed, and a larger list without it is an explicit error. Registration sites that append without the check (task movers, late placement, GotoLocation and spacing arrival) have the same capacity enforced where the list is consumed each frame, reporting the overflow as error 196 after consuming the entries within the capacity. Absent old caches carry no capacity. A distance conversion overflow remains an explicit error rather than the original integer-indefinite value. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "aea12882f4cf724ba5e0da60429b5bd92190a179"
     },
     {

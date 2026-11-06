@@ -597,7 +597,9 @@ shifted right eight bits. Arrival stores the target with its low eight bits clea
 registers the receiver in the changed-actor list and returns one; otherwise nothing changes and the
 result is zero. A named receiver is moved while the caller continues. The list holds each actor
 once and its capacity is the installed `max_remap_objects` (at least 32); the first actor past it
-fails with the original's error 196 after its position store. The contract follows preservation's
+fails with the original's error 196 after its position store. Registration sites without that check
+(task movers, late placement, arrival helpers) overflow at the world-loop flush, which consumes the
+entries within the capacity and reports error 196 for the rest. The contract follows preservation's
 [AtPos position arrival](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#atpos-position-arrival)
 and [changed-actor list](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#changed-actor-list).
 Natural installed gameplay parity remains Unknown.

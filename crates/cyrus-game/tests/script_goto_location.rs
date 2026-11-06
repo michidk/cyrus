@@ -1090,6 +1090,21 @@ fn native_call_world(
     extent_y: i32,
     receiver: Object,
 ) -> AtPosWorld {
+    capacity_world(
+        native, arguments, instances, speed, extent_y, receiver, None,
+    )
+}
+
+/// `native_call_world` whose scene carries the installed changed-actor list capacity.
+fn capacity_world(
+    native: cyrus_script::Native,
+    arguments: Vec<i32>,
+    instances: usize,
+    speed: u8,
+    extent_y: i32,
+    receiver: Object,
+    capacity: Option<i32>,
+) -> AtPosWorld {
     use cyrus_script::AnimationGroup;
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
@@ -1173,7 +1188,8 @@ fn native_call_world(
         models: Default::default(),
         unsupported: Default::default(),
     };
-    let scene = scene();
+    let mut scene = scene();
+    scene.settings.max_remap_objects = capacity;
     for index in 0..instances {
         let id = world.id(index).unwrap();
         world
@@ -1484,4 +1500,60 @@ fn move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving
     assert!(error.contains("original diagnostic 137"), "{error}");
     assert_eq!(at.position(0), receiver_before);
     assert!(at.world.pending_map_updates().is_empty());
+}
+
+#[test]
+fn the_world_loop_flush_reports_registrations_past_the_installed_capacity_as_error_196() {
+    let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
+    // Thirty-four actors register through the unchecked arrival helper; the installed capacity is 32.
+    let mut at = capacity_world(
+        cyrus_script::Native::AtPos,
+        origin.to_vec(),
+        34,
+        200,
+        0,
+        Object::Me,
+        Some(32),
+    );
+    for index in 0..34 {
+        let id = at.world.id(index).unwrap();
+        assert!(at.world.arrive_ordinary_point(id, origin).unwrap());
+    }
+    assert_eq!(at.world.pending_map_updates().len(), 34);
+    let error = format!(
+        "{:#}",
+        at.world.flush_map_updates([0; 3], true).unwrap_err()
+    );
+    assert!(error.contains("original runtime error 196"), "{error}");
+    // The first 32 registrations were consumed and the overflow dropped.
+    assert!(at.world.pending_map_updates().is_empty());
+    // Within the capacity nothing is reported.
+    for index in 0..32 {
+        let id = at.world.id(index).unwrap();
+        at.world.arrive_ordinary_point(id, origin).unwrap();
+    }
+    at.world.flush_map_updates([0; 3], true).unwrap();
+}
+
+#[test]
+fn the_world_loop_flush_needs_the_installed_capacity_only_past_the_floor() {
+    let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
+    let mut at = at_pos_world(34, origin, 200, 0);
+    for index in 0..32 {
+        let id = at.world.id(index).unwrap();
+        at.world.arrive_ordinary_point(id, origin).unwrap();
+    }
+    at.world.flush_map_updates([0; 3], true).unwrap();
+    for index in 0..33 {
+        let id = at.world.id(index).unwrap();
+        at.world.arrive_ordinary_point(id, origin).unwrap();
+    }
+    let error = format!(
+        "{:#}",
+        at.world.flush_map_updates([0; 3], true).unwrap_err()
+    );
+    assert!(
+        error.contains("installed capacity is unavailable"),
+        "{error}"
+    );
 }

@@ -116,7 +116,7 @@ pub struct OrdinarySlopeInputs {
 }
 
 /// The original's lower bound for the changed-actor list capacity (`max_remap_objects`).
-const MAP_UPDATE_CAPACITY_FLOOR: usize = 32;
+pub(super) const MAP_UPDATE_CAPACITY_FLOOR: usize = 32;
 
 /// How a registration checks the changed-actor list's capacity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

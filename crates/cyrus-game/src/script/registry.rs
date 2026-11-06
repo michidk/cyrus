@@ -704,6 +704,9 @@ pub struct ScriptWorld {
     camera_settings: cyrus_assets::script::CameraSettings,
     /// Installed `[system]` `standing_height`, learned when collision shapes are prepared.
     standing_height: Option<i32>,
+    /// Installed `[system]` `max_remap_objects`, the changed-actor list capacity, learned from the
+    /// scene when collision shapes are prepared; not saved, and unknown until then.
+    map_update_capacity: Option<usize>,
     /// The image the running `ViewGXA` task has the host draw over the world frame.
     gxa_overlay: Option<super::tasks::GxaOverlay>,
     /// `AnimateGXA`'s shared animation progress. Not saved: a restored world restarts the cycle.
@@ -1550,6 +1553,7 @@ impl ScriptWorld {
             camera_limits: scripts.camera.limits,
             camera_settings: scripts.camera.clone(),
             standing_height: None,
+            map_update_capacity: None,
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,
@@ -2037,7 +2041,44 @@ impl ScriptWorld {
     /// Consume movement registrations before regional selection, in first-registration order.
     /// View coordinates use Q8 units. The caller supplies the original VM map-exclusion state.
     /// Excluded passes consume registrations without changing cell membership.
+    ///
+    /// The original's list holds the installed `max_remap_objects` actors (at least 32) and raises
+    /// runtime error 196 when another distinct actor registers. Registration sites that append
+    /// without the capacity check surface the overflow here: the actors past the capacity are not
+    /// kept, the rest are consumed, and the error is reported after the consumption.
     pub fn flush_map_updates(&mut self, view: [i32; 3], excluded: bool) -> Result<()> {
+        let overflow = self.cap_map_updates()?;
+        self.consume_map_updates(view, excluded)?;
+        match overflow {
+            Some(limit) => anyhow::bail!(
+                "world {}: changed-actor list is full ({limit} actors): original runtime error 196",
+                self.world
+            ),
+            None => Ok(()),
+        }
+    }
+
+    /// Drop registrations beyond the installed capacity, returning it when any were dropped. A list
+    /// longer than the capacity floor without a known capacity cannot be judged.
+    fn cap_map_updates(&mut self) -> Result<Option<usize>> {
+        if self.map_updates.len() <= slope::MAP_UPDATE_CAPACITY_FLOOR {
+            return Ok(None);
+        }
+        let limit = self.map_update_capacity.with_context(|| {
+            format!(
+                "world {}: changed-actor list holds {} actors and its installed capacity is unavailable; re-export",
+                self.world,
+                self.map_updates.len()
+            )
+        })?;
+        if self.map_updates.len() <= limit {
+            return Ok(None);
+        }
+        self.map_updates.truncate(limit);
+        Ok(Some(limit))
+    }
+
+    fn consume_map_updates(&mut self, view: [i32; 3], excluded: bool) -> Result<()> {
         if self.map_updates.is_empty() {
             return Ok(());
         }
@@ -3668,7 +3709,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             self.inputs
                 .player_collision
                 .and_then(|source| source.scene.settings.max_remap_objects)
-                .and_then(|capacity| usize::try_from(capacity).ok()),
+                .and_then(|capacity| usize::try_from(capacity).ok())
+                .or(self.registry.map_update_capacity),
         )
     }
 
@@ -9156,6 +9198,7 @@ mod fighting_tests {
             camera_limits: Default::default(),
             camera_settings: Default::default(),
             standing_height: None,
+            map_update_capacity: None,
             gxa_overlay: None,
             pending_player_placement: None,
             effects: None,

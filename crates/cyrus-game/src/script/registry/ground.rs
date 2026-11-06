@@ -77,6 +77,10 @@ impl ScriptWorld {
             "world {} ordinary collision scene identity mismatch",
             self.world
         );
+        self.map_update_capacity = scene
+            .settings
+            .max_remap_objects
+            .and_then(|capacity| usize::try_from(capacity).ok());
         let index = self.resolve(id)?;
         ensure!(
             self.actors[index].collision.is_none(),
