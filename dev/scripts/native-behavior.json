@@ -3826,15 +3826,19 @@
       "tests": [
         "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it",
         "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_without_the_standing_height_names_the_missing_input",
-        "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving"
+        "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving",
+        "crates/cyrus-game/tests/script_registry/move_above_me.rs::move_above_me_places_the_selected_player_when_the_world_loop_consumes_the_request",
+        "crates/cyrus-game/tests/script_registry/move_above_me.rs::move_above_me_selected_player_errors_leave_the_player_in_place",
+        "crates/cyrus-game/tests/script_registry/move_above_me.rs::move_above_me_without_a_player_shape_names_the_missing_input"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/254",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6694022620",
-        "https://github.com/michidk/redguard-preservation/commit/70a06cd"
+        "https://github.com/michidk/redguard-preservation/commit/70a06cd",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6694229315"
       ],
-      "limits": "Verified published contract plus the recovered globals: the source is the actor whose script runs (the caller of a routed call), the vertical adjustment is the installed standing height shifted left eight bits, and a slave source is the original diagnostic 137. Public routed tests cover a named receiver placed at the source position plus the offset (identity matrix) lowered by its positive Y extent and raised by the standing height, the angle masked into its yaw, registration in the changed-actor list, the source left in place, the missing standing height as an explicit error and the slave source rejected before any change. The selected-player branch stores the pending placement the existing main-loop consumer applies, but has no public test because no fixture prepares a player collision shape. A rotated source matrix is not exercised through the public call. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified published contract plus the recovered globals: the source is the actor whose script runs (the caller of a routed call), the vertical adjustment is the installed standing height shifted left eight bits, and a slave source is the original diagnostic 137. Public routed tests cover a named receiver placed at the source position plus the offset lowered by its positive Y extent and raised by the standing height, the angle masked into its yaw, registration in the changed-actor list, the source left in place, the missing standing height and the slave source as errors before any change. For the selected player, with a prepared animated collision shape: the call raises the pending placement without moving the player or registering it, the production world loop (finish_world_loop) applies it once at the source position plus the offset turned by the source matrix (three source orientations), lowered by the player extent and raised by the standing height, with the masked yaw; errors (missing standing height, slave source, missing player shape) leave the player in place and the failed receiver is refused by the loop. The Bevy world-loop system that calls finish_world_loop was not run end to end. Natural authored gameplay parity and the camera cut after placement remain Unknown.",
       "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {

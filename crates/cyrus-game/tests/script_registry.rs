@@ -48324,3 +48324,6 @@ mod player_force_talk_tests;
 
 #[path = "script_registry/turn_selected_player.rs"]
 mod turn_selected_player_tests;
+
+#[path = "script_registry/move_above_me.rs"]
+mod move_above_me_tests;
