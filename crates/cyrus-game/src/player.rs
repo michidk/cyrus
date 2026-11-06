@@ -32,7 +32,7 @@ impl Plugin for PlayerPlugin {
             .init_resource::<input::PlayerInput>()
             .init_resource::<input::JoystickState>()
             .init_resource::<input::DialogueSkip>()
-            .init_resource::<input::MouseLook>()
+            .init_resource::<input::ModernLook>()
             .init_resource::<input::InputSuppressed>()
             .init_resource::<placement::MarkerEntry>()
             .init_resource::<runtime::PlayerRuntime>()

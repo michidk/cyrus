@@ -87,6 +87,56 @@ fn mouse_bindings_read_the_release_edge_not_the_held_button() {
 }
 
 #[test]
+fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
+    use cyrus_game::player::input::ModernLook;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(100),
+        ))
+        .insert_resource(
+            PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29])
+                .unwrap()
+                .with_joystick([138, 139, 136, 137, 135, 133, 134, 132], 60)
+                .unwrap(),
+        )
+        .add_plugins(PlayerPlugin);
+    {
+        let mut fidelity = app.world_mut().resource_mut::<Fidelity>();
+        fidelity.player_controller = Mode::Modern;
+        fidelity.camera = Mode::Modern;
+    }
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    let mut pad = Gamepad::default();
+    pad.analog_mut().set(GamepadAxis::LeftStickX, 0.9);
+    pad.analog_mut().set(GamepadAxis::RightStickX, 1.0);
+    let pad = app.world_mut().spawn(pad).id();
+    app.update();
+    app.update();
+    let look = app.world().resource::<ModernLook>();
+    assert_eq!(look.stick, Some(Vec2::new(0.9, 0.0)));
+    // A right-stick turn to the right lowers the heading.
+    assert!(look.turn < 0.0, "{look:?}");
+    let mut stick = app.world_mut().get_mut::<Gamepad>(pad).unwrap();
+    stick.analog_mut().set(GamepadAxis::LeftStickX, 0.01);
+    app.update();
+    assert_eq!(app.world().resource::<ModernLook>().stick, None);
+    app.world_mut()
+        .get_mut::<Gamepad>(pad)
+        .unwrap()
+        .analog_mut()
+        .set(GamepadAxis::LeftStickX, 0.9);
+    app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Faithful;
+    app.update();
+    assert_eq!(app.world().resource::<ModernLook>().stick, None);
+}
+
+#[test]
 fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
@@ -189,7 +239,7 @@ fn modern_controls_steer_toward_the_camera_relative_heading() {
         ..default()
     };
     // Right of a view at heading 100 is a quarter turn lower; the player moves forward into it.
-    let (held, steer) = right.camera_relative(100);
+    let (held, steer) = right.camera_relative(100, None);
     assert_eq!(steer, Some(1636));
     assert!(held.forward && !held.right && held.walk);
     let back_left = PlayerInput {
@@ -197,9 +247,21 @@ fn modern_controls_steer_toward_the_camera_relative_heading() {
         left: true,
         ..default()
     };
-    assert_eq!(back_left.camera_relative(0).1, Some(768));
-    let (idle, steer) = PlayerInput::default().camera_relative(100);
+    assert_eq!(back_left.camera_relative(0, None).1, Some(768));
+    let (idle, steer) = PlayerInput::default().camera_relative(100, None);
     assert_eq!((idle, steer), (PlayerInput::default(), None));
+    // A stick takes the place of the keys: half right and forward is an eighth turn below the
+    // view, and a partial tilt walks while a full tilt runs.
+    let modern = PlayerInput {
+        walk: true,
+        ..default()
+    };
+    let (held, steer) = modern.camera_relative(100, Some(Vec2::new(0.35, 0.35)));
+    assert_eq!(steer, Some(2048 + 100 - 256));
+    assert!(held.forward && held.walk);
+    let (held, steer) = modern.camera_relative(0, Some(Vec2::new(-1.0, 0.0)));
+    assert_eq!(steer, Some(512));
+    assert!(held.forward && !held.walk);
 
     let mut turn = GroundTurn::default();
     let mut steered = |heading, target, frame_scale| {

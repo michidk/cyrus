@@ -879,7 +879,7 @@ pub struct OrdinaryContext<'w, 's> {
     hud: Option<Res<'w, super::super::ScriptHud>>,
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
-    look: Option<ResMut<'w, crate::player::input::MouseLook>>,
+    look: Option<ResMut<'w, crate::player::input::ModernLook>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
@@ -1491,14 +1491,16 @@ pub fn run_ordinary(
         .map(|fidelity| (fidelity.player_controller, fidelity.camera));
     let follow_turn = match modes {
         Some((_, Mode::Modern)) => Some(look.as_deref_mut().map_or(0, |look| {
-            let turn = look.0.trunc();
-            look.0 -= turn;
+            let turn = look.turn.trunc();
+            look.turn -= turn;
             turn as i32
         })),
         _ => None,
     };
     world.turn_follow_camera(follow_turn);
-    // Modern movement reads the held directions relative to the drawn camera's heading.
+    // Modern movement reads the held directions or the left stick relative to the drawn
+    // camera's heading.
+    let stick = look.as_deref().and_then(|look| look.stick);
     let modern = match (modes, input.as_deref()) {
         (Some((Mode::Modern, _)), Some(held)) => Some(
             held.camera_relative(
@@ -1514,6 +1516,7 @@ pub fn run_ordinary(
                             .and_then(|query| query.player.map(|player| player.heading))
                     })
                     .unwrap_or_default(),
+                stick,
             ),
         ),
         _ => None,

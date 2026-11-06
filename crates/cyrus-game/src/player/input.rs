@@ -28,22 +28,31 @@ pub const MODERN_MOVEMENT: [KeyCode; 4] =
     [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
 
 impl PlayerInput {
-    /// Modern camera-relative movement: the held directions, read relative to `view_heading`,
-    /// become forward plus the heading to steer toward. Walk stays the Modern walking request,
-    /// so the controller must see a cleared walk-mode toggle.
-    pub fn camera_relative(&self, view_heading: u16) -> (PlayerInput, Option<u16>) {
+    /// Modern camera-relative movement: the held directions, or a tilted `stick` (x right,
+    /// y forward, beyond the dead zone), read relative to `view_heading`, become forward plus
+    /// the heading to steer toward. Walk stays the Modern walking request, which a stick tilted
+    /// less than [`RUN_TILT`] also makes, so the controller must see a cleared walk-mode toggle.
+    pub fn camera_relative(
+        &self,
+        view_heading: u16,
+        stick: Option<Vec2>,
+    ) -> (PlayerInput, Option<u16>) {
         let across = i16::from(self.right) - i16::from(self.left);
         let along = i16::from(self.forward) - i16::from(self.backward);
         // Turning right lowers an engine heading, so right of the view is a quarter turn below it.
-        let offset = match (across, along) {
-            (0, 0) => None,
-            (0, 1) => Some(0),
-            (-1, 1) => Some(256),
-            (-1, 0) => Some(512),
-            (-1, -1) => Some(768),
-            (0, -1) => Some(1024),
-            (1, -1) => Some(1280),
-            (1, 0) => Some(1536),
+        let offset = match (stick, across, along) {
+            // Wrapping into u16 keeps the heading modulo a turn.
+            (Some(stick), ..) => {
+                Some((f32::atan2(-stick.x, stick.y) * HEADING_PER_RADIAN).round() as i32 as u16)
+            }
+            (None, 0, 0) => None,
+            (None, 0, 1) => Some(0),
+            (None, -1, 1) => Some(256),
+            (None, -1, 0) => Some(512),
+            (None, -1, -1) => Some(768),
+            (None, 0, -1) => Some(1024),
+            (None, 1, -1) => Some(1280),
+            (None, 1, 0) => Some(1536),
             _ => Some(1792),
         };
         let steer =
@@ -57,20 +66,30 @@ impl PlayerInput {
                 action: self.action,
                 jump: self.jump,
                 look: self.look,
-                walk: self.walk,
+                walk: self.walk && stick.is_none_or(|stick| stick.length() < RUN_TILT),
             },
             steer,
         )
     }
 }
 
-/// Modern mouse camera: horizontal mouse travel the follow camera has not yet taken, in
-/// 1/2048 turns, positive to the left as engine headings turn.
+/// Modern analog input not yet taken by an ordinary update.
 #[derive(Resource, Default, Debug)]
-pub struct MouseLook(pub f32);
+pub struct ModernLook {
+    /// Camera turn from mouse travel and the right stick, in 1/2048 turns, positive to the left
+    /// as engine headings turn.
+    pub turn: f32,
+    /// The left stick beyond the dead zone (x right, y forward), for Modern movement.
+    pub stick: Option<Vec2>,
+}
 
+const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
 /// Heading units per pixel of mouse travel: the inspection flycam's 0.0025 radians.
-const MOUSE_TURN: f32 = 0.0025 * 2048.0 / std::f32::consts::TAU;
+const MOUSE_TURN: f32 = 0.0025 * HEADING_PER_RADIAN;
+/// Heading units per second of a fully tilted right stick: half a turn.
+const STICK_TURN: f32 = 1024.0;
+/// Left-stick tilt from which Modern movement runs.
+pub const RUN_TILT: f32 = 0.75;
 
 /// Retained gameplay toggles, initialized from installed HUD data or saved preferences.
 /// The HUD projects these values; world replacement must not reset them.
@@ -625,9 +644,11 @@ pub(super) fn sample(
     fidelity: Res<Fidelity>,
     motion: Option<Res<bevy::input::mouse::AccumulatedMouseMotion>>,
     state: Option<Res<State<crate::AppState>>>,
+    gamepads: Query<&Gamepad>,
+    time: Option<Res<Time>>,
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
-    mut look: ResMut<MouseLook>,
+    mut look: ResMut<ModernLook>,
 ) {
     if suppressed.0
         || pending_world.is_some()
@@ -636,22 +657,40 @@ pub(super) fn sample(
     {
         *input = PlayerInput::default();
         dialogue_skip.0 = false;
-        look.0 = 0.0;
+        *look = ModernLook::default();
         return;
     }
+    // The installed dead zone; an install without a joystick reads no stick, as Faithful does.
+    let tilted = |stick: Vec2| {
+        inputs
+            .bindings()
+            .stick_threshold()
+            .is_some_and(|threshold| stick.length() > threshold)
+            .then_some(stick)
+    };
     // Mouse travel over a menu does not turn the camera on return.
     if fidelity.camera == Mode::Modern
         && state.is_some_and(|state| *state.get() == crate::AppState::InGame)
-        && let Some(motion) = motion
     {
-        look.0 -= motion.delta.x * MOUSE_TURN;
+        if let Some(motion) = motion {
+            look.turn -= motion.delta.x * MOUSE_TURN;
+        }
+        let seconds = time.map_or(0.0, |time| time.delta_secs());
+        for pad in &gamepads {
+            if let Some(stick) = tilted(pad.right_stick()) {
+                look.turn -= stick.x * STICK_TURN * seconds;
+            }
+        }
     }
+    look.stick = (fidelity.player_controller == Mode::Modern)
+        .then(|| gamepads.iter().find_map(|pad| tilted(pad.left_stick())))
+        .flatten();
     *input = inputs.bindings().sample_devices(inputs.devices());
     dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
         [input.forward, input.backward, input.left, input.right] =
             MODERN_MOVEMENT.map(|key| keys.pressed(key));
-        input.jump = keys.pressed(KeyCode::Space);
+        input.jump |= keys.pressed(KeyCode::Space);
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     }
 }
