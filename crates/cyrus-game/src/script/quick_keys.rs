@@ -45,6 +45,37 @@ impl ScriptKeys {
             return None;
         }
         let letter = key.to_ascii_lowercase() - b'a';
+        if !self.modifiers_held(code) {
+            return Some(false);
+        }
+        Some(self.letters >> letter & 1 != 0 || self.latest_matches(key))
+    }
+
+    /// `PressKey`: `InKey`'s query, except that a success consumes the key's held state. The key
+    /// then reads as not held until it is released and pressed again, while a matching latest
+    /// event keeps answering one, since the original clears only the state word. `consumed` holds
+    /// one bit per letter whose state word `PressKey` cleared; a release clears the word anyway, so
+    /// consumption ends when the key is no longer held. A failed modifier check consumes nothing.
+    /// `None` for a character without a recovered scan code.
+    pub fn press_key(&self, code: u32, consumed: &mut u32) -> Option<bool> {
+        let key = (code & 0xff) as u8;
+        if !key.is_ascii_alphabetic() {
+            return None;
+        }
+        let bit = 1 << (key.to_ascii_lowercase() - b'a');
+        *consumed &= self.letters;
+        if !self.modifiers_held(code) {
+            return Some(false);
+        }
+        if (self.letters & !*consumed) & bit != 0 || self.latest_matches(key) {
+            *consumed |= bit;
+            return Some(true);
+        }
+        Some(false)
+    }
+
+    /// Every modifier the three higher code bytes name (`s`, `c`, `a`, either case) is held.
+    fn modifiers_held(&self, code: u32) -> bool {
         let (mut shift, mut control, mut alt) = (false, false, false);
         for byte in [code >> 8, code >> 16, code >> 24] {
             match (byte as u8).to_ascii_lowercase() {
@@ -54,14 +85,12 @@ impl ScriptKeys {
                 _ => {}
             }
         }
-        if (control && !self.control) || (shift && !self.shift) || (alt && !self.alt) {
-            return Some(false);
-        }
-        Some(
-            self.letters >> letter & 1 != 0
-                || self.latest_letter.map(|key| key.to_ascii_lowercase())
-                    == Some(key.to_ascii_lowercase()),
-        )
+        !((control && !self.control) || (shift && !self.shift) || (alt && !self.alt))
+    }
+
+    fn latest_matches(&self, key: u8) -> bool {
+        self.latest_letter.map(|latest| latest.to_ascii_lowercase())
+            == Some(key.to_ascii_lowercase())
     }
 }
 

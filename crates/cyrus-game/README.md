@@ -90,6 +90,13 @@ sample without consuming it. Repeated calls remain true while Space is held,
 and release clears the result. The common input sampler owns suspension. This
 follows preservation's [Space query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#spacepressed).
 
+Verified: `PressKey` applies `InKey`'s letter and modifier rules and consumes the key it
+reports: a held key answers once and then reads as not held until it is released and pressed
+again, while a matching latest event keeps answering and a failed modifier check consumes
+nothing. The consumed letters are input state on the script registry, not saved gameplay
+state. Unknown: whether the original sets the key state again on keyboard repeat. This follows
+preservation's [PressKey contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#presskey).
+
 Verified: `IsLightingTorch`, `IsUnlightingTorch` and `IsLightingOrUnlighting`
 query the supplied receiver after inventory, control and shell gates. Action state
 precedes animation-group fallback, and the combined query tests lighting first.

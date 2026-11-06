@@ -660,6 +660,9 @@ pub struct ScriptWorld {
     in_combat_threshold: Option<i32>,
     lineup_distance: Option<i32>,
     view_distance: Option<i32>,
+    /// Letters whose key state word `PressKey` cleared and that have not been released since.
+    /// Input state, not saved gameplay state.
+    consumed_letters: u32,
     texture_frames: flat::TextureFrames,
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
@@ -1363,6 +1366,7 @@ impl ScriptWorld {
             in_combat_threshold: scripts.in_combat_threshold,
             lineup_distance: scripts.lineup_distance,
             view_distance: scripts.view_distance,
+            consumed_letters: 0,
             texture_frames: scripts.texture_frames.clone(),
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
@@ -5797,6 +5801,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("SpacePressed keyboard sample unavailable")?;
             return Ok(CallResult::Complete(i32::from(keys.space)));
         }
+        // PressKey(code): InKey's key and modifier rules, but a success consumes the key's held
+        // state until the key is released (a matching latest event still answers one).
+        if kind == CallKind::Function && function == Native::PressKey {
+            let [code] = arguments else {
+                anyhow::bail!("PressKey requires one argument")
+            };
+            let code = code.integer()? as u32;
+            let keys = self
+                .inputs
+                .script_keys
+                .context("PressKey keyboard sample unavailable")?;
+            let pressed = keys
+                .press_key(code, &mut self.registry.consumed_letters)
+                .with_context(|| {
+                    format!("PressKey code {code:#x}: key without a recovered scan code")
+                })?;
+            return Ok(CallResult::Complete(i32::from(pressed)));
+        }
         // InKey(code): whether the key of the code's low byte is down, with the modifiers the
         // higher bytes name. Only the debug shell and a few bridge and door scripts call it.
         if kind == CallKind::Function && function == Native::InKey {
@@ -8296,6 +8318,7 @@ mod fighting_tests {
             in_combat_threshold: Some(threshold),
             lineup_distance: None,
             view_distance: None,
+            consumed_letters: 0,
             texture_frames: Default::default(),
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],

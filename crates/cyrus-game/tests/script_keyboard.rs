@@ -378,3 +378,216 @@ fn space_pressed_reports_a_missing_keyboard_sample_before_continuing() {
     assert_eq!(world.flags(), [12]);
     assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 4);
 }
+
+fn press_world(code: i32) -> ScriptWorld {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: cyrus_script::Native::PressKey,
+        param_count: 1,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: cyrus_script::Native::PressKey,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: vec![Value::Integer { value: code }],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    ScriptWorld::prepare(&scripts, 1).unwrap()
+}
+
+/// One script run (one frame) with `keys`, returning what `PressKey` answered.
+fn press(world: &mut ScriptWorld, keys: ScriptKeys) -> anyhow::Result<i32> {
+    let id = world.id(0).unwrap();
+    world.advance(
+        id,
+        ScriptStage::Body(Thread::Main),
+        ScriptInputs {
+            script_keys: Some(keys),
+            ..Default::default()
+        },
+        None,
+        None,
+        10,
+    )?;
+    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+}
+
+const R: u32 = 1 << (b'r' - b'a');
+
+#[test]
+fn press_key_consumes_a_held_key_until_it_is_released_and_pressed_again() {
+    let mut world = press_world(i32::from(b'r'));
+    let before = world.actors()[0].attributes().clone();
+    let held = ScriptKeys {
+        letters: R,
+        ..Default::default()
+    };
+    let released = ScriptKeys::default();
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        1,
+        "the first query sees the press"
+    );
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        0,
+        "the state word was cleared"
+    );
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        0,
+        "a held key stays consumed"
+    );
+    assert_eq!(press(&mut world, released).unwrap(), 0);
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        1,
+        "a new press is seen again"
+    );
+    assert_eq!(
+        world.actors()[0].attributes(),
+        &before,
+        "the receiver is not changed"
+    );
+}
+
+#[test]
+fn press_key_keeps_answering_a_matching_latest_event_but_consumes_the_held_word() {
+    let mut world = press_world(i32::from(b'r'));
+    let event = ScriptKeys {
+        latest_letter: Some(b'R'),
+        ..Default::default()
+    };
+    assert_eq!(press(&mut world, event).unwrap(), 1);
+    assert_eq!(
+        press(&mut world, event).unwrap(),
+        1,
+        "the latest event is not cleared"
+    );
+    assert_eq!(press(&mut world, ScriptKeys::default()).unwrap(), 0);
+    // Held and the latest event: the event keeps answering after the held word is consumed.
+    let both = ScriptKeys {
+        letters: R,
+        latest_letter: Some(b'r'),
+        ..Default::default()
+    };
+    assert_eq!(press(&mut world, both).unwrap(), 1);
+    assert_eq!(press(&mut world, both).unwrap(), 1);
+    let held = ScriptKeys {
+        letters: R,
+        ..Default::default()
+    };
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        0,
+        "the held word was consumed"
+    );
+}
+
+#[test]
+fn press_key_requires_the_named_modifiers_and_a_failed_check_consumes_nothing() {
+    let shift_r = i32::from(b'r') | i32::from(b'S') << 8;
+    let mut world = press_world(shift_r);
+    let held = ScriptKeys {
+        letters: R,
+        ..Default::default()
+    };
+    assert_eq!(press(&mut world, held).unwrap(), 0, "Shift is not held");
+    assert_eq!(
+        press(
+            &mut world,
+            ScriptKeys {
+                shift: true,
+                ..held
+            }
+        )
+        .unwrap(),
+        1,
+        "the failed check left the key unconsumed"
+    );
+    assert_eq!(
+        press(
+            &mut world,
+            ScriptKeys {
+                shift: true,
+                ..held
+            }
+        )
+        .unwrap(),
+        0
+    );
+    // Control and Alt, repeated and unknown modifier bytes behave as for InKey.
+    let all =
+        i32::from(b'r') | i32::from(b'c') << 8 | i32::from(b'A') << 16 | i32::from(b'c') << 24;
+    let mut world = press_world(all);
+    assert_eq!(
+        press(
+            &mut world,
+            ScriptKeys {
+                control: true,
+                ..held
+            }
+        )
+        .unwrap(),
+        0
+    );
+    let modified = ScriptKeys {
+        control: true,
+        alt: true,
+        ..held
+    };
+    assert_eq!(press(&mut world, modified).unwrap(), 1);
+    let mut world = press_world(i32::from(b'r') | i32::from(b'x') << 8);
+    assert_eq!(
+        press(&mut world, held).unwrap(),
+        1,
+        "an unknown modifier byte is ignored"
+    );
+}
+
+#[test]
+fn press_key_reports_unmapped_characters_and_a_missing_sample() {
+    let mut world = press_world(i32::from(b'1'));
+    let error = press(&mut world, ScriptKeys::default()).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("key without a recovered scan code"),
+        "{error:#}"
+    );
+    let mut world = press_world(i32::from(b'r'));
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            10,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("PressKey keyboard sample unavailable"));
+}

@@ -3074,15 +3074,20 @@
         "https://github.com/michidk/redguard-preservation/blob/b6ec5e4c43319bb7dadd58102e2775ca47399da9/docs/engine/SOUP.md#presskey"
       ],
       "native": "PressKey",
-      "status": "missing",
-      "scope": "Packed input query with required modifiers and consuming key-state word; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
+      "status": "partial",
+      "scope": "Routed consuming key query on the shared script key sample",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ScriptKeys::press_key",
+      "tests": [
+        "crates/cyrus-game/tests/script_keyboard.rs::press_key_consumes_a_held_key_until_it_is_released_and_pressed_again",
+        "crates/cyrus-game/tests/script_keyboard.rs::press_key_keeps_answering_a_matching_latest_event_but_consumes_the_held_word",
+        "crates/cyrus-game/tests/script_keyboard.rs::press_key_requires_the_named_modifiers_and_a_failed_check_consumes_nothing",
+        "crates/cyrus-game/tests/script_keyboard.rs::press_key_reports_unmapped_characters_and_a_missing_sample"
+      ],
       "limits": "Verified: independent installed one-argument ordinary-function declaration/native/full handler. Low byte passed to character-to-key lookup; next three bytes require case-insensitive c Control, s either Shift, a Alt; others ignored. Unmapped key or failed modifiers return zero without consuming state. Otherwise nonzero key state word or matching latest-event byte returns one and clears only target state word; event byte retained. Receiver not dereferenced/changed, no task boundary. 39168 bounded original handler cases, ten effective instruction controls and four two-call sequences pass; original lowercase helper checked over all256 bytes. Varied receiver/actor bytes, packed modifier positions/subsets/case/duplicates/ignored bytes, target/modifier states, aliases, event and translated byte truncation. Actor/global/caller-canary bytes, allowed write target/count, saved registers and stack checked. Lookup output controlled, input words synthetic. Unknown: initialized keyboard layout, interrupt/event timing, VM decoding/malformed admission and natural original/native/browser acceptance. Selected packed/state cases do not exhaust full integer domain. Named implementation remains missing; no dedicated production rejection acceptance added."
     },
     {
       "owner": 5,
-      "reviewed_revision": "187bd36d8cbce5e8e1dc46bf6fe0d418df7d18e5",
+      "reviewed_revision": "187bd36d8cbce5e8e1dc46bf6fe0d418df7d18e5 Verified public routed dispatch: InKey's letter and modifier rules; a held key answers one once and then zero until it is released and pressed again; a matching latest event keeps answering one; a failed modifier check consumes nothing; unknown modifier bytes are ignored; the receiver is unchanged; a character without a recovered scan code and a missing keyboard sample are contextual errors. Inferred: consumption ends when the sampled key is no longer held. Unknown: whether the original keyboard handler sets the state word again on typematic repeat while a key is held (the rebuild consumes a held key once until release), keys other than letters (no recovered scan codes, as for InKey), installed original/native/browser outputs and natural script callers.",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
