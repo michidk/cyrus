@@ -100,7 +100,8 @@ Verified: refusal ordering and wrapping time-scaled thresholds follow preservati
 This predicate alone does not admit automatic selector-four progress.
 
 Verified: the public AI destination-clearance query consumes retained collision
-candidates with polygon sidedness disabled, following preservation's
+candidates with polygon sidedness disabled. Ordinary collection uses local actor
+position even when clearance resolves an attached or linked position, following preservation's
 [clearance contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#ai-destination-clearance).
 It leaves AI state and node reservations to its caller. The point-movement
 visibility query keeps its separate polygon-sidedness behavior.

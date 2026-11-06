@@ -146,8 +146,9 @@ impl ScriptWorld {
 
     /// Prepare collision admission once for an ordinary actor update. Later
     /// support/body stages require this actor-bound record and do not rerun
-    /// spatial admission after movement or scripts. Captures working angles
-    /// separately from the retained model's presentation matrix.
+    /// spatial admission after movement or scripts. Candidates use local position even
+    /// when a consumer later resolves an attached or linked position. Captures working
+    /// angles separately from the retained model's presentation matrix.
     pub fn prepare_ordinary_collision_query(
         &mut self,
         id: ScriptActorId,
@@ -192,7 +193,7 @@ impl ScriptWorld {
                     position: record.position,
                     radius: record.radius,
                 });
-        let position = if stable_recovery && model.is_none() {
+        let position = if !stable_recovery || model.is_none() {
             spatial.local.position
         } else {
             spatial.query_pose()?.position

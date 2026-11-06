@@ -18773,6 +18773,90 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
 }
 
 #[test]
+fn ai_clearance_collects_at_local_position_before_resolving_linked_or_attached_origin() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [0; 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.collision = CollisionScene {
+        sphere_object_scale: Some(256),
+        placements: vec![StaticPlacement {
+            id: 1,
+            model: "WALL".into(),
+            position: [10256, 0, 0],
+            rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+        }],
+        models: BTreeMap::from([("WALL".into(), ordinary_forward_wall_model())]),
+        ..Default::default()
+    };
+    scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for (local_x, attached, expected_clear) in
+        [(0, false, true), (0, true, true), (10000, false, false)]
+    {
+        let mut snapshot = saved.clone();
+        snapshot["spatial"]["actors"][0]["local"]["position"] =
+            serde_json::json!([local_x * 256, 0, 0]);
+        snapshot["spatial"]["actors"][0]["linked_position"] = serde_json::json!([2560000, 0, 0]);
+        if attached {
+            snapshot["actors"][0]["attributes"][Attribute::Slave as usize] = 1.into();
+            let mut pose = snapshot["spatial"]["actors"][0]["local"].clone();
+            pose["position"] = serde_json::json!([2560000, 0, 0]);
+            snapshot["spatial"]["actors"][0]["effective"] = pose;
+        }
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        let before = world.inspect(0, 2);
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10000, 0], &[])
+            .unwrap();
+        let clear = world
+            .ai_destination_clear(
+                ids[0],
+                ids[1],
+                [2691072, 0, 0],
+                OrdinaryObstacleQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            clear, expected_clear,
+            "local X {local_x}, attached {attached}"
+        );
+        assert_eq!(world.inspect(0, 2), before);
+    }
+}
+
+#[test]
 fn blocked_ahead_is_false_without_a_combat_record_and_fighting_group() {
     use cyrus_assets::collision::CollisionScene;
     use cyrus_collision::collision_world::StaticCollision;
