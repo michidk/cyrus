@@ -966,6 +966,16 @@ impl ScriptWorld {
         Ok(self.selected_message_entry(actor)?.flatten())
     }
 
+    /// `ReceiveMessage`: see [`super::CombatMessages::receive`].
+    pub fn receive_message(&mut self, actor: ScriptActorId) -> Result<i32> {
+        let index = self.resolve(actor)?;
+        let class = self.actors[index].attributes[Attribute::MessGroup];
+        let receiver = &mut self.actors[index];
+        self.globals
+            .combat_messages
+            .receive(class, actor, &mut receiver.message_read)
+    }
+
     /// `DeleteMessage`: move the actor's selection to the next entry of its class queue. With no
     /// selection (cursor at the write index) nothing changes. Otherwise the cursor increments and
     /// wraps to zero at the queue's entry count; no entry is released.
@@ -7058,6 +7068,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .runtime_identifier
                     .context("GetMessageSenderId: sender runtime identifier unavailable")?,
             )));
+        }
+        // ReceiveMessage returns the value word of the first entry addressed to the receiver.
+        if function == Native::ReceiveMessage {
+            anyhow::ensure!(arguments.is_empty(), "ReceiveMessage requires no arguments");
+            let receiver = self.registry.id(self.index)?;
+            return Ok(CallResult::Complete(
+                self.registry.receive_message(receiver)?,
+            ));
         }
         // DeleteMessage advances the receiver's message selection and returns zero.
         if function == Native::DeleteMessage {

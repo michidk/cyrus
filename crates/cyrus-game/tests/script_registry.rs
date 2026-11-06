@@ -19056,17 +19056,21 @@ fn get_message_sender_id_returns_the_selected_senders_runtime_identifier() {
 }
 
 fn delete_message_scripts(target: Object) -> Scripts {
+    message_call_scripts(Native::DeleteMessage, target)
+}
+
+fn message_call_scripts(native: Native, target: Object) -> Scripts {
     let mut scripts = actor_reference_scripts(Object::Me);
     let function_id = scripts.definition.functions.len() as u16;
     scripts.definition.functions.push(Function {
-        name: Native::DeleteMessage,
+        name: native,
         kind: CallKind::Function,
         param_count: 0,
     });
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     let call = Box::new(Call {
         function_id,
-        function: Native::DeleteMessage,
+        function: native,
         kind: CallKind::Function,
         target: target.clone(),
         arguments: vec![],
@@ -19146,6 +19150,49 @@ fn delete_message_without_a_selection_changes_nothing_and_wraps_at_the_entry_cou
     actor_reference_step(&mut world, b).unwrap();
     actor_reference_step(&mut world, b).unwrap();
     assert!(world.peek_combat_message(b).unwrap().is_none());
+    assert_eq!(
+        world.actors()[1].runtime().unwrap().variables()[2],
+        ScriptValue::Integer(0)
+    );
+}
+
+#[test]
+fn receive_message_returns_the_first_entry_addressed_to_the_receiver_and_keeps_it_selected() {
+    use cyrus_game::script::CombatMessageCode;
+    use cyrus_script::ScriptValue;
+    // Direct: actor 1 receives for itself. Object: actor 1 receives on behalf of actor 0.
+    for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
+        let scripts = message_call_scripts(Native::ReceiveMessage, target.clone());
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        let (receiver, other) = if receiver_index == 0 { (a, b) } else { (b, a) };
+        // An entry for the other actor is skipped; the next one is the receiver's.
+        world
+            .send_combat_message(receiver, other, CombatMessageCode::HIT)
+            .unwrap();
+        world
+            .send_combat_message(other, receiver, CombatMessageCode::BLOCK)
+            .unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        assert_eq!(
+            world.actors()[1].runtime().unwrap().variables()[2],
+            ScriptValue::Integer(0xd000),
+            "target {target:?}"
+        );
+        // The accepted entry stays selected: the combat stage still consumes it, and the skipped
+        // one remains for its own receiver.
+        let kept = world.consume_combat_message(receiver).unwrap().unwrap();
+        assert_eq!(kept.code, CombatMessageCode::BLOCK, "target {target:?}");
+        let theirs = world.consume_combat_message(other).unwrap().unwrap();
+        assert_eq!(theirs.code, CombatMessageCode::HIT, "target {target:?}");
+    }
+    // Nothing selected returns zero.
+    let scripts = message_call_scripts(Native::ReceiveMessage, Object::Me);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let b = world.id(1).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
     assert_eq!(
         world.actors()[1].runtime().unwrap().variables()[2],
         ScriptValue::Integer(0)

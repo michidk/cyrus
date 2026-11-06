@@ -561,6 +561,30 @@ impl CombatMessages {
         Ok(None)
     }
 
+    /// `ReceiveMessage`: from the receiver's selection, skip entries addressed to another actor by
+    /// advancing the selection, and return the value word (the code) of the first entry addressed
+    /// to it or to no one; that entry stays selected. Zero when no selection remains. An entry
+    /// never written has no recipient and a zero value, so it is accepted.
+    pub fn receive(&self, class: u8, actor: ScriptActorId, read: &mut u8) -> Result<i32> {
+        anyhow::ensure!(
+            usize::from(*read) < QUEUE_CAPACITY,
+            "combat message class {class} actor {} read cursor {} outside queue",
+            actor.index,
+            *read
+        );
+        let queue = &self.classes[usize::from(class)];
+        while *read != queue.write {
+            match queue.entries[usize::from(*read)] {
+                None => return Ok(0),
+                Some(message) if message.receiver.is_none_or(|receiver| receiver == actor) => {
+                    return Ok(message.code.into());
+                }
+                Some(_) => *read = Self::next_selection(*read),
+            }
+        }
+        Ok(0)
+    }
+
     /// The selection after the one a receiver holds: one further, wrapping to zero at the queue's
     /// entry count.
     pub fn next_selection(read: u8) -> u8 {
@@ -1232,6 +1256,45 @@ mod message_queue_tests {
         assert_eq!(first.code, CombatMessageCode::DIRECT_DAMAGE);
         assert_eq!(queue.peek(7, id(4), 0).unwrap(), Some(first));
         assert_eq!(queue.consume(7, id(4), &mut 0).unwrap(), Some(first));
+    }
+
+    #[test]
+    fn receive_skips_other_receivers_and_keeps_the_accepted_entry_selected() {
+        let mut queue = CombatMessages::default();
+        for (receiver, code) in [
+            (Some(id(3)), CombatMessageCode::HIT),
+            (Some(id(4)), CombatMessageCode::BLOCK),
+        ] {
+            queue.send(
+                7,
+                CombatMessage {
+                    sender: id(2),
+                    receiver,
+                    code,
+                },
+            );
+        }
+        // An unaddressed entry is accepted by anyone, and a zero value is still a selection.
+        queue.send(
+            7,
+            CombatMessage {
+                sender: id(2),
+                receiver: None,
+                code: CombatMessageCode::from(0x55),
+            },
+        );
+        let mut read = 0;
+        assert_eq!(queue.receive(7, id(4), &mut read).unwrap(), 0xd000);
+        assert_eq!(read, 1, "the skipped entry advanced the selection");
+        assert_eq!(queue.receive(7, id(4), &mut read).unwrap(), 0xd000);
+        assert_eq!(read, 1, "the accepted entry stays selected");
+        let mut read = 0;
+        assert_eq!(queue.receive(7, id(9), &mut read).unwrap(), 0x55);
+        assert_eq!(read, 2);
+        // The write index is the no-selection sentinel.
+        let mut read = 3;
+        assert_eq!(queue.receive(7, id(9), &mut read).unwrap(), 0);
+        assert_eq!(read, 3);
     }
 
     #[test]
