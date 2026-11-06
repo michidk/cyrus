@@ -8025,6 +8025,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.unoffset_actor(self.index)?;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function == Native::PlayerForceTalk {
+            let [distance] = arguments else {
+                anyhow::bail!("PlayerForceTalk requires one argument")
+            };
+            self.registry
+                .force_talk_selected_player(self.index, distance.integer()?)?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::PlayerOffset {
             let [x, y, z] = arguments else {
                 anyhow::bail!("PlayerOffset requires three arguments")

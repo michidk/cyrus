@@ -112,6 +112,35 @@ impl ScriptWorld {
     /// `PlayerOffset` and each `PlayerOffsettask` step: place the selected player at the
     /// receiver's effective position plus `offset` rotated by the receiver's matrix. A following
     /// step also gives the player the receiver's orientation and angle history.
+    /// `PlayerForceTalk(distance)`: the receiver's X and Z plus the X and Z of `(0, 0, distance)`
+    /// through its orientation matrix (wrapping) become the selected player's X and Z. Y and the
+    /// orientation are unchanged; the receiver may be the selected player.
+    pub(super) fn force_talk_selected_player(
+        &mut self,
+        receiver: usize,
+        distance: i32,
+    ) -> Result<()> {
+        let receiver_id = self.id(receiver)?;
+        let player = self
+            .selected_player()
+            .context("PlayerForceTalk: selected player unavailable")?;
+        let player_index = self.resolve(player)?;
+        let source = self.spatial(receiver_id)?;
+        let (position, rotated) = (
+            source.local.position,
+            source.local.matrix.transform([0, 0, distance])?,
+        );
+        let target = self
+            .spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .actor_mut(player_index)?;
+        for axis in [0, 2] {
+            target.local.position[axis] = position[axis].wrapping_add(rotated[axis]);
+        }
+        Ok(())
+    }
+
     pub(super) fn offset_selected_player(
         &mut self,
         receiver: usize,

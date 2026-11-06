@@ -48056,3 +48056,6 @@ mod player_tilt_tests;
 
 #[path = "script_registry/delete_broadcast.rs"]
 mod delete_broadcast_tests;
+
+#[path = "script_registry/player_force_talk.rs"]
+mod player_force_talk_tests;
