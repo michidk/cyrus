@@ -6086,6 +6086,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.fix_slave_angle(id, axis, angle)?;
             return Ok(CallResult::Complete(0));
         }
+        // DetachMe: an unattached receiver is unchanged; an attached master only loses its slave
+        // byte; an attached non-master leaves its family, keeps its effective pose as its local
+        // pose, loses its slave byte and registers a map update. A receiver with no family record
+        // is unchanged. Returns zero.
+        if function == Native::DetachMe {
+            anyhow::ensure!(arguments.is_empty(), "DetachMe requires no arguments");
+            let attributes = &self.registry.actors[self.index].attributes;
+            if attributes[Attribute::Slave] == 0 {
+                return Ok(CallResult::Complete(0));
+            }
+            if attributes[Attribute::Master] != 0 {
+                self.registry.actors[self.index].attributes[Attribute::Slave] = 0;
+                return Ok(CallResult::Complete(0));
+            }
+            let detached = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("DetachMe: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .detach_from_family()?;
+            if detached {
+                self.registry.actors[self.index].attributes[Attribute::Slave] = 0;
+                if !self.registry.map_updates.contains(&self.index) {
+                    self.registry.map_updates.push(self.index);
+                }
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::ResetPosition {
             anyhow::ensure!(
                 arguments.len() == 3,

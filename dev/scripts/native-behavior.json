@@ -4448,19 +4448,22 @@
     },
     {
       "native": "DetachMe",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named zero-argument receiver family detachment",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed family detach: effective pose kept as local pose, slave byte cleared, map update registered",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ActorSpatial::detach_from_family",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::detach_me_leaves_the_family_and_keeps_the_effective_pose_as_the_local_pose",
+        "crates/cyrus-game/tests/script_registry.rs::detach_me_changes_less_for_unattached_and_master_receivers_and_reports_missing_state"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/191",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6605075984"
       ],
-      "limits": "Verified: canonical zero-argument function returns zero. Complete original public handler/predicates/lookups pass 30 constructed instruction contexts and six changed-contract controls. Non-slave unchanged; attached master clears slave then master lookup fails for finite acyclic trees without list/pose/refresh changes. Ordinary attached actor absent from membership stays unchanged; found head/middle/tail/nested record unlinks, clears slave, copies effective pose to local position/angles and requests refresh. Unlinked record/effective fields retained. Refresh internals are a controlled service boundary, not original transform arithmetic or production execution. Malformed/cyclic graphs, scheduling and live original/native/browser acceptance remain outside evidence. Named Rust handler remains absent; existing item/rope/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
-      "reviewed_revision": "5f1cdd25ddef857b06f04ad39fd239f1ed82bb5e"
+      "limits": "Verified: canonical zero-argument function returns zero. Complete original public handler/predicates/lookups pass 30 constructed instruction contexts and six changed-contract controls. Non-slave unchanged; attached master clears slave then master lookup fails for finite acyclic trees without list/pose/refresh changes. Ordinary attached actor absent from membership stays unchanged; found head/middle/tail/nested record unlinks, clears slave, copies effective pose to local position/angles and requests refresh. Unlinked record/effective fields retained. Refresh internals are a controlled service boundary, not original transform arithmetic or production execution. Malformed/cyclic graphs, scheduling and live original/native/browser acceptance remain outside evidence. Named Rust handler remains absent; existing item/rope/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run. Verified public routed dispatch: no slave byte leaves the receiver unchanged; an attached master only loses its slave byte and keeps its family record; an attached non-master is unlinked from its parent, takes its effective position and angles as its local pose, loses its slave byte, keeps its effective fields and registers a map update; an attached actor before its first family refresh and missing spatial state give contextual errors. Inferred: the matrix keeps the composed world orientation (the original stores one matrix per actor) and the map-update registration is the original's actor refresh request, consumed by the existing deferred relocation. Unknown: the registration is not asserted through a public observable, installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "90913ce14f2737c211b0e0edbc5ce84d681a4977"
     },
     {
       "native": "DetachSlaves",

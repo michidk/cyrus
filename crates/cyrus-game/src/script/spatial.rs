@@ -509,6 +509,27 @@ impl ActorSpatial {
         Ok(())
     }
 
+    /// `DetachMe` for an attached actor without `attr_master`: unlink it from its parent and make
+    /// its local position and angles the effective ones, so it keeps its world pose. Returns
+    /// whether a family record existed; an actor with no parent is unchanged. The effective
+    /// fields stay as they were and the matrix keeps the composed world orientation (the
+    /// original stores one matrix per actor, which an attached actor holds in composed form:
+    /// **Inferred**). The caller clears `attr_slave` and requests the map update. An attached
+    /// actor with no effective pose yet (before the first family refresh) is rejected.
+    pub fn detach_from_family(&mut self) -> Result<bool> {
+        if self.parent.is_none() {
+            return Ok(false);
+        }
+        let effective = self
+            .effective
+            .context("DetachMe: effective pose unavailable before the first family refresh")?;
+        self.parent = None;
+        self.local.position = effective.position;
+        self.local.angles = effective.angles;
+        self.local.matrix = effective.matrix;
+        Ok(true)
+    }
+
     /// `ResetPosition(x, y, z)`: every axis whose flag is set takes the actor's home position (the
     /// first stored location, even for an attached actor), and the previous-position snapshot
     /// becomes the result. Returns the change per axis so the selected player's view origin can
@@ -1212,6 +1233,39 @@ mod tests {
                 .unwrap(),
             [0, 0, 256]
         );
+    }
+
+    #[test]
+    fn detaching_keeps_the_effective_pose_as_the_local_pose_and_leaves_the_effective_fields() {
+        let effective = Pose {
+            position: [11, 22, 33],
+            angles: [5, 6, 7],
+            matrix: Matrix::orientation([5, 6, 7]),
+        };
+        let mut actor = receiver([1, 2, 3], vec![[1, 2, 3]]);
+        // Without a family record the actor is unchanged.
+        assert!(!actor.detach_from_family().unwrap());
+        assert_eq!(actor.local.position, [1, 2, 3]);
+        // An attached actor before its first family refresh has no effective pose to keep.
+        actor.parent = Some(0);
+        let error = actor.detach_from_family().unwrap_err().to_string();
+        assert!(error.contains("before the first family refresh"), "{error}");
+        assert_eq!(actor.parent, Some(0), "a rejected detach stays attached");
+        actor.effective = Some(effective);
+        assert!(actor.detach_from_family().unwrap());
+        assert_eq!(actor.parent, None);
+        assert_eq!(actor.local.position, [11, 22, 33]);
+        assert_eq!(actor.local.angles, [5, 6, 7]);
+        assert_eq!(
+            format!("{:?}", actor.local.matrix),
+            format!("{:?}", effective.matrix)
+        );
+        assert_eq!(
+            format!("{:?}", actor.effective),
+            format!("{:?}", Some(effective)),
+            "the effective fields stay as they were"
+        );
+        assert!(!actor.detach_from_family().unwrap(), "already detached");
     }
 
     #[test]

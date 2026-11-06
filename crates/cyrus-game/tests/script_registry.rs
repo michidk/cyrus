@@ -3999,6 +3999,118 @@ fn fix_slave_angle_leaves_a_receiver_without_a_slave_group_unchanged_and_reports
     );
 }
 
+/// A slave (actor 0, slave group `slave_group`, master byte `slave_master`) attached to a root
+/// master (actor 1, master group 1), with the slave's one `DetachMe` call run when `call` is set.
+/// `refreshed` runs the family refresh first, which gives attached actors their effective pose.
+fn detach_me_world(
+    slave_group: u8,
+    slave_master: u8,
+    refreshed: bool,
+    call: bool,
+    spatial: bool,
+) -> anyhow::Result<ScriptWorld> {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts(Native::DetachMe, vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.attributes[Attribute::Slave] = slave_group;
+    slave.attributes[Attribute::Master] = slave_master;
+    let mut master = scripts.actors["LOGIC"].clone();
+    master.attributes[Attribute::Slave] = 0;
+    master.attributes[Attribute::Master] = 1;
+    master.header_index = 1;
+    master.instances = 1;
+    master.namespace = Some("master".into());
+    master.instance_variables = vec![vec![9]];
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.instances = 1;
+    slave.instance_variables.truncate(1);
+    scripts.instances[1].actor = "MASTER".into();
+    scripts.actors.insert("MASTER".into(), master);
+    scripts.instances[0].angles = [10, 20, 30];
+    scripts.instances[1].angles = [100, 200, 300];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    if spatial {
+        world.prepare_spatial().unwrap();
+        if refreshed {
+            world.refresh_families().unwrap();
+        }
+    }
+    if call {
+        let id = world.id(0).unwrap();
+        world.advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )?;
+    }
+    Ok(world)
+}
+
+#[test]
+fn detach_me_leaves_the_family_and_keeps_the_effective_pose_as_the_local_pose() {
+    let before_world = detach_me_world(1, 0, true, false, true).unwrap();
+    let before = before_world.spatial(before_world.id(0).unwrap()).unwrap();
+    let effective = before.effective.expect("the family refresh publishes it");
+    assert!(before.parent.is_some());
+    let world = detach_me_world(1, 0, true, true, true).unwrap();
+    let slave = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 0);
+    assert_eq!(slave.parent, None, "the family record is unlinked");
+    assert_eq!(slave.local.position, effective.position);
+    assert_eq!(slave.local.angles, effective.angles);
+    assert_eq!(
+        format!("{:?}", slave.local.matrix),
+        format!("{:?}", effective.matrix)
+    );
+    assert_eq!(
+        format!("{:?}", slave.effective),
+        format!("{:?}", before.effective),
+        "the effective fields are not changed"
+    );
+    // The master is untouched.
+    let master = world.spatial(world.id(1).unwrap()).unwrap();
+    let master_before = before_world.spatial(before_world.id(1).unwrap()).unwrap();
+    assert_eq!(master.local.angles, master_before.local.angles);
+    assert_eq!(master.local.position, master_before.local.position);
+}
+
+#[test]
+fn detach_me_changes_less_for_unattached_and_master_receivers_and_reports_missing_state() {
+    // An unattached receiver is unchanged.
+    let world = detach_me_world(0, 0, true, true, true).unwrap();
+    assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 0);
+    assert_eq!(world.spatial(world.id(0).unwrap()).unwrap().parent, None);
+    // An attached receiver that is itself a master only loses its slave byte.
+    let before_world = detach_me_world(1, 2, true, false, true).unwrap();
+    let before = before_world.spatial(before_world.id(0).unwrap()).unwrap();
+    let world = detach_me_world(1, 2, true, true, true).unwrap();
+    let slave = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(world.actors()[0].attributes()[Attribute::Slave], 0);
+    assert_eq!(slave.parent, before.parent, "the family record is kept");
+    assert_eq!(slave.local.position, before.local.position);
+    assert_eq!(slave.local.angles, before.local.angles);
+    // Before the first family refresh there is no effective pose to keep; the byte is untouched.
+    let error = detach_me_world(1, 0, false, true, true).err().unwrap();
+    assert!(
+        format!("{error:#}").contains("before the first family refresh"),
+        "{error:#}"
+    );
+    let error = detach_me_world(1, 0, false, true, false).err().unwrap();
+    assert!(
+        format!("{error:#}").contains("DetachMe: spatial state not prepared"),
+        "{error:#}"
+    );
+}
+
 #[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
