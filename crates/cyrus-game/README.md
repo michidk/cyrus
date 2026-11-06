@@ -140,6 +140,10 @@ Verified: the field contracts follow preservation's
 
 `GotoLocation` composes receiver location lookup, arrival admission and the
 retained AI selector/location/delay refresh through the native task caller.
+Verified: its pending task suppresses the ordinary native hook while the task
+system is enabled, following preservation's
+[script-stage contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#ordinary-update-gates).
+Ordinary hook/main updates retain mode eleven without admitting direct movement.
 Its explicit refresh does not enable autonomous selector-four movement or add
 an ordinary AI timer stage. Automatic caller placement and steering remain
 unsupported until their complete contracts are established.

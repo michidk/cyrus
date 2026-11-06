@@ -113,10 +113,17 @@ fn cache() -> Scripts {
 }
 
 fn fixture(location: i32, delay: u8, speed: u8, shape: bool) -> ScriptWorld {
-    fixture_for(location, delay, speed, shape, false)
+    fixture_for(location, delay, speed, shape, false, None)
 }
 
-fn fixture_for(location: i32, delay: u8, speed: u8, shape: bool, named: bool) -> ScriptWorld {
+fn fixture_for(
+    location: i32,
+    delay: u8,
+    speed: u8,
+    shape: bool,
+    named: bool,
+    native_hook: Option<Call>,
+) -> ScriptWorld {
     use cyrus_script::{AnimationGroup, Native};
     let mut scripts = cache();
     scripts.definition.references = vec![
@@ -129,11 +136,20 @@ fn fixture_for(location: i32, delay: u8, speed: u8, shape: bool, named: bool) ->
         param_count: 1,
         kind: CallKind::Task,
     });
+    if let Some(call) = &native_hook {
+        assert_eq!(call.function_id, 2);
+        scripts.definition.functions.push(Function {
+            name: call.function,
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+    }
     for instance in &mut scripts.instances {
         instance.object_type = 1;
     }
     scripts.instances[1].map_position = [50, 0, 0];
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.native_hook = native_hook;
     actor.location_offsets = vec![[3 * 256, 0, 0]];
     actor.attributes[Attribute::Collide] = 129;
     actor.attributes[Attribute::ReservedCollide] = 207;
@@ -328,6 +344,42 @@ fn self_nonarrival_refreshes_on_initial_call_and_poll_without_running_continuati
 }
 
 #[test]
+fn pending_goto_location_suppresses_ordinary_hook_without_admitting_mode_eleven_progress() {
+    use cyrus_game::script::AiType;
+    use cyrus_script::Native;
+    let hook = Call {
+        function_id: 2,
+        function: Native::SetAiType,
+        target: Object::Me,
+        kind: CallKind::Function,
+        arguments: vec![Value::Integer { value: 7 }],
+    };
+    let mut world = fixture_for(1, 0, 0, true, false, Some(hook));
+    advance(&mut world, ScriptStage::OrdinaryHook, Some(1)).unwrap();
+    assert_eq!(world.actors()[0].control_state().unwrap().ai_type.byte(), 7);
+    advance(&mut world, ScriptStage::OrdinaryMain, Some(1)).unwrap();
+
+    for _ in 0..64 {
+        advance(&mut world, ScriptStage::OrdinaryHook, Some(1)).unwrap();
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().ai_type,
+            AiType::FIND_LOCATION
+        );
+        advance(&mut world, ScriptStage::OrdinaryMain, Some(1)).unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.ai_type, AiType::FIND_LOCATION);
+        assert_eq!(control.ai_mode, 11);
+        assert_eq!(control.ai_delay, 0);
+        assert_eq!(world.flags(), [12]);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        assert_eq!(
+            world.spatial(world.id(0).unwrap()).unwrap().local.position,
+            [0; 3]
+        );
+    }
+}
+
+#[test]
 fn arrival_completes_before_refresh_while_equal_speed_threshold_stays_pending() {
     for (speed, arrives) in [(2, false), (3, true)] {
         let mut world = fixture(1, 8, speed, true);
@@ -435,7 +487,7 @@ fn retained_timer_sentinels_survive_admitted_ticks_and_keep_collide_refresh() {
 
 #[test]
 fn object_targeted_task_continues_caller_and_keeps_its_token_on_the_receiver() {
-    let mut world = fixture_for(1, 8, 0, true, true);
+    let mut world = fixture_for(1, 8, 0, true, true, None);
     world
         .advance(
             world.id(1).unwrap(),
