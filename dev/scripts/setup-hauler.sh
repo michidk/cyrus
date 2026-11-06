@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 version=0.14.1
-export CARGO_HAULER_MAX_CONCURRENT=3
+export CARGO_HAULER_MAX_CONCURRENT=1
 command -v npm >/dev/null || { echo "setup-hauler: no npm, skipping (builds use plain cargo)"; exit 0; }
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a==22&&b>=19)?0:1)' \
     || { echo "setup-hauler: Node >= 22.19 needed, skipping"; exit 0; }

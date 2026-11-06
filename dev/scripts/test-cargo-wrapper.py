@@ -19,6 +19,7 @@ class CargoScripts(unittest.TestCase):
             hauler.write_text('''#!/bin/bash
 [[ "$*" == 'exec --host shim -- cargo test example' ]] || exit 99
 [[ "$CARGO_HAULER_SHIM_BACKGROUND" == 0 ]] || exit 99
+[[ "$CARGO_HAULER_MAX_CONCURRENT" == 1 ]] || exit 99
 [[ ! -t 1 ]] || exit 99
 echo 'test output'
 exit 17
@@ -26,6 +27,7 @@ exit 17
             hauler.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}")
             env.pop("CARGO_HAULER_INSIDE", None)
+            env["CARGO_HAULER_MAX_CONCURRENT"] = "3"
             result = subprocess.run(
                 ["bash", "-c", 'source "$1"; cargo test example', "test", str(SCRIPTS / "cargo.sh")],
                 env=env, capture_output=True, text=True,
@@ -42,6 +44,9 @@ exit 17
             finally:
                 os.close(slave)
                 os.close(master)
+
+    def test_setup_uses_the_same_single_build_limit(self):
+        self.assertIn("export CARGO_HAULER_MAX_CONCURRENT=1", (SCRIPTS / "setup-hauler.sh").read_text())
 
     def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None):
         with tempfile.TemporaryDirectory() as directory:

@@ -21,7 +21,7 @@ cargo() {
                 && { [ "${1:-}" = check ] || [ "${1:-}" = build ]; } && [[ "$*" != *wasm32* ]]; then
                 export RUSTC="$headstart/rustc" PATH="$headstart:$PATH" CARGO_UNSTABLE_HEADSTART=true
             fi
-            CARGO_HAULER_MAX_CONCURRENT=3 CARGO_HAULER_SHIM_BACKGROUND=0 \
+            CARGO_HAULER_MAX_CONCURRENT=1 CARGO_HAULER_SHIM_BACKGROUND=0 \
                 hauler exec --host shim -- cargo "$@" | cat
         )
     else

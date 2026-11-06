@@ -140,7 +140,7 @@ untracked working memory. Each crate has a `README.md` with its commands.
   `git pull --rebase` are the coordination.
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
-  scripts share one queue with at most three concurrent builds; `hauler status`
+  scripts share one queue with one build at a time; `hauler status`
   shows what is running. Long builds may return a ticket: `hauler await cc-N`,
   never retry them.
 - Full workspace builds take a long time. During development, run the narrowest
