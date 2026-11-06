@@ -19039,6 +19039,103 @@ fn get_message_sender_id_returns_the_selected_senders_runtime_identifier() {
     );
 }
 
+fn delete_message_scripts(target: Object) -> Scripts {
+    let mut scripts = actor_reference_scripts(Object::Me);
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::DeleteMessage,
+        kind: CallKind::Function,
+        param_count: 0,
+    });
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    let call = Box::new(Call {
+        function_id,
+        function: Native::DeleteMessage,
+        kind: CallKind::Function,
+        target: target.clone(),
+        arguments: vec![],
+    });
+    actor.program.steps.get_mut(&3).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 2 },
+        formula: Formula {
+            first: if target == Object::Me {
+                Value::Call { call }
+            } else {
+                Value::ObjectCall { call }
+            },
+            rest: vec![],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn delete_message_advances_the_receivers_selection_for_direct_and_object_callers() {
+    use cyrus_game::script::CombatMessageCode;
+    // Direct: actor 1 advances its own selection. Object: actor 1 advances actor 0's.
+    for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
+        let scripts = delete_message_scripts(target.clone());
+        let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+        let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+        let (receiver, other) = if receiver_index == 0 { (a, b) } else { (b, a) };
+        for code in [CombatMessageCode::HIT, CombatMessageCode::BLOCK] {
+            world.send_combat_message(other, receiver, code).unwrap();
+        }
+        actor_reference_step(&mut world, b).unwrap();
+        actor_reference_step(&mut world, b).unwrap();
+        // The call returned zero and moved only the receiver's selection past the first entry.
+        assert_eq!(
+            world.actors()[1].runtime().unwrap().variables()[2],
+            0,
+            "target {target:?}"
+        );
+        let next = world.consume_combat_message(receiver).unwrap().unwrap();
+        assert_eq!(next.code, CombatMessageCode::BLOCK, "target {target:?}");
+        let untouched = world.peek_combat_message(other).unwrap();
+        assert!(untouched.is_none(), "target {target:?}");
+    }
+}
+
+#[test]
+fn delete_message_without_a_selection_changes_nothing_and_wraps_at_the_entry_count() {
+    use cyrus_game::script::CombatMessageCode;
+    use cyrus_script::ScriptValue;
+    let scripts = delete_message_scripts(Object::Me);
+    // No selection: the cursor stays, and a later message is still the selected one.
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    world
+        .send_combat_message(a, b, CombatMessageCode::HIT)
+        .unwrap();
+    assert_eq!(
+        world.consume_combat_message(b).unwrap().unwrap().code,
+        CombatMessageCode::HIT
+    );
+    // Selection at the last entry wraps to zero, which is then the write index: no selection.
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let (a, b) = (world.id(0).unwrap(), world.id(1).unwrap());
+    for _ in 0..7 {
+        world
+            .send_combat_message(a, b, CombatMessageCode::HIT)
+            .unwrap();
+        world.consume_combat_message(b).unwrap().unwrap();
+    }
+    world
+        .send_combat_message(a, b, CombatMessageCode::BLOCK)
+        .unwrap();
+    assert!(world.peek_combat_message(b).unwrap().is_some());
+    actor_reference_step(&mut world, b).unwrap();
+    actor_reference_step(&mut world, b).unwrap();
+    assert!(world.peek_combat_message(b).unwrap().is_none());
+    assert_eq!(
+        world.actors()[1].runtime().unwrap().variables()[2],
+        ScriptValue::Integer(0)
+    );
+}
+
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
     use cyrus_script::{ActorReference, ScriptValue};

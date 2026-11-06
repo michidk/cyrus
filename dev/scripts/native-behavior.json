@@ -2526,18 +2526,21 @@
     },
     {
       "native": "DeleteMessage",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original channel-selected message-selection advance contract",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Zero-argument function advancing the receiver's message selection within its class queue",
+      "caller": "ScriptWorld::advance -> Runtime function value (direct or object-routed) -> GameHost::call (DeleteMessage)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::delete_message_advances_the_receivers_selection_for_direct_and_object_callers",
+        "crates/cyrus-game/tests/script_registry.rs::delete_message_without_a_selection_changes_nothing_and_wraps_at_the_entry_count"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/3e1a2ff36741cc8acfa44e42593e314d72d9df45",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6613506199"
       ],
-      "limits": "Verified installed zero-argument declaration/exact binding/full98-byte native/full126-byte availability helper. 251,904 original-instruction contexts/14 effective semantic controls cover full selection/sentinel byte pairs, all256 subrecord channels, ten signed limit boundaries, two receivers/two memory patterns and diagnostic context tokens/repair. Helper selects sentinel by subrecord channel; unavailable returns0 unchanged/no global limit read. Available increments selection byte then retains below signed limit or resets0, exact increment-before-reset writes, return0. No entry/sender/context-pointer dereference or entry release. Formatter/runtime-error IO controlled returning. Unknown receiver/subrecord/channel admission, channel/limit/sentinel producers/consistency, queue allocation/lifetime/consumption, natural diagnostics, concurrency/reentrancy, VM/original/native/browser/full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence.",
-      "reviewed_revision": "9398772f4861b3dd466d0321f2fa5d755ecb0205"
+      "limits": "Verified installed zero-argument declaration/exact binding/full98-byte native/full126-byte availability helper. 251,904 original-instruction contexts/14 effective semantic controls cover full selection/sentinel byte pairs, all256 subrecord channels, ten signed limit boundaries, two receivers/two memory patterns and diagnostic context tokens/repair. Helper selects sentinel by subrecord channel; unavailable returns0 unchanged/no global limit read. Available increments selection byte then retains below signed limit or resets0, exact increment-before-reset writes, return0. No entry/sender/context-pointer dereference or entry release. Formatter/runtime-error IO controlled returning. Unknown receiver/subrecord/channel admission, channel/limit/sentinel producers/consistency, queue allocation/lifetime/consumption, natural diagnostics, concurrency/reentrancy, VM/original/native/browser/full joint domain. Production named call remains absent; no implementation/dedicated public-call Rust assertion established. Historical usage does not prove hidden-body absence. Verified (routed ScriptWorld tests; preservation SOUP.md DeleteMessage and the published combat-queue structure: 256 class queues of eight entries, per-actor byte read cursors, a class write cursor): with no selection (cursor equal to the write index) nothing changes; otherwise the receiver's cursor advances by one and wraps to zero at the entry count, no entry is released, and the call returns zero; a direct call moves the caller's cursor and an object-routed call moves the named receiver's, leaving other actors alone. Inferred, not verified against the running original: the native message context is the same structure as the combat queues, and the receiver's channel byte is attribute 125 (the authored class). Unknown: SendMessage/ReceiveMessage natives do not exist, so only combat messages reach the queue; no original, native-run or browser comparison.",
+      "reviewed_revision": "e7e17bd48a02ad69a3c1ff9428f391cda42a88ad"
     },
     {
       "native": "GetBroadcastSender",

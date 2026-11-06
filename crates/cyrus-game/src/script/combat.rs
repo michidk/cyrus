@@ -561,6 +561,17 @@ impl CombatMessages {
         Ok(None)
     }
 
+    /// The selection after the one a receiver holds: one further, wrapping to zero at the queue's
+    /// entry count.
+    pub fn next_selection(read: u8) -> u8 {
+        let next = read.wrapping_add(1);
+        if usize::from(next) < QUEUE_CAPACITY {
+            next
+        } else {
+            0
+        }
+    }
+
     /// The entry a receiver has selected: its read cursor in the class queue. The outer `None` is
     /// no selection (cursor equal to the write index); the inner `None` is a selected entry that
     /// was never written, whose sender pointer is null. The reference is returned as stored; it is

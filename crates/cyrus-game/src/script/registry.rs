@@ -966,6 +966,25 @@ impl ScriptWorld {
         Ok(self.selected_message_entry(actor)?.flatten())
     }
 
+    /// `DeleteMessage`: move the actor's selection to the next entry of its class queue. With no
+    /// selection (cursor at the write index) nothing changes. Otherwise the cursor increments and
+    /// wraps to zero at the queue's entry count; no entry is released.
+    pub fn advance_message_selection(&mut self, actor: ScriptActorId) -> Result<()> {
+        let index = self.resolve(actor)?;
+        let class = self.actors[index].attributes[Attribute::MessGroup];
+        let read = self.actors[index].message_read;
+        if self
+            .globals
+            .combat_messages
+            .selected_entry(class, read)?
+            .is_none()
+        {
+            return Ok(());
+        }
+        self.actors[index].message_read = super::CombatMessages::next_selection(read);
+        Ok(())
+    }
+
     /// Consume one addressed message using the actor's retained class cursor.
     /// This is message transport; combat effects belong to the maintenance stage.
     pub fn consume_combat_message(
@@ -7039,6 +7058,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .runtime_identifier
                     .context("GetMessageSenderId: sender runtime identifier unavailable")?,
             )));
+        }
+        // DeleteMessage advances the receiver's message selection and returns zero.
+        if function == Native::DeleteMessage {
+            anyhow::ensure!(arguments.is_empty(), "DeleteMessage requires no arguments");
+            let receiver = self.registry.id(self.index)?;
+            self.registry.advance_message_selection(receiver)?;
+            return Ok(CallResult::Complete(0));
         }
         // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
         if function == Native::MyId {
