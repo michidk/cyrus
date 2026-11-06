@@ -33,6 +33,11 @@ The shared modal lock and paused virtual time remain held until the final wait
 finishes. Selecting an item does not use it. This follows preservation's
 [inventory exit contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#exit).
 
+Verified: item use shares the receiver torch-transition predicate. Action states
+33/34 refuse use only with an animation owner; without one, they do not block
+ordinary inventory effects. Explicit use retains an attached rope. These gates
+follow preservation's `IsLightingOrUnlighting` and item-use contracts.
+
 ## Module guide
 
 | Module | Responsibility |

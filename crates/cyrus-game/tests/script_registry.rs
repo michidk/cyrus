@@ -34349,6 +34349,142 @@ fn check_scripted_item_use(on_rope: bool) {
     assert_eq!(world.selected_player_on_rope(), on_rope);
 }
 
+#[test]
+fn item_use_torch_transition_requires_an_animation_owner() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for animated in [false, true] {
+        for state in [0, 33, 34] {
+            let (scripts, animated_world, _, _) = player_walking_fixture_with(|scripts| {
+                let reference = scripts.definition.references.len() as u16;
+                scripts
+                    .definition
+                    .references
+                    .push(cyrus_script::Property::ExtraFlag);
+                let function_id = scripts.definition.functions.len() as u16;
+                scripts.definition.functions.push(Function {
+                    name: Native::UseItem,
+                    param_count: 1,
+                    kind: CallKind::Function,
+                });
+                scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+                    (
+                        0,
+                        Step {
+                            next: 1,
+                            operation: Operation::Assign {
+                                destination: Place::Property {
+                                    object: Object::Player,
+                                    reference,
+                                },
+                                formula: Formula {
+                                    first: Value::Integer { value: state },
+                                    rest: vec![],
+                                },
+                            },
+                        },
+                    ),
+                    (
+                        1,
+                        Step {
+                            next: 2,
+                            operation: Operation::ObjectCall {
+                                call: Call {
+                                    function_id,
+                                    function: Native::UseItem,
+                                    target: Object::Player,
+                                    kind: CallKind::Function,
+                                    arguments: vec![Value::Integer { value: 4 }],
+                                },
+                            },
+                        },
+                    ),
+                    (
+                        2,
+                        Step {
+                            next: 3,
+                            operation: Operation::Assign {
+                                destination: Place::Flag { index: 0 },
+                                formula: Formula {
+                                    first: Value::Integer { value: 13 },
+                                    rest: vec![],
+                                },
+                            },
+                        },
+                    ),
+                    (
+                        3,
+                        Step {
+                            next: 4,
+                            operation: Operation::End { target: 0 },
+                        },
+                    ),
+                ]);
+            });
+            let mut world = if animated {
+                animated_world
+            } else {
+                static_model_fixture_session(scripts, None, [10, 20, 30], true).0
+            };
+            let player = world.selected_player().unwrap();
+            assert_eq!(world.animation_frame(player).unwrap().is_some(), animated);
+            world.set_rope_attached_for_test(player, true);
+            let hud = ScriptHud::default();
+            let mut asset = inventory_asset(&[(4, 1), (5, 2)]);
+            asset.inventory.get_mut(&4).unwrap().drop_use_items = vec![5];
+            hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+            let inputs = ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            };
+            let map = world.id(0).unwrap();
+            world
+                .advance(
+                    map,
+                    ScriptStage::Body(Thread::Main),
+                    inputs,
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            assert_eq!(world.flags(), [13]);
+            let refused = animated && state != 0;
+            assert_eq!(
+                hud.inventory(None).unwrap().counts[&5],
+                if refused { 2 } else { 1 },
+                "animation {animated}, action {state}"
+            );
+            assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+            assert!(world.selected_player_on_rope());
+            assert_eq!(
+                world.actors()[player.index]
+                    .control_state()
+                    .unwrap()
+                    .living_state,
+                cyrus_game::script::LivingState::from_byte(state as u8)
+            );
+            // The accepted or refused attempt consumes the latch until input release.
+            world
+                .advance(
+                    map,
+                    ScriptStage::Body(Thread::Main),
+                    inputs,
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            assert_eq!(
+                hud.inventory(None).unwrap().counts[&5],
+                if refused { 2 } else { 1 }
+            );
+        }
+    }
+}
+
 fn sub_item_world(item: i32, amount: i32) -> ScriptWorld {
     item_count_world(Native::SubItem, &[item, amount])
 }
