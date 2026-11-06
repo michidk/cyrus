@@ -46,6 +46,16 @@ const EXPECTED: [(&str, u8, &[usize], &[(u32, i64, i64)]); 13] = [
     ("ibotaloe", 55, &[364], &[(64, 0, 1)]),
     ("ibandage", 70, &[364], &[(69, 0, 1)]),
 ];
+/// The item a script selects after its swap; scripts without an entry leave the selection alone.
+const SELECTED: [(&str, u16); 7] = [
+    ("iblood", 19),
+    ("imilk", 21),
+    ("iecto", 23),
+    ("isap", 25),
+    ("ibotwat", 64),
+    ("ibotaloe", 64),
+    ("ibandage", 69),
+];
 const BASELINE_FLAGS: [usize; 6] = [0, 194, 195, 231, 352, 353];
 
 #[test]
@@ -84,6 +94,7 @@ fn installed_item_scripts_run_to_completion() {
         let hud = ScriptHud::default();
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         let before = hud.inventory(None).unwrap().counts;
+        let selected_before = hud.inventory(None).unwrap().selected;
         world.spawn_shell(name).unwrap();
         let mut random = cyrus_game::random::EngineRandom::default();
         let mut finished = false;
@@ -144,5 +155,14 @@ fn installed_item_scripts_run_to_completion() {
             .collect();
         assert_eq!(set, flags, "{name}: flags");
         assert_eq!(changed, counts, "{name}: inventory counts");
+        let selected = SELECTED
+            .iter()
+            .find(|(script, _)| *script == name)
+            .map_or(selected_before, |(_, item)| Some(*item));
+        assert_eq!(
+            hud.inventory(None).unwrap().selected,
+            selected,
+            "{name}: selected item"
+        );
     }
 }
