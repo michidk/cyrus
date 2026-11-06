@@ -383,6 +383,10 @@ session snapshot and restore; journal and torch reset semantics remain unsupport
 Matched original/native/browser weapon-draw acceptance and gameplay walk-mode/auto-defend parity remain open. Native
 health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
 
+Verified: inventory artwork, cursor images and count/name text share the world's
+640×480 viewport. The translucent backing quad occupies only (90,49) to (550,433);
+it does not resize or offset the coordinate space used by its sibling artwork.
+
 The inventory screen projects its pinned candle over the paused world HUD,
 including conditional visibility mode, and closing the screen clears the timer.
 The candle remains hidden for every nonzero lockout. Inventory candle animation

@@ -488,14 +488,8 @@ fn spawn_inventory(mut commands: Commands, viewports: Query<Entity, With<HudView
     commands.entity(viewport).with_child((
         InventoryOverlay,
         Visibility::Hidden,
-        BackgroundColor(Color::srgba(
-            10.0 / 255.0,
-            10.0 / 255.0,
-            10.0 / 255.0,
-            180.0 / 255.0,
-        )),
-        // The backing quad spans (90, 49) to (550, 433).
-        place([90, 49], [460, 384]),
+        // Artwork and text use the same 640×480 coordinates as the world HUD.
+        place([0, 0], [640, 480]),
     ));
 }
 
@@ -621,6 +615,16 @@ fn inventory_draw(
         }
     }
     commands.entity(overlay).with_children(|parent| {
+        parent.spawn((
+            BackgroundColor(Color::srgba(
+                10.0 / 255.0,
+                10.0 / 255.0,
+                10.0 / 255.0,
+                180.0 / 255.0,
+            )),
+            place([90, 49], [460, 384]),
+            ZIndex(0),
+        ));
         let mut image = |path: String, at: [i32; 2], size: [u16; 2]| {
             parent.spawn((
                 ImageNode::new(assets.load(path)),
@@ -2741,5 +2745,69 @@ mod tests {
         app.insert_resource(NextState::<AppState>::Unchanged);
         app.update();
         assert_eq!(visibility(&app), Visibility::Inherited);
+    }
+    #[test]
+    fn inventory_artwork_and_counts_use_the_full_viewport_coordinate_space() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .init_asset::<HudAsset>();
+        app.world_mut().spawn(HudViewport);
+        app.add_systems(Startup, spawn_inventory)
+            .add_systems(Update, inventory_draw);
+        let mut hud = asset(0);
+        hud.inventory_screen[0] = [460, 384];
+        hud.items = vec![HudItem {
+            id: 4,
+            bitmap: 26,
+            count: 53,
+            size: [80, 70],
+            selected_size: Some([84, 74]),
+            name: None,
+        }];
+        let handle = app.world_mut().resource_mut::<Assets<HudAsset>>().add(hud);
+        app.insert_resource(HudHandle(handle));
+        let mut screen = cyrus_game::inventory_screen::InventoryScreen::default();
+        screen.open = true;
+        screen.grid.open(vec![(4, 53)], Some(4));
+        screen.layout = screen.grid.layout();
+        app.insert_resource(screen);
+        app.update();
+        let (overlay, node, children) = app
+            .world_mut()
+            .query_filtered::<(Entity, &Node, &Children), With<InventoryOverlay>>()
+            .single(app.world())
+            .unwrap();
+        assert_eq!(*node, place([0, 0], [640, 480]));
+        let children: Vec<_> = children.iter().collect();
+        assert_eq!(
+            children.len(),
+            4,
+            "backing, border, cursor and count/name raster"
+        );
+        let nodes: Vec<_> = children
+            .iter()
+            .map(|&child| app.world().get::<Node>(child).unwrap())
+            .collect();
+        assert_eq!(*nodes[0], place([90, 49], [460, 384]));
+        assert_eq!(*nodes[1], place([90, 49], [460, 384]));
+        assert_eq!(*nodes[2], place([98, 85], [84, 74]));
+        assert_eq!(*nodes[3], place([0, 0], [640, 480]));
+        assert_eq!(
+            app.world().get::<BackgroundColor>(overlay).unwrap().0,
+            Color::NONE
+        );
+        assert_eq!(
+            app.world().get::<BackgroundColor>(children[0]).unwrap().0,
+            Color::srgba(10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0, 180.0 / 255.0)
+        );
+        app.world_mut()
+            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .open = false;
+        app.update();
+        assert_eq!(
+            app.world().get::<Visibility>(overlay),
+            Some(&Visibility::Hidden)
+        );
     }
 }
