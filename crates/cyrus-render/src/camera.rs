@@ -125,6 +125,8 @@ fn flycam_controller(
 
 /// Modern camera: lock and hide the cursor during gameplay that reads input, so the mouse turns
 /// the follow camera; release it everywhere else.
+// A Bevy system: its parameters are independent resources and queries.
+#[allow(clippy::too_many_arguments)]
 fn grab_cursor(
     state: Option<Res<State<cyrus_game::AppState>>>,
     suppressed: Res<InputSuppressed>,
@@ -132,6 +134,7 @@ fn grab_cursor(
     logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<cyrus_game::fidelity::Fidelity>,
+    mouse: Option<Res<ButtonInput<MouseButton>>>,
     mut windows: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
 ) {
     use bevy::window::CursorGrabMode;
@@ -147,8 +150,11 @@ fn grab_cursor(
     } else {
         CursorGrabMode::None
     };
+    // Browsers lock the pointer only in response to a click and release it on Escape, so a
+    // click while the lock is wanted requests it again.
+    let clicked = mouse.is_some_and(|mouse| mouse.get_just_pressed().next().is_some());
     for mut cursor in &mut windows {
-        if cursor.grab_mode != mode {
+        if cursor.grab_mode != mode || (grab && clicked) {
             cursor.grab_mode = mode;
             cursor.visible = !grab;
         }
@@ -356,6 +362,44 @@ fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_click_requests_the_modern_cursor_lock_again() {
+        use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+        let mut app = App::new();
+        app.add_plugins(bevy::state::app::StatesPlugin)
+            .insert_state(AppState::InGame)
+            .init_resource::<InputSuppressed>()
+            .init_resource::<ButtonInput<MouseButton>>()
+            .insert_resource(cyrus_game::fidelity::Fidelity {
+                camera: cyrus_game::fidelity::Mode::Modern,
+                ..Default::default()
+            })
+            .add_systems(Update, grab_cursor);
+        let window = app
+            .world_mut()
+            .spawn((CursorOptions::default(), PrimaryWindow))
+            .id();
+        let changed = |app: &App| {
+            app.world()
+                .entity(window)
+                .get_change_ticks::<CursorOptions>()
+                .expect("cursor options")
+                .changed
+        };
+        app.update();
+        let cursor = app.world().get::<CursorOptions>(window).expect("cursor");
+        assert_eq!(cursor.grab_mode, CursorGrabMode::Locked);
+        assert!(!cursor.visible);
+        let locked = changed(&app);
+        app.update();
+        assert_eq!(changed(&app), locked, "no request without a click");
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+        app.update();
+        assert_ne!(changed(&app), locked, "a click requests the lock again");
+    }
 
     #[test]
     fn driven_view_uses_render_angles_during_a_glide() {
