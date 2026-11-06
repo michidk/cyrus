@@ -541,6 +541,9 @@ impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
             heading: local.wrapped_angles()[1],
         })
     }
+    fn source_index(&mut self, native: &str) -> Result<u32> {
+        Ok(self.host.native_source_actor(native)?.index as u32)
+    }
     fn talk_target(&mut self, distance: i32) -> Result<([i32; 2], u16)> {
         let receiver = self.host.registry.id(self.host.index)?;
         let source = self
@@ -612,7 +615,10 @@ impl GameHost<'_, '_, '_, '_> {
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<super::CallResult>> {
-        let mut port = if matches!(function, Native::ObjectLineUp | Native::ObjectPickupLineUp) {
+        let mut port = if matches!(
+            function,
+            Native::LineUp | Native::ObjectLineUp | Native::ObjectPickupLineUp
+        ) {
             PlayerLineup::for_receiver(self)?
         } else {
             PlayerLineup::new(self, function == Native::PlayerFaceTalk)?

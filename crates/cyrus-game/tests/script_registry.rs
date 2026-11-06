@@ -35794,7 +35794,8 @@ fn object_lineup_walks_the_receiver_to_the_callers_frame_and_ends_with_the_flag_
 }
 
 /// The walking-player fixture where the map actor calls `Player.ObjectPickupLineUp(angle, 0, 2048)`.
-fn object_pickup_fixture(
+fn lineup_receiver_fixture(
+    native: Native,
     angle: i32,
 ) -> (
     Scripts,
@@ -35807,7 +35808,7 @@ fn object_pickup_fixture(
     let (scripts, world, mut data, scene) = player_walking_fixture_with(|scripts| {
         let id = u16::try_from(scripts.definition.functions.len()).unwrap();
         scripts.definition.functions.push(Function {
-            name: Native::ObjectPickupLineUp,
+            name: native,
             param_count: 3,
             kind: CallKind::Task,
         });
@@ -35816,7 +35817,7 @@ fn object_pickup_fixture(
             Operation::ObjectCall {
                 call: Call {
                     function_id: id,
-                    function: Native::ObjectPickupLineUp,
+                    function: native,
                     kind: CallKind::Task,
                     target: Object::Player,
                     // The unrotated offsets name the point 2048 units along +Z of the caller,
@@ -35858,7 +35859,8 @@ fn object_pickup_lineup_arrives_completes_and_the_caller_continues() {
     // caller's height selects turns to it, arrives at the caller's X/Z plus the unrotated offsets
     // and the default animation completes the task in the player's own slot; the caller continued
     // at once.
-    let (_, mut world, data, scene, index) = object_pickup_fixture(1024);
+    let (_, mut world, data, scene, index) =
+        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35888,9 +35890,40 @@ fn object_pickup_lineup_arrives_completes_and_the_caller_continues() {
 }
 
 #[test]
+fn line_up_walks_the_receiver_to_the_retained_source_frame_and_the_caller_continues() {
+    // LineUp is the close mover on the receiver: it turns to the final heading, steps toward the
+    // rotated offset point of the source actor retained on the first invocation and completes
+    // with the default animation, while the caller continued at once.
+    let (_, mut world, data, scene, index) = lineup_receiver_fixture(Native::LineUp, 0);
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let mut finished = false;
+    for round in 0..600 {
+        scheduler_round_with(&mut world, &data, &scene, round, true, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        if round == 0 {
+            assert_eq!(world.flags(), [7], "the caller continues at once");
+            assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 1);
+        }
+        if world.actors()[index].runtime().unwrap().active_tasks() == 0 {
+            finished = true;
+            break;
+        }
+    }
+    let caller = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    let end = world.spatial(player).unwrap().local.position;
+    assert!(
+        finished,
+        "the task completes; player at {end:?}, caller {caller:?}"
+    );
+    assert_eq!([end[0], end[2]], [caller[0], caller[2] + 2048]);
+}
+
+#[test]
 fn object_pickup_lineup_abandons_on_a_stale_collision_response_without_moving() {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
-    let (scripts, mut world, data, scene, index) = object_pickup_fixture(1024);
+    let (scripts, mut world, data, scene, index) =
+        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let start = world.spatial(player).unwrap().local.position;

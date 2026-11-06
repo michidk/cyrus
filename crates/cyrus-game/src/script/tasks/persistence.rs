@@ -40,15 +40,19 @@ impl NativeTasks {
         mut validate: impl FnMut(u32) -> Result<()>,
     ) -> Result<()> {
         for (&token, state) in &self.tasks {
-            if let Task::LineUp {
-                reference: Some(index),
-                ..
-            } = state
-            {
-                validate(*index).with_context(|| {
-                    format!("native PlayerLineUp token {token} reference {index}")
-                })?;
-            }
+            let (name, index) = match state {
+                Task::LineUp {
+                    reference: Some(index),
+                    ..
+                } => ("PlayerLineUp", *index),
+                Task::ReceiverLineUp {
+                    reference: Some(index),
+                    ..
+                } => ("LineUp", *index),
+                _ => continue,
+            };
+            validate(index)
+                .with_context(|| format!("native {name} token {token} reference {index}"))?;
         }
         Ok(())
     }
@@ -271,6 +275,7 @@ impl Task {
             Self::Bounce(_) => (Native::BounceObject, 3, Some(CallKind::Task)),
             Self::LineUp { .. } => (Native::PlayerLineUp, 3, Some(CallKind::Task)),
             Self::PlayerFaceTalk => (Native::PlayerFaceTalk, 1, Some(CallKind::Task)),
+            Self::ReceiverLineUp { .. } => (Native::LineUp, 3, Some(CallKind::Task)),
             Self::ObjectLineUp => (Native::ObjectLineUp, 3, Some(CallKind::Task)),
             Self::ObjectPickupLineUp { .. } => {
                 (Native::ObjectPickupLineUp, 3, Some(CallKind::Task))

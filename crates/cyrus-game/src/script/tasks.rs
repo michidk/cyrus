@@ -613,6 +613,12 @@ enum Task {
     PlayerFaceTalk,
     /// `ObjectLineUp(angle, x_offset, z_offset)`: walks the receiver to the source actor's frame.
     ObjectLineUp,
+    /// `LineUp(angle, x_offset, z_offset)`: the close mover on the receiver toward the reference
+    /// actor retained from the first invocation's shared native-command source.
+    ReceiverLineUp {
+        fallback: bool,
+        reference: Option<u32>,
+    },
     /// `ObjectPickupLineUp(angle, x_offset, z_offset)`: the pickup mover on the receiver, toward
     /// the shared source actor's position plus unrotated offsets.
     ObjectPickupLineUp {
@@ -1633,6 +1639,39 @@ impl Task {
                     return Err(error);
                 }
                 result == 0
+            }
+            Self::ReceiverLineUp {
+                fallback,
+                reference,
+            } => {
+                use super::lineup::{AlignState, close_mover};
+                let [angle, x_offset, z_offset] = arguments else {
+                    anyhow::bail!("LineUp takes three arguments");
+                };
+                let port = services
+                    .lineup
+                    .context("LineUp receiver alignment state unavailable")?;
+                let retained = match *reference {
+                    Some(index) => index,
+                    None => port.source_index("LineUp")?,
+                };
+                let (index, aligned) = port.reference(Some(retained))?;
+                *reference = Some(index);
+                let mut state = AlignState {
+                    fallback: *fallback,
+                };
+                let result = close_mover(
+                    &mut *port,
+                    &mut state,
+                    angle.integer()?,
+                    [x_offset.integer()?, z_offset.integer()?],
+                    aligned,
+                );
+                *fallback = state.fallback;
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                result? == 0
             }
             Self::ObjectLineUp => {
                 let [angle, x_offset, z_offset] = arguments else {
@@ -3108,6 +3147,12 @@ impl NativeTasks {
                 fallback: false,
                 reference: None,
             }
+        } else if function == Native::LineUp {
+            anyhow::ensure!(kind == CallKind::Task, "LineUp requires task encoding");
+            Task::ReceiverLineUp {
+                fallback: false,
+                reference: None,
+            }
         } else if function == Native::BounceObject {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -3325,6 +3370,7 @@ impl NativeTasks {
             Native::PlayerParallelLineUp,
             Native::PlayerLineUp,
             Native::PlayerFaceTalk,
+            Native::LineUp,
             Native::ObjectLineUp,
             Native::ObjectPickupLineUp,
         ]
@@ -3345,6 +3391,7 @@ impl NativeTasks {
                     | Task::ParallelLineUp
                     | Task::LineUp { .. }
                     | Task::PlayerFaceTalk
+                    | Task::ReceiverLineUp { .. }
                     | Task::ObjectLineUp
                     | Task::ObjectPickupLineUp { .. }
             )
@@ -3360,7 +3407,9 @@ impl NativeTasks {
     pub(super) fn is_object_lineup_task(&self, token: u64) -> bool {
         matches!(
             self.tasks.get(&token),
-            Some(Task::ObjectLineUp | Task::ObjectPickupLineUp { .. })
+            Some(
+                Task::ReceiverLineUp { .. } | Task::ObjectLineUp | Task::ObjectPickupLineUp { .. }
+            )
         )
     }
 

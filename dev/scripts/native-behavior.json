@@ -4907,18 +4907,20 @@
     },
     {
       "native": "LineUp",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named timing/presentation dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878",
-        "https://github.com/michidk/redguard-preservation/commit/a660ee3"
+      "scope": "Three-argument task running the close mover on the receiver toward the reference actor retained from the shared source actor",
+      "caller": "ScriptWorld::advance -> Runtime task call -> GameHost::lineup_call/lineup_poll -> Task::ReceiverLineUp -> lineup::close_mover",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::line_up_walks_the_receiver_to_the_retained_source_frame_and_the_caller_continues",
+        "crates/cyrus-game/src/script/tasks/persistence/tests.rs::line_up_retains_its_source_reference_across_a_snapshot"
       ],
-      "limits": "Verified independent installed three-argument task declaration/exact binding/full900-byte native.73728 original-instruction contexts and12 effective decoded-instruction semantic controls PASS. Original TurnToAngle/weapon predicates/angular helper and226-byte pitch helper execute until first unresolved dependency.2688 returns; exact predicate36864/source-copy18432/matrix4608/animation5376/completion5760 entry stops, no fabricated returns or continuation. Retained-target fallback/phase-one half-turn heading/nonzero-turn pending return/self-target diagnostic boundary/pitch adjustment/alignment flag bit verified. Selected phases/target modes/receiver identities/yaws/arguments/pitches/steps/attributes/scales/player modes; full mapped memory/nonstack write order/canary and returning stack/preserved regs. Two offset arguments retained but not consumed before boundaries. Unknown downstream geometry/proximity/movement/alignment/completion/diagnostic effects, target producer/lifecycle, full joint domain/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance.",
-      "reviewed_revision": "e3a2b4a6532692b1418c3050182525b9fd610c64"
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/17faabf/docs/engine/SOUP.md#lineup-mover",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified independent installed three-argument task declaration/exact binding/full900-byte native.73728 original-instruction contexts and12 effective decoded-instruction semantic controls PASS. Original TurnToAngle/weapon predicates/angular helper and226-byte pitch helper execute until first unresolved dependency.2688 returns; exact predicate36864/source-copy18432/matrix4608/animation5376/completion5760 entry stops, no fabricated returns or continuation. Retained-target fallback/phase-one half-turn heading/nonzero-turn pending return/self-target diagnostic boundary/pitch adjustment/alignment flag bit verified. Selected phases/target modes/receiver identities/yaws/arguments/pitches/steps/attributes/scales/player modes; full mapped memory/nonstack write order/canary and returning stack/preserved regs. Two offset arguments retained but not consumed before boundaries. Unknown downstream geometry/proximity/movement/alignment/completion/diagnostic effects, target producer/lifecycle, full joint domain/VM/original/native/browser parity. Named production dispatch remains missing; no Rust/runtime acceptance. Implementation (current): Verified (installed definition declares a task with 3 arguments; the original handler read through the native table is the close mover PlayerLineUp runs in close mode, entered with the receiver as the moving actor): the retained reference is copied from the shared native-command source on the first invocation and kept in the task's state (persisted and validated as an actor reference), the shared player-lineup result is not written, and a reference equal to the receiver is an explicit error. Routed test (walking-player fixture, Player.LineUp(0, 0, 2048) from the map actor, production scheduler polling): the caller continues in round 0, the receiver's own slot holds the task, and the task completes with the player at the caller's X and Z plus the offsets. Unknown: stale-response and rejected-step branches are covered only by the close mover's PlayerLineUp rows, not a routed LineUp test; the retained reference after the source actor departs is not exercised; no native-run or browser comparison.",
+      "reviewed_revision": "c96426fa"
     },
     {
       "native": "ObjectLineUp",

@@ -100,6 +100,9 @@ pub trait LineupHost: LineupPort {
     /// `ObjectLineUp`'s and `ObjectPickupLineUp`'s reference: the shared native-command source
     /// actor's local position and heading.
     fn source_reference(&mut self, native: &str) -> anyhow::Result<Reference>;
+    /// The index of the shared native-command source actor, which `LineUp` retains as its
+    /// reference on the first invocation.
+    fn source_index(&mut self, native: &str) -> anyhow::Result<u32>;
     /// `PlayerFaceTalk`'s target: the receiver's local X/Z plus the X/Z of `(0, 0, distance)`
     /// through its orientation matrix (wrapping), and the receiver's heading.
     fn talk_target(&mut self, distance: i32) -> anyhow::Result<([i32; 2], u16)>;

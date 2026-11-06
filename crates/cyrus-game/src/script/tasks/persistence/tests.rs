@@ -4555,6 +4555,9 @@ impl crate::script::lineup::LineupHost for LineupLog {
             heading: 0,
         })
     }
+    fn source_index(&mut self, _: &str) -> anyhow::Result<u32> {
+        Ok(0)
+    }
     fn talk_target(&mut self, _: i32) -> anyhow::Result<([i32; 2], u16)> {
         anyhow::bail!("recording lineup host does not provide PlayerFaceTalk")
     }
@@ -4668,6 +4671,40 @@ fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_
         )
         .unwrap();
     assert_eq!(owner.log, ["path [970, 77, 2040]", "face 970 2040"]);
+}
+
+#[test]
+fn line_up_retains_its_source_reference_across_a_snapshot() {
+    let args = [
+        Argument::Integer(0),
+        Argument::Integer(0),
+        Argument::Integer(0),
+    ];
+    let mut owner = LineupLog {
+        reference: ([0; 3], 0),
+        path_clear: true,
+        log: vec![],
+    };
+    let mut tasks = NativeTasks::default();
+    tasks
+        .call(
+            (Native::LineUp, CallKind::Task),
+            &args,
+            Invocation {
+                elapsed: Some(0),
+                unpaused_tasks: 0,
+                unpaused_blocking_tasks: 0,
+            },
+            &mut None,
+            &mut None,
+            NativeServices {
+                lineup: Some(&mut owner),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let snapshot = serde_json::to_value(tasks.snapshot()).unwrap().to_string();
+    assert!(snapshot.contains("ReceiverLineUp") && snapshot.contains("\"reference\":0"));
 }
 
 /// Installed item scripts issue `RTXp`, `RTX` and the object pan and location camera natives as
