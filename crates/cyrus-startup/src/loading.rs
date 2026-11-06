@@ -395,13 +395,26 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
+        world_entry_recreates_player(false);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn world_entry_from_paused_book_recreates_the_retained_player() {
+        world_entry_recreates_player(true);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn world_entry_recreates_player(from_book: bool) {
         use cyrus_game::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (debug world loading)");
             return;
         };
-        let cache =
-            std::env::temp_dir().join(format!("cyrus-debug-loading-{}", std::process::id()));
+        let cache = std::env::temp_dir().join(format!(
+            "cyrus-debug-loading-{}-{from_book}",
+            std::process::id()
+        ));
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
         let book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
@@ -444,6 +457,10 @@ mod tests {
             .query_filtered::<Entity, With<Player>>()
             .single(app.world())
             .unwrap();
+        if from_book {
+            app.insert_state(AppState::Menu);
+            app.insert_resource(cyrus_game::PauseBookEntry { page: 0 });
+        }
         app.insert_resource(cyrus_game::player::placement::MarkerEntry {
             marker: 9,
             heading: 512,

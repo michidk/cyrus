@@ -203,7 +203,7 @@ fn setup(
     let frames: Vec<_> = (0..count)
         .map(|frame| assets.load(format!("cache://startup/{prefix}-{frame:02}.png")))
         .collect();
-    commands.spawn((Camera2d, StartupContent));
+    spawn_camera(&mut commands);
     let title = game
         .as_ref()
         .filter(|game| game.image != Handle::default())
@@ -303,6 +303,18 @@ fn advance(
     }
 }
 
+/// Presentation clears independently of the world's environment colour.
+fn spawn_camera(commands: &mut Commands) {
+    commands.spawn((
+        Camera2d,
+        Camera {
+            clear_color: bevy::camera::ClearColorConfig::Custom(Color::BLACK),
+            ..default()
+        },
+        StartupContent,
+    ));
+}
+
 fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupContent>>) {
     for entity in &content {
         commands.entity(entity).despawn();
@@ -313,6 +325,23 @@ fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupCon
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn presentation_camera_keeps_black_borders_after_world_entry() {
+        let mut app = App::new();
+        app.insert_resource(ClearColor(Color::srgb_u8(192, 96, 96)))
+            .add_systems(Update, |mut commands: Commands| spawn_camera(&mut commands));
+        app.update();
+        let camera = app
+            .world_mut()
+            .query::<&Camera>()
+            .single(app.world())
+            .unwrap();
+        assert!(matches!(
+            camera.clear_color,
+            bevy::camera::ClearColorConfig::Custom(colour) if colour == Color::BLACK
+        ));
+    }
+
     #[test]
     fn a_skipped_startup_prepares_audio_without_waiting_for_the_title() {
         use cyrus_audio::AudioReadiness;

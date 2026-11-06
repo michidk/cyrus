@@ -420,7 +420,7 @@ fn setup(
     if let Some(dispatch) = dispatch.as_deref_mut() {
         dispatch.book_context = Some(if death.is_some() { 3 } else { 1 });
     }
-    commands.spawn((Camera2d, StartupContent));
+    super::spawn_camera(&mut commands);
     commands.spawn((Sprite::default(), StartupContent));
     commands.insert_resource(MenuState {
         context: if death.is_some() {
@@ -1142,6 +1142,19 @@ pub(super) fn begin_world_loading(
     book: &MenuAsset,
     elapsed: f64,
 ) {
+    // The book retains the paused player for Continue and Save. A fresh world entry must
+    // replace it even when asset handles and the requested marker are unchanged.
+    commands.queue(|world: &mut World| {
+        let players = world
+            .query_filtered::<Entity, With<cyrus_game::player::Player>>()
+            .iter(world)
+            .collect::<Vec<_>>();
+        for player in players {
+            world.despawn(player);
+        }
+    });
+    commands.remove_resource::<cyrus_game::PausedGameplay>();
+    commands.remove_resource::<cyrus_game::PauseBookEntry>();
     commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
     commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
     commands.remove_resource::<cyrus_world::lifecycle::PreparationProgress>();

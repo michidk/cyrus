@@ -35,6 +35,10 @@ sample. Menu exit restores the partial timing checkpoint while retaining menu
 changes to smoothing, the measurement remainder, warmup and the last exposed step.
 World timing remains game-owned; this does not enable automatic actor updates.
 New Game applies the game-owned lockout reset before requesting its world. Loading a save does not apply that New Game reset.
+World entry from the book discards the paused player before recreating it at the
+requested marker, including when New Game selects the same world and marker.
+Startup, book, movie and loading presentation clear their borders to black
+independently of the last world's background colour.
 
 Startup copies title readiness and committed menu preferences, including subtitles,
 into cyrus-audio before `ApplyPreferences`. Preferences still persist before they

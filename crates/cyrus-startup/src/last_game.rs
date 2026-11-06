@@ -366,7 +366,7 @@ pub(super) fn drive(
                 CapturedBackground,
                 StartupContent,
             ));
-            commands.spawn((Camera2d, StartupContent));
+            super::spawn_camera(&mut commands);
             presentation.graphics = true;
         } else if let Ok(window) = windows.single() {
             for mut sprite in &mut sprites {
