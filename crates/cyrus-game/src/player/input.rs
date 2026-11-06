@@ -71,6 +71,17 @@ impl PlayerInput {
             steer,
         )
     }
+
+    /// Modern held directions for a topic menu, which reads forward and back as up and down:
+    /// the keys as held, plus the left stick's dominant vertical tilt.
+    pub fn menu_directions(&self, stick: Option<Vec2>) -> PlayerInput {
+        let vertical = stick.filter(|stick| stick.y.abs() > stick.x.abs());
+        PlayerInput {
+            forward: self.forward || vertical.is_some_and(|stick| stick.y > 0.0),
+            backward: self.backward || vertical.is_some_and(|stick| stick.y < 0.0),
+            ..*self
+        }
+    }
 }
 
 /// Modern analog input not yet taken by an ordinary update.

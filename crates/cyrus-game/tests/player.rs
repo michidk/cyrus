@@ -231,6 +231,22 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
 }
 
 #[test]
+fn modern_topic_menus_read_held_keys_and_the_vertical_stick() {
+    let back = PlayerInput {
+        backward: true,
+        action: true,
+        ..default()
+    };
+    let held = back.menu_directions(None);
+    assert!(held.backward && !held.forward && held.action);
+    let idle = PlayerInput::default();
+    assert!(idle.menu_directions(Some(Vec2::new(0.2, 0.9))).forward);
+    assert!(idle.menu_directions(Some(Vec2::new(-0.1, -0.8))).backward);
+    let across = idle.menu_directions(Some(Vec2::new(0.9, 0.4)));
+    assert!(!across.forward && !across.backward);
+}
+
+#[test]
 fn modern_controls_steer_toward_the_camera_relative_heading() {
     use cyrus_game::player::turn::{GroundTurn, turned};
     let right = PlayerInput {
