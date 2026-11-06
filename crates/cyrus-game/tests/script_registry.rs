@@ -3871,6 +3871,134 @@ fn change_group_and_user_store_the_low_byte_and_reject_divergent_membership() {
     }
 }
 
+/// A slave (actor 0, slave group `slave_group`) and a root master (actor 1, master group 1) with
+/// authored placement angles. `call` is `(axis, angle)` for the slave's one `FixSlaveAngle` call;
+/// `None` returns the prepared world without running the script.
+fn fix_slave_angle_world(
+    slave_group: u8,
+    call: Option<(i32, i32)>,
+    spatial: bool,
+    late_slave_group: Option<u8>,
+) -> anyhow::Result<ScriptWorld> {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (axis, angle) = call.unwrap_or((0, 0));
+    let mut scripts = random_scripts(
+        Native::FixSlaveAngle,
+        vec![
+            Value::Integer { value: axis },
+            Value::Integer { value: angle },
+        ],
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = 2;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Slave] = slave_group;
+    let mut master = scripts.actors["LOGIC"].clone();
+    master.attributes[Attribute::Slave] = 0;
+    master.attributes[Attribute::Master] = 1;
+    master.header_index = 1;
+    master.instances = 1;
+    master.namespace = Some("master".into());
+    master.instance_variables = vec![vec![9]];
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.instances = 1;
+    slave.instance_variables.truncate(1);
+    scripts.instances[1].actor = "MASTER".into();
+    scripts.actors.insert("MASTER".into(), master);
+    scripts.instances[0].angles = [10, 20, 30];
+    scripts.instances[1].angles = [100, 200, 300];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    if spatial {
+        world.prepare_spatial().unwrap();
+    }
+    if let Some(group) = late_slave_group {
+        // Preparation rejects a slave group without a master, so that state only arises when the
+        // byte is written afterwards.
+        let id = world.id(0).unwrap();
+        world.set_attribute_for_test(id, Attribute::Slave, group);
+    }
+    if call.is_some() {
+        let id = world.id(0).unwrap();
+        world.advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )?;
+    }
+    Ok(world)
+}
+
+#[test]
+fn fix_slave_angle_sets_one_local_component_from_the_master_group_angle() {
+    let baseline = fix_slave_angle_world(1, None, true, None).unwrap();
+    let before = baseline.spatial(baseline.id(0).unwrap()).unwrap();
+    // The master's angles are [100, 200, 300] and the slave's placement angles [10, 20, 30], so the
+    // slave's local angles start as their differences modulo 2048.
+    assert_eq!(before.local.angles, [1958, 1868, 1778]);
+    for (axis, angle, component, expected) in [
+        (0, 500, 0, 400),
+        (1, 5, 1, 1853),
+        (2, 1000, 2, 700),
+        (7, -1, 2, 1747),
+        (-3, 2048 + 305, 2, 5),
+        (1, i32::MAX, 1, (i32::MAX - 200) & 2047),
+    ] {
+        let world = fix_slave_angle_world(1, Some((axis, angle)), true, None).unwrap();
+        let slave = world.spatial(world.id(0).unwrap()).unwrap();
+        let mut angles = before.local.angles;
+        angles[component] = expected as u16;
+        assert_eq!(slave.local.angles, angles, "axis {axis}, angle {angle}");
+        assert_eq!(
+            format!("{:?}", slave.effective),
+            format!("{:?}", before.effective),
+            "the effective pose waits for the next family refresh"
+        );
+        assert_eq!(
+            format!("{:?}", slave.local.matrix),
+            format!("{:?}", before.local.matrix),
+            "the matrix is not rebuilt"
+        );
+    }
+}
+
+#[test]
+fn fix_slave_angle_leaves_a_receiver_without_a_slave_group_unchanged_and_reports_missing_state() {
+    let baseline = fix_slave_angle_world(0, None, true, None).unwrap();
+    let before = baseline
+        .spatial(baseline.id(0).unwrap())
+        .unwrap()
+        .local
+        .angles;
+    let world = fix_slave_angle_world(0, Some((1, 5)), true, None).unwrap();
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles,
+        before
+    );
+    // A slave byte rewritten to group 3 after preparation names no master: the group angle table
+    // entry is not established.
+    let error = fix_slave_angle_world(1, Some((1, 5)), true, Some(3))
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("slave group 3 has no prepared master"),
+        "{error:#}"
+    );
+    let error = fix_slave_angle_world(1, Some((1, 5)), false, None)
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("FixSlaveAngle: spatial state not prepared"),
+        "{error:#}"
+    );
+}
+
 #[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};

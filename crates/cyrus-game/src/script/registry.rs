@@ -1960,6 +1960,49 @@ impl ScriptWorld {
             == AiType::DEAD)
     }
 
+    /// `FixSlaveAngle(axis, angle)`: a slave sets one local angle component so that, added to its
+    /// master group's angle, the component equals `angle` modulo 2048. The group angle table the
+    /// original reads holds, per master group, the master's accumulated angles from the latest
+    /// family update, which is the master's effective pose here. Axis 0 is pitch, 1 yaw and any
+    /// other value roll; nothing else changes (the other components, the effective pose and the
+    /// matrix wait for the next family refresh). A receiver without a slave group is unchanged. A
+    /// slave group whose master is not the prepared parent has no established table entry and is
+    /// reported instead of read as zero.
+    fn fix_slave_angle(&mut self, id: ScriptActorId, axis: i32, angle: i32) -> Result<()> {
+        let index = self.resolve(id)?;
+        let group = self.actors[index].attributes[Attribute::Slave];
+        if group == 0 {
+            return Ok(());
+        }
+        let spatial = self
+            .spatial
+            .as_ref()
+            .context("FixSlaveAngle: spatial state not prepared")?;
+        let master = spatial
+            .actor(index)?
+            .parent
+            .filter(|&parent| self.actors[parent].attributes[Attribute::Master] == group)
+            .with_context(|| {
+                format!(
+                    "FixSlaveAngle: slave group {group} has no prepared master; its group angle table entry is not established"
+                )
+            })?;
+        let master_angles = spatial.actor(master)?.query_pose()?.angles;
+        let component = match axis {
+            0 => 0,
+            1 => 1,
+            _ => 2,
+        };
+        let local = angle.wrapping_sub(i32::from(master_angles[component])) & 2047;
+        self.spatial
+            .as_mut()
+            .context("FixSlaveAngle: spatial state not prepared")?
+            .actor_mut(index)?
+            .local
+            .angles[component] = local as u16;
+        Ok(())
+    }
+
     fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
         let index = self.resolve(id)?;
         let actor = self.spatial(id)?;
@@ -6008,6 +6051,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .actor_mut(self.index)?
                     .restore_start_position(axes)?;
             }
+            return Ok(CallResult::Complete(0));
+        }
+        // FixSlaveAngle(axis, angle) writes one local angle component of a slave from its master
+        // group's angle and returns zero.
+        if function == Native::FixSlaveAngle {
+            let [axis, angle] = arguments else {
+                anyhow::bail!("FixSlaveAngle requires two arguments")
+            };
+            let (axis, angle) = (axis.integer()?, angle.integer()?);
+            let id = self.registry.id(self.index)?;
+            self.registry.fix_slave_angle(id, axis, angle)?;
             return Ok(CallResult::Complete(0));
         }
         if function == Native::ResetPosition {

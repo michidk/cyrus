@@ -4482,19 +4482,22 @@
     },
     {
       "native": "FixSlaveAngle",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Named two-argument slave local-angle correction",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed slave local-angle write from the master group angle",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ScriptWorld::fix_slave_angle",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::fix_slave_angle_sets_one_local_component_from_the_master_group_angle",
+        "crates/cyrus-game/tests/script_registry.rs::fix_slave_angle_leaves_a_receiver_without_a_slave_group_unchanged_and_reports_missing_state"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602702770",
         "https://github.com/michidk/redguard-preservation/pull/189",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6604851160"
       ],
-      "limits": "Verified: canonical function takes two arguments. Complete original handler/predicate pass 336 constructed instruction cases and six changed-contract controls. Zero attr_slave leaves actor unchanged; otherwise reads that slave-group angle-table component and writes (angle - group_component) & 2047 to one local angle. Axis 0 selects pitch, 1 yaw, every other signed integer roll. Returns zero; no tree lookup or effective-angle/matrix update. Constructed actor/table evidence does not execute the table producer or later transform consumer and does not establish live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run.",
-      "reviewed_revision": "579a68a0e1acfc0c6f910173603c2ceb694ca83f"
+      "limits": "Verified: canonical function takes two arguments. Complete original handler/predicate pass 336 constructed instruction cases and six changed-contract controls. Zero attr_slave leaves actor unchanged; otherwise reads that slave-group angle-table component and writes (angle - group_component) & 2047 to one local angle. Axis 0 selects pitch, 1 yaw, every other signed integer roll. Returns zero; no tree lookup or effective-angle/matrix update. Constructed actor/table evidence does not execute the table producer or later transform consumer and does not establish live original/native/browser acceptance. Named Rust handler remains absent; existing attachment/composition services do not implement this public call. No dedicated public rejection assertion or named production receipt located. Missing means named implementation only. Zero static calls across 27 historical exports cannot exclude hidden unsupported bodies. Rust tests and production runtime not run. Verified (static disassembly of the original handler and both writers of its table): one 12-byte entry per slave group, written for each master as the parent group entry plus local angles (or local angles alone with no-slave-rotation), masked to 11 bits. Verified public routed dispatch: axis 0 pitch, 1 yaw, otherwise roll; local component = (angle - master effective angle) & 2047 with negative and 32-bit arguments; other components, the effective pose and the matrix unchanged; no slave group unchanged; a slave group without a prepared master and missing spatial state give contextual errors. Inferred: the master's effective angles equal the table entry, and the table's update timing matches the family refresh. Unknown: table contents for a group with no master, attribute-written group changes after preparation, installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "3f54086b5ba2cd67900108afb94c5e4c266d468b"
     },
     {
       "native": "HideSlaves",
