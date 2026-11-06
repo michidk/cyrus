@@ -48,7 +48,10 @@ live in Rust documentation beside their definitions. The generated
 
 Verified: `PushItem` saves the first owned count and replaces only the current count;
 `PopItem` restores it once. Repeated pushes keep the first saved word, and subsequent
-pops return the current count. These counts govern ordinary item-use ownership.
+pops return the current count. Ordinary item use requires a signed-positive current
+count, so high-bit replacement words fail ownership before item actions and
+script/drop effects. See preservation
+[item-use eligibility](https://github.com/michidk/redguard-preservation/blob/main/docs/config/item-ini.md#using-an-item).
 Session snapshots retain the saved word and pushed flag; older snapshots start
 without pushed counts. Closed item processing skips lookup. This follows preservation
 [PushItem](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushitem-saved-value-replacement)

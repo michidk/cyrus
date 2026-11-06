@@ -5932,7 +5932,8 @@
         "crates/cyrus-game/tests/script_registry.rs::scripted_item_use_preserves_the_rope_association",
         "crates/cyrus-game/tests/script_registry.rs::a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter",
         "crates/cyrus-game/tests/script_registry.rs::draw_sword_enters_the_draw_state_and_a_weapon_item_use_draws_it",
-        "crates/cyrus-game/tests/script_registry.rs::using_the_island_map_item_raises_the_island_map_request_once"
+        "crates/cyrus-game/tests/script_registry.rs::using_the_island_map_item_raises_the_island_map_request_once",
+        "crates/cyrus-game/tests/script_registry.rs::pushed_item_counts_control_use_eligibility_without_changing_selection"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
@@ -5940,10 +5941,11 @@
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/hud.md",
         "https://github.com/michidk/cyrus/issues/38#issuecomment-6602947955",
-        "https://github.com/michidk/cyrus/issues/38#issuecomment-6602969495"
+        "https://github.com/michidk/cyrus/issues/38#issuecomment-6602969495",
+        "https://github.com/michidk/redguard-preservation/pull/298"
       ],
-      "limits": "Verified inspected public fixtures: two attempts retain one shell under instance limit while dropping two item5 units, shell no failure and rope association preserved. Configured torch path90->88->douse/save88->relight88, weapon item sets attr23/draw state20 and map83 request takes once. Source gates selected receiver, latch, lockout/edge/inventory/shell/water/weapon/torch state before branch effects. Verified #38 actual native/browser letter-versus-burning-torch precedence and held/fresh-input recovery; multi-unit depletion is still an active peer claim. Unknown: complete item/scripts/gates and direct named original/native/browser acceptance. Actual action-key gameplay shares services but is not proof every named branch ran. Rust tests inspected only, not rerun. Original/native/browser NOT RUN for this catalogue slice. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies.",
-      "reviewed_revision": "82c1f88325ead86f54a00aa7e2382cedf0aa03c9"
+      "limits": "Verified inspected public fixtures: two attempts retain one shell under instance limit while dropping two item5 units, shell no failure and rope association preserved. Configured torch path90->88->douse/save88->relight88, weapon item sets attr23/draw state20 and map83 request takes once. Source gates selected receiver, latch, lockout/edge/inventory/shell/water/weapon/torch state before branch effects. Verified #38 actual native/browser letter-versus-burning-torch precedence and held/fresh-input recovery; multi-unit depletion is still an active peer claim. Unknown: complete item/scripts/gates and direct named original/native/browser acceptance. Actual action-key gameplay shares services but is not proof every named branch ran. The historical catalogue review inspected tests without rerunning them; its broader direct named acceptance remains open. Historical schema-27 occurrence counts cannot exclude Unsupported actor bodies. Verified: current owned count must be signed-positive; zero and high-bit PushItem replacements refuse before caller continuation without inventory mutation, and PopItem restoration admits use. Original instruction six-case witness and two changed-branch controls distinguish the signed check. Pre-fix native fixture failed on high-bit admission; corrected native and browser WASM public callers pass all replacement/restoration cases. These callers use synthetic actor/inventory definitions, not naturally authored gameplay. Unknown: natural authored high-bit counts.",
+      "reviewed_revision": "90913ce1"
     },
     {
       "native": "ReplenishHealth",

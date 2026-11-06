@@ -318,7 +318,7 @@ impl Inventory {
             .items
             .get(&id)
             .with_context(|| format!("UseItem({id}): ITEM.INI definition absent"))?;
-        anyhow::ensure!(item.count >= 1, "UseItem({id}): item not owned");
+        anyhow::ensure!((item.count as i32) > 0, "UseItem({id}): item not owned");
         Ok(ItemUse {
             item_type: item.item_type,
             script: item

@@ -34118,43 +34118,57 @@ fn pushed_item_counts_control_use_eligibility_without_changing_selection() {
             ]);
         })
     };
-    let asset = inventory_asset(&[(0, 1), (4, 5)]);
-    let hud = ScriptHud::default();
-    hud.configure(&asset, &Preferences::default());
-    assert_eq!(
-        run_item_count_native(&hud, Native::PushItem, &[4, 0]).unwrap(),
-        0
-    );
-    for owned in [false, true] {
-        if owned {
+    for (replacement, initially_owned) in [
+        (0, false),
+        (i32::MIN, false),
+        (-1, false),
+        (i32::MAX, true),
+        (1, true),
+    ] {
+        let asset = inventory_asset(&[(0, 1), (4, 5)]);
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        assert_eq!(
+            run_item_count_native(&hud, Native::PushItem, &[4, replacement]).unwrap(),
+            replacement
+        );
+        for restored in [false, true] {
+            let owned = restored || initially_owned;
+            if restored {
+                assert_eq!(
+                    run_item_count_native(&hud, Native::PopItem, &[4]).unwrap(),
+                    5
+                );
+            }
+            let before = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+            let (_, mut world, _, _) = make_world();
+            let result = world.advance(
+                world.id(0).unwrap(),
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            );
+            if owned {
+                result.unwrap();
+                assert_eq!(world.flags(), [13]);
+            } else {
+                assert!(format!("{:#}", result.unwrap_err()).contains("item not owned"));
+                assert_eq!(world.flags(), [12]);
+            }
+            assert_eq!(hud.active_item().unwrap(), 0);
             assert_eq!(
-                run_item_count_native(&hud, Native::PopItem, &[4]).unwrap(),
-                5
+                serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+                before
             );
         }
-        let (_, mut world, _, _) = make_world();
-        let result = world.advance(
-            world.id(0).unwrap(),
-            ScriptStage::OrdinaryMain,
-            ScriptInputs {
-                hud: Some(&hud),
-                shell_execution: Some(false),
-                nominal_ticks: Some(1),
-                frame_scale: Some(256),
-                ..Default::default()
-            },
-            None,
-            None,
-            100,
-        );
-        if owned {
-            result.unwrap();
-            assert_eq!(world.flags(), [13]);
-        } else {
-            assert!(format!("{:#}", result.unwrap_err()).contains("item not owned"));
-            assert_eq!(world.flags(), [12]);
-        }
-        assert_eq!(hud.active_item().unwrap(), 0);
     }
 }
 
