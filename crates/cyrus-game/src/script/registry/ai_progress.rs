@@ -6,6 +6,47 @@ use anyhow::{Context, Result, ensure};
 use cyrus_script::Attribute;
 
 impl ScriptWorld {
+    /// Attempt the direct-destination admission transition within AI progress.
+    /// Follows preservation's `SOUP.md#ai-destination-clearance`. Only a mode
+    /// other than eleven with zero delay queries retained candidates. A clear
+    /// destination releases held nodes before selecting mode eleven. Returns
+    /// whether this invocation admitted the destination, without moving or
+    /// completing a task. The caller owns arrival checks and scheduling.
+    pub fn admit_ai_direct_destination(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        destination: [i32; 3],
+        query: OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        let result: Result<bool> = (|| {
+            let index = self.resolve(id)?;
+            let control = self.actors[index]
+                .control
+                .as_ref()
+                .context("AI admission receiver control unavailable")?;
+            if control.ai_mode == 11 || control.ai_delay != 0 {
+                return Ok(false);
+            }
+            if !self.ai_destination_clear(id, selected_player, destination, query)? {
+                return Ok(false);
+            }
+            self.release_held_walk_nodes(id)?;
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted AI control")
+                .ai_mode = 11;
+            Ok(true)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} AI destination {destination:?} admission",
+                self.world, id.index
+            )
+        })
+    }
+
     pub(super) fn move_position_pending(
         &self,
         id: ScriptActorId,

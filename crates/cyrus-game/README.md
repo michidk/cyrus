@@ -158,6 +158,12 @@ preservation's [progress contract](https://github.com/michidk/redguard-preservat
 Unknown: automatic selector-four admission and scheduling. The explicit service
 requires an already admitted mode-eleven receiver and does not complete its task.
 
+Verified: explicit direct-destination admission tests retained clearance only for
+a receiver outside mode eleven with zero delay. A clear destination releases
+held walk nodes before selecting mode eleven, following preservation's
+[admission contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#ai-destination-clearance).
+It leaves arrival checks, further progress and scheduling to its caller.
+
 Verified: the public AI destination-clearance query consumes retained collision
 candidates with polygon sidedness disabled. Ordinary collection uses local actor
 position even when clearance resolves an attached or linked position, following preservation's

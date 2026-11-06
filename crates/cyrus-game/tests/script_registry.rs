@@ -45355,6 +45355,16 @@ fn ai_progress_fixture(
     response: i32,
     heading: u32,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    ai_progress_fixture_with_delay(mode, 17, slide, response, heading)
+}
+
+fn ai_progress_fixture_with_delay(
+    mode: i32,
+    delay: i32,
+    slide: i32,
+    response: i32,
+    heading: u32,
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let (mut world, mut data) =
         overlap_response_fixture_tweaked(0, 0, 83, 0, LivingState::ORDINARY, |scripts| {
@@ -45367,7 +45377,7 @@ fn ai_progress_fixture(
             ];
             let actor = scripts.actors.get_mut("LOGIC").unwrap();
             actor.attributes[Attribute::ForwardSpeed] = 4;
-            actor.program.steps = [mode, 17, slide, response]
+            actor.program.steps = [mode, delay, slide, response]
                 .into_iter()
                 .enumerate()
                 .map(|(index, value)| {
@@ -45719,4 +45729,83 @@ fn ai_progress_retains_slide_and_collision_writes_before_service_failure() {
     );
     assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 15);
     assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
+}
+
+#[test]
+fn ai_admission_obeys_mode_delay_clearance_and_releases_owned_nodes() {
+    use cyrus_game::script::{OrdinaryObstacleQuery, WalkNodeSlot};
+    for (mode, delay, distance, admitted) in [
+        (0, 0, 0, true),
+        (10, 0, 131072, true),
+        (0, 0, 131073, false),
+        (11, 0, 0, false),
+        (0, 1, 0, false),
+        (0, 255, 0, false),
+    ] {
+        let (mut world, mut data) = ai_progress_fixture_with_delay(mode, delay, 0, 0, 0);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        let from = world.spatial(ids[0]).unwrap().local.position;
+        data.metadata["walk_node_maps"] = serde_json::json!([
+            {"node_count":2,"walk_nodes":[walk_node([0,0,0]),walk_node([1,0,0])]}
+        ]);
+        world.prepare_navigation(&data).unwrap();
+        assert!(
+            world
+                .assign_walk_node(ids[0], 1, WalkNodeSlot::Next)
+                .unwrap()
+        );
+        let navigation = world.actors()[0].control_state().unwrap().navigation;
+        let (_, _, models) = static_model_fixture(cache());
+        let scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
+            .unwrap();
+        let collide = world.actors()[0].attributes()[Attribute::Collide];
+        assert_eq!(
+            world
+                .admit_ai_direct_destination(
+                    ids[0],
+                    ids[1],
+                    [from[0] + distance, from[1], from[2]],
+                    OrdinaryObstacleQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        vertical_offset: 0,
+                        respond: false,
+                    },
+                )
+                .unwrap(),
+            admitted,
+            "mode {mode} delay {delay} distance {distance}"
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.ai_mode, control.ai_delay),
+            (if admitted { 11 } else { mode as u8 }, delay as u8)
+        );
+        assert_eq!(
+            (
+                control.navigation.map,
+                control.navigation.destination,
+                control.navigation.previous_next
+            ),
+            (
+                navigation.map,
+                navigation.destination,
+                navigation.previous_next
+            )
+        );
+        assert_eq!(
+            (control.navigation.current, control.navigation.next),
+            if admitted {
+                (-1, -1)
+            } else {
+                (navigation.current, navigation.next)
+            }
+        );
+        assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Collide], collide);
+        assert_eq!(world.reserve_walk_node(ids[1], 0, 1).unwrap(), admitted);
+    }
 }
