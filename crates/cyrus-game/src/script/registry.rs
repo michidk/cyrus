@@ -947,14 +947,23 @@ impl ScriptWorld {
         )
     }
 
-    /// The sender of the message the actor's retained class cursor selects, if any.
-    pub fn selected_message_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+    /// The entry the actor's retained class cursor selects; see
+    /// [`super::CombatMessages::selected_entry`].
+    pub fn selected_message_entry(
+        &self,
+        actor: ScriptActorId,
+    ) -> Result<Option<Option<ScriptActorId>>> {
         let index = self.resolve(actor)?;
         let receiver = &self.actors[index];
-        self.globals.combat_messages.selected_sender(
+        self.globals.combat_messages.selected_entry(
             receiver.attributes[Attribute::MessGroup],
             receiver.message_read,
         )
+    }
+
+    /// The sender of the message the actor's retained class cursor selects, if any.
+    pub fn selected_message_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+        Ok(self.selected_message_entry(actor)?.flatten())
     }
 
     /// Consume one addressed message using the actor's retained class cursor.
@@ -7008,6 +7017,28 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 }
                 None => CallResult::Complete(0),
             });
+        }
+        // GetMessageSenderId returns the selected entry's sender's runtime identifier. The original
+        // reads the sender without a null check, so a selected entry without one is an error here.
+        if function == Native::GetMessageSenderId {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "GetMessageSenderId requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            let Some(entry) = self.registry.selected_message_entry(receiver)? else {
+                return Ok(CallResult::Complete(0));
+            };
+            let sender = entry.context("GetMessageSenderId: selected entry has no sender")?;
+            let index = self
+                .registry
+                .resolve(sender)
+                .context("GetMessageSenderId sender")?;
+            return Ok(CallResult::Complete(i32::from(
+                self.registry.actors[index]
+                    .runtime_identifier
+                    .context("GetMessageSenderId: sender runtime identifier unavailable")?,
+            )));
         }
         // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
         if function == Native::MyId {

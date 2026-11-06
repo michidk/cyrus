@@ -2589,18 +2589,20 @@
     },
     {
       "native": "GetMessageSenderId",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; independently recovered original receiver-channel sender-identifier query",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Zero-argument query returning the selected class message sender's runtime identifier",
+      "caller": "ScriptWorld::advance -> Runtime function value -> GameHost::call (GetMessageSenderId)",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::get_message_sender_id_returns_the_selected_senders_runtime_identifier"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/cabc570",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6612505730"
       ],
-      "limits": "Verified original zero-argument declaration/native/full handler and availability helper. 46,588 bounded original-instruction contexts and 13 effective semantic controls cover receiver-subrecord channel byte, channel-specific sentinel and pointer table, selection-byte 12-byte entry stride, signed stored sender ID and unavailable zero; no selection/entry/sender mutation. Formatter/runtime-error services controlled returning or repairing context. Malformed pointers/channel admission, queue/sender lifetime, concurrency, natural diagnostics, VM/original/native/browser acceptance remain Unknown. Production named call remains absent; no public-call implementation or dedicated Rust rejection assertion established. Historical static usage does not establish hidden-body absence.",
-      "reviewed_revision": "df485deae5aaa8d886d4a717749f0d969a0c1863"
+      "limits": "Verified original zero-argument declaration/native/full handler and availability helper. 46,588 bounded original-instruction contexts and 13 effective semantic controls cover receiver-subrecord channel byte, channel-specific sentinel and pointer table, selection-byte 12-byte entry stride, signed stored sender ID and unavailable zero; no selection/entry/sender mutation. Formatter/runtime-error services controlled returning or repairing context. Malformed pointers/channel admission, queue/sender lifetime, concurrency, natural diagnostics, VM/original/native/browser acceptance remain Unknown. Production named call remains absent; no public-call implementation or dedicated Rust rejection assertion established. Historical static usage does not establish hidden-body absence. Verified (routed ScriptWorld test; preservation SOUP.md GetMessageSenderId): no selection returns zero, a selected entry returns its sender's stored signed 16-bit runtime identifier, and nothing is consumed or changed; a sender from a replaced world and a selected entry without a sender are explicit errors (the original reads the sender without a null check or bound check, so their original behavior is Unknown). Inferred, not verified: the original channel byte is the authored class the combat queue uses, the receiver's selection byte is the retained read cursor, and the message context is always present. Unknown: SendMessage/ReceiveMessage/DeleteMessage natives do not exist, so only combat messages reach the queue; no original, native-run or browser comparison.",
+      "reviewed_revision": "f321afd5c5ae7f528cd614293e188149a1b268da"
     },
     {
       "native": "IsBroadcastWaiting",
