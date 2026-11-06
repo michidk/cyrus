@@ -622,3 +622,11 @@ receiver's yaw without a matrix refresh or animation request; a call on the runn
 has no difference and yaws to zero. The contract follows preservation's
 [PointAt](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pointat-native-boundary).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `PrintParms` and `PrintStringParm` print the receiver's script name and their arguments
+(eight signed decimals, or the evaluated string) on the first free console line, and `LogParms`
+writes the same fields to the engine log at debug level; each returns zero and changes no gameplay
+state. The contract follows preservation's
+[parameter diagnostics](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#parameter-diagnostics).
+The original's unresolved-handle text and 255-byte line bound have no representation here;
+natural installed gameplay parity remains Unknown.

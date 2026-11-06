@@ -3078,14 +3078,18 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
         "https://github.com/michidk/redguard-preservation/pull/182",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6696925158"
       ],
       "native": "PrintParms",
-      "status": "missing",
-      "scope": "Eight-integer diagnostic message request and full-queue behavior",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
-      "limits": "Verified original contract: eight integer arguments plus resolved script-name/fallback prefix, signed decimal argument order, first free of 66 diagnostic slots with copy bound 255, full-queue drop and zero return. Complete handler/name-lookup evidence uses controlled formatter/copy IO, not original platform buffering or native/browser runtime acceptance. Current named handler/generic matching path remains absent; no dedicated public rejection assertion located. Missing means named implementation, not all diagnostic services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
+      "status": "partial",
+      "scope": "Production named eight-integer console diagnostic line",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> GameplayGlobals::print_line",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/parameter_diagnostics.rs::print_parms_prints_the_name_and_eight_signed_integers_on_the_first_free_console_line",
+        "crates/cyrus-game/tests/script_registry/parameter_diagnostics.rs::a_parameter_diagnostic_with_the_wrong_argument_count_is_rejected_when_the_world_is_prepared"
+      ],
+      "limits": "Verified published contract: the receiver's script name and all eight arguments as signed decimals, comma separated, on the first free console line (the console drops text once its 66 lines are full), returning zero without a gameplay state change. The script name is the receiver's name here: the original's unresolved-handle text 'Unknown script' has no representation. A wrong argument count is refused when the world is prepared. The 255-byte line bound is not applied to the stored text. Natural gameplay parity and display of the console line remain Unknown."
     },
     {
       "owner": 5,
@@ -3094,14 +3098,17 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
         "https://github.com/michidk/redguard-preservation/pull/184",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604287583"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604287583",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6696925158"
       ],
       "native": "PrintStringParm",
-      "status": "missing",
-      "scope": "Resolved string diagnostic request and message slots",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
-      "limits": "Verified original contract: one supplied string value, script-name/fallback prefix, first free of 66 diagnostic slots with copy bound 255, full-queue drop and zero return. Handler formats the supplied string without a second string-table lookup; shared VM retained-source resolution is a separate published contract. Complete handler/name-lookup evidence uses controlled formatter/copy IO, not native/browser runtime acceptance. Current named handler remains absent; supported PrintSingleParm does not implement the string variant. No dedicated public rejection assertion located. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
+      "status": "partial",
+      "scope": "Production named string console diagnostic line",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> GameplayGlobals::print_line",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/parameter_diagnostics.rs::print_string_parm_prints_the_name_and_the_evaluated_string"
+      ],
+      "limits": "Verified published contract: the receiver's script name and the string already evaluated by native-parameter evaluation (read from the retained native source) on the first free console line, returning zero. The script name is the receiver's name here. The 255-byte copy bound and the unresolved-handle text are not represented. Natural gameplay parity and console display remain Unknown."
     },
     {
       "owner": 5,
@@ -3110,14 +3117,18 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
         "https://github.com/michidk/redguard-preservation/pull/182",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6604166594",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6696925158"
       ],
       "native": "LogParms",
-      "status": "missing",
-      "scope": "Eight-integer internal diagnostic log request",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
-      "limits": "Verified original contract: eight integer arguments, resolved script-name/fallback prefix and signed decimal argument order with the log format, returning zero. Log destination differs from the PrintParms message slots. Complete handler/name-lookup witnesses observe the log IO boundary; original log-buffer lifecycle/platform presentation and native/browser runtime are not accepted. Current named handler/generic matching path remains absent; no dedicated public rejection assertion located. Missing means named implementation, not all logging services. Historical static absence cannot exclude Unsupported actor bodies; no Rust tests or game runtime rerun."
+      "status": "partial",
+      "scope": "Production named eight-integer diagnostic log line",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> engine log",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/parameter_diagnostics.rs::log_parms_returns_zero_without_a_console_line_or_state_change",
+        "crates/cyrus-game/tests/script_registry/parameter_diagnostics.rs::a_parameter_diagnostic_with_the_wrong_argument_count_is_rejected_when_the_world_is_prepared"
+      ],
+      "limits": "Verified published contract: returns zero, adds no console line and changes no gameplay state; the line (two spaces, the script name, '|3', the eight signed decimals) goes to the engine log at debug level instead of the original's internal diagnostic log file, whose content is not asserted. A wrong argument count is refused when the world is prepared. The unresolved-handle text has no representation."
     },
     {
       "owner": 5,
