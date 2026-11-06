@@ -1,4 +1,5 @@
 //! Deep walking checks its edge before classification and support.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
 use cyrus_game::script::MotionDirection;
@@ -96,7 +97,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 1,
+                object_type: PlacementType::MODEL,
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

@@ -146,7 +146,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         instances: vec![Instance {
             object_id: 0,
             actor: "ACTOR".into(),
-            object_type: 0,
+            object_type: Default::default(),
             active: 0,
             model_name: String::new(),
             model_mode: 0,

@@ -1,4 +1,5 @@
 //! Installed receiver preparation retains special roles and ordinary authored allocations.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
@@ -188,7 +189,7 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
                 );
             }
             if let Some(placement) = actor.placement()
-                && matches!(placement.object_type, 2 | 6)
+                && placement.object_type.has_separate_record()
             {
                 assert!(actor.runtime_identifier.is_none());
                 assert!(
@@ -1215,7 +1216,7 @@ fn installed_world_collision_shapes_prepare_for_every_ordinary_actor() {
         let actor = &world.actors()[index];
         if actor
             .placement()
-            .is_none_or(|placement| placement.object_type != 1)
+            .is_none_or(|placement| placement.object_type != PlacementType::MODEL)
         {
             continue;
         }

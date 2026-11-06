@@ -1,4 +1,5 @@
 //! Public weapon operations own ExtraTime independently of rope_wait.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -392,7 +393,7 @@ fn native_sheathing_clears_extra_time_after_admission_and_keeps_rope_wait() {
             kind: CallKind::Function,
         });
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
         actor.attributes[Attribute::Combat] = u8::from(combat);

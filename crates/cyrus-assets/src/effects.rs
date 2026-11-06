@@ -1,5 +1,6 @@
 //! Installed environmental effect textures and map-owned drawing attributes.
 #[cfg(feature = "parsers")]
+use crate::script::PlacementType;
 use anyhow::Context;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -102,7 +103,9 @@ pub(crate) fn prepare(
                 identities.extend(
                     records
                         .iter()
-                        .filter(|record| record.object_type == 3)
+                        .filter(|record| {
+                            PlacementType::from_byte(record.object_type) == PlacementType::FLAT
+                        })
                         .map(|record| record.texture_data_raw as u16),
                 );
             }

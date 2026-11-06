@@ -6,6 +6,7 @@ use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::surface::Surface;
 use cyrus_script::Native;
@@ -583,7 +584,7 @@ impl ScriptActor {
             ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
         ) || self
             .placement()
-            .is_some_and(|placement| placement.object_type == 1)
+            .is_some_and(|placement| placement.object_type == PlacementType::MODEL)
     }
 
     pub fn placement(&self) -> Option<&Instance> {
@@ -1351,7 +1352,9 @@ impl ScriptWorld {
                 Err(error) => (None, Some(format!("{context}: {error:#}"))),
             };
             let control = match &source {
-                ScriptActorSource::Map(placement) if !matches!(placement.object_type, 2 | 6) => {
+                ScriptActorSource::Map(placement)
+                    if !placement.object_type.has_separate_record() =>
+                {
                     Some(ActorControlState::default())
                 }
                 ScriptActorSource::Player | ScriptActorSource::AlternatePlayer => {
@@ -1359,14 +1362,18 @@ impl ScriptWorld {
                 }
                 _ => None,
             };
-            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6));
+            let separate = matches!(&source, ScriptActorSource::Map(placement) if placement.object_type.has_separate_record());
             let light = match &source {
-                ScriptActorSource::Map(placement) if placement.object_type == 6 => {
+                ScriptActorSource::Map(placement)
+                    if placement.object_type == PlacementType::COLOURED_LIGHT =>
+                {
                     Some(light::LightState::authored(placement))
                 }
                 // A type-four object gets the same record with the placement's intensity and
                 // radius; its starting colour is unavailable to scripted dimming.
-                ScriptActorSource::Map(placement) if placement.object_type == 4 => {
+                ScriptActorSource::Map(placement)
+                    if placement.object_type == PlacementType::LIGHT =>
+                {
                     Some(light::LightState {
                         rgb: [0; 3],
                         ..light::LightState::authored(placement)
@@ -1376,7 +1383,9 @@ impl ScriptWorld {
             };
             // A type-three placement gets an enabled flat record showing the placement's texture.
             let flat = match &source {
-                ScriptActorSource::Map(placement) if placement.object_type == 3 => {
+                ScriptActorSource::Map(placement)
+                    if placement.object_type == PlacementType::FLAT =>
+                {
                     Some(flat::FlatState::placed(placement.texture as u16))
                 }
                 _ => None,
@@ -1425,7 +1434,7 @@ impl ScriptWorld {
         let mut counter = scripts.actor_pool_capacity.wrapping_add(3);
         let mut actors = Vec::new();
         for (index, placement) in scripts.instances.iter().enumerate() {
-            let identifier = if matches!(placement.object_type, 2 | 6) {
+            let identifier = if placement.object_type.has_separate_record() {
                 None
             } else {
                 if placement.active != 0 {
@@ -2470,7 +2479,7 @@ impl ScriptWorld {
             .placement()
             .context("animation initialization requires a map actor")?;
         anyhow::ensure!(
-            placement.object_type == 1,
+            placement.object_type == PlacementType::MODEL,
             "world {} instance {index}: animation initialization requires map object type 1",
             self.world
         );
@@ -2881,7 +2890,7 @@ impl ScriptWorld {
                 (matches!(self.actors[index].source, ScriptActorSource::Shell(_))
                     || self.actors[index]
                         .placement()
-                        .is_some_and(|placement| matches!(placement.object_type, 2 | 6)))
+                        .is_some_and(|placement| placement.object_type.has_separate_record()))
                     && self.actors[index].control.is_some(),
                 "separate stage requires admitted type-two or type-six scratch state"
             );
@@ -8784,7 +8793,7 @@ mod fighting_tests {
                 source: ScriptActorSource::Map(Instance {
                     object_id: index as u32,
                     actor: format!("ACTOR{index}"),
-                    object_type: 0,
+                    object_type: Default::default(),
                     active: 0,
                     model_name: String::new(),
                     model_mode: 0,
@@ -8985,7 +8994,7 @@ mod selector_tests {
         let map = ScriptActorSource::Map(Instance {
             object_id: 1,
             actor: "ACTOR".into(),
-            object_type: 0,
+            object_type: Default::default(),
             active: 0,
             model_name: String::new(),
             model_mode: 0,
@@ -9052,7 +9061,7 @@ mod selector_tests {
             actor(ScriptActorSource::Map(Instance {
                 object_id: 1,
                 actor: "ACTOR".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

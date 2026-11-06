@@ -1,4 +1,5 @@
 //! Receiver-owned movement classification uses public property dispatch.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::OrdinaryForwardAmountInputs;
@@ -96,7 +97,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -228,7 +229,7 @@ fn last_direction_missing_owner_or_receiver_keeps_a_sticky_failure() {
             };
             let mut scripts = classification_scripts(object, -12345, write);
             if !missing_receiver {
-                scripts.instances[0].object_type = 2;
+                scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();

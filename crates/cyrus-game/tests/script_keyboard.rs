@@ -127,7 +127,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

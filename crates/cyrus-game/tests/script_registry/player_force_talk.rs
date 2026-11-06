@@ -29,7 +29,7 @@ fn force_talk_world(distance: i32, angles: [u16; 3], target: Object) -> ScriptWo
     add_standalone_receivers(&mut scripts);
     scripts.actors.get_mut("LOGIC").unwrap().program.strings = vec!["logic".into()];
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = cyrus_assets::script::PlacementType::MODEL;
     }
     scripts.instances[0].angles = angles.map(u32::from);
     scripts.instances[0].map_position = [10, 0, 20];

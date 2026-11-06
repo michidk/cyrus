@@ -5,6 +5,7 @@ use crate::script::JumpMotion;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
+use cyrus_assets::script::PlacementType;
 use cyrus_script::Native;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::{animation::AnimationRequest, sound::SoundCue};
@@ -104,7 +105,7 @@ impl ScriptWorld {
                     || actor.failure().is_some()
                     || !actor
                         .placement()
-                        .is_some_and(|placement| placement.object_type == 1)
+                        .is_some_and(|placement| placement.object_type == PlacementType::MODEL)
                 {
                     continue;
                 }

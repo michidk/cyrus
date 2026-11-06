@@ -526,12 +526,48 @@ pub struct Actor {
     pub combat_taunts: Vec<CombatTaunt>,
 }
 
+/// MPOB placement `object_type` (preservation RGM.md and engine/SOUP.md). Map loading gives a
+/// flat placement an enabled flat record showing its texture and a light placement a light
+/// record; script-only and coloured-light placements use separate object records instead of
+/// ordinary actor records. Other values are retained.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PlacementType(u8);
+
+impl PlacementType {
+    /// An actor placement that may carry a model (with the type-1 model fallback).
+    pub const MODEL: Self = Self(1);
+    /// A separate object record without a model; the shipped maps use it for sound emitters and
+    /// door logic.
+    pub const SCRIPT_ONLY: Self = Self(2);
+    /// A camera-facing flat showing the placement's texture.
+    pub const FLAT: Self = Self(3);
+    /// A light with the placement's intensity and radius and colour zero.
+    pub const LIGHT: Self = Self(4);
+    /// A light that also copies the placement's colour, with a separate object record.
+    pub const COLOURED_LIGHT: Self = Self(6);
+
+    pub const fn from_byte(byte: u8) -> Self {
+        Self(byte)
+    }
+
+    pub const fn byte(self) -> u8 {
+        self.0
+    }
+
+    /// Script-only and coloured-light placements use separate object records rather than ordinary
+    /// actor records.
+    pub const fn has_separate_record(self) -> bool {
+        matches!(self, Self::SCRIPT_ONLY | Self::COLOURED_LIGHT)
+    }
+}
+
 /// Authored MPOB order identifies logical objects independently of mesh availability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Instance {
     pub object_id: u32,
     pub actor: String,
-    pub object_type: u8,
+    pub object_type: PlacementType,
     pub active: u8,
     /// Authored MPOB model override; empty when absent.
     pub model_name: String,

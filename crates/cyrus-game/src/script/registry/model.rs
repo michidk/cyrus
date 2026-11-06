@@ -17,6 +17,7 @@ use crate::script::LivingState;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::surface::Surface;
 use cyrus_collision::actor_models::ActorModelCollision;
 use cyrus_script::{AnimationGroup, Attribute};
@@ -367,7 +368,7 @@ impl ScriptWorld {
                 super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
             ) && actor
                 .placement()
-                .is_none_or(|placement| placement.object_type != 1)
+                .is_none_or(|placement| placement.object_type != PlacementType::MODEL)
             {
                 continue;
             }
@@ -476,7 +477,7 @@ impl ScriptWorld {
             .filter(|actor| {
                 actor
                     .placement()
-                    .is_some_and(|placement| placement.object_type == 1)
+                    .is_some_and(|placement| placement.object_type == PlacementType::MODEL)
             })
             .all(|actor| actor.model.prepared)
     }
@@ -495,7 +496,7 @@ impl ScriptWorld {
         for (index, actor) in self.actors.iter().enumerate() {
             if actor
                 .placement()
-                .is_none_or(|placement| placement.object_type != 1)
+                .is_none_or(|placement| placement.object_type != PlacementType::MODEL)
             {
                 continue;
             }

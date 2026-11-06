@@ -1,4 +1,5 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::CombatMessageCode;
@@ -160,7 +161,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
             .map(|(index, name)| Instance {
                 object_id: index as u32,
                 actor: name.into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -1976,7 +1977,7 @@ fn lockout_data(value: i32, activate: bool) -> Scripts {
         .collect();
     let mut excluded = data.instances[1].clone();
     excluded.object_id = 2;
-    excluded.object_type = 2;
+    excluded.object_type = PlacementType::SCRIPT_ONLY;
     data.instances.push(excluded);
     data.content_id = data.content_identity().unwrap();
     data
@@ -3887,7 +3888,7 @@ fn ordinary_weapon_default_uses_shared_inventory_readiness() {
     for (ready, expected) in [(false, 1), (true, 8)] {
         let mut source = scripts(vec![Operation::End { target: 0 }]);
         for placement in &mut source.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.active = 1;
         }
         for actor in source.actors.values_mut() {
@@ -6197,7 +6198,7 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
     use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
     let mut data = scripts(vec![Operation::End { target: 0 }]);
     for placement in &mut data.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.active = 1;
     }
     data.content_id = data.content_identity().unwrap();

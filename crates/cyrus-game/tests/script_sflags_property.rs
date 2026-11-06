@@ -1,4 +1,5 @@
 //! Sflags reaches retained collision metadata through public script and model callers.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -221,7 +222,7 @@ fn fixture(
 ) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
     let mut scripts = counter_scripts(object, value, write);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -314,7 +315,7 @@ fn sflags_unprepared_metadata_and_absent_receivers_fail_before_continuation() {
 fn sflags_failed_write_does_not_invent_metadata_before_real_resource_preparation() {
     let mut scripts = counter_scripts(Object::Me, 207, true);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();

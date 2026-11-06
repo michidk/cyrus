@@ -1,4 +1,5 @@
 //! Script cache contracts use authored data and optional read-only installed extraction.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
 use cyrus_script::program::*;
@@ -126,7 +127,7 @@ fn portable_script_records_round_trip_with_the_same_identity() {
         .map(|(index, model_mode)| Instance {
             object_id: index as u32,
             actor: "LOGIC".into(),
-            object_type: 1,
+            object_type: PlacementType::MODEL,
             active: 0,
             model_name: format!("MODEL{index}"),
             model_mode,

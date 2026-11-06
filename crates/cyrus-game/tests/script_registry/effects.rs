@@ -1,5 +1,6 @@
 use super::*;
 use cyrus_assets::effects::{EffectImage, Effects};
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::surface::Surface;
 use cyrus_game::{
     clock::ClockStep,
@@ -661,7 +662,7 @@ fn automatic_model_phase_keeps_initialization_events_when_later_admission_fails(
     scripts.instances.truncate(1);
     add_standalone_receivers(&mut scripts);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();

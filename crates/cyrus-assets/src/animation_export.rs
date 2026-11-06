@@ -1,5 +1,6 @@
 //! Shared animation preparation through rgpre; no binary format parsing lives here.
 use crate::animation::{AnimationModel, Animations, model_key};
+use crate::script::PlacementType;
 use anyhow::Context;
 use rgpre::import::{
     FileType,
@@ -251,7 +252,7 @@ pub(crate) fn prepare(
             })
             .flatten()
             .filter(|record| {
-                record.object_type == 1
+                PlacementType::from_byte(record.object_type) == PlacementType::MODEL
                     && record.is_static != 1
                     && metadata["actors"].as_array().is_some_and(|actors| {
                         actors.iter().any(|actor| {

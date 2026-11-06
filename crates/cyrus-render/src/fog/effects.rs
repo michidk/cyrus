@@ -621,7 +621,7 @@ mod tests {
         // A boundary fixture isolates camera ownership while retaining the installed
         // effect preparation, material binding and repaint systems.
         let mut boundary_light = scripts.instances[0].clone();
-        boundary_light.object_type = 6;
+        boundary_light.object_type = cyrus_assets::script::PlacementType::COLOURED_LIGHT;
         boundary_light.map_position = [9216, 0, 9728];
         boundary_light.light_radius = 100;
         boundary_light.light_rgb = [255, 0, -255];

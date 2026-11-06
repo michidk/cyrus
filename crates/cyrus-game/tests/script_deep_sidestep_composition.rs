@@ -1,4 +1,5 @@
 //! Deep sidesteps retain classification before edge and lateral admission.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
@@ -95,7 +96,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 1,
+                object_type: PlacementType::MODEL,
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

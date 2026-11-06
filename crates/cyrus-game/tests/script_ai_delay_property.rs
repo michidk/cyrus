@@ -1,4 +1,5 @@
 //! Receiver-owned AI delay retains unsigned property values through public snapshots.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -223,7 +224,7 @@ fn ai_delay_allocation_zero_and_missing_owner_receiver_failures_are_distinct() {
                 write,
             );
             if !missing_receiver {
-                scripts.instances[0].object_type = 2;
+                scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();

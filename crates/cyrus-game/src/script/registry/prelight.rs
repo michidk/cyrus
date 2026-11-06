@@ -1,6 +1,7 @@
 //! Immutable world-entry actor lighting inputs, captured before ordinary updates.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
+use cyrus_assets::script::PlacementType;
 use cyrus_script::Attribute;
 use std::collections::BTreeMap;
 
@@ -58,7 +59,7 @@ impl ScriptWorld {
             if actor.attributes()[Attribute::NonMoving] == 0
                 || actor
                     .placement()
-                    .is_none_or(|placement| placement.object_type != 1)
+                    .is_none_or(|placement| placement.object_type != PlacementType::MODEL)
             {
                 continue;
             }

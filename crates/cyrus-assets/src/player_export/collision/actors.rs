@@ -1,6 +1,7 @@
 //! Initial live static geometry from actor loader paths and authored MPOB fallback.
 use crate::animation::model_key;
 use crate::collision::{ActorCollisionModels, CollisionGeometry};
+use crate::script::PlacementType;
 use anyhow::{Context, Result, ensure};
 use rgpre::import::{FileType, registry::Registry, rgm, rob};
 
@@ -27,7 +28,7 @@ pub(super) fn prepare(
         ..Default::default()
     };
     for (index, object) in objects.iter().enumerate() {
-        if object["object_type"] != 1 {
+        if object["object_type"] != PlacementType::MODEL.byte() {
             continue;
         }
         let decoded = (|| -> Result<InitialModel> {

@@ -1028,11 +1028,9 @@ mod tests {
         let mut scripts: Scripts = serde_json::from_slice(
             &cyrus_assets::game::prepare(&files, "MGUILD.scripts")?["MGUILD.scripts"],
         )?;
-        for light in scripts
-            .instances
-            .iter_mut()
-            .filter(|light| light.object_type == 6)
-        {
+        for light in scripts.instances.iter_mut().filter(|light| {
+            light.object_type == cyrus_assets::script::PlacementType::COLOURED_LIGHT
+        }) {
             light.light_radius = 0;
         }
         scripts.instances[0].map_position = [9216, 0, 9728];

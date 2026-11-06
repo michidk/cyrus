@@ -1,4 +1,5 @@
 //! Receiver-owned accumulated displacement uses public property dispatch.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -220,7 +221,7 @@ fn origin_accum_reads_zero_and_rejects_absent_owners_before_continuation() {
                 write,
             );
             if !absent_receiver {
-                scripts.instances[0].object_type = 2;
+                scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -249,7 +250,7 @@ fn displacement_fixture(
         .references
         .push(cyrus_script::Property::JumpFlag);
     scripts.instances.truncate(1);
-    scripts.instances[0].object_type = 1;
+    scripts.instances[0].object_type = PlacementType::MODEL;
     scripts.instances[0].active = 1;
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.instances = 1;

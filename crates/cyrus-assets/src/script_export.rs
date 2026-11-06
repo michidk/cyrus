@@ -1,4 +1,5 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
+use crate::script::PlacementType;
 use crate::script::{
     Actor, ClockSettings, CombatTaunt, Instance, Scripts, TauntType, UpdateSettings,
 };
@@ -295,7 +296,7 @@ pub fn prepare_source(
             .map(|record| Instance {
                 object_id: record.id,
                 actor: record.script_name(),
-                object_type: record.object_type,
+                object_type: PlacementType::from_byte(record.object_type),
                 active: record.is_active,
                 model_name: record.model_name(),
                 model_mode: record.is_static,

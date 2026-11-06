@@ -1781,7 +1781,7 @@ mod tests {
             instances: vec![Instance {
                 object_id: 1,
                 actor: "LEVER".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

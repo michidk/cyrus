@@ -1,4 +1,5 @@
 //! Logical actors execute independently of geometry through explicit public stages.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
@@ -169,7 +170,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -383,7 +384,7 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         );
         scripts.actors.insert("PROJECTILE".into(), actor);
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.map_position = [10, 20, 30];
         }
         scripts.content_id = scripts.content_identity()?;
@@ -643,7 +644,7 @@ fn map_animation_initialization_retains_independent_frames_and_rejects_reinitial
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let mut data = Animations {
@@ -662,7 +663,7 @@ fn map_animation_initialization_retains_independent_frames_and_rejects_reinitial
     };
     for object_type in [0, 2, 3, 4, 5, 6] {
         let mut unsupported = scripts.clone();
-        unsupported.instances[0].object_type = object_type;
+        unsupported.instances[0].object_type = PlacementType::from_byte(object_type);
         unsupported.content_id = unsupported.content_identity().unwrap();
         data.metadata["script_content_id"] = unsupported.content_id.clone().into();
         let mut world = ScriptWorld::prepare(&unsupported, 1).unwrap();
@@ -723,7 +724,7 @@ fn animation_initialization_does_not_repeat_a_failed_sound_effect() {
     use cyrus_assets::animation::Animations;
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     let data = Animations {
@@ -2165,7 +2166,7 @@ fn activation_and_separate_map_paths_preserve_identifier_and_local_allocation_or
         .into_iter()
         .enumerate()
         .map(|(index, object_type)| Instance {
-            object_type,
+            object_type: PlacementType::from_byte(object_type),
             active: u8::from(index != 2),
             ..first.clone()
         })
@@ -2409,7 +2410,7 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
         scripts.instances.push(Instance {
             object_id: index as u32,
             actor: name.into(),
-            object_type: 0,
+            object_type: Default::default(),
             active: 0,
             model_name: String::new(),
             model_mode: 0,
@@ -2592,7 +2593,7 @@ fn ordered_world() -> ScriptWorld {
             },
             map_position: [x * 512, 0, z * 512],
             active,
-            object_type,
+            object_type: PlacementType::from_byte(object_type),
             ..template.clone()
         })
         .collect();
@@ -2730,7 +2731,7 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
                 },
                 Operation::End { target: 0 },
             ]);
-            scripts.instances[0].object_type = 1;
+            scripts.instances[0].object_type = PlacementType::MODEL;
             scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] =
                 combat_attribute;
             scripts.content_id = scripts.content_identity().unwrap();
@@ -2821,7 +2822,7 @@ fn map_default_selection_observes_script_writes_and_updates_the_shared_frame() {
         },
         Operation::End { target: 0 },
     ]);
-    scripts.instances[0].object_type = 1;
+    scripts.instances[0].object_type = PlacementType::MODEL;
     scripts.content_id = scripts.content_identity().unwrap();
     let data = Animations {
         version: 2,
@@ -5377,7 +5378,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     };
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.active = 1;
     }
     scripts.definition.functions.push(Function {
@@ -6906,7 +6907,7 @@ fn static_model_fixture_session(
     use cyrus_assets::collision::{ActorCollisionModels, CollisionGeometry};
     use cyrus_collision::actor_models::ActorModelCollision;
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = map_position;
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -7179,7 +7180,7 @@ fn show_refreshes_static_coordinates_even_without_a_retained_resource() {
         let mut scripts = random_scripts(Native::ShowMe, vec![], Object::Me);
         scripts.definition.functions[1].param_count = 0;
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.map_position = [10, 20, 30];
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -7230,7 +7231,7 @@ fn animated_model_selection_retains_radius_when_hidden_and_clears_missing_geomet
     let mut scripts = random_scripts(Native::HideMe, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -7303,7 +7304,7 @@ fn animated_model_selection_retains_radius_when_hidden_and_clears_missing_geomet
     // A fresh visible generation selects the same frame but cannot retain missing geometry.
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
     }
     scripts.content_id = scripts.content_identity().unwrap();
     data.metadata["script_content_id"] = scripts.content_id.clone().into();
@@ -7402,7 +7403,7 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
     };
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -7527,7 +7528,7 @@ fn pvo_secondary_ids_use_load_time_z_x_order_and_preserve_cell_chains() {
         .enumerate()
         .map(|(index, (x, z, active))| Instance {
             object_id: index as u32,
-            object_type: 1,
+            object_type: PlacementType::MODEL,
             map_position: [x * 512, 0, z * 512],
             active,
             ..template.clone()
@@ -7570,7 +7571,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
     actor.instance_variables = vec![vec![4]];
     scripts.instances[1].actor = "SUPPORT".into();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.active = 1;
         placement.map_position = [10, 20, 30];
     }
@@ -7814,7 +7815,7 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -8491,7 +8492,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
     for (slide_range, expected) in [(-60000, [0, 0, 2019]), (0, [0; 3])] {
         let mut scripts = cache();
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.angles = [0, 344, 0];
         }
         scripts.definition.functions.push(Function {
@@ -8666,7 +8667,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
     ] {
         let mut scripts = cache();
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.angles = [0, 344, 0];
         }
         scripts.definition.functions.push(Function {
@@ -9031,7 +9032,7 @@ fn ordinary_initial_overlap_shape_preserves_fractional_rotated_centers() {
     use cyrus_collision::actor_models::ActorModelCollision;
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
         placement.angles = [256, 0, 0];
     }
@@ -9260,7 +9261,7 @@ fn overlap_response_fixture_edited(
     scripts.actors.insert("OTHER".into(), other);
     scripts.instances[1].actor = "OTHER".into();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     tweak(&mut scripts);
@@ -9642,7 +9643,7 @@ fn ordinary_overlap_pass_stops_at_first_tiny_pair_before_unavailable_later_shape
     placement.actor = "LATER".into();
     scripts.instances.push(placement);
     for (placement, x) in scripts.instances.iter_mut().zip([10, 33, 20]) {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [x, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -9748,7 +9749,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
         bounce_height: Some(100),
     });
     for (placement, x) in scripts.instances.iter_mut().zip([10, 16]) {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [x, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -11072,7 +11073,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     scripts.content_id = scripts.content_identity().unwrap();
@@ -11552,7 +11553,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     use cyrus_game::script::ObstacleEnvironment;
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Health] = 100;
@@ -12425,7 +12426,7 @@ fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
         })
         .collect();
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.instances[0].angles = [128, 2000, 64];
         scripts.content_id = scripts.content_identity().unwrap();
@@ -12496,7 +12497,7 @@ fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
     })
     .collect();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.instances[0].angles = [128, 2000, 64];
     scripts.content_id = scripts.content_identity().unwrap();
@@ -12585,7 +12586,7 @@ fn an_attached_support_carries_riders_by_its_effective_pose_after_three_family_r
         scripts.instances.push(Instance {
             object_id: index as u32,
             actor: name.into(),
-            object_type: 1,
+            object_type: PlacementType::MODEL,
             active: 0,
             model_name: String::new(),
             model_mode: 0,
@@ -12705,7 +12706,7 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
             ),
         ]);
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.instances[0].map_position = [20, 20, 30];
         scripts.instances[0].angles = [128, 2000, 64];
@@ -13136,7 +13137,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             (Attribute::DefendHigh, defenses[3]),
         ]);
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.content_id = scripts.content_identity().unwrap();
         let data = cyrus_assets::animation::Animations {
@@ -13331,7 +13332,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
     use cyrus_game::script::ScriptInputs;
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 2;
+        instance.object_type = PlacementType::SCRIPT_ONLY;
         instance.map_position = [600, 20, 600];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -13368,7 +13369,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
         Operation::End { target: 0 },
     ]);
     for instance in &mut scripts.instances {
-        instance.object_type = 2;
+        instance.object_type = PlacementType::SCRIPT_ONLY;
         instance.map_position = [600, 20, 600];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -13400,7 +13401,7 @@ fn separate_kill_me_releases_the_actor_runtime_and_owned_sounds() {
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     for instance in &mut scripts.instances {
-        instance.object_type = 2;
+        instance.object_type = PlacementType::SCRIPT_ONLY;
         instance.map_position = [600, 20, 600];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -13539,7 +13540,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
         ),
     ]);
     for instance in &mut scripts.instances {
-        instance.object_type = 2;
+        instance.object_type = PlacementType::SCRIPT_ONLY;
         instance.map_position = [600, 20, 600];
         instance.active = 1;
     }
@@ -13582,7 +13583,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
 #[test]
 fn separate_disabled_tasks_preserve_locals_and_maintain_authored_lights() {
     use cyrus_game::script::ScriptInputs;
-    for object_type in [2, 6] {
+    for object_type in [PlacementType::SCRIPT_ONLY, PlacementType::COLOURED_LIGHT] {
         let mut scripts = cache();
         scripts.updates.task_system = false;
         for instance in &mut scripts.instances {
@@ -14279,7 +14280,7 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             });
         scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::NumTaunts] = 1;
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.definition.functions.push(Function {
             name: Native::BeginCombat,
@@ -14617,7 +14618,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                 actor.attributes[Attribute::Combat] = 1;
                 actor.attributes[Attribute::Weapon] = authored_weapon;
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                 }
                 scripts.content_id = scripts.content_identity().unwrap();
                 let mut groups = vec![
@@ -14852,7 +14853,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
         });
         scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Combat] = 1;
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         if derived {
             add_standalone_receivers(&mut scripts);
@@ -15001,7 +15002,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
         }
         add_standalone_receivers(&mut scripts);
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
             instance.active = 1;
             instance.map_position = [10, 20, 30];
         }
@@ -15489,7 +15490,7 @@ fn player_walking_fixture_with_animation(
         arguments: vec![],
     });
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     prepare(&mut scripts);
@@ -17307,7 +17308,7 @@ fn a_type_four_object_starts_with_its_placement_intensity_and_radius_and_no_colo
     scripts.definition.functions[1].param_count = 2;
     scripts.instances.truncate(1);
     let placement = &mut scripts.instances[0];
-    placement.object_type = 4;
+    placement.object_type = PlacementType::LIGHT;
     placement.light_intensity = 211;
     placement.light_radius = 900;
     placement.light_rgb = [-12, 34, 56];
@@ -17357,7 +17358,11 @@ fn snapshot_marks_only_type_six_placements_as_map_lights() {
     let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
-    for (placement, object_type) in scripts.instances.iter_mut().zip([6, 4]) {
+    for (placement, object_type) in scripts
+        .instances
+        .iter_mut()
+        .zip([PlacementType::COLOURED_LIGHT, PlacementType::LIGHT])
+    {
         placement.object_type = object_type;
         placement.light_intensity = 211;
         placement.light_radius = 900;
@@ -17394,7 +17399,7 @@ fn authored_light_off_survives_world_replacement_without_reenabling() {
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     let placement = &mut scripts.instances[0];
-    placement.object_type = 6;
+    placement.object_type = PlacementType::COLOURED_LIGHT;
     placement.light_intensity = 211;
     placement.light_radius = 900;
     placement.light_rgb = [-12, 34, 56];
@@ -17464,7 +17469,7 @@ fn type_three_placement_starts_with_an_enabled_flat_record_of_its_texture() {
     let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
-    scripts.instances[0].object_type = 3;
+    scripts.instances[0].object_type = PlacementType::FLAT;
     scripts.instances[0].texture = -20351;
     scripts.content_id = scripts.content_identity().unwrap();
     let world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -17480,7 +17485,7 @@ fn actor_flat_draws_place_enabled_records_at_the_pose_plus_the_rotated_offset() 
     let mut scripts = random_scripts(Native::Spare0Parm0, vec![], Object::Me);
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(2);
-    scripts.instances[0].object_type = 3;
+    scripts.instances[0].object_type = PlacementType::FLAT;
     scripts.instances[0].texture = -20351;
     scripts.instances[0].map_position = [100, -200, 300];
     scripts.content_id = scripts.content_identity().unwrap();
@@ -17503,7 +17508,7 @@ fn type_four_object_light_survives_world_replacement() {
     scripts.definition.functions[1].param_count = 0;
     scripts.instances.truncate(1);
     let placement = &mut scripts.instances[0];
-    placement.object_type = 4;
+    placement.object_type = PlacementType::LIGHT;
     placement.light_intensity = 56;
     placement.light_radius = 200;
     placement.map_position = [100, -200, 300];
@@ -17563,7 +17568,7 @@ fn separate_light_cleanup_runs_with_tasks_disabled_and_uses_wrapping_byte_ticks(
         scripts.definition.functions[1].param_count = 0;
         scripts.updates.task_system = false;
         scripts.instances.truncate(1);
-        scripts.instances[0].object_type = 6;
+        scripts.instances[0].object_type = PlacementType::COLOURED_LIGHT;
         scripts.instances[0].map_position = [600, 0, 600];
         scripts.content_id = scripts.content_identity().unwrap();
         let (_, _, animations) = revisit_test_app(&scripts);
@@ -17637,7 +17642,9 @@ fn installed_authored_lights_reach_logical_render_projection_in_map_order() {
                 _ => None,
             })
             .flatten()
-            .filter(|record| record.object_type == 6)
+            .filter(|record| {
+                PlacementType::from_byte(record.object_type) == PlacementType::COLOURED_LIGHT
+            })
             .collect();
         let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
         let world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -18215,7 +18222,7 @@ fn offset_location_captured_source_survives_restore_but_not_created_actor_retire
         ]);
         scripts.actors.insert("SOURCE".into(), source);
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.map_position = [10, 20, 30];
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -19463,7 +19470,7 @@ fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtim
 
 #[test]
 fn actor_reference_address_rejects_temporary_separate_actor_identity() {
-    for object_type in [2, 6] {
+    for object_type in [PlacementType::SCRIPT_ONLY, PlacementType::COLOURED_LIGHT] {
         let mut scripts = actor_reference_scripts(Object::Me);
         scripts.instances[1].object_type = object_type;
         scripts.content_id = scripts.content_identity().unwrap();
@@ -19609,7 +19616,7 @@ fn actor_reference_snapshot_rebinds_live_identity_and_rejects_stale_generation()
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [0; 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -20907,7 +20914,7 @@ fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes(
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name;
         if separate {
-            scripts.instances[0].object_type = 2;
+            scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
         }
         if write {
             scripts
@@ -21191,7 +21198,7 @@ fn ai_clearance_collects_at_local_position_before_resolving_linked_or_attached_o
     use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [0; 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -22822,7 +22829,7 @@ fn live_paced_pick_uses_receiver_geometry_and_branch_specific_damage() {
             (Attribute::AttackDouble, 1),
         ]);
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.instances[0].angles[1] = 1024;
         scripts.instances[1].map_position = [0, -20, 20];
@@ -23010,7 +23017,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             animation: 0,
         }];
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
         }
         scripts.instances[1].map_position = [1024, 0, 0];
         scripts.content_id = scripts.content_identity().unwrap();
@@ -23295,7 +23302,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         animation: 0,
     }];
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.combat_attacks = vec![
         cyrus_assets::script::combat::Attack {
@@ -23856,7 +23863,7 @@ fn current_combat_counter_query_uses_retained_slot_motion_and_idle_gate() {
         (Attribute::AttackThrust, 1),
         (Attribute::AttackLow, 2),
     ]);
-    scripts.instances[0].object_type = 1;
+    scripts.instances[0].object_type = PlacementType::MODEL;
     scripts.combat_attacks = [
         vec![],
         vec![Some(0), Some(i32::MIN), Some(1), None],
@@ -24451,7 +24458,7 @@ fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
     };
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -26138,7 +26145,7 @@ fn sight_uses_attribute_selected_attached_then_linked_then_local_positions() {
     use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [0; 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -26360,7 +26367,7 @@ fn combat_decision_prefix_rebinds_target_and_continues_counter_with_live_sight()
     use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [0; 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -26441,7 +26448,7 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
         .attributes
         .extend([(Attribute::Combat, 1), (Attribute::DefendLow, 1)]);
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.combat_defenses = vec![
         combat::Defense {
@@ -27983,7 +27990,7 @@ fn retained_point_fixture(
         true,
         |scripts| {
             for instance in &mut scripts.instances {
-                instance.object_type = 1;
+                instance.object_type = PlacementType::MODEL;
             }
             for attribute in [
                 Attribute::ForwardSpeed,
@@ -28500,7 +28507,7 @@ fn free_node_preparation_rejects_missing_or_out_of_range_coordinates_with_contex
 fn navigation_owner_fixture() -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [20, -2, 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -28881,7 +28888,7 @@ fn perception_case(
     let mut scripts = cache();
     scripts.node_timer = Some(delay);
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [0; 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -29386,7 +29393,7 @@ fn point_wrapper_fixture(
         Operation::End { target: 0 },
     ]);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [20, -2, 3];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -31572,7 +31579,7 @@ fn point_direct_visible_completion_and_rejection_use_live_geometry_owner() {
     ] {
         let (_, mut scripts, point_data) = point_node_fixture(8);
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.map_position = [10, 20, 30];
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -32437,7 +32444,7 @@ fn range_contact_uses_first_motion_strict_ranges_and_candidate_radius() {
             |scripts| {
                 scripts.updates.dummy_model_manager = true;
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                 }
                 let motion = |minimum, maximum| {
                     serde_json::from_value(serde_json::json!({
@@ -32505,7 +32512,7 @@ fn range_contact_with_combat_radius_vhit_tests_the_retained_weapon_tip_against_t
             |scripts| {
                 scripts.updates.dummy_model_manager = true;
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                 }
             },
             |saved| {
@@ -32962,7 +32969,7 @@ fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
         },
     );
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -33089,7 +33096,7 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
             true,
             |scripts| {
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                 }
                 scripts.combat_clank_effects = [Some(31), None];
                 scripts.combat_attacks =
@@ -34010,7 +34017,7 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
             true,
             |scripts| {
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                 }
                 scripts.combat_clank_effects = [Some(31), None];
                 scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::HitSound] = 31;
@@ -36753,7 +36760,7 @@ fn a_shell_started_after_preparation_survives_a_snapshot_roundtrip() {
     shell.header_index += 100;
     scripts.actors.insert("LATER".into(), shell);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -38275,7 +38282,7 @@ fn a_created_object_takes_its_creators_frame_runs_each_update_and_survives_a_sna
     projectile.attributes[Attribute::ForwardSpeed] = 50;
     scripts.actors.insert("BALL".into(), projectile);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -38625,7 +38632,7 @@ fn a_created_object_snapshot_rejects_an_out_of_range_creator_reference() {
     projectile.header_index += 100;
     scripts.actors.insert("BALL".into(), projectile);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [10, 20, 30];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -39527,7 +39534,7 @@ fn ordinary_update_walking_off_an_edge_restores_the_stable_position_and_jumps() 
     attributes[Attribute::PanicGroup] = 18;
     for placement in &mut scripts.instances {
         placement.active = 1;
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [600, 20, 600];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -39644,7 +39651,7 @@ fn ordinary_update_promotes_action_words_at_the_window_boundary_and_selects_both
             }
             for placement in &mut scripts.instances {
                 placement.active = 1;
-                placement.object_type = 1;
+                placement.object_type = PlacementType::MODEL;
                 placement.map_position = [600, 20, 600];
             }
             scripts.content_id = scripts.content_identity().unwrap();
@@ -39742,7 +39749,7 @@ fn ordinary_update_consumes_both_authored_jump_masks_before_the_fallback() {
         }
         for placement in &mut scripts.instances {
             placement.active = 1;
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.map_position = [600, 20, 600];
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -39814,7 +39821,7 @@ fn a_support_miss_in_a_jump_group_carries_the_last_displacement_into_the_fall() 
     attributes[Attribute::PanicGroup] = 41;
     for placement in &mut scripts.instances {
         placement.active = 1;
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [600, 20, 600];
     }
     scripts.content_id = scripts.content_identity().unwrap();
@@ -39986,7 +39993,7 @@ fn projectile_ai_flies_along_its_heading_until_its_parent_range_then_continues_t
     ]);
     scripts.actors.insert("BALL".into(), projectile);
     for placement in &mut scripts.instances {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.active = 1;
         placement.map_position = [600, 20, 600];
     }
@@ -40103,7 +40110,7 @@ fn projectile_ai_stops_at_a_wall_contact() {
         ]);
         scripts.actors.insert("BALL".into(), projectile);
         for placement in &mut scripts.instances {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.active = 1;
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -40860,7 +40867,7 @@ fn moved_authored_light_uses_current_pose_after_snapshot_replacement() {
         kind: CallKind::Function,
     });
     scripts.instances.truncate(1);
-    scripts.instances[0].object_type = 6;
+    scripts.instances[0].object_type = PlacementType::COLOURED_LIGHT;
     scripts.instances[0].map_position = [100, -200, 300];
     scripts
         .actors
@@ -41581,7 +41588,11 @@ fn bind_scheduler_environment(
     handle
 }
 
-fn light_maintenance_scripts(kind: u8, count: usize, calls: &[(Native, &[i32])]) -> Scripts {
+fn light_maintenance_scripts(
+    kind: PlacementType,
+    count: usize,
+    calls: &[(Native, &[i32])],
+) -> Scripts {
     let mut scripts = cache();
     scripts.instances.truncate(count);
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
@@ -41662,8 +41673,8 @@ fn light_maintenance_update(
 #[test]
 fn light_maintenance_precedes_ordinary_scripts_but_follows_separate_scripts() {
     for (kind, separate, first_intensity, first_radius, first_random) in [
-        (4, false, 256, 100, 1103527590),
-        (6, true, 259, 97, 662824084),
+        (PlacementType::LIGHT, false, 256, 100, 1103527590),
+        (PlacementType::COLOURED_LIGHT, true, 259, 97, 662824084),
     ] {
         let mut scripts = light_maintenance_scripts(
             kind,
@@ -41709,7 +41720,7 @@ fn light_maintenance_precedes_ordinary_scripts_but_follows_separate_scripts() {
 #[test]
 fn light_maintenance_consumes_intensity_then_radius_in_shared_actor_order() {
     let scripts = light_maintenance_scripts(
-        6,
+        PlacementType::COLOURED_LIGHT,
         2,
         &[
             (Native::LightFlicker, &[18, 1]),
@@ -41773,7 +41784,7 @@ fn light_maintenance_uses_signed_thresholds_one_draw_and_word_clamps() {
         ([65536, 1], [0, 1], 1, 256, 100, 1, 256, 100, 0, 1),
     ] {
         let mut scripts = light_maintenance_scripts(
-            6,
+            PlacementType::COLOURED_LIGHT,
             1,
             &[(Native::LightFlicker, &flicker), (Native::LightSize, &size)],
         );
@@ -41797,7 +41808,7 @@ fn light_maintenance_uses_signed_thresholds_one_draw_and_word_clamps() {
 fn light_maintenance_signed_phase_and_shared_random_continue_after_snapshot() {
     use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
     let scripts = light_maintenance_scripts(
-        6,
+        PlacementType::COLOURED_LIGHT,
         1,
         &[
             (Native::LightFlicker, &[18, 1]),
@@ -41852,7 +41863,7 @@ fn light_maintenance_signed_phase_and_shared_random_continue_after_snapshot() {
 #[test]
 fn light_maintenance_disabled_record_does_not_consume_random_or_modulate() {
     let scripts = light_maintenance_scripts(
-        6,
+        PlacementType::COLOURED_LIGHT,
         1,
         &[
             (Native::LightFlicker, &[18, 0]),
@@ -41879,7 +41890,7 @@ fn light_maintenance_disabled_record_does_not_consume_random_or_modulate() {
 fn light_maintenance_rejects_negative_wrapped_amplitude_before_mutation_or_draws() {
     for amplitude in [-1, 65535] {
         let scripts = light_maintenance_scripts(
-            6,
+            PlacementType::COLOURED_LIGHT,
             1,
             &[
                 (Native::LightFlicker, &[18, 0]),
@@ -41917,7 +41928,11 @@ fn light_maintenance_rejects_negative_wrapped_amplitude_before_mutation_or_draws
 
 #[test]
 fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance() {
-    let mut scripts = light_maintenance_scripts(4, 1, &[(Native::FlatAnimate, &[129, 1, 1])]);
+    let mut scripts = light_maintenance_scripts(
+        PlacementType::LIGHT,
+        1,
+        &[(Native::FlatAnimate, &[129, 1, 1])],
+    );
     scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
     let (_, mut world, data) = light_maintenance_world(scripts);
     let mut random = cyrus_game::random::EngineRandom::default();
@@ -41928,8 +41943,11 @@ fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance
     light_maintenance_update(&mut world, &data, false, 1, &mut random);
     assert_eq!(world.actors()[0].flat_state().unwrap()["frame"], 1);
 
-    let scripts =
-        light_maintenance_scripts(4, 1, &[(Native::Flat, &[129]), (Native::FlatOff, &[])]);
+    let scripts = light_maintenance_scripts(
+        PlacementType::LIGHT,
+        1,
+        &[(Native::Flat, &[129]), (Native::FlatOff, &[])],
+    );
     let (_, mut world, data) = light_maintenance_world(scripts);
     light_maintenance_update(&mut world, &data, false, 33, &mut random);
     let actor = &world.actors()[0];
@@ -41943,7 +41961,7 @@ fn ordinary_flat_script_creation_animation_and_disable_wait_for_next_maintenance
 #[test]
 fn light_maintenance_keeps_hidden_ordinary_actor_phases_and_random_unchanged() {
     let scripts = light_maintenance_scripts(
-        4,
+        PlacementType::LIGHT,
         1,
         &[
             (Native::LightFlicker, &[18, 0]),
@@ -42034,7 +42052,7 @@ fn projectile_contact_uses_body_shape_despite_separate_vertex_collision_volumes(
         ]);
         scripts.actors.insert("BALL".into(), projectile);
         for (placement, z) in scripts.instances.iter_mut().zip([600, 800]) {
-            placement.object_type = 1;
+            placement.object_type = PlacementType::MODEL;
             placement.active = 1;
             placement.map_position = [600, 20, z];
         }
@@ -43040,7 +43058,7 @@ fn public_jump_classification_fixture(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
     scripts.definition.functions.push(Function {
@@ -43286,7 +43304,7 @@ fn queued_jump_lifetime_fixture(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     let function = scripts.definition.functions.len() as u16;
@@ -44566,7 +44584,7 @@ fn created_effects_maintain_before_scripts_and_preserve_hidden_phases_after_rest
             if hidden {
                 calls.push((Native::HideMe, &[]));
             }
-            let mut scripts = light_maintenance_scripts(4, 1, &calls);
+            let mut scripts = light_maintenance_scripts(PlacementType::LIGHT, 1, &calls);
             scripts.texture_frames.insert(1, BTreeMap::from([(1, 4)]));
             let (scripts, mut world, data) = light_maintenance_world(scripts);
             world.prepare_spatial().unwrap();
@@ -44710,7 +44728,7 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
             false,
             |scripts| {
                 for instance in &mut scripts.instances {
-                    instance.object_type = 1;
+                    instance.object_type = PlacementType::MODEL;
                     instance.active = 1;
                 }
                 // Ground/collision stages are deliberately separate from this displacement contract.
@@ -45192,7 +45210,7 @@ fn animated_bounce_pair_at(
         .iter_mut()
         .zip([position[0], position[0] + 6])
     {
-        placement.object_type = 1;
+        placement.object_type = PlacementType::MODEL;
         placement.map_position = [x, position[1], position[2]];
         placement.active = 1;
     }
@@ -45709,7 +45727,7 @@ fn fx_light_size_configures_the_receiver_and_finishes_without_a_task_slot() {
         scripts.definition.functions[1].kind = CallKind::Multitask;
         scripts.definition.functions[1].param_count = 2;
         if authored {
-            scripts.instances[0].object_type = 4;
+            scripts.instances[0].object_type = PlacementType::LIGHT;
             scripts.instances[0].light_intensity = 211;
             scripts.instances[0].light_radius = 900;
         }
@@ -45757,7 +45775,11 @@ fn fx_light_size_configures_the_receiver_and_finishes_without_a_task_slot() {
 
 #[test]
 fn fx_light_size_multitask_modulates_the_authored_spatial_light_after_dispatch() {
-    let mut scripts = light_maintenance_scripts(6, 1, &[(Native::FxLightSize, &[7, 1])]);
+    let mut scripts = light_maintenance_scripts(
+        PlacementType::COLOURED_LIGHT,
+        1,
+        &[(Native::FxLightSize, &[7, 1])],
+    );
     scripts.definition.functions[1].kind = CallKind::Multitask;
     scripts
         .actors
@@ -45801,7 +45823,7 @@ fn fx_flicker_on_off_toggles_radius_on_each_retained_multitask_poll() {
         let mut scripts = random_scripts(Native::FxFlickerOnOff, vec![], Object::Me);
         scripts.definition.functions[1].kind = CallKind::Multitask;
         if authored {
-            scripts.instances[0].object_type = 4;
+            scripts.instances[0].object_type = PlacementType::LIGHT;
             scripts.instances[0].light_radius = 900;
         }
         scripts
@@ -46251,7 +46273,7 @@ fn fx_phase_updates_the_authored_light_projection_through_world_dispatch() {
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.instances = 1;
     actor.instance_variables.truncate(1);
-    scripts.instances[0].object_type = 6;
+    scripts.instances[0].object_type = PlacementType::COLOURED_LIGHT;
     scripts.instances[0].map_position = [600, 0, 600];
     scripts.instances[0].light_radius = 100;
     scripts.instances[0].light_intensity = 256;
@@ -46283,7 +46305,7 @@ fn fx_phase_zero_span_creates_a_record_and_completes_without_timing() {
     for authored in [false, true] {
         let mut scripts = phase_scripts([1, 2, 3, 4, 5, 6, 0]);
         if authored {
-            scripts.instances[0].object_type = 6;
+            scripts.instances[0].object_type = PlacementType::COLOURED_LIGHT;
             scripts.instances[0].light_rgb = [9, -7, 5];
         }
         scripts.content_id = scripts.content_identity().unwrap();
@@ -46382,7 +46404,7 @@ fn fx_phase_reports_missing_timing_and_signed_division_overflow() {
     }
 }
 
-fn dim_scripts(kind: u8, amount: i32, base: [i16; 3]) -> Scripts {
+fn dim_scripts(kind: PlacementType, amount: i32, base: [i16; 3]) -> Scripts {
     let mut scripts = light_maintenance_scripts(kind, 2, &[(Native::FxFlickerDim, &[amount])]);
     scripts.definition.functions[1].kind = CallKind::Multitask;
     scripts
@@ -46409,7 +46431,7 @@ fn dim_scripts(kind: u8, amount: i32, base: [i16; 3]) -> Scripts {
 #[test]
 fn fx_flicker_dim_uses_starting_colour_and_shared_random_after_snapshot() {
     use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
-    let scripts = dim_scripts(6, 257, [-10, 300, -32768]);
+    let scripts = dim_scripts(PlacementType::COLOURED_LIGHT, 257, [-10, 300, -32768]);
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = Default::default();
     let sources = WorldSnapshotSources {
@@ -46485,7 +46507,7 @@ fn fx_flicker_dim_matches_original_absolute_bound_word_wrap_and_clamp() {
         (257, [0, -255, 255], [-197, -255, 58]),
         (1, [32767, -32768, -32767], [32767, -255, -255]),
     ] {
-        let scripts = dim_scripts(6, amount, base);
+        let scripts = dim_scripts(PlacementType::COLOURED_LIGHT, amount, base);
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let mut random = cyrus_game::random::EngineRandom::from_state(1);
         world
@@ -46507,10 +46529,18 @@ fn fx_flicker_dim_matches_original_absolute_bound_word_wrap_and_clamp() {
 fn fx_flicker_dim_rejects_unknown_base_and_nonreturning_bounds_without_random_draws() {
     use cyrus_game::script::ScriptInputs;
     for (kind, amount, message) in [
-        (0, 257, "starting RGB unavailable"),
-        (4, 257, "starting RGB unavailable"),
-        (6, 0, "nonzero representable absolute bound"),
-        (6, i32::MIN, "nonzero representable absolute bound"),
+        (PlacementType::default(), 257, "starting RGB unavailable"),
+        (PlacementType::LIGHT, 257, "starting RGB unavailable"),
+        (
+            PlacementType::COLOURED_LIGHT,
+            0,
+            "nonzero representable absolute bound",
+        ),
+        (
+            PlacementType::COLOURED_LIGHT,
+            i32::MIN,
+            "nonzero representable absolute bound",
+        ),
     ] {
         let scripts = dim_scripts(kind, amount, [10, 20, 30]);
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -46532,7 +46562,7 @@ fn fx_flicker_dim_rejects_unknown_base_and_nonreturning_bounds_without_random_dr
         let error = world.step(id, Thread::Main, 20).unwrap_err();
         assert!(format!("{error:#}").contains(message));
     }
-    let scripts = dim_scripts(6, 257, [10, 20, 30]);
+    let scripts = dim_scripts(PlacementType::COLOURED_LIGHT, 257, [10, 20, 30]);
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let error = world
         .step(world.id(0).unwrap(), Thread::Main, 20)
@@ -46548,7 +46578,7 @@ fn fx_flicker_dim_rejects_unknown_base_and_nonreturning_bounds_without_random_dr
 #[test]
 fn fx_flicker_dim_restore_validates_base_source_and_does_not_guess_legacy_colour() {
     use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
-    let scripts = dim_scripts(6, 257, [-10, 300, -32768]);
+    let scripts = dim_scripts(PlacementType::COLOURED_LIGHT, 257, [-10, 300, -32768]);
     let (_, _, animations) = revisit_test_app(&scripts);
     let collision = Default::default();
     let sources = WorldSnapshotSources {

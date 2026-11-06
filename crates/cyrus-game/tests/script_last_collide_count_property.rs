@@ -1,4 +1,5 @@
 //! Receiver-owned collision-response age uses public property dispatch.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
@@ -95,7 +96,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -215,7 +216,7 @@ fn last_collide_count_reads_zero_and_rejects_absent_owners_before_continuation()
                 write,
             );
             if !absent_receiver {
-                scripts.instances[0].object_type = 2;
+                scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();

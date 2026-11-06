@@ -1,5 +1,6 @@
 //! PlayerTilt runs through routed VM calls and persistent world task slots.
 use super::*;
+use cyrus_assets::script::PlacementType;
 use cyrus_game::script::{
     ModelSupportOwners, ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
 };
@@ -39,11 +40,11 @@ fn tilt_fixture(
     add_standalone_receivers(&mut scripts);
     scripts.actors.get_mut("LOGIC").unwrap().program.strings = vec!["logic".into()];
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
     }
     scripts.instances[0].angles = angles.map(u32::from);
     scripts.instances[0].map_position = [0; 3];
-    scripts.instances[0].object_type = 1;
+    scripts.instances[0].object_type = PlacementType::MODEL;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
     world.prepare_spatial().unwrap();

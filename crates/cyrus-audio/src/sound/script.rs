@@ -1611,7 +1611,7 @@ mod dialogue_tests {
             .map(|index| cyrus_assets::script::Instance {
                 object_id: index,
                 actor: "SCRIPTLESS".into(),
-                object_type: 1,
+                object_type: cyrus_assets::script::PlacementType::MODEL,
                 active: 1,
                 model_name: String::new(),
                 model_mode: 0,

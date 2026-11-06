@@ -219,7 +219,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .filter(|object| object["object_type"] == 1)
+            .filter(|object| object["object_type"] == crate::script::PlacementType::MODEL.byte())
             .count();
         assert_eq!(actors.collision_flags.len(), ordinary_count);
         let archive = world

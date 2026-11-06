@@ -108,7 +108,7 @@ impl SpatialWorld {
                     position[axis] = value.checked_mul(256).and_then(|value| i32::try_from(value).ok())
                         .with_context(|| format!("actor {index} {} map position axis {axis}: outside Q8 i32 range", actor.name()))?;
                 }
-                let angles = if matches!(placement.object_type, 2 | 6) {
+                let angles = if placement.object_type.has_separate_record() {
                     [0; 3]
                 } else {
                     placement.angles.map(|angle| wrap(angle) as i32)

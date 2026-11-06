@@ -144,7 +144,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
             .map(|(index, name)| Instance {
                 object_id: index as u32,
                 actor: name.into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,

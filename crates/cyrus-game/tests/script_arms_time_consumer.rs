@@ -1,4 +1,5 @@
 //! Arms timer updates preserve directional actions and consume typed motion bytes.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::program::*;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -129,7 +130,7 @@ fn fixture(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     scripts.instances.truncate(1);
-    scripts.instances[0].object_type = 1;
+    scripts.instances[0].object_type = PlacementType::MODEL;
     scripts.instances[0].active = 1;
     scripts.instances[0].map_position = [600, 20, 600];
     scripts.updates.animation_system = false;

@@ -24,7 +24,7 @@ impl ActorLists {
         for (index, actor) in actors.iter().enumerate().rev() {
             match &actor.source {
                 ScriptActorSource::Map(placement) => {
-                    if matches!(placement.object_type, 2 | 6) {
+                    if placement.object_type.has_separate_record() {
                         let position = [placement.map_position[0], placement.map_position[2]];
                         anyhow::ensure!(
                             position.iter().all(|value| (0..=65535).contains(value)),

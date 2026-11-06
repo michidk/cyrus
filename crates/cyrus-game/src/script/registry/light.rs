@@ -1,5 +1,6 @@
 //! Retained actor light controls follow preservation's script light lifecycle.
 use cyrus_assets::script::Instance;
+use cyrus_assets::script::PlacementType;
 use cyrus_script::Native;
 use serde::{Deserialize, Serialize};
 
@@ -138,7 +139,8 @@ impl LightState {
             starting_radius: placement.light_radius,
             radius: placement.light_radius,
             rgb: placement.light_rgb,
-            starting_rgb: (placement.object_type == 6).then_some(placement.light_rgb),
+            starting_rgb: (placement.object_type == PlacementType::COLOURED_LIGHT)
+                .then_some(placement.light_rgb),
             flicker: [0; 3],
             size: [0; 3],
         }
@@ -234,7 +236,7 @@ impl super::ScriptWorld {
             .enumerate()
             .filter_map(|(index, actor)| {
                 let placement = actor.placement()?;
-                if placement.object_type != 6 {
+                if placement.object_type != PlacementType::COLOURED_LIGHT {
                     return None;
                 }
                 let id = self.id(index).ok()?;

@@ -1,4 +1,5 @@
 //! Receiver-owned extra-time countdown uses public property dispatch.
+use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
@@ -94,7 +95,7 @@ fn cache() -> Scripts {
             .map(|id| Instance {
                 object_id: id,
                 actor: "LOGIC".into(),
-                object_type: 0,
+                object_type: Default::default(),
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
@@ -226,7 +227,7 @@ fn extra_time_missing_owner_or_receiver_keeps_a_sticky_failure() {
             };
             let mut scripts = counter_scripts(object, -12345, write);
             if !missing_receiver {
-                scripts.instances[0].object_type = 2;
+                scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
@@ -262,7 +263,7 @@ fn extra_time_is_consumed_by_ordinary_updates_and_preserves_sentinels() {
     ] {
         let mut scripts = counter_scripts(Object::Me, value, true);
         for instance in &mut scripts.instances {
-            instance.object_type = 1;
+            instance.object_type = PlacementType::MODEL;
             instance.active = 1;
         }
         // Seed once through the public property caller, then park beyond the writer.
@@ -520,7 +521,7 @@ fn extra_time_is_retained_when_the_ordinary_slave_gate_refuses_the_actor() {
     scripts.updates.disable_slaves = true;
     scripts.actors.get_mut("LOGIC").unwrap().attributes[cyrus_script::Attribute::Slave] = 1;
     for instance in &mut scripts.instances {
-        instance.object_type = 1;
+        instance.object_type = PlacementType::MODEL;
         instance.active = 1;
     }
     let mut master = scripts.actors["LOGIC"].clone();
@@ -534,7 +535,7 @@ fn extra_time_is_retained_when_the_ordinary_slave_gate_refuses_the_actor() {
     scripts.instances.push(Instance {
         object_id: 2,
         actor: "MASTER".into(),
-        object_type: 0,
+        object_type: Default::default(),
         ..scripts.instances[0].clone()
     });
     scripts.content_id = scripts.content_identity().unwrap();

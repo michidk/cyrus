@@ -3,6 +3,7 @@ use super::*;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::ensure;
+use cyrus_assets::script::PlacementType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -404,9 +405,9 @@ impl ActorSnapshot {
             surface: actor.surface,
             light: actor.light.clone(),
             map_light: Some(
-                actor
-                    .placement()
-                    .is_some_and(|placement| placement.object_type == 6),
+                actor.placement().is_some_and(|placement| {
+                    placement.object_type == PlacementType::COLOURED_LIGHT
+                }),
             ),
             flat: actor.flat.clone(),
             model: actor.model.snapshot(),
@@ -500,7 +501,7 @@ impl ActorSnapshot {
             if let Some(base) = light.starting_rgb {
                 let placement = actor
                     .placement()
-                    .filter(|placement| placement.object_type == 6)
+                    .filter(|placement| placement.object_type == PlacementType::COLOURED_LIGHT)
                     .with_context(|| {
                         format!(
                             "saved actor {}: light starting RGB has no authored source",
@@ -515,10 +516,12 @@ impl ActorSnapshot {
             }
             // Retained source coordinates identify the authored record; drawing uses the
             // current spatial pose and offset.
-            if let Some(placement) = actor
-                .placement()
-                .filter(|placement| matches!(placement.object_type, 4 | 6))
-            {
+            if let Some(placement) = actor.placement().filter(|placement| {
+                matches!(
+                    placement.object_type,
+                    PlacementType::LIGHT | PlacementType::COLOURED_LIGHT
+                )
+            }) {
                 ensure!(
                     light.position == placement.map_position.map(|value| value as i32),
                     "saved actor {}: object light source position differs",
