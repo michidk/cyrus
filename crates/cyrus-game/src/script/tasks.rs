@@ -613,6 +613,11 @@ enum Task {
     PlayerFaceTalk,
     /// `ObjectLineUp(angle, x_offset, z_offset)`: walks the receiver to the source actor's frame.
     ObjectLineUp,
+    /// `ObjectPickupLineUp(angle, x_offset, z_offset)`: the pickup mover on the receiver, toward
+    /// the shared source actor's position plus unrotated offsets.
+    ObjectPickupLineUp {
+        fallback: bool,
+    },
     /// `FaceLocation(location, deadline)`: turns toward a location table entry by the shared tick
     /// counter's distance to the deadline.
     FaceLocation,
@@ -1601,6 +1606,34 @@ impl Task {
                 port.set_lineup_result(result);
                 result == 0
             }
+            Self::ObjectPickupLineUp { fallback } => {
+                use super::lineup::{PickupState, pickup_mover};
+                let [angle, x_offset, z_offset] = arguments else {
+                    anyhow::bail!("ObjectPickupLineUp takes three arguments");
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("lineup requires elapsed input")?;
+                let port = services
+                    .lineup
+                    .context("ObjectPickupLineUp receiver alignment state unavailable")?;
+                let reference = port.source_reference("ObjectPickupLineUp")?;
+                let angle = wrap(i32::from(reference.heading) + angle.integer()?);
+                let target = [
+                    reference.position[0].wrapping_add(x_offset.integer()?),
+                    reference.position[1],
+                    reference.position[2].wrapping_add(z_offset.integer()?),
+                ];
+                let mut state = PickupState {
+                    fallback: *fallback,
+                };
+                let result = pickup_mover(&mut *port, &mut state, elapsed, angle, target);
+                *fallback = state.fallback;
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                result == 0
+            }
             Self::ObjectLineUp => {
                 let [angle, x_offset, z_offset] = arguments else {
                     anyhow::bail!("ObjectLineUp takes three arguments");
@@ -1608,7 +1641,7 @@ impl Task {
                 let port = services
                     .lineup
                     .context("ObjectLineUp receiver alignment state unavailable")?;
-                let reference = port.source_reference()?;
+                let reference = port.source_reference("ObjectLineUp")?;
                 let result = super::lineup::object_mover(
                     &mut *port,
                     angle.integer()?,
@@ -3060,6 +3093,12 @@ impl NativeTasks {
                 "PlayerPickupLineUp requires task encoding"
             );
             Task::PickupLineUp { fallback: false }
+        } else if function == Native::ObjectPickupLineUp {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "ObjectPickupLineUp requires task encoding"
+            );
+            Task::ObjectPickupLineUp { fallback: false }
         } else if function == Native::ObjectLineUp {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -3301,6 +3340,7 @@ impl NativeTasks {
             Native::PlayerLineUp,
             Native::PlayerFaceTalk,
             Native::ObjectLineUp,
+            Native::ObjectPickupLineUp,
         ]
         .contains(&function)
     }
@@ -3320,6 +3360,7 @@ impl NativeTasks {
                     | Task::LineUp { .. }
                     | Task::PlayerFaceTalk
                     | Task::ObjectLineUp
+                    | Task::ObjectPickupLineUp { .. }
             )
         )
     }
@@ -3331,7 +3372,10 @@ impl NativeTasks {
 
     /// Whether `token` is an `ObjectLineUp` continuation, whose mover is the receiver itself.
     pub(super) fn is_object_lineup_task(&self, token: u64) -> bool {
-        matches!(self.tasks.get(&token), Some(Task::ObjectLineUp))
+        matches!(
+            self.tasks.get(&token),
+            Some(Task::ObjectLineUp | Task::ObjectPickupLineUp { .. })
+        )
     }
 
     /// Whether `function` is `BounceObject`, which needs the receiver's live state.

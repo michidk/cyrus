@@ -272,6 +272,9 @@ impl Task {
             Self::LineUp { .. } => (Native::PlayerLineUp, 3, Some(CallKind::Task)),
             Self::PlayerFaceTalk => (Native::PlayerFaceTalk, 1, Some(CallKind::Task)),
             Self::ObjectLineUp => (Native::ObjectLineUp, 3, Some(CallKind::Task)),
+            Self::ObjectPickupLineUp { .. } => {
+                (Native::ObjectPickupLineUp, 3, Some(CallKind::Task))
+            }
             Self::FacePlayer => (Native::FacePlayer, 1, None),
             Self::FaceLocation => (Native::FaceLocation, 2, None),
             Self::FacePlayerInertia => (Native::FacePlayerInertia, 1, None),

@@ -4944,17 +4944,19 @@
     },
     {
       "native": "ObjectPickupLineUp",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named timing/presentation dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Three-argument task running the pickup mover on the receiver toward the shared source actor plus unrotated offsets",
+      "caller": "ScriptWorld::advance -> Runtime object task call -> GameHost::lineup_call/lineup_poll -> Task::ObjectPickupLineUp -> lineup::pickup_mover",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::object_pickup_lineup_places_the_receiver_at_the_callers_unrotated_offset_point_and_keeps_its_slot"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602739878"
       ],
-      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice.",
-      "reviewed_revision": "adec96097963d905bd6f326e560a44db35e510e7"
+      "limits": "Verified: installed definition declares task with 3 arguments; exact-name host/task/delegate inspection found no supported dispatch. No dedicated public rejection assertion or named production acceptance located. Existing internal Task::LineUp serializes as PlayerLineUp; supported selected-player alignment and #37 receipts do not establish this named native. Unknown: original behavior beyond published contracts and declaration metadata; no behavior inferred from the name. Zero calls in the 27 historical schema-27 exports do not exclude hidden Unsupported actor bodies or current schema-29 content. Rust tests were inspected, not rerun; no original/native/browser runtime was run for this catalogue slice. Verified (the original handler read through the native table; the mover it calls is the one PlayerPickupLineUp's handler calls): the handler reads the shared native source actor (the actor whose interpreter entry last ran), builds the destination as that actor's X and Z plus the unrotated offsets with its Y unchanged, and the angle as that actor's heading plus the argument masked to 2048, then runs the shared pickup mover on the receiver (PlayerPickupLineUp does the same with the receiving actor as target and the selected player as mover). Routed test (walking-player fixture, Player.ObjectPickupLineUp(0, 0, 2048) from the map actor): the call returns to its caller at once, the player's own slot keeps the task and the player stands at the caller's X and Z plus the unrotated offsets. The source is read through SOUP3's native_source_actor owner (explicit error before any interpreter entry or for a departed actor). Unknown: completion of the task is not demonstrated in that fixture (the caller is far above the player's ground, so the mover takes its plain-mover fallback and does not finish within 600 rounds); the mover itself is covered by the existing PlayerPickupLineUp tests and unit rows; receivers without the control record the lineup port reads fail with an explicit error; no native-run or browser comparison.",
+      "reviewed_revision": "6f9e645ae9d23d2909fdd2e80e5a4332456c90c1"
     },
     {
       "native": "WaitLineUp",

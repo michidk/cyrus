@@ -4549,7 +4549,7 @@ impl crate::script::lineup::LineupPort for LineupLog {
 }
 
 impl crate::script::lineup::LineupHost for LineupLog {
-    fn source_reference(&mut self) -> anyhow::Result<crate::script::lineup::Reference> {
+    fn source_reference(&mut self, _: &str) -> anyhow::Result<crate::script::lineup::Reference> {
         Ok(crate::script::lineup::Reference {
             position: [0; 3],
             heading: 0,

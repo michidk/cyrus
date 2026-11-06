@@ -97,8 +97,9 @@ pub trait LineupHost: LineupPort {
     fn receiver_distance(&mut self) -> anyhow::Result<i32>;
     /// The installed lineup distance in Q8 units.
     fn lineup_distance(&mut self) -> anyhow::Result<i32>;
-    /// `ObjectLineUp`'s reference: the script-source actor's local position and heading.
-    fn source_reference(&mut self) -> anyhow::Result<Reference>;
+    /// `ObjectLineUp`'s and `ObjectPickupLineUp`'s reference: the shared native-command source
+    /// actor's local position and heading.
+    fn source_reference(&mut self, native: &str) -> anyhow::Result<Reference>;
     /// `PlayerFaceTalk`'s target: the receiver's local X/Z plus the X/Z of `(0, 0, distance)`
     /// through its orientation matrix (wrapping), and the receiver's heading.
     fn talk_target(&mut self, distance: i32) -> anyhow::Result<([i32; 2], u16)>;

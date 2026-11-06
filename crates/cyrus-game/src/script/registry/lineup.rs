@@ -527,17 +527,16 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
 }
 
 impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
-    fn source_reference(&mut self) -> Result<Reference> {
-        // The shared pointing target: the actor whose interpreter entry last ran, which retains
-        // across later passes (the caller of a routed call, and still the caller when the
-        // receiver's own task stage polls the task). The original reads whatever the pointer holds,
+    fn source_reference(&mut self, native: &str) -> Result<Reference> {
+        // The shared native-command source: the actor whose interpreter entry last ran, retained
+        // while the receiver's own task stage polls. The original reads whatever the pointer holds,
         // so an unknown or departed source is an explicit error rather than a substitute actor.
-        let source = self.host.native_source_actor("ObjectLineUp")?.index;
+        let source = self.host.native_source_actor(native)?;
         let local = self
             .host
             .registry
-            .spatial(self.host.registry.id(source)?)
-            .context("ObjectLineUp source pose unavailable")?
+            .spatial(source)
+            .with_context(|| format!("{native} source pose unavailable"))?
             .local;
         Ok(Reference {
             position: local.position,
@@ -615,7 +614,7 @@ impl GameHost<'_, '_, '_, '_> {
         arguments: &[super::Argument],
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<super::CallResult>> {
-        let mut port = if function == Native::ObjectLineUp {
+        let mut port = if matches!(function, Native::ObjectLineUp | Native::ObjectPickupLineUp) {
             PlayerLineup::for_receiver(self)?
         } else {
             PlayerLineup::new(self, function == Native::PlayerFaceTalk)?
