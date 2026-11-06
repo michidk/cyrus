@@ -5934,18 +5934,22 @@
     },
     {
       "native": "PopAllItems",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
       "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory::pop_all_counts",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::pop_all_items_restores_consecutive_counts_and_keeps_an_existing_selection",
+        "crates/cyrus-game/tests/script_registry.rs::pop_all_items_skips_closed_and_empty_inventories_but_retains_partial_failure",
+        "crates/cyrus-game/tests/script_registry.rs::pop_all_items_selects_item_one_and_assigns_the_player_weapon_when_nothing_is_selected"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/commit/48d09cb"
       ],
-      "limits": "Verified: independent installed function0/exact binding/full100-byte native/full155 PopItem/full117 ordered lookup/full210 final selection original instructions. Disabled returns0 without effects. Enabled signed-count loop invokes original receiver/consecutive integer IDs; restoration uses saved values. Completed loop ensures selection then returns0. Existing selection retained; otherwise ordered ID1 lookup wins regardless value/kind, then first nonzero-current kind1 or first nonzero-current fallback; player selection receives low ID byte. Missing-ID diagnostic-copy entry retains earlier writes. Full mapped memory/nonstack writes/canary/request sequence/return/six preserved registers/stack checked on returns. Unknown diagnostic effects/continuation, natural count/dense-ID invariant/list producers/lifecycle/malformed or cyclic lists/full domain/VM/production parity. Sparse/duplicate/unsorted lists are constructed controls. Named production missing. No Cargo/game runtime.",
+      "limits": "Verified published contract: closed processing returns zero without effects; enabled processing restores consecutive identifiers from zero through the shared PopItem restoration and a missing identifier fails after earlier restorations, withholding the caller continuation; the ensure-selection step keeps an existing selection, else selects item one regardless of its count or kind (player weapon byte assigned), else the first owned weapon-kind then first owned item. Public routed callers cover restoration, repeat pops, closed/empty inventories, a sparse definition failure and the empty-selection repair with a selected player. Unknown: natural authored callers, rendered/timing parity, diagnostic-copy effects of the failure path and malformed lists.",
       "reviewed_revision": "b9b1f3db1ad55ada9a62eb6f5b64e727b656da2c"
     },
     {

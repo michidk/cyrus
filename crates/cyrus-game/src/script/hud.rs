@@ -406,6 +406,22 @@ impl ScriptHud {
         }
     }
 
+    /// Restore every saved count and ensure a selection; a closed inventory does nothing.
+    /// The callback must not reenter this HUD, whose inventory lock remains held.
+    pub(super) fn pop_all_items(
+        &self,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.pop_all_counts(assign_weapon),
+            None => Ok(()),
+        }
+    }
+
     /// Empty one item's count without dependents. A closed inventory ignores the call.
     pub fn remove_item(&self, id: u16) -> Result<()> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

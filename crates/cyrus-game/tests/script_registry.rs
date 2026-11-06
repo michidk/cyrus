@@ -36573,6 +36573,154 @@ fn push_all_items_skips_closed_and_empty_inventories_but_retains_partial_failure
     );
 }
 
+#[test]
+fn pop_all_items_restores_consecutive_counts_and_keeps_an_existing_selection() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    let mut asset = inventory_asset(&[(0, 1), (1, 5), (2, 3)]);
+    asset.selected = Some(2);
+    hud.configure(&asset, &Preferences::default());
+    // The snapshot is read because the display view repairs a selected item whose count is zero.
+    let snapshot = || serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    let before = snapshot();
+    assert_eq!(
+        run_item_count_native(&hud, Native::PushAllItems, &[0]).unwrap(),
+        0
+    );
+    assert_eq!(snapshot()["items"]["1"]["count"], 0);
+    assert_eq!(
+        run_item_count_native(&hud, Native::PopAllItems, &[]).unwrap(),
+        0
+    );
+    let after = snapshot();
+    for id in ["0", "1", "2"] {
+        assert_eq!(
+            after["items"][id]["count"], before["items"][id]["count"],
+            "item {id} is restored"
+        );
+    }
+    assert_eq!(after["selected"], 2, "an existing selection is kept");
+    assert_eq!(
+        run_item_count_native(&hud, Native::PopAllItems, &[]).unwrap(),
+        0,
+        "a second pop restores nothing more"
+    );
+    assert_eq!(snapshot()["items"], after["items"]);
+}
+
+#[test]
+fn pop_all_items_skips_closed_and_empty_inventories_but_retains_partial_failure() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs, ScriptStage},
+    };
+    let closed = ScriptHud::default();
+    assert_eq!(
+        run_item_count_native(&closed, Native::PopAllItems, &[]).unwrap(),
+        0
+    );
+    let empty = ScriptHud::default();
+    empty.configure(&inventory_asset(&[]), &Preferences::default());
+    let before = serde_json::to_value(empty.snapshot_inventory().unwrap()).unwrap();
+    assert_eq!(
+        run_item_count_native(&empty, Native::PopAllItems, &[]).unwrap(),
+        0
+    );
+    assert_eq!(
+        serde_json::to_value(empty.snapshot_inventory().unwrap()).unwrap(),
+        before
+    );
+    let sparse = ScriptHud::default();
+    sparse.configure(&inventory_asset(&[(0, 5), (2, 3)]), &Preferences::default());
+    run_item_count_native(&sparse, Native::PushItem, &[0, 0]).unwrap();
+    assert_eq!(sparse.inventory(None).unwrap().counts[&0], 0);
+    let mut world = item_count_world(Native::PopAllItems, &[]);
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                hud: Some(&sparse),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("PopItem(1): ITEM.INI definition absent"));
+    assert_eq!(world.flags(), [12], "failed wrapper must not continue");
+    assert_eq!(
+        sparse.inventory(None).unwrap().counts[&0],
+        5,
+        "the earlier restoration is retained"
+    );
+}
+
+#[test]
+fn pop_all_items_selects_item_one_and_assigns_the_player_weapon_when_nothing_is_selected() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        // Dropping everything leaves nothing selected for the pop to repair.
+        let mut steps = Vec::new();
+        for name in [Native::DropAllItems, Native::PopAllItems] {
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name,
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            steps.push(assign_call(steps.len() as u32 + 1, id, name, &[]).operation);
+        }
+        steps.push(Operation::End { target: 0 });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[(0, 0), (1, 0), (2, 4)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            Some(&mut cyrus_game::random::EngineRandom::default()),
+            100,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+    assert_eq!(
+        serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap()["selected"],
+        1,
+        "item one is selected even though its count is zero"
+    );
+    let player = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    assert_eq!(world.actors()[player].attributes()[Attribute::Weapon], 1);
+}
+
 fn item_count_world(native: Native, arguments: &[i32]) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {

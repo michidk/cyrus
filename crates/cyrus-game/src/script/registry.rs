@@ -6200,6 +6200,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .pop_item(item.integer()? as u32)?;
             return Ok(CallResult::Complete(value));
         }
+        if kind == CallKind::Function && function == Native::PopAllItems {
+            anyhow::ensure!(arguments.is_empty(), "PopAllItems requires no arguments");
+            let hud = self
+                .inputs
+                .hud
+                .context("PopAllItems inventory host unavailable")?;
+            let player = self.selected_player();
+            let generation = self.generation;
+            let actors = &mut self.registry.actors;
+            hud.pop_all_items(&mut |weapon| {
+                let player = player.context("PopAllItems fallback selected player unavailable")?;
+                anyhow::ensure!(
+                    player.generation == generation && player.index < actors.len(),
+                    "PopAllItems fallback selected player identity is stale"
+                );
+                actors[player.index].attributes[Attribute::Weapon] = weapon;
+                Ok(())
+            })?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::RemoveItem {
             let [item] = arguments else {
                 anyhow::bail!("RemoveItem requires one argument")

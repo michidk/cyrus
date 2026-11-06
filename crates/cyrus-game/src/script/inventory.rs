@@ -452,6 +452,18 @@ impl Inventory {
         Ok(item.count as i32)
     }
 
+    /// Restore every consecutive identifier, then ensure a selection. An absent identifier fails
+    /// after the earlier restorations, as preservation's PopAllItems contract states.
+    pub(super) fn pop_all_counts(
+        &mut self,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
+        for id in 0..self.items.len() {
+            self.pop_count(id as u32)?;
+        }
+        self.repair_empty_selection(assign_weapon)
+    }
+
     /// Empty one item's count directly: no dependent removal and no flag handling.
     pub(super) fn clear(&mut self, id: u16) -> Result<()> {
         self.items
