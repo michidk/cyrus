@@ -3858,16 +3858,25 @@
     },
     {
       "native": "GotoLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "caller": "ScriptWorld::advance -> Task::GotoLocation -> PointHost::goto_location",
+      "tests": [
+        "crates/cyrus-game/tests/script_goto_location.rs::self_nonarrival_refreshes_on_initial_call_and_poll_without_running_continuation",
+        "crates/cyrus-game/tests/script_goto_location.rs::pending_goto_location_suppresses_ordinary_hook_without_admitting_mode_eleven_progress",
+        "crates/cyrus-game/tests/script_goto_location.rs::arrival_completes_before_refresh_while_equal_speed_threshold_stays_pending",
+        "crates/cyrus-game/tests/script_goto_location.rs::low_word_minus_one_completes_only_after_selector_delay_and_collide_writes",
+        "crates/cyrus-game/tests/script_goto_location.rs::unsupported_lookup_and_shape_failures_do_not_fabricate_native_success",
+        "crates/cyrus-game/tests/script_goto_location.rs::retained_timer_sentinels_survive_admitted_ticks_and_keep_collide_refresh",
+        "crates/cyrus-game/tests/script_goto_location.rs::object_targeted_task_continues_caller_and_keeps_its_token_on_the_receiver",
+        "crates/cyrus-game/tests/script_goto_location.rs::missing_public_stage_clock_refuses_before_script_writes_and_allows_retry"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/253"
       ],
-      "limits": "Verified installed1-argument task/full157-byte native,100-byte selector,217-byte arrival/370-byte speed/195-byte registration/233-byte refresh helpers incl jump table.6480 original contexts/14 effective controls. Signed inclusive table/saved-start fallback. Arrival uses arithmetic-shift8 target/current plus actor vertical offset, controlled3D metric strictly below floor(1.5*speed); snap quantized XYZ/register/state0/return0. Else state4/store low16 location/refresh countdown+attribute; stored signed16 -1 returns0 otherwise1. Only metric result controlled; allocated empty/duplicate registration lists. No pathfinding/task scheduler or natural completion acceptance. Metric numerical integration/producers/malformed admission/full domains/VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
+      "limits": "Verified published contract through public routed callers: the receiver's location table selects by the signed inclusive bound with the saved start as fallback; arrival shifts target and current coordinates right by eight, adds the vertical offset, and requires a strictly smaller distance than floor(1.5 * speed) (equality stays pending), then snaps the quantized target, registers the actor and returns zero with state zero; otherwise state four stores the low 16 bits of the location, refreshes the countdown and action attribute, and a stored -1 returns zero while any other value returns one; the pending task suppresses the ordinary hook. The shifted differences cannot exceed the distance helper's range. Unknown: natural authored callers, pathfinding that other modes layer on top, rendered movement parity.",
       "reviewed_revision": "fbfd0c18e40667f71acef5e6a6fc5c6380a07567"
     },
     {
