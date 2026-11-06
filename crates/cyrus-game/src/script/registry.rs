@@ -5813,6 +5813,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.use_item(item)?;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function == Native::SubItem {
+            let [item, amount] = arguments else {
+                anyhow::bail!("SubItem requires two arguments")
+            };
+            self.inputs
+                .hud
+                .context("SubItem inventory host unavailable")?
+                .subtract_item(item.integer()? as u32, amount.integer()?)?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::RemoveItem {
             let [item] = arguments else {
                 anyhow::bail!("RemoveItem requires one argument")

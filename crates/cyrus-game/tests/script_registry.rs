@@ -33693,6 +33693,139 @@ fn check_scripted_item_use(on_rope: bool) {
     assert_eq!(world.selected_player_on_rope(), on_rope);
 }
 
+fn sub_item_world(item: i32, amount: i32) -> ScriptWorld {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: Native::SubItem,
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    let function_id = scripts.definition.functions.len() as u16 - 1;
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (
+            0,
+            assign_call(1, function_id, Native::SubItem, &[item, amount]),
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Increment {
+                    destination: Place::Flag { index: 0 },
+                    delta: 1,
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    ScriptWorld::prepare(&scripts, 1).unwrap()
+}
+
+#[test]
+fn sub_item_wraps_signed_counts_without_drop_effects_or_selection_changes() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptStage};
+    for (count, amount, expected) in [
+        (5, 0, 5_u32),
+        (5, 2, 3),
+        (5, -2, 3),
+        (5, 20, 0),
+        (0, -20, 0),
+        (5, i32::MIN, 0x8000_0005),
+        (0, i32::MIN, 0x8000_0000),
+        (0x7fff_ffff, i32::MIN, 0xffff_ffff),
+        (0xffff_ffff, 2, 0),
+        (0x8000_0000, 0, 0),
+    ] {
+        let hud = ScriptHud::default();
+        let mut asset = inventory_asset(&[(0, 1), (4, count), (5, 3)]);
+        asset.selected = Some(4);
+        let item = asset.inventory.get_mut(&4).unwrap();
+        item.flags = 1;
+        item.remove_drop_items = vec![5];
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        let mut expected_snapshot =
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+        expected_snapshot["items"]["4"]["count"] = serde_json::json!(expected);
+        let mut world = sub_item_world(4, amount);
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(cyrus_script::Thread::Main),
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+        assert_eq!(world.flags(), [13]);
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+            expected_snapshot
+        );
+    }
+}
+
+#[test]
+fn sub_item_skips_disabled_lookup_and_rejects_missing_items_before_continuation() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptStage};
+    let disabled = ScriptHud::default();
+    let mut world = sub_item_world(-1, i32::MIN);
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptInputs {
+                hud: Some(&disabled),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+    assert_eq!(world.flags(), [13]);
+    for item in [6, -1, 65536] {
+        let hud = ScriptHud::default();
+        hud.configure(
+            &inventory_asset(&[(0, 1), (4, 5)]),
+            &cyrus_game::preferences::Preferences::default(),
+        );
+        let before = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+        let mut world = sub_item_world(item, 2);
+        let error = world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(cyrus_script::Thread::Main),
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(&format!("SubItem({})", item as u32)));
+        assert_eq!(world.flags(), [12]);
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
 fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
     cyrus_assets::hud::HudAsset {
         labels: Default::default(),

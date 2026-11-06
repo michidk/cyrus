@@ -46,6 +46,11 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: `SubItem` applies signed count subtraction without drop flags, dependent
+removal or selection changes. Its wrapping normalization preserves the signed
+minimum operand, and closed item processing skips lookup. This follows
+preservation's [subtraction contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#subitem-signed-subtraction).
+
 Verified: `SpacePressed` reads the fixed Space key from the shared script input
 sample without consuming it. Repeated calls remain true while Space is held,
 and release clears the result. The common input sampler owns suspension. This

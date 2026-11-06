@@ -346,6 +346,18 @@ impl ScriptHud {
             .add(id, amount, assign_weapon)
     }
 
+    /// SOUP `SubItem` changes only the count; closed item processing skips even ID lookup.
+    pub(super) fn subtract_item(&self, id: u32, amount: i32) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.subtract(id, amount),
+            None => Ok(()),
+        }
+    }
+
     /// Empty one item's count without dependents. A closed inventory ignores the call.
     pub fn remove_item(&self, id: u16) -> Result<()> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

@@ -344,6 +344,24 @@ impl Inventory {
         self.remove_dependents(id, &mut Vec::new())
     }
 
+    /// Apply SOUP `SubItem` signed normalization and wrapping subtraction without drop effects.
+    pub(super) fn subtract(&mut self, id: u32, amount: i32) -> Result<()> {
+        let key = u16::try_from(id)
+            .with_context(|| format!("SubItem({id}): ITEM.INI identifier outside u16 range"))?;
+        let item = self
+            .items
+            .get_mut(&key)
+            .with_context(|| format!("SubItem({id}): ITEM.INI definition absent"))?;
+        let current = item.count as i32;
+        let amount = if amount < 0 {
+            amount.wrapping_neg()
+        } else {
+            amount
+        };
+        item.count = current.wrapping_sub(amount.min(current)) as u32;
+        Ok(())
+    }
+
     /// Empty one item's count directly: no dependent removal and no flag handling.
     pub(super) fn clear(&mut self, id: u16) -> Result<()> {
         self.items

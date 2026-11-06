@@ -5869,19 +5869,22 @@
     },
     {
       "native": "SubItem",
-      "status": "missing",
+      "status": "partial",
       "owner": 38,
-      "scope": "Direct named item/presentation dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed signed inventory subtraction with disabled-item lookup gate",
+      "caller": "ScriptWorld::advance -> GameHost -> ScriptHud -> Inventory::subtract",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::sub_item_wraps_signed_counts_without_drop_effects_or_selection_changes",
+        "crates/cyrus-game/tests/script_registry.rs::sub_item_skips_disabled_lookup_and_rejects_missing_items_before_continuation"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6603082328",
         "https://github.com/michidk/redguard-preservation/commit/6430ee3"
       ],
-      "limits": "Verified: independent installed function2/exact binding/full166-byte native/full117 ordered lookup/full7 normalization helper original instructions. Disabled returns0 without lookup/effects. Enabled unsigned ID ordered lookup; matching amount signed-negative normalization wraps32, including retained signed minimum; signed clamp to current word, wrapping subtraction/store, returns0. Pushed flag/saved word/unrelated memory retained; no selection call. Full mapped memory/nonstack writes/exact complete call sequence/diagnostic args/canary; zero result/five preserved registers/stack checked on returns. Missing-ID stops at exact diagnostic-copy entry after error-context write; no fabricated effects/return. Unknown diagnostic continuation/natural record producers/lifecycle/malformed cyclic lists/full joint domain/VM/production parity. Unsorted/duplicate lists constructed controls. Named production remains missing. No Cargo/game runtime.",
-      "reviewed_revision": "34d1eeec490a037a70cc30643bf51c5dd7970867"
+      "limits": "Verified published contract: disabled processing skips lookup; unsigned ID lookup, signed wrapping magnitude, signed clamp and wrapping count subtraction, zero result. No drop flags, dependent removal, selection or acquisition effects. Public caller fixtures cover signed minimum amount, high-bit counts, unchanged other snapshot fields, disabled invalid IDs and enabled missing-ID failure before continuation. The installed inventory model admits u16 IDs; larger unsigned identifiers are explicitly unsupported after the enabled gate. Unknown: original diagnostic continuation, pushed-value producer lifecycle, malformed list behavior and natural rendered original/native/browser outcomes.",
+      "reviewed_revision": "b1ceb313d441d7a9b3f9054c2f7efbe8824c965b"
     },
     {
       "native": "RemoveItem",
