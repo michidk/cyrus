@@ -40,6 +40,7 @@ impl Host for NativeHost {
     ) -> Result<CallResult> {
         self.calls += 1;
         let spatial = SpatialCall {
+            tick: None,
             position: &mut self.position,
             angles: &mut self.angles,
             frame_scale: 256,
@@ -89,6 +90,7 @@ impl Host for NativeHost {
     ) -> Result<bool> {
         self.polls += 1;
         let spatial = SpatialCall {
+            tick: None,
             position: &mut self.position,
             angles: &mut self.angles,
             frame_scale: 256,
@@ -1125,6 +1127,7 @@ fn player_face(receiver: [i32; 3], player: PlayerFaceState) -> PlayerFaceOutcome
     let mut angles = [0; 3];
     let mut updates = vec![];
     let mut spatial = Some(SpatialCall {
+        tick: None,
         position: &mut position,
         angles: &mut angles,
         frame_scale: 256,
@@ -1218,6 +1221,7 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
             unpaused_blocking_tasks: 0,
         };
         let mut spatial = Some(SpatialCall {
+            tick: None,
             position,
             angles: &mut angles,
             frame_scale: 256,
@@ -1375,6 +1379,7 @@ fn move_to_marker_matches_the_original_routine() {
         let mut angles = [0; 3];
         let mut updates = vec![];
         let mut spatial = Some(SpatialCall {
+            tick: None,
             position: &mut position,
             angles: &mut angles,
             frame_scale: v[12] as u32,
@@ -1436,6 +1441,7 @@ fn move_along_axis_matches_the_original_routine() {
                 unpaused_blocking_tasks: 0,
             };
             let mut spatial = Some(SpatialCall {
+                tick: None,
                 position: &mut position,
                 angles: &mut angles_state,
                 frame_scale: scale,
@@ -1526,6 +1532,7 @@ fn control_animation_turns_the_receiver_only_while_its_group_plays() {
             sounds: None,
         });
         let mut spatial = Some(SpatialCall {
+            tick: None,
             position: &mut position,
             angles,
             frame_scale: 256,
@@ -2046,6 +2053,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
                         sounds: None,
                     }),
                     &mut Some(SpatialCall {
+                        tick: None,
                         position: &mut position,
                         angles: &mut angles,
                         frame_scale: 256,
@@ -2262,6 +2270,7 @@ fn face_player_matches_the_original_routine() {
                 },
                 &mut None,
                 &mut Some(SpatialCall {
+                    tick: None,
                     position: &mut position,
                     angles: &mut angles,
                     frame_scale: 256,
@@ -2438,6 +2447,7 @@ fn face_player_inertia_matches_the_original_routine() {
                 },
                 &mut None,
                 &mut Some(SpatialCall {
+                    tick: None,
                     position: &mut position,
                     angles: &mut angles,
                     frame_scale: 256,
@@ -2598,6 +2608,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
                         },
                         &mut None,
                         &mut Some(SpatialCall {
+                            tick: None,
                             position: &mut position,
                             angles: &mut angles,
                             frame_scale: scale,
@@ -2974,6 +2985,7 @@ fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_t
                     },
                     &mut None,
                     &mut Some(SpatialCall {
+                        tick: None,
                         position: &mut position,
                         angles: &mut angles,
                         frame_scale: 256,
@@ -3106,6 +3118,7 @@ fn scaled_axis_movement_rotates_the_step_like_the_original_routine() {
                 },
                 &mut None,
                 &mut Some(SpatialCall {
+                    tick: None,
                     position: &mut position,
                     angles: &mut angles,
                     frame_scale: scale,
@@ -3261,6 +3274,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
                         },
                         &mut None,
                         &mut Some(SpatialCall {
+                            tick: None,
                             position: &mut position,
                             angles: &mut angles,
                             frame_scale: scale,
@@ -3364,6 +3378,7 @@ fn move_to_location_matches_the_original_routine() {
                     },
                     &mut None,
                     &mut Some(SpatialCall {
+                        tick: None,
                         position: &mut position,
                         angles: &mut angles,
                         frame_scale: scale,
@@ -3469,6 +3484,7 @@ fn wander_to_location_matches_the_original_routine() {
                     },
                     &mut None,
                     &mut Some(SpatialCall {
+                        tick: None,
                         position: &mut position,
                         angles: &mut angles,
                         frame_scale: scale,
@@ -3674,6 +3690,7 @@ fn move_object_axis_matches_the_original_routine() {
                     },
                     &mut None,
                     &mut Some(SpatialCall {
+                        tick: None,
                         position: &mut position,
                         angles: &mut current,
                         frame_scale: scale,
@@ -4140,6 +4157,7 @@ fn walk_backward_matches_the_original_routine() {
                     sounds: None,
                 }),
                 &mut Some(SpatialCall {
+                    tick: None,
                     position: &mut position,
                     angles: &mut angles,
                     frame_scale: scale as u32,

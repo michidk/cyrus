@@ -5331,6 +5331,142 @@ fn face_player_turns_toward_the_selected_player_over_its_duration() {
     assert_eq!(world.spatial(id).unwrap().local.position, origin);
 }
 
+/// A receiver displaced by `offset` from its start, whose `FaceLocation(location, deadline)` task
+/// runs with the shared tick counter `tick` on its first invocation and one more on each later one.
+fn face_location_world(
+    heading: i32,
+    offset: [i32; 3],
+    location: i32,
+    deadline: i32,
+) -> (ScriptWorld, cyrus_game::script::ScriptActorId) {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 4,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: Native::SetPosition,
+                arguments: offset.map(|value| Value::Integer { value }).to_vec(),
+            },
+        },
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Task,
+                target: Object::Me,
+                function: Native::FaceLocation,
+                arguments: vec![
+                    Value::Integer { value: location },
+                    Value::Integer { value: deadline },
+                ],
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    for (name, param_count, kind) in [
+        (Native::FaceLocation, 2, CallKind::Task),
+        (Native::SetPosition, 3, CallKind::Function),
+    ] {
+        data.definition.functions.push(Function {
+            name,
+            param_count,
+            kind,
+        });
+    }
+    data.instances[0].angles[1] = heading as u32;
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    // The offsets are relative to the start, which the first step's `SetPosition` receives raw.
+    let home = world.spatial(id).unwrap().local.position;
+    let target = [0, 1, 2].map(|axis| home[axis] + offset[axis]);
+    let Operation::Call { call } = &mut data
+        .actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation
+    else {
+        unreachable!()
+    };
+    call.arguments = target.map(|value| Value::Integer { value }).to_vec();
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    (world, id)
+}
+
+#[test]
+fn face_location_turns_toward_the_start_by_the_tick_distance_to_its_deadline() {
+    // The receiver sits 512 units before its start, so the start bears zero: the heading closes a
+    // 1024-unit gap with the divisor `|tick - deadline|` shrinking 4, 3, 2, 1 and, unlike
+    // FacePlayer, is stored without wrapping back to zero.
+    let (mut world, id) = face_location_world(1024, [0, 0, -512], 0, 4);
+    for (tick, angle) in [(0, 1280), (1, 1536), (2, 1792), (3, 2048)] {
+        let inputs = cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            combat_clock_sample: Some(tick),
+            ..Default::default()
+        };
+        let stage = if tick == 0 { BODY } else { TASKS };
+        world.advance(id, stage, inputs, None, None, 30).unwrap();
+        assert_eq!(
+            world.spatial(id).unwrap().local.angles[1],
+            angle,
+            "tick {tick}"
+        );
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            usize::from(tick < 3),
+            "the task completes once the deadline minus one is not above the tick"
+        );
+    }
+}
+
+#[test]
+fn face_location_completes_without_a_turn_when_already_facing_and_rejects_unsupported_inputs() {
+    let inputs = |tick| cyrus_game::script::ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        combat_clock_sample: tick,
+        ..Default::default()
+    };
+    // Facing the start already: a zero gap returns zero at once and leaves the heading.
+    let (mut world, id) = face_location_world(0, [0, 0, -512], 0, 4);
+    world
+        .advance(id, BODY, inputs(Some(0)), None, None, 30)
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 0);
+    world
+        .advance(id, TASKS, inputs(Some(1)), None, None, 30)
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 0);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    // Exactly one selector, the location count, reads past the table: an explicit error.
+    let failing: Vec<i32> = (0..16)
+        .filter(|&selector| {
+            let (mut world, id) = face_location_world(1024, [0, 0, -512], selector, 4);
+            world
+                .advance(id, BODY, inputs(Some(0)), None, None, 30)
+                .is_err()
+        })
+        .collect();
+    assert_eq!(failing.len(), 1, "{failing:?}");
+    // Without the shared tick counter the task cannot compare its deadline.
+    let (mut world, id) = face_location_world(1024, [0, 0, -512], 0, 4);
+    let error = world
+        .advance(id, BODY, inputs(None), None, None, 30)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("shared tick counter unavailable"));
+}
+
 #[test]
 fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival() {
     let hud = cyrus_game::script::ScriptHud::default();

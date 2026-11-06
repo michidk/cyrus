@@ -271,6 +271,7 @@ impl Task {
             Self::Bounce(_) => (Native::BounceObject, 3, Some(CallKind::Task)),
             Self::LineUp { .. } => (Native::PlayerLineUp, 3, Some(CallKind::Task)),
             Self::FacePlayer => (Native::FacePlayer, 1, None),
+            Self::FaceLocation => (Native::FaceLocation, 2, None),
             Self::FacePlayerInertia => (Native::FacePlayerInertia, 1, None),
             Self::Move => (Native::Move, 4, None),
             Self::Rotate => (Native::Rotate, 4, None),

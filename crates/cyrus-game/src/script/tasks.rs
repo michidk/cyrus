@@ -92,6 +92,8 @@ pub(super) struct SpatialCall<'a> {
     /// Held-turn amount at `frame_scale` from the shared accumulators; negative turns left.
     pub turn: i64,
     pub nominal_ticks: u32,
+    /// The shared tick counter `FaceLocation` compares its deadline with.
+    pub tick: Option<u32>,
     pub matrix: cyrus_world::transform::Matrix,
     pub slave: bool,
     pub locations: &'a [[i32; 3]],
@@ -605,6 +607,9 @@ enum Task {
         origin: i32,
     },
     FacePlayer,
+    /// `FaceLocation(location, deadline)`: turns toward a location table entry by the shared tick
+    /// counter's distance to the deadline.
+    FaceLocation,
     /// `FacePlayerInertia`: `FacePlayer` whose step shrinks by the elapsed input.
     FacePlayerInertia,
     /// `Move(x, y, z, duration)`: adds each axis's operand times the nominal tick count to the
@@ -1438,6 +1443,60 @@ impl Task {
                 };
                 input.angles[1] = wrap(heading);
                 elapsed >= duration.wrapping_sub(1)
+            }
+            Self::FaceLocation => {
+                let [location, deadline] = arguments else {
+                    anyhow::bail!("FaceLocation requires two arguments")
+                };
+                let (location, deadline) = (location.integer()?, deadline.integer()?);
+                let input = spatial
+                    .as_mut()
+                    .context("FaceLocation requires receiver pose")?;
+                let tick = input
+                    .tick
+                    .context("FaceLocation shared tick counter unavailable")?
+                    as i32;
+                let count = i32::try_from(input.locations.len())
+                    .context("FaceLocation location count exceeds signed range")?;
+                let target = if location < 0 || location > count {
+                    input
+                        .locations
+                        .first()
+                        .context("FaceLocation home unavailable")?
+                } else {
+                    input.locations.get(location as usize).context("FaceLocation selector equals location count: original out-of-range access unsupported")?
+                };
+                let bearing = i32::from(super::spatial::query_bearing(
+                    target[0].wrapping_sub(input.position[0]),
+                    target[2].wrapping_sub(input.position[2]),
+                ));
+                let heading = input.angles[1];
+                // The query bearing is the negation of the routine's angle, which the routine
+                // subtracts from the negated heading.
+                let mut delta = wrap(bearing.wrapping_sub(heading));
+                if delta == 0 {
+                    return Ok(true);
+                }
+                let backwards = delta > 0x400;
+                if backwards {
+                    delta = (-delta - 0x400) & 0x3ff;
+                }
+                // The magnitude wraps, so the minimum value stays negative; only zero becomes one.
+                let divisor = match tick.wrapping_sub(deadline).wrapping_abs() {
+                    0 => 1,
+                    divisor => divisor,
+                };
+                let step = ((delta << 8) / divisor) >> 8;
+                if step == 0 {
+                    return Ok(true);
+                }
+                // The heading is stored without being masked back to 2048 units.
+                input.angles[1] = if backwards {
+                    heading.wrapping_sub(step)
+                } else {
+                    heading.wrapping_add(step)
+                };
+                !(deadline.wrapping_sub(1) > tick)
             }
             Self::Bounce(state) => {
                 use super::bounce::{BounceArguments, step};
@@ -3060,6 +3119,8 @@ impl NativeTasks {
             Task::FacePlayer
         } else if function == Native::FacePlayerInertia {
             Task::FacePlayerInertia
+        } else if function == Native::FaceLocation {
+            Task::FaceLocation
         } else if function == Native::MoveBackward {
             Task::Backward
         } else if function == Native::WalkBackward {

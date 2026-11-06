@@ -3640,16 +3640,19 @@
     },
     {
       "native": "FaceLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
       "scope": "Direct named SOUP spatial/facing dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/tasks.rs (NativeTasks call/poll)",
+      "tests": [
+        "crates/cyrus-game/tests/script_animation_host.rs::face_location_turns_toward_the_start_by_the_tick_distance_to_its_deadline",
+        "crates/cyrus-game/tests/script_animation_host.rs::face_location_completes_without_a_turn_when_already_facing_and_rejects_unsupported_inputs"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/commit/a8d158e"
       ],
-      "limits": "Verified: independent installed two-argument task/exact binding/full338-byte native/full100 resolver/full377 bearing/two full7 magnitude helpers original instructions. Signed inclusive location bound/null-negative-outside fallback; wrapped local X/Z differences, planar bearing,2048 angular delta. Zero delta or truncated step returns0/no heading write. Signed-magnitude wrapping tick-deadline divisor, zero->1; fixed-point signed division and arithmetic shift. Exact half-turn adds; opposite branch subtracts; stored heading wraps32 without final angular mask. Nonzero step returns signed(deadline-1)>tick. Full mapped memory/table/nonstack writes/arguments/canary/four preserved registers/stack/result; no controlled callees. Retained original-produced bearing table hash verified under flag0/fninit only. Unknown natural initialization/software table path/malformed location pointers/signed-min coordinate magnitude/full joint domain/lifecycle/VM/native/browser/gameplay parity. Named production missing; no Rust/Cargo/game runtime.",
+      "limits": "Verified published contract: two-argument task selecting a receiver location with the DistanceToLocation/MoveToLocation selector (negative or above the table selects the start, the count itself is unsupported), bearing from the receiver's local X/Z, gap (-heading - angle) & 2047 with the half turn on the addition branch, divisor the wrapping magnitude of the shared tick counter minus the deadline (zero becomes one, the minimum value stays negative), step ((distance << 8) / divisor) >> 8, zero gap or zero step completes without a write, heading stored unmasked, and pending only while the deadline minus one is above the tick counter. Public routed callers cover the shrinking divisor sequence with the unmasked final heading, completion with no turn, the selector error and a missing tick counter. Unknown: natural authored callers, negative/minimum divisor domains beyond the arithmetic, rendered turn parity.",
       "reviewed_revision": "24046234376c38cbbe45c59d4d8eb49df9304402"
     },
     {

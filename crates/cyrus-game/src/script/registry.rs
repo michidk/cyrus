@@ -3854,6 +3854,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     frame_scale,
                     turn: self.registry.globals.turn.delta(frame_scale),
                     nominal_ticks,
+                    tick: self.inputs.combat_clock_sample,
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
@@ -8725,6 +8726,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     frame_scale,
                     turn: self.registry.globals.turn.delta(frame_scale),
                     nominal_ticks,
+                    tick: self.inputs.combat_clock_sample,
                 },
             );
         let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
