@@ -4112,6 +4112,123 @@ fn detach_me_changes_less_for_unattached_and_master_receivers_and_reports_missin
     );
 }
 
+/// One call of `function` with integer `arguments` by actor 0, whose `location_offsets` and
+/// rotation mode are set, on a world with spatial state.
+fn spatial_setter_world(
+    function: Native,
+    arguments: &[i32],
+    offsets: Vec<[i32; 3]>,
+    rotation_mode: u8,
+) -> anyhow::Result<ScriptWorld> {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts(
+        function,
+        arguments
+            .iter()
+            .map(|&value| Value::Integer { value })
+            .collect(),
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = arguments.len() as u8;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.location_offsets = offsets;
+    actor.attributes[Attribute::Rotation] = rotation_mode;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world.advance(
+        id,
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    Ok(world)
+}
+
+#[test]
+fn set_position_writes_unquantized_coordinates_and_the_history() {
+    let world =
+        run_native_world_with(&[(Native::SetPosition, &[1000, -2000, i32::MAX])], true).unwrap();
+    let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(spatial.local.position, [1000, -2000, i32::MAX]);
+    assert_eq!(spatial.previous_local_position, [1000, -2000, i32::MAX]);
+    let error = run_native_world(&[(Native::SetPosition, &[1, 2, 3])])
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("SetPosition: spatial state not prepared"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn set_location_selects_a_table_entry_or_the_home_and_rejects_the_count() {
+    let offsets = vec![[256, 0, 0], [0, 512, 0]];
+    let home = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    let at = |location: i32| {
+        spatial_setter_world(Native::SetLocation, &[location], offsets.clone(), 0).map(|world| {
+            let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+            (spatial.local.position, spatial.previous_local_position)
+        })
+    };
+    let shifted = |delta: [i32; 3]| std::array::from_fn(|axis| home[axis] + delta[axis]);
+    assert_eq!(at(0).unwrap().0, home, "selector zero is the home entry");
+    assert_eq!(at(1).unwrap().0, shifted([256, 0, 0]));
+    assert_eq!(at(2).unwrap().0, shifted([0, 512, 0]));
+    let (position, history) = at(2).unwrap();
+    assert_eq!(history, position, "the history takes the same coordinates");
+    assert_eq!(at(-1).unwrap().0, home, "below zero selects the home");
+    assert_eq!(at(4).unwrap().0, home, "above the count selects the home");
+    let error = at(3).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("SetLocation: location selector equals the location count"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn set_rotation_masks_the_angles_and_rebuilds_the_matrix_from_them() {
+    let rotated =
+        |angles: &[i32], mode: u8| spatial_setter_world(Native::SetRotation, angles, vec![], mode);
+    let world = rotated(&[2048 + 5, -1, 4096 + 3], 0).unwrap();
+    let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(spatial.local.angles, [5, 2047, 3]);
+    assert_eq!(
+        spatial.angle_history,
+        [5, 2047, 3],
+        "the history takes the same angles"
+    );
+    let masked = rotated(&[5, 2047, 3], 0).unwrap();
+    let masked = masked.spatial(masked.id(0).unwrap()).unwrap();
+    assert_eq!(
+        format!("{:?}", spatial.local.matrix),
+        format!("{:?}", masked.local.matrix),
+        "the matrix follows the masked angles"
+    );
+    let zero = rotated(&[0, 0, 0], 0).unwrap();
+    let zero = zero.spatial(zero.id(0).unwrap()).unwrap();
+    assert_ne!(
+        format!("{:?}", spatial.local.matrix),
+        format!("{:?}", zero.local.matrix),
+        "different angles give a different matrix"
+    );
+    let error = rotated(&[1, 2, 3], 1).err().unwrap();
+    assert!(
+        format!("{error:#}").contains("rotation mode one matrix builder unsupported"),
+        "{error:#}"
+    );
+}
+
 #[test]
 fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};

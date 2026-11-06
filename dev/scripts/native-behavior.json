@@ -3791,17 +3791,19 @@
     },
     {
       "native": "SetLocation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP motion/location dispatch",
-      "caller": "GameHost::call/delegated services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed location-table position write with the home fallback",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_location_selects_a_table_entry_or_the_home_and_rejects_the_count"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/250"
       ],
-      "limits": "Verified installed1-argument native/full76-byte handler,100-byte selector,231-byte relocation/195-byte list helpers: signed inclusive location-table bound/saved-start fallback; copy selected XYZ unchanged into receiver current and previous local positions. Selected-player tracked reference vector translates by wrapped same displacement; other receivers preserve it. Registers after writes, deduplicates list; empty insertion precedes capacity check/nonempty full reports error after writes. Normal return0.576 original instruction contexts/17 effective controls. Only full-list diagnostic/error services controlled returning; termination/list consumer, tracked-vector producer/consumer, malformed admission, exhaustive state, VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run.",
-      "reviewed_revision": "8e469cd3812922a0f5affa910916584061c6d12a"
+      "limits": "Verified installed1-argument native/full76-byte handler,100-byte selector,231-byte relocation/195-byte list helpers: signed inclusive location-table bound/saved-start fallback; copy selected XYZ unchanged into receiver current and previous local positions. Selected-player tracked reference vector translates by wrapped same displacement; other receivers preserve it. Registers after writes, deduplicates list; empty insertion precedes capacity check/nonempty full reports error after writes. Normal return0.576 original instruction contexts/17 effective controls. Only full-list diagnostic/error services controlled returning; termination/list consumer, tracked-vector producer/consumer, malformed admission, exhaustive state, VM/natural original/native/browser Unknown. Current named implementation missing; no Rust tests/game runtime run. Verified public routed dispatch and a spatial unit test: the selector chooses a table entry, a negative or above-count selector chooses the home, the selector equal to the count is an explicit unsupported error (the same selection DistanceFromLocation follows), and the coordinates are written as SetPosition writes them. Inferred: the table's upper bound is the location count, as in DistanceFromLocation. Unknown: the pending-position list capacity, installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "afd502a92fffb85084e087e96071a21c02197ea6"
     },
     {
       "native": "SetObjectLocation",
@@ -3964,31 +3966,35 @@
     },
     {
       "native": "SetPosition",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named transform/player SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed local-position write: unquantized coordinates and history, selected-player reference shift, map update",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_position_writes_unquantized_coordinates_and_the_history"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/256"
       ],
-      "limits": "Verified independent installed3-argument declaration/exact native mapping/full231-byte handler and195-byte registration. Direct XYZ arguments copied unchanged to current/previous local coordinates; selected-player shared reference translates by wrapping argument-old_local displacement; other actors leave reference unchanged. Registration follows writes: empty append before capacity, nonempty dedup, signed capacity append or diagnostic196. Returning path0.576 direct original contexts/17 effective semantic mutations including argument/receiver/write/reference/registration/dedup/capacity/return/cleanup; full mapped-memory/write order/call order/register/stack checks. Only full-list logger/error controlled returning. Exact handler hash also matches independently mapped SetLocation dependency, no family inference. Selected allocated domains; reference producer/consumer, actual error termination, malformed/exhaustive domain/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
-      "reviewed_revision": "f0b2a5c073aa174f67a6a1b3af874bdd4f0ea120"
+      "limits": "Verified independent installed3-argument declaration/exact native mapping/full231-byte handler and195-byte registration. Direct XYZ arguments copied unchanged to current/previous local coordinates; selected-player shared reference translates by wrapping argument-old_local displacement; other actors leave reference unchanged. Registration follows writes: empty append before capacity, nonempty dedup, signed capacity append or diagnostic196. Returning path0.576 direct original contexts/17 effective semantic mutations including argument/receiver/write/reference/registration/dedup/capacity/return/cleanup; full mapped-memory/write order/call order/register/stack checks. Only full-list logger/error controlled returning. Exact handler hash also matches independently mapped SetLocation dependency, no family inference. Selected allocated domains; reference producer/consumer, actual error termination, malformed/exhaustive domain/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run. Verified public routed dispatch and a spatial unit test: the arguments become the local position and its history unchanged (no quantizing), the per-axis change (wrapping) is returned for the selected player's shared reference triple, which cyrus keeps as the published camera position, and the actor registers for the deferred map update. Inferred: the camera position is the original's shared reference triple (as for ResetPosition). Unknown: the pending-position list capacity and its error 196 (cyrus's list is unbounded), installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "afd502a92fffb85084e087e96071a21c02197ea6"
     },
     {
       "native": "SetRotation",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named transform/player SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
+      "scope": "Routed masked angle write, history and matrix rebuild",
+      "caller": "ScriptWorld::advance -> crates/cyrus-game/src/script/registry.rs (receiver native dispatch) -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry.rs::set_rotation_masks_the_angles_and_rebuilds_the_matrix_from_them"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/pull/258"
       ],
-      "limits": "Verified independent installed3-argument declaration/exact native mapping/full267-byte handler and115-byte identity reset. Masks each argument2047, replaces current pitch/yaw/roll and copies previous-angle triple before rebuild. Attribute28 exactly1 passes unchanged masked triple to alternate matrix construction; all other byte values reset identity then masked negative yaw/pitch/roll in order. Return0/no registration.5120 original contexts/22 effective semantic mutations across2 receivers/all256 mode bytes/5 argument triples/2 patterns; exact mapped memory/write order/calls/return/register/stack checks. Four numerical matrix services controlled with exact IO/destination/order/9-word effects and volatile clobbers; reset original executes. Independently retained complete numerical spans identify dependency, no formula/table-initialization/x87/numerical-integration acceptance. Selected domains; malformed/exhaustive argument/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
-      "reviewed_revision": "a450af468c45f29a314195c2d4670c51b0d65a1b"
+      "limits": "Verified independent installed3-argument declaration/exact native mapping/full267-byte handler and115-byte identity reset. Masks each argument2047, replaces current pitch/yaw/roll and copies previous-angle triple before rebuild. Attribute28 exactly1 passes unchanged masked triple to alternate matrix construction; all other byte values reset identity then masked negative yaw/pitch/roll in order. Return0/no registration.5120 original contexts/22 effective semantic mutations across2 receivers/all256 mode bytes/5 argument triples/2 patterns; exact mapped memory/write order/calls/return/register/stack checks. Four numerical matrix services controlled with exact IO/destination/order/9-word effects and volatile clobbers; reset original executes. Independently retained complete numerical spans identify dependency, no formula/table-initialization/x87/numerical-integration acceptance. Selected domains; malformed/exhaustive argument/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run. Verified public routed dispatch: the arguments masked to 11 bits become the local angles and the angle history, the matrix is rebuilt from them (identity, then negated yaw, pitch and roll), existing angles supply no component, nothing is registered; rotation mode one is an explicit unsupported error before any change. Inferred: a root actor's published effective pose follows, as for ResetRotation. Unknown: the alternate matrix builder for rotation mode one, installed original/native/browser outputs and natural script callers.",
+      "reviewed_revision": "afd502a92fffb85084e087e96071a21c02197ea6"
     },
     {
       "native": "ReloadPosition",

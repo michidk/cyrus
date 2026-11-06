@@ -6152,6 +6152,66 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        // SetPosition(x, y, z) and SetLocation(location) write the local position and its
+        // history unchanged, move the selected player's shared reference triple (cyrus's
+        // published camera position, **Inferred** as for ResetPosition) by the same displacement
+        // and register the actor for the deferred map update; SetRotation(x, y, z) masks and
+        // writes the angles and rebuilds the matrix without registering. All return zero.
+        if function == Native::SetPosition || function == Native::SetLocation {
+            let (name, expected) = if function == Native::SetPosition {
+                ("SetPosition", 3)
+            } else {
+                ("SetLocation", 1)
+            };
+            anyhow::ensure!(
+                arguments.len() == expected,
+                "{name} requires {expected} argument{}",
+                if expected == 1 { "" } else { "s" }
+            );
+            let spatial = self
+                .registry
+                .spatial
+                .as_mut()
+                .with_context(|| format!("{name}: spatial state not prepared"))?
+                .actor_mut(self.index)?;
+            let position = if function == Native::SetPosition {
+                [
+                    arguments[0].integer()?,
+                    arguments[1].integer()?,
+                    arguments[2].integer()?,
+                ]
+            } else {
+                spatial.location_position(arguments[0].integer()?)?
+            };
+            let change = spatial.set_position(position);
+            if self.registry.selected_player_index() == Some(self.index)
+                && let Some(camera) = self.registry.camera.as_mut()
+            {
+                for (axis, delta) in change.into_iter().enumerate() {
+                    camera.current.position[axis] =
+                        camera.current.position[axis].wrapping_add(delta);
+                }
+            }
+            if !self.registry.map_updates.contains(&self.index) {
+                self.registry.map_updates.push(self.index);
+            }
+            return Ok(CallResult::Complete(0));
+        }
+        if function == Native::SetRotation {
+            anyhow::ensure!(arguments.len() == 3, "SetRotation requires 3 arguments");
+            let angles = [
+                arguments[0].integer()?,
+                arguments[1].integer()?,
+                arguments[2].integer()?,
+            ];
+            self.registry
+                .spatial
+                .as_mut()
+                .context("SetRotation: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .set_rotation(angles)?;
+            return Ok(CallResult::Complete(0));
+        }
         if function == Native::ResetPosition {
             anyhow::ensure!(
                 arguments.len() == 3,

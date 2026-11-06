@@ -669,6 +669,58 @@ impl ActorSpatial {
         Ok(home[axis].wrapping_sub(self.local.position[axis]) >> 8)
     }
 
+    /// The location a location selector names: a selector below zero or above the location count
+    /// selects the home location, and one equal to the count reads past the table in the original
+    /// (unsupported). Shared by `DistanceToLocation` and `SetLocation`.
+    fn selected_location(&self, location: i32) -> Result<[i32; 3]> {
+        let count =
+            i32::try_from(self.locations.len()).context("location count exceeds signed range")?;
+        if location < 0 || location > count {
+            self.locations.first()
+        } else {
+            self.locations.get(location as usize)
+        }
+        .copied()
+        .context(
+            "location selector equals the location count: original out-of-range access unsupported",
+        )
+    }
+
+    /// `SetLocation` target: the coordinates the selector names, as `DistanceToLocation` selects.
+    pub fn location_position(&self, location: i32) -> Result<[i32; 3]> {
+        self.selected_location(location)
+            .map_err(|error| anyhow::anyhow!("SetLocation: {error}"))
+    }
+
+    /// `SetPosition`/`SetLocation` write: the coordinates become the local position and the
+    /// previous-position history unchanged. Returns the change per axis (new minus old local) so
+    /// the selected player's shared reference triple can follow it.
+    pub fn set_position(&mut self, position: [i32; 3]) -> [i32; 3] {
+        let change =
+            std::array::from_fn(|axis| position[axis].wrapping_sub(self.local.position[axis]));
+        self.local.position = position;
+        self.previous_local_position = position;
+        change
+    }
+
+    /// `SetRotation(x, y, z)`: the arguments masked to 11 bits become the local angles and the
+    /// angle history, and the matrix is rebuilt from them (identity, then negated yaw, pitch and
+    /// roll). Existing angles supply no component. Rotation mode one's alternate matrix builder is
+    /// not established and is rejected before any change.
+    pub fn set_rotation(&mut self, angles: [i32; 3]) -> Result<()> {
+        ensure!(
+            self.rotation_mode != 1,
+            "SetRotation: rotation mode one matrix builder unsupported"
+        );
+        self.local.angles = angles.map(|angle| (angle & 2047) as u16);
+        self.angle_history = self.local.angles;
+        self.local.matrix = Matrix::orientation(self.local.angles);
+        if self.parent.is_none() && self.effective.is_some() {
+            self.effective = Some(self.local);
+        }
+        Ok(())
+    }
+
     /// `DistanceToLocation`: the rounded Euclidean length, in Q8 units, from the receiver to the
     /// selected location. A selector below zero or above the location count selects the home
     /// location; one equal to the count reads past the table in the original and is unsupported.
@@ -681,14 +733,9 @@ impl ActorSpatial {
                 .context("DistanceToLocation: linked-position state unavailable")?
                 .unwrap_or(self.local.position)
         };
-        let count = i32::try_from(self.locations.len())
-            .context("DistanceToLocation: location count exceeds signed range")?;
-        let target = if location < 0 || location > count {
-            self.locations.first()
-        } else {
-            self.locations.get(location as usize)
-        }
-        .context("DistanceToLocation: location selector equals the location count: original out-of-range access unsupported")?;
+        let target = self
+            .selected_location(location)
+            .map_err(|error| anyhow::anyhow!("DistanceToLocation: {error}"))?;
         rounded_distance(std::array::from_fn(|axis| {
             receiver[axis].wrapping_sub(target[axis])
         }))
@@ -1266,6 +1313,42 @@ mod tests {
             "the effective fields stay as they were"
         );
         assert!(!actor.detach_from_family().unwrap(), "already detached");
+    }
+
+    #[test]
+    fn set_position_writes_local_and_history_unchanged_and_returns_the_change() {
+        let mut actor = receiver([10, 20, 30], vec![[1, 2, 3]]);
+        let change = actor.set_position([i32::MAX, -5, 30]);
+        assert_eq!(actor.local.position, [i32::MAX, -5, 30]);
+        assert_eq!(actor.previous_local_position, [i32::MAX, -5, 30]);
+        assert_eq!(
+            change,
+            [i32::MAX.wrapping_sub(10), -25, 0],
+            "the change wraps like the reference translation"
+        );
+    }
+
+    #[test]
+    fn locations_are_selected_like_distance_to_location_and_the_count_is_unsupported() {
+        let actor = receiver([0; 3], vec![[1, 2, 3], [4, 5, 6]]);
+        assert_eq!(actor.location_position(0).unwrap(), [1, 2, 3]);
+        assert_eq!(actor.location_position(1).unwrap(), [4, 5, 6]);
+        assert_eq!(
+            actor.location_position(-1).unwrap(),
+            [1, 2, 3],
+            "below zero is home"
+        );
+        assert_eq!(
+            actor.location_position(3).unwrap(),
+            [1, 2, 3],
+            "above the count is home"
+        );
+        let error = actor.location_position(2).unwrap_err().to_string();
+        assert!(
+            error.starts_with("SetLocation: location selector equals the location count"),
+            "{error}"
+        );
+        assert!(receiver([0; 3], vec![]).location_position(0).is_err());
     }
 
     #[test]
