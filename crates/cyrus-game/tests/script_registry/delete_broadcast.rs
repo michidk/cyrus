@@ -226,8 +226,8 @@ fn delete_broadcast_declares_no_parameters_so_an_extra_argument_is_rejected_at_p
     );
 }
 
-fn broadcast_sender_scripts(target: Object) -> Scripts {
-    let mut scripts = message_query_scripts(Native::GetBroadcastSender);
+fn broadcast_query_scripts(native: Native, target: Object) -> Scripts {
+    let mut scripts = message_query_scripts(native);
     let first = &mut scripts
         .actors
         .get_mut("LOGIC")
@@ -258,7 +258,7 @@ fn sender_result(world: &ScriptWorld) -> cyrus_script::ScriptValue {
 #[test]
 fn get_broadcast_sender_returns_the_selected_channel_zero_sender_as_a_typed_reference() {
     use cyrus_script::{ActorReference, ScriptValue};
-    let scripts = broadcast_sender_scripts(Object::Me);
+    let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Me);
     let sender_of = |world: &ScriptWorld| {
         ScriptValue::Actor(ActorReference {
             generation: world.generation(),
@@ -312,7 +312,7 @@ fn selection_of(world: &ScriptWorld, index: usize) -> u64 {
 #[test]
 fn get_broadcast_sender_follows_the_broadcast_selection_not_the_class_message_cursor() {
     use cyrus_script::{ActorReference, ScriptValue};
-    let scripts = broadcast_sender_scripts(Object::Me);
+    let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Me);
     let world = ScriptWorld::prepare(&scripts, 7).unwrap();
     // The class-message cursor is on a written entry; the broadcast selection is not.
     let mut world = broadcast_restore(&world, &scripts, |saved| {
@@ -346,7 +346,7 @@ fn get_broadcast_sender_follows_the_broadcast_selection_not_the_class_message_cu
 
 #[test]
 fn get_broadcast_sender_reports_a_selection_outside_the_queue_with_its_context() {
-    let scripts = broadcast_sender_scripts(Object::Me);
+    let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Me);
     let world = ScriptWorld::prepare(&scripts, 7).unwrap();
     let mut world = broadcast_restore(&world, &scripts, |saved| {
         saved["actors"][1]["broadcast_index"] = 200.into()
@@ -362,7 +362,7 @@ fn get_broadcast_sender_reports_a_selection_outside_the_queue_with_its_context()
 #[test]
 fn get_broadcast_sender_routed_call_reads_the_named_receivers_selection() {
     use cyrus_script::{ActorReference, ScriptValue};
-    let scripts = broadcast_sender_scripts(Object::Named { string: 0 });
+    let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Named { string: 0 });
     let world = ScriptWorld::prepare(&scripts, 7).unwrap();
     // The named receiver (actor 0) selects the written entry; the calling actor (1) does not, so
     // a sender result proves the routed receiver's selection was read.
@@ -482,4 +482,85 @@ fn receive_broadcast_reports_a_selection_outside_the_queue_before_changing_it() 
     let error = format!("{:#}", receive_result(&mut world).unwrap_err());
     assert!(error.contains("read cursor 200 outside queue"), "{error}");
     assert_eq!(selection(&world, 1), 200);
+}
+
+#[test]
+fn get_broadcast_sender_id_returns_the_selected_senders_runtime_identifier() {
+    use cyrus_script::ScriptValue;
+    // Direct and object-routed receivers: the routed receiver (actor 0) selects the entry and
+    // the calling actor does not.
+    for (target, selections, found) in [
+        (Object::Me, [0, 0], false),
+        (Object::Me, [0, 1], false),
+        (Object::Me, [1, 0], true),
+        (Object::Named { string: 0 }, [0, 1], true),
+        (Object::Named { string: 0 }, [1, 0], false),
+    ] {
+        let scripts = broadcast_query_scripts(Native::GetBroadcastSenderId, target.clone());
+        let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let mut world = broadcast_restore(&world, &scripts, |saved| {
+            for (index, selection) in selections.into_iter().enumerate() {
+                saved["actors"][index]["broadcast_index"] = selection.into();
+            }
+        });
+        let (sender, caller) = (world.id(0).unwrap(), world.id(1).unwrap());
+        if selections != [0, 0] {
+            // The entry is selected only where the selection is below the write cursor.
+            world
+                .send_combat_message(sender, caller, CombatMessageCode::HIT)
+                .unwrap();
+        }
+        let before = serde_json::to_value(world.globals()).unwrap();
+        actor_reference_step(&mut world, caller).unwrap();
+        // The first pool actor's runtime identifier is the pool capacity plus three.
+        let expected = ScriptValue::Integer(if found { 36 } else { 0 });
+        assert_eq!(sender_result(&world), expected, "{target:?} {selections:?}");
+        assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+    }
+}
+
+#[test]
+fn get_broadcast_sender_id_reports_unreadable_entries_and_leaves_the_local_unchanged() {
+    use cyrus_script::ScriptValue;
+    let scripts = broadcast_query_scripts(Native::GetBroadcastSenderId, Object::Me);
+    // A selected slot never written has no sender; the original reads it unchecked, here it is
+    // an explicit error. A selection outside the queue is one too.
+    for (selection, writes, message) in [
+        (3, 1, "selected entry has no sender"),
+        (200, 0, "read cursor 200 outside queue"),
+    ] {
+        let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let mut world = broadcast_restore(&world, &scripts, |saved| {
+            saved["actors"][1]["broadcast_index"] = selection.into()
+        });
+        let (sender, caller) = (world.id(0).unwrap(), world.id(1).unwrap());
+        for _ in 0..writes {
+            world
+                .send_combat_message(sender, caller, CombatMessageCode::HIT)
+                .unwrap();
+        }
+        let error = format!(
+            "{:#}",
+            actor_reference_step(&mut world, caller).unwrap_err()
+        );
+        assert!(error.contains(message), "{error}");
+        assert_eq!(sender_result(&world), ScriptValue::Integer(0));
+    }
+    // A retained entry whose sender belongs to a replaced world cannot be read.
+    let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let mut world = broadcast_restore(&world, &scripts, |_| {});
+    let (sender, caller) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world
+        .send_combat_message(sender, caller, CombatMessageCode::HIT)
+        .unwrap();
+    let globals = std::mem::take(world.globals_mut());
+    let mut next = ScriptWorld::prepare(&scripts, 9).unwrap();
+    *next.globals_mut() = globals;
+    let caller = next.id(1).unwrap();
+    let error = format!("{:#}", actor_reference_step(&mut next, caller).unwrap_err());
+    assert!(error.contains("GetBroadcastSenderId sender"), "{error}");
+    assert_eq!(
+        next.actors()[1].runtime().unwrap().variables()[0],
+        ScriptValue::Integer(0)
+    );
 }

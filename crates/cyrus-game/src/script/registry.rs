@@ -969,15 +969,22 @@ impl ScriptWorld {
         Ok(self.selected_message_entry(actor)?.flatten())
     }
 
-    /// The sender of the broadcast entry the actor's retained broadcast selection picks in
-    /// channel zero, if any. The reference is returned as stored, not checked against the world.
-    pub fn selected_broadcast_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+    /// The broadcast entry the actor's retained selection picks in channel zero. The outer `None`
+    /// is no selection; the inner `None` is a selected slot never written (null sender). The
+    /// reference is returned as stored, not checked against the live world.
+    pub fn selected_broadcast_entry(
+        &self,
+        actor: ScriptActorId,
+    ) -> Result<Option<Option<ScriptActorId>>> {
         let index = self.resolve(actor)?;
-        Ok(self
-            .globals
+        self.globals
             .combat_messages
-            .selected_entry(0, self.actors[index].broadcast_index)?
-            .flatten())
+            .selected_entry(0, self.actors[index].broadcast_index)
+    }
+
+    /// The sender of the selected broadcast entry, if any.
+    pub fn selected_broadcast_sender(&self, actor: ScriptActorId) -> Result<Option<ScriptActorId>> {
+        Ok(self.selected_broadcast_entry(actor)?.flatten())
     }
 
     /// `ReceiveMessage`: see [`super::CombatMessages::receive`].
@@ -7102,24 +7109,29 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         // GetMessageSenderId returns the selected entry's sender's runtime identifier. The original
         // reads the sender without a null check, so a selected entry without one is an error here.
-        if function == Native::GetMessageSenderId {
-            anyhow::ensure!(
-                arguments.is_empty(),
-                "GetMessageSenderId requires no arguments"
-            );
+        if function == Native::GetMessageSenderId || function == Native::GetBroadcastSenderId {
+            anyhow::ensure!(arguments.is_empty(), "{function:?} requires no arguments");
             let receiver = self.registry.id(self.index)?;
-            let Some(entry) = self.registry.selected_message_entry(receiver)? else {
+            let entry = if function == Native::GetMessageSenderId {
+                self.registry.selected_message_entry(receiver)?
+            } else {
+                self.registry.selected_broadcast_entry(receiver)?
+            };
+            let Some(entry) = entry else {
                 return Ok(CallResult::Complete(0));
             };
-            let sender = entry.context("GetMessageSenderId: selected entry has no sender")?;
+            let sender =
+                entry.with_context(|| format!("{function:?}: selected entry has no sender"))?;
             let index = self
                 .registry
                 .resolve(sender)
-                .context("GetMessageSenderId sender")?;
+                .with_context(|| format!("{function:?} sender"))?;
             return Ok(CallResult::Complete(i32::from(
                 self.registry.actors[index]
                     .runtime_identifier
-                    .context("GetMessageSenderId: sender runtime identifier unavailable")?,
+                    .with_context(|| {
+                        format!("{function:?}: sender runtime identifier unavailable")
+                    })?,
             )));
         }
         // SendMessage(recipient, value) writes sender (the receiver), recipient and value on the

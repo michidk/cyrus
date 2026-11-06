@@ -547,3 +547,11 @@ value zero. Entries, senders and the class-message cursor are untouched, and a s
 the queue is a contextual error before any change. The contract follows preservation's
 [ReceiveBroadcast entry selection](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#receivebroadcast-entry-selection).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `GetBroadcastSenderId()` returns the signed 16-bit runtime identifier of the sender of the
+receiver's selected broadcast entry (channel zero), or zero with no selection, consuming and
+changing nothing. The original reads the sender without a null, bound or liveness check; here a
+selected slot never written, a selection outside the queue and a sender from a replaced world are
+contextual errors. The contract follows preservation's
+[broadcast sender identifier query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getbroadcastsenderid-query).
+Natural installed gameplay parity remains Unknown.

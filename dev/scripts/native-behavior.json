@@ -2572,17 +2572,21 @@
     },
     {
       "native": "GetBroadcastSenderId",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Original GetBroadcastSenderId zero-argument native/availability query with controlled missing-context diagnostics; named rebuild handler remains missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast sender runtime-identifier query over the retained channel-zero entry and broadcast selection",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::selected_broadcast_entry",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_id_returns_the_selected_senders_runtime_identifier",
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::get_broadcast_sender_id_reports_unreadable_entries_and_leaves_the_local_unchanged"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/pull/271",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6611314134"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6611314134",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6692026786"
       ],
-      "limits": "Verified: independent installed binding/full native/availability helper;21248 original-instruction contexts/10 semantic controls. Selection byte equal sentinel returns0; otherwise12-byte entry stride/first sender pointer/signed16 runtime ID, no consume. Controlled missing-context formatter/error returns or explicit context repair. Unknown malformed pointers, sender/queue lifetime, natural error UI/termination/recovery, VM integration and original/native/browser acceptance; named rebuild unsupported.",
+      "limits": "Verified published query contract. Public VM assertions cover no selection returning zero, a selected live entry returning its sender's signed runtime identifier, direct and object-routed receivers, unchanged selection and queue, and explicit contextual errors (the original checks none of these) for a selected slot never written, a selection outside the eight-entry queue and a sender from a replaced world. Absent-context diagnostics are not exposed. SendBroadcast remains separately owned. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "676f1b6c3af270ff0c9352304748004349e2eccf"
     },
     {
