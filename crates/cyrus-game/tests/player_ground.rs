@@ -1,3 +1,4 @@
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::ground::TerrainGround;
 
 #[test]
@@ -8,7 +9,7 @@ fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
     let spawn = terrain.sample([10_448_896, -178_944, 10_502_144]).unwrap();
     assert_eq!(spawn.height, -680.0);
     assert_eq!(spawn.normal, [0, -256, 0]);
-    assert_eq!(spawn.classification(), 4);
+    assert_eq!(spawn.classification(), SurfaceClass::Floor);
     assert_eq!(spawn.actor_height(62, -2), -190_464);
 
     let probe = terrain.sample([10_448_896, -190_464, 10_526_387]).unwrap();
@@ -346,14 +347,17 @@ fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
             &mut heading,
             &[GroundedContact {
                 normal: [256, 0, 0],
-                classification: 1
+                classification: SurfaceClass::Wall
             }],
             -60000
         ),
         [10447534, -190464, 10773491]
     );
     assert_eq!(heading, 313);
-    for (normal, classification) in [([256, 0, 0], 4), ([-256, 0, 0], 1)] {
+    for (normal, classification) in [
+        ([256, 0, 0], SurfaceClass::Floor),
+        ([-256, 0, 0], SurfaceClass::Wall),
+    ] {
         let mut heading = 344;
         assert_eq!(
             resolve_grounded_contacts(
@@ -380,7 +384,7 @@ fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
                 &mut heading,
                 &[GroundedContact {
                     normal,
-                    classification: 1
+                    classification: SurfaceClass::Wall
                 }],
                 -60000
             ),
@@ -397,11 +401,11 @@ fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
             &[
                 GroundedContact {
                     normal: [256, 0, 0],
-                    classification: 1
+                    classification: SurfaceClass::Wall
                 },
                 GroundedContact {
                     normal: [0, 0, -256],
-                    classification: 1
+                    classification: SurfaceClass::Wall
                 }
             ],
             -60000

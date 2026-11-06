@@ -15,7 +15,7 @@ pub struct RuntimeBodyContact {
     pub source: SupportSource,
     pub point: [i32; 3],
     pub normal: [i32; 3],
-    pub classification: u8,
+    pub classification: crate::ground::SurfaceClass,
 }
 
 /// Caller-owned body shape and source-type exclusion. The ordinary response

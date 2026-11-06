@@ -5,6 +5,7 @@ use cyrus_assets::collision::CollisionSubobject;
 use cyrus_assets::collision::StaticPlacement;
 use cyrus_collision::collision_world::StaticCollision;
 use cyrus_collision::ground::GroundProbe;
+use cyrus_collision::ground::SurfaceClass;
 
 fn model(flags: u8) -> CollisionModel {
     CollisionModel {
@@ -336,7 +337,10 @@ fn fallback_keeps_first_non_side_contact_and_fractional_actor_height() {
         .unwrap();
     assert_eq!(support.source(), SupportSource::Model { model: 1, face: 0 });
     assert_eq!(support.actor_height(62, -2), 127);
-    assert_eq!(cyrus_game::player::support::classification(&support, 2), 4);
+    assert_eq!(
+        cyrus_game::player::support::classification(&support, 2),
+        SurfaceClass::Floor
+    );
 }
 
 #[test]
@@ -369,7 +373,10 @@ fn fallback_history_expands_radius_and_accepts_undersides() {
         .fallback_support(&candidates, &large, false)
         .unwrap()
         .unwrap();
-    assert_eq!(cyrus_game::player::support::classification(&support, 2), 8);
+    assert_eq!(
+        cyrus_game::player::support::classification(&support, 2),
+        SurfaceClass::Ceiling
+    );
     assert_eq!(support.actor_height(0, 0), 127);
     assert!(FallbackProbe::new([i64::MAX; 3], [0; 3], 0, false).is_err());
 }

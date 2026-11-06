@@ -1,4 +1,5 @@
 //! Terrain material coordinates from preservation engine/player.md.
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::ground::TerrainGround;
 
 #[test]
@@ -129,7 +130,7 @@ fn edge_probe_blocks_only_uncovered_rock_on_a_class_two_slope() {
     let covered = [300 << 8, 0, 1000 << 8];
     assert_eq!(
         terrain.sample(near_edge).unwrap().classification(),
-        2,
+        SurfaceClass::Steep,
         "the fixture slope must be class two"
     );
     assert!(terrain.edge_blocked(near_edge, &assignments).unwrap());

@@ -7,6 +7,7 @@ use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
 use cyrus_collision::ground::SelectedSupport;
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
@@ -266,7 +267,7 @@ impl ScriptWorld {
             return Ok(false);
         };
         if self.actors[index].attributes[Attribute::Collide] & 2 != 0
-            && matches!(support, SelectedSupport::Primary { support, .. } if support.classification() == 2)
+            && matches!(support, SelectedSupport::Primary { support, .. } if support.classification() == SurfaceClass::Steep)
         {
             return Ok(false);
         }
@@ -999,7 +1000,8 @@ impl ScriptWorld {
                             super::falling::SelectedLanding {
                                 inputs: script,
                                 random: &mut *random,
-                                steep: crate::player::support::classification(support, mask) == 2,
+                                steep: crate::player::support::classification(support, mask)
+                                    == SurfaceClass::Steep,
                             }
                         });
                         self.land_ordinary_fall(

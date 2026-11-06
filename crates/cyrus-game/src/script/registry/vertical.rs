@@ -183,7 +183,7 @@ impl ScriptWorld {
                 height: f64::from(contact.point[1]),
                 normal: contact.normal,
             };
-            if matches!(support.classification(), 2 | 4) && contact.point[1] < height {
+            if support.classification().is_ground() && contact.point[1] < height {
                 height = contact.point[1];
             }
         }

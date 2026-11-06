@@ -10,6 +10,7 @@ use cyrus_collision::candidates::{
 };
 use cyrus_collision::collision_mesh::ModelPose;
 use cyrus_collision::collision_world::StaticCollision;
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::ground::{GroundProbe, SupportSource};
 use std::collections::BTreeMap;
 
@@ -144,7 +145,7 @@ fn mixed_primary_body_contacts_retain_owners_integer_normals_and_terrain_order()
         source: SupportSource::Terrain,
         point: [600, 30, 600],
         normal: [0, -256, 0],
-        classification: 4,
+        classification: SurfaceClass::Floor,
     };
     let contacts = statics
         .runtime_primary_body_contacts(&candidates, &models, &poses, query(Some(terrain)))
@@ -161,7 +162,7 @@ fn mixed_primary_body_contacts_retain_owners_integer_normals_and_terrain_order()
     assert_eq!(contacts[2].source, SupportSource::Terrain);
     assert_eq!(contacts[1].point, [600, 25, 600]);
     assert_eq!(contacts[1].normal, [0, -256, 0]);
-    assert_eq!(contacts[1].classification, 4);
+    assert_eq!(contacts[1].classification, SurfaceClass::Floor);
     // A stored flipped pose changes world classification without normalization.
     poses.insert(
         42,
@@ -175,7 +176,7 @@ fn mixed_primary_body_contacts_retain_owners_integer_normals_and_terrain_order()
         .runtime_primary_body_contacts(&candidates, &models, &poses, query(None))
         .unwrap();
     assert_eq!(contacts[1].normal, [0, 256, 0]);
-    assert_eq!(contacts[1].classification, 8);
+    assert_eq!(contacts[1].classification, SurfaceClass::Ceiling);
     let mut unsupported = query(None);
     unsupported.excluded_candidate_type = None;
     assert!(
@@ -250,7 +251,7 @@ fn primary_body_limit_returns_first_sixteen_without_later_pose_or_terrain() {
                     source: SupportSource::Terrain,
                     point: [0; 3],
                     normal: [0, -256, 0],
-                    classification: 4,
+                    classification: SurfaceClass::Floor,
                 }),
             },
         )

@@ -1,4 +1,5 @@
 //! Ordinary grounded body response from preservation's engine/player.md.
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_world::heading::wrap;
 
 /// Result of a facing wall contact. Other actor states must use their own response.
@@ -12,7 +13,7 @@ pub enum WallResponse {
 pub struct GroundedContact {
     pub normal: [i32; 3],
     /// Stored classification from the query, not recomputed after transformation.
-    pub classification: u8,
+    pub classification: cyrus_collision::ground::SurfaceClass,
 }
 
 /// Process primary contacts in authored query order for an ordinary grounded actor.
@@ -32,7 +33,9 @@ pub fn resolve_grounded_contacts(
     };
     let mut current = attempted;
     for contact in contacts {
-        if contact.classification == 4 || facing_difference(movement, contact.normal).abs() >= 512 {
+        if contact.classification == SurfaceClass::Floor
+            || facing_difference(movement, contact.normal).abs() >= 512
+        {
             continue;
         }
         match resolve_wall(previous, attempted, current, contact.normal, slide_range) {

@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use crate::script::AiType;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_script::Attribute;
 
 impl StepDirection {
@@ -17,20 +18,6 @@ impl StepDirection {
                 control.last_collide |= crate::script::CollisionFlags::CHECK_BACKWARD_FAIL
             }
         }
-    }
-}
-
-/// Surface class of a contact normal's Y component (scale 256, negative up): 4 for floors,
-/// 2 for steep slopes, 8 for ceilings and 1 otherwise.
-pub(super) fn surface_class(normal_y: i32) -> u8 {
-    if normal_y <= -161 {
-        4
-    } else if normal_y >= 161 {
-        8
-    } else if normal_y <= -42 {
-        2
-    } else {
-        1
     }
 }
 
@@ -269,9 +256,9 @@ impl ScriptWorld {
                         self.world
                     )
                 })?;
-                let class = surface_class(contact.normal[1]);
+                let class = SurfaceClass::from_normal_y(contact.normal[1]);
                 let metric = (0x4000 - contact.rank as i32).abs();
-                if matches!(class, 4 | 2) && metric < best.metric {
+                if class.is_ground() && metric < best.metric {
                     best = Surface {
                         y: contact.point[1],
                         normal: contact.normal,
@@ -314,29 +301,15 @@ impl ScriptWorld {
         }
         let class = |surface: Surface| {
             if surface.metric == UNFOUND_METRIC {
-                1
+                SurfaceClass::Wall
             } else {
-                surface_class(surface.normal[1])
+                SurfaceClass::from_normal_y(surface.normal[1])
             }
         };
         let (target, here) = (class(at_destination), class(at_current));
-        Ok(!(target == 4 && here == 4) && target == 2)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::surface_class;
-
-    #[test]
-    fn surface_classes_follow_the_normal_y_bands() {
-        assert_eq!(surface_class(-256), 4);
-        assert_eq!(surface_class(-161), 4);
-        assert_eq!(surface_class(-160), 2);
-        assert_eq!(surface_class(-42), 2);
-        assert_eq!(surface_class(-41), 1);
-        assert_eq!(surface_class(0), 1);
-        assert_eq!(surface_class(160), 1);
-        assert_eq!(surface_class(161), 8);
+        Ok(
+            !(target == SurfaceClass::Floor && here == SurfaceClass::Floor)
+                && target == SurfaceClass::Steep,
+        )
     }
 }

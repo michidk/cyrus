@@ -1,7 +1,7 @@
 //! Player-specific forward admission after world support queries.
-use cyrus_collision::ground::{GroundSupport, SelectedSupport};
+use cyrus_collision::ground::{GroundSupport, SelectedSupport, SurfaceClass};
 /// Stored support class including the original collision-attribute steep-ground override.
-pub fn classification(support: &SelectedSupport, collision_attribute: u8) -> u8 {
+pub fn classification(support: &SelectedSupport, collision_attribute: u8) -> SurfaceClass {
     let class = match support {
         SelectedSupport::Primary { support, .. } => support.classification(),
         SelectedSupport::Fallback { normal, .. } => GroundSupport {
@@ -10,8 +10,8 @@ pub fn classification(support: &SelectedSupport, collision_attribute: u8) -> u8 
         }
         .classification(),
     };
-    if class == 2 && collision_attribute & 2 == 0 {
-        4
+    if class == SurfaceClass::Steep && collision_attribute & 2 == 0 {
+        SurfaceClass::Floor
     } else {
         class
     }
@@ -22,5 +22,5 @@ pub fn allows_forward(
     collision_attribute: u8,
     surface_veto: i32,
 ) -> bool {
-    classification(support, collision_attribute) != 2 && surface_veto != 1
+    classification(support, collision_attribute) != SurfaceClass::Steep && surface_veto != 1
 }

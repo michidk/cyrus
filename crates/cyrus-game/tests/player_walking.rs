@@ -6,6 +6,7 @@ use cyrus_assets::{
     collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement},
     player::MovementSettings,
 };
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::{
     collision_world::{BodyContact, StaticCandidates, StaticCollision},
     ground::{SupportHistory, TerrainGround},
@@ -553,7 +554,7 @@ fn body_normal_conversion_rounds_before_classification_without_normalizing() {
     };
     let converted = cyrus_game::player::contact::GroundedContact::from_body(&contact).unwrap();
     assert_eq!(converted.normal, [0, -160, 2]);
-    assert_eq!(converted.classification, 2);
+    assert_eq!(converted.classification, SurfaceClass::Steep);
     let invalid = BodyContact {
         normal: Vec3::splat(f32::NAN),
         ..contact

@@ -1,6 +1,7 @@
 //! Ordinary slope prevalidation precedes support and its response stages.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
@@ -28,14 +29,14 @@ pub fn ordinary_ground_prevalidation(
         return Ok(OrdinaryGroundPrevalidation::default());
     };
     let current_class = current.classification();
-    let previous_class = previous.map_or(0, |previous| previous.classification());
-    if current_class == 2 && previous_class == 2 {
+    let previous_class = previous.map(|previous| previous.classification());
+    if current_class == SurfaceClass::Steep && previous_class == Some(SurfaceClass::Steep) {
         return Ok(OrdinaryGroundPrevalidation {
             rollback: false,
             sliding: true,
         });
     }
-    if current_class != 2 {
+    if current_class != SurfaceClass::Steep {
         return Ok(OrdinaryGroundPrevalidation::default());
     }
     let heading = crate::player::motion::displacement_heading;

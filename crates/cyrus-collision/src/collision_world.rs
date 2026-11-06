@@ -10,6 +10,7 @@ use super::ground::GroundSupport;
 use super::ground::ModelSupport;
 use super::ground::SelectedSupport;
 use super::ground::SupportSource;
+use crate::ground::SurfaceClass;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
 pub use body::{PrimaryBodyQuery, ResidualBodyQuery, RuntimeBodyContact};
@@ -561,7 +562,7 @@ impl StaticCollision {
             let surface = probe
                 .slope_surface(terrain, &contacts)
                 .context("forward probe: missing proposed slope surface; fallback unsupported")?;
-            if surface.classification() == 2 {
+            if surface.classification() == SurfaceClass::Steep {
                 return Ok(None);
             }
         }
@@ -613,7 +614,7 @@ impl StaticCollision {
                         .map(|v| (v * 256.0).round_ties_even() as i32),
                 })
                 .classification()
-                    != 1
+                    != SurfaceClass::Wall
                 {
                     return Ok(Some(support));
                 }
@@ -654,7 +655,7 @@ impl StaticCollision {
                 .ground
                 .slope_surface(query.terrain, &contacts)
                 .context("runtime forward query: missing slope surface; fallback unsupported")?;
-            if slope.classification() == 2 {
+            if slope.classification() == SurfaceClass::Steep {
                 return Ok(RuntimeForwardSupport::Blocked);
             }
         }
@@ -709,7 +710,7 @@ impl StaticCollision {
             )?;
             if let Some(contact) = contacts
                 .into_iter()
-                .find(|contact| contact.classification != 1)
+                .find(|contact| contact.classification != SurfaceClass::Wall)
             {
                 return Ok(Some(SelectedSupport::Fallback {
                     source: contact.source,

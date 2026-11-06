@@ -2,6 +2,7 @@
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_game::script::AiType;
 use cyrus_game::script::CollisionFlags;
 use cyrus_game::script::CombatFlags;
@@ -8579,7 +8580,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
             source: SupportSource::Model { model: 0, face: 0 },
             point: [0; 3],
             normal: [256, 0, 0],
-            classification: 1,
+            classification: SurfaceClass::Wall,
         }];
         let settings = MovementSettings {
             standing_height: -2,
@@ -8630,17 +8631,32 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
         script::{ScriptInputs, ScriptStage},
     };
     for (normals, slide_range, expected, heading, flags) in [
-        (vec![([256, 0, 0], 1)], -60000, [0, 0, 2019], Some(313), 1),
         (
-            vec![([256, 0, 0], 1), ([0, 0, -256], 1)],
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            -60000,
+            [0, 0, 2019],
+            Some(313),
+            1,
+        ),
+        (
+            vec![
+                ([256, 0, 0], SurfaceClass::Wall),
+                ([0, 0, -256], SurfaceClass::Wall),
+            ],
             -60000,
             [-3564, 0, 0],
             None,
             1,
         ),
-        (vec![([256, 0, 0], 1)], 0, [0; 3], Some(344), 2),
         (
-            vec![([256, 0, 0], 4)],
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            0,
+            [0; 3],
+            Some(344),
+            2,
+        ),
+        (
+            vec![([256, 0, 0], SurfaceClass::Floor)],
             -60000,
             [-3341, 0, 1893],
             Some(344),
@@ -8765,7 +8781,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             source: SupportSource::Model { model: 0, face: 0 },
             point: [0; 3],
             normal,
-            classification: 1,
+            classification: SurfaceClass::Wall,
         };
         world
             .resolve_ordinary_residual_contacts(
@@ -16938,7 +16954,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         },
         point: [0; 3],
         normal: [256, 0, 0],
-        classification: 1,
+        classification: SurfaceClass::Wall,
     };
     world
         .resolve_ordinary_residual_contacts(player, &[contact], &scene.settings)
@@ -23982,7 +23998,7 @@ fn destination_support_rejects_steep_ground_after_prevalidation_bypass() {
     };
     let selected = world.query_ordinary_ground(id, query()).unwrap().unwrap();
     assert!(
-        matches!(selected, SelectedSupport::Primary { support, .. } if support.classification() == 2)
+        matches!(selected, SelectedSupport::Primary { support, .. } if support.classification() == SurfaceClass::Steep)
     );
     world
         .query_ordinary_ground_prevalidation(id, query(), true)

@@ -4,6 +4,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use bevy::math::{Mat3, Vec3};
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::{
     collision_mesh::BodyProbe,
     collision_world::{PrimaryBodyQuery, RuntimeBodyContact},
@@ -207,7 +208,7 @@ impl ScriptWorld {
         let mut current = attempted;
         let mut flags = control.last_collide;
         for body in contacts {
-            if body.classification == 4
+            if body.classification == SurfaceClass::Floor
                 || contact::facing_difference(movement, body.normal).abs() >= 512
             {
                 continue;

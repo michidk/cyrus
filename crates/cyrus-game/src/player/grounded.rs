@@ -3,6 +3,7 @@ use super::data::PlayerScene;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
 use cyrus_assets::surface::Surface;
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::{
     collision_world::StaticCandidates,
     ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
@@ -174,7 +175,8 @@ impl GroundedWalk {
             .as_ref()
             .context("grounded response: player definition unavailable")?;
         anyhow::ensure!(
-            super::support::classification(&support, query.collision_attribute) == 4,
+            super::support::classification(&support, query.collision_attribute)
+                == SurfaceClass::Floor,
             "grounded response: nonordinary support requires separate movement state"
         );
         self.position[1] = support.actor_height(
@@ -409,7 +411,7 @@ impl StaticGroundQuery<'_> {
             let slope = probe
                 .slope_surface(self.terrain(proposed)?, &contacts)
                 .context("forward query: missing slope surface; fallback unsupported")?;
-            if slope.classification() == 2 {
+            if slope.classification() == SurfaceClass::Steep {
                 return Ok(None);
             }
         }

@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use anyhow::{Context, Result, ensure};
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::{
     actor_shape::{ActorBounds, BodySphere},
     ground::{GroundProbe, SelectedSupport, SupportSource},
@@ -319,7 +320,7 @@ impl ScriptWorld {
                     height: f64::from(contact.point[1]),
                     normal: contact.normal,
                 };
-                if support.classification() == 4 {
+                if support.classification() == SurfaceClass::Floor {
                     self.spatial
                         .as_mut()
                         .context("stable recovery spatial state unavailable")?

@@ -6,6 +6,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::{
     candidates::CollisionCandidates, collision_mesh::BodyProbe, collision_world::ResidualBodyQuery,
     ground::SupportSource,
@@ -343,7 +344,7 @@ impl ScriptWorld {
                 }
                 if contacts(&head)?
                     .iter()
-                    .any(|contact| contact.classification == 8)
+                    .any(|contact| contact.classification == SurfaceClass::Ceiling)
                 {
                     head_fits = false;
                 }
@@ -372,7 +373,7 @@ impl ScriptWorld {
                 let mut best: Option<(u32, Wall)> = None;
                 for (source, contact) in walls {
                     let contact = contact.integer()?;
-                    if super::hazard::surface_class(contact.normal[1]) == 1
+                    if SurfaceClass::from_normal_y(contact.normal[1]) == SurfaceClass::Wall
                         && facing(heading, contact.normal)
                         && contact.rank > best.map_or(0, |(rank, _)| rank)
                     {
@@ -398,11 +399,11 @@ impl ScriptWorld {
                     false,
                 )? {
                     let contact = contact.integer()?;
-                    match super::hazard::surface_class(contact.normal[1]) {
-                        4 if contact.rank > top.map_or(0, |(rank, _)| rank) => {
+                    match SurfaceClass::from_normal_y(contact.normal[1]) {
+                        SurfaceClass::Floor if contact.rank > top.map_or(0, |(rank, _)| rank) => {
                             top = Some((contact.rank, contact.point[1]));
                         }
-                        8 if candidate.candidate_type & 0x08 == 0 => {
+                        SurfaceClass::Ceiling if candidate.candidate_type & 0x08 == 0 => {
                             undersides.push(contact.point[1]);
                         }
                         _ => {}

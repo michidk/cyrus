@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
+use cyrus_collision::ground::SurfaceClass;
 use cyrus_script::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
@@ -451,7 +452,9 @@ impl ScriptWorld {
             .context("ordinary slope control unavailable")?;
         let torch = control.torch_burning != 0;
         let Some(support) = support.and_then(|support| match support {
-            SelectedSupport::Primary { support, .. } if support.classification() == 2 => {
+            SelectedSupport::Primary { support, .. }
+                if support.classification() == SurfaceClass::Steep =>
+            {
                 Some(support)
             }
             _ => None,

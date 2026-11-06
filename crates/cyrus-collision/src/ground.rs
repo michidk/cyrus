@@ -221,7 +221,7 @@ impl GroundProbe {
         }
         for model in models {
             let distance = i64::from(model.rank).abs_diff(16_384);
-            if matches!(model.support.classification(), 2 | 4) && distance < rank {
+            if model.support.classification().is_ground() && distance < rank {
                 rank = distance;
                 selected = Some(SelectedSupport::Primary {
                     source: model.source,
@@ -269,7 +269,7 @@ impl GroundProbe {
         let mut selected = None;
         for model in models {
             let distance = i64::from(model.rank).abs_diff(16_384);
-            if matches!(model.support.classification(), 2 | 4) && distance < rank {
+            if model.support.classification().is_ground() && distance < rank {
                 rank = distance;
                 height = model.support.height as i64;
                 selected = Some(model.support);
@@ -306,7 +306,7 @@ impl GroundProbe {
             });
         }
         for model in models {
-            if matches!(model.support.classification(), 2 | 4) && model.rank <= rank {
+            if model.support.classification().is_ground() && model.rank <= rank {
                 rank = model.rank;
                 selected = Some(SelectedSupport::Primary {
                     source: model.source,
@@ -320,8 +320,8 @@ impl GroundProbe {
 
 impl GroundSupport {
     /// Original contact classification. A steep surface is not ordinary walkable ground.
-    pub fn classification(&self) -> u8 {
-        classify_normal(self.normal[1])
+    pub fn classification(&self) -> SurfaceClass {
+        SurfaceClass::from_normal_y(self.normal[1])
     }
 
     /// Actor origin in runtime units with eight fractional bits.
@@ -332,12 +332,33 @@ impl GroundSupport {
     }
 }
 
-pub(crate) fn classify_normal(y: i32) -> u8 {
-    match y {
-        ..=-161 => 4,
-        -160..=-42 => 2,
-        -41..=160 => 1,
-        _ => 8,
+/// Surface class of a contact by its normal's Y component (scale 256, negative up), as
+/// preservation SOUP.md documents. The discriminants are the original class codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SurfaceClass {
+    /// Class 1: neither floor, steep slope nor ceiling.
+    Wall = 1,
+    /// Class 2: a slope too steep to stand on.
+    Steep = 2,
+    /// Class 4: walkable ground.
+    Floor = 4,
+    /// Class 8: a downward-facing surface.
+    Ceiling = 8,
+}
+
+impl SurfaceClass {
+    pub const fn from_normal_y(y: i32) -> Self {
+        match y {
+            ..=-161 => Self::Floor,
+            -160..=-42 => Self::Steep,
+            -41..=160 => Self::Wall,
+            _ => Self::Ceiling,
+        }
+    }
+
+    /// A floor or a steep slope: the surfaces support queries rank against each other.
+    pub const fn is_ground(self) -> bool {
+        matches!(self, Self::Floor | Self::Steep)
     }
 }
 
@@ -448,7 +469,7 @@ impl TerrainGround {
         }
         Ok(self
             .sample(position)
-            .is_some_and(|support| support.classification() == 2))
+            .is_some_and(|support| support.classification() == SurfaceClass::Steep))
     }
 
     /// Original packed Map 3 texture and rotation at an actor's runtime position.
@@ -557,5 +578,26 @@ impl TerrainGround {
             a.y - (plane.x * (x - a.x) + plane.z * (z - a.z)) / plane.y,
             plane,
         ))
+    }
+}
+
+#[cfg(test)]
+mod surface_class_tests {
+    use super::SurfaceClass;
+
+    #[test]
+    fn surface_classes_follow_the_normal_y_bands() {
+        for (y, class) in [
+            (-256, SurfaceClass::Floor),
+            (-161, SurfaceClass::Floor),
+            (-160, SurfaceClass::Steep),
+            (-42, SurfaceClass::Steep),
+            (-41, SurfaceClass::Wall),
+            (0, SurfaceClass::Wall),
+            (160, SurfaceClass::Wall),
+            (161, SurfaceClass::Ceiling),
+        ] {
+            assert_eq!(SurfaceClass::from_normal_y(y), class, "normal Y {y}");
+        }
     }
 }
