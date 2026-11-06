@@ -46,6 +46,11 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: `SpacePressed` reads the fixed Space key from the shared script input
+sample without consuming it. Repeated calls remain true while Space is held,
+and release clears the result. The common input sampler owns suspension. This
+follows preservation's [Space query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#spacepressed).
+
 Verified: `IsLightingTorch`, `IsUnlightingTorch` and `IsLightingOrUnlighting`
 query the supplied receiver after inventory, control and shell gates. Action state
 precedes animation-group fallback, and the combined query tests lighting first.

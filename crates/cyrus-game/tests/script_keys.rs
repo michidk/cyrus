@@ -66,3 +66,27 @@ fn page_keys_and_insert_are_held_states_and_home_is_a_press_edge() {
     }
     assert!(sampled(&mut app).home_pressed);
 }
+
+#[test]
+fn space_is_a_held_state_across_frames_and_clears_on_release_or_input_suspension() {
+    let mut app = app();
+    assert!(!sampled(&mut app).space);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Space);
+    assert!(sampled(&mut app).space);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+    assert!(sampled(&mut app).space);
+    app.insert_resource(cyrus_game::player::input::InputSuppressed(true));
+    assert!(!sampled(&mut app).space);
+    app.world_mut()
+        .resource_mut::<cyrus_game::player::input::InputSuppressed>()
+        .0 = false;
+    assert!(sampled(&mut app).space);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::Space);
+    assert!(!sampled(&mut app).space);
+}

@@ -264,7 +264,7 @@ pub struct ScriptInputs<'a> {
     pub activation_use_held: Option<bool>,
     /// Quick sword and quick health keys for the ordinary update's key handler.
     pub quick_keys: Option<super::QuickKeys>,
-    /// Held letter and modifier keys for the debug `InKey` native; absence is unknown.
+    /// Held script keys for `InKey` and `SpacePressed`; absence is unknown.
     pub script_keys: Option<super::ScriptKeys>,
     /// Installed animation data for natives that read model vertices; the ordinary update supplies it.
     pub animations: Option<AnimationData<'a>>,
@@ -5717,6 +5717,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             self.registry.create_object(id, name, position, angles)?;
             return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function && function == Native::SpacePressed {
+            anyhow::ensure!(arguments.is_empty(), "SpacePressed requires no arguments");
+            let keys = self
+                .inputs
+                .script_keys
+                .context("SpacePressed keyboard sample unavailable")?;
+            return Ok(CallResult::Complete(i32::from(keys.space)));
         }
         // InKey(code): whether the key of the code's low byte is down, with the modifiers the
         // higher bytes name. Only the debug shell and a few bridge and door scripts call it.

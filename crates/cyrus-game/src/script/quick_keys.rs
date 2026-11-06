@@ -13,11 +13,13 @@ pub struct QuickKeys {
     pub use_selected: bool,
 }
 
-/// The letter and modifier keys the `InKey` native reads, sampled under the same locks as the
-/// quick keys. Bit `n` of `letters` is the letter `A + n`.
+/// Keyboard state for script queries, sampled under the same locks as the quick keys.
+/// Bit `n` of `letters` is the letter `A + n` for `InKey`.
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScriptKeys {
     pub letters: u32,
+    /// Fixed Space key held state for `SpacePressed`, independent of action bindings.
+    pub space: bool,
     /// Latest mapped ASCII letter received after the current frame's event clear.
     /// Callers own event timing; a held-key sample alone supplies no event.
     pub latest_letter: Option<u8>,
@@ -126,6 +128,7 @@ pub(super) fn sample(
             .filter(|(_, key)| keys.pressed(**key))
             .fold(0, |mask, (index, _)| mask | 1 << index),
         latest_letter: None,
+        space: keys.pressed(KeyCode::Space),
         shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
         control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
         alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),

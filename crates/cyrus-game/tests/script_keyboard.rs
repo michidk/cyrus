@@ -251,3 +251,129 @@ fn in_key_accepts_only_the_supplied_post_clear_event_without_consuming_it() -> a
     }
     Ok(())
 }
+
+fn space_world() -> ScriptWorld {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: cyrus_script::Native::SpacePressed,
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: cyrus_script::Native::SpacePressed,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::Increment {
+            destination: Place::Flag { index: 0 },
+            delta: 1,
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    ScriptWorld::prepare(&scripts, 1).unwrap()
+}
+
+#[test]
+fn space_pressed_reads_held_space_repeatedly_without_using_latest_events() {
+    for (space, event) in [
+        (false, None),
+        (true, None),
+        (false, Some(b'R')),
+        (true, Some(b'R')),
+    ] {
+        let mut world = space_world();
+        let id = world.id(0).unwrap();
+        let before = world.actors()[0].attributes().clone();
+        let keys = ScriptKeys {
+            space,
+            latest_letter: event,
+            ..Default::default()
+        };
+        for counter in [13, 14] {
+            world
+                .advance(
+                    id,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        script_keys: Some(keys),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    10,
+                )
+                .unwrap();
+            assert!(
+                world.actors()[0].failure().is_none(),
+                "{:?}",
+                world.actors()[0].failure()
+            );
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().variables()[0],
+                i32::from(space)
+            );
+            assert_eq!(world.flags(), [counter]);
+            assert_eq!(world.actors()[0].attributes(), &before);
+        }
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    script_keys: Some(ScriptKeys {
+                        space: false,
+                        ..keys
+                    }),
+                    ..Default::default()
+                },
+                None,
+                None,
+                10,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+        assert_eq!(world.flags(), [15]);
+    }
+}
+
+#[test]
+fn space_pressed_reports_a_missing_keyboard_sample_before_continuing() {
+    let mut world = space_world();
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            10,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("SpacePressed keyboard sample unavailable"));
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 4);
+}
