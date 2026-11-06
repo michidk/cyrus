@@ -3743,7 +3743,7 @@
       "native": "PointAt",
       "status": "partial",
       "owner": 5,
-      "scope": "Production named turn of the receiver toward the running script's actor",
+      "scope": "Production named turn of the receiver toward the shared native-command source actor",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ActorSpatial yaw write",
       "tests": [
         "crates/cyrus-game/tests/script_registry/point_at.rs::point_at_turns_the_routed_receiver_toward_the_calling_actor",
@@ -3753,9 +3753,10 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/redguard-preservation/commit/603d4ea",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6694554824",
-        "https://github.com/michidk/redguard-preservation/commit/102bde6"
+        "https://github.com/michidk/redguard-preservation/commit/102bde6",
+        "https://github.com/michidk/redguard-preservation/commit/583f2f4"
       ],
-      "limits": "Verified published contract plus the recovered target: the shared pointing target is the actor whose script is executing the call (the caller of a routed call) and the coordinates are the actors' stored model coordinates. Public routed tests with literals derived from the original bearing helper cover the four axis directions, equal magnitudes in each quadrant, fractional differences truncating toward zero, only the receiver's yaw written (no other angle, position or matrix change), the caller continuing, and a call on the running actor itself (zero differences). A receiver or target without stored model coordinates (old snapshots) is an explicit error; an unrepresentable difference converts to the integer-indefinite value. The stored model coordinates are restored state in these tests; their refresh by the ordinary presentation update is not exercised here. Natural authored gameplay parity remains Unknown. The same recovered target is the likely source for the lineup family; ObjectLineUp is not implemented.",
+      "limits": "Verified published contract plus the recovered target: the shared pointing target is the shared native-command source (the actor of the most recent ordinary interpreter entry) and the coordinates are the actors' stored model coordinates. Public routed tests with literals derived from the original bearing helper cover the four axis directions, equal magnitudes in each quadrant, fractional differences truncating toward zero, only the receiver's yaw written (no other angle, position or matrix change), the caller continuing, a call on the source actor itself (zero differences), and an unknown source as an explicit error. A receiver or target without stored model coordinates (old snapshots) is an explicit error; an unrepresentable difference converts to the integer-indefinite value. The stored model coordinates are restored state in these tests; their refresh by the ordinary presentation update is not exercised here. Natural authored gameplay parity remains Unknown. The same recovered target is the likely source for the lineup family; ObjectLineUp is not implemented.",
       "reviewed_revision": "b88956c8e232d91ddb039a7d2d25deec3ae31d52"
     },
     {
@@ -3860,7 +3861,7 @@
       "native": "MoveAboveMe",
       "status": "partial",
       "owner": 5,
-      "scope": "Production named placement of a receiver relative to the running script's actor",
+      "scope": "Production named placement of a receiver relative to the shared native-command source actor",
       "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> pending_player_placement or register_map_update",
       "tests": [
         "crates/cyrus-game/tests/script_goto_location.rs::move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it",
@@ -3875,9 +3876,10 @@
         "https://github.com/michidk/redguard-preservation/pull/254",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6694022620",
         "https://github.com/michidk/redguard-preservation/commit/70a06cd",
+        "https://github.com/michidk/redguard-preservation/commit/583f2f4",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6694229315"
       ],
-      "limits": "Verified published contract plus the recovered globals: the source is the actor whose script runs (the caller of a routed call), the vertical adjustment is the installed standing height shifted left eight bits, and a slave source is the original diagnostic 137. Public routed tests cover a named receiver placed at the source position plus the offset lowered by its positive Y extent and raised by the standing height, the angle masked into its yaw, registration in the changed-actor list, the source left in place, the missing standing height and the slave source as errors before any change. For the selected player, with a prepared animated collision shape: the call raises the pending placement without moving the player or registering it, the production world loop (finish_world_loop) applies it once at the source position plus the offset turned by the source matrix (three source orientations), lowered by the player extent and raised by the standing height, with the masked yaw; errors (missing standing height, slave source, missing player shape) leave the player in place and the failed receiver is refused by the loop. The Bevy world-loop system that calls finish_world_loop was not run end to end. Natural authored gameplay parity and the camera cut after placement remain Unknown.",
+      "limits": "Verified published contract plus the recovered globals: the source is the shared native-command source, the actor of the most recent ordinary interpreter entry, the vertical adjustment is the installed standing height shifted left eight bits, and a slave source is the original diagnostic 137. Public routed tests cover a named receiver placed at the source position plus the offset lowered by its positive Y extent and raised by the standing height, the angle masked into its yaw, registration in the changed-actor list, the source left in place, the missing standing height and the slave source as errors before any change. For the selected player, with a prepared animated collision shape: the call raises the pending placement without moving the player or registering it, the production world loop (finish_world_loop) applies it once at the source position plus the offset turned by the source matrix (three source orientations), lowered by the player extent and raised by the standing height, with the masked yaw; errors (missing standing height, slave source, missing player shape) leave the player in place and the failed receiver is refused by the loop. The Bevy world-loop system that calls finish_world_loop was not run end to end. Natural authored gameplay parity and the camera cut after placement remain Unknown.",
       "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {

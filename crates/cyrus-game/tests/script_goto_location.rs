@@ -1212,7 +1212,7 @@ impl AtPosWorld {
         };
         self.world.advance(
             id,
-            ScriptStage::Body(Thread::Main),
+            ScriptStage::OrdinaryMain,
             ScriptInputs {
                 nominal_ticks: Some(1),
                 frame_scale: Some(256),

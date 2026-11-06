@@ -77,9 +77,14 @@ fn point_world(target: Object, caller: [f32; 3], player: [f32; 3]) -> ScriptWorl
 }
 
 fn run(world: &mut ScriptWorld) -> anyhow::Result<()> {
+    run_as(world, 0)
+}
+
+/// Run one actor's ordinary interpreter entry, which establishes it as the native source.
+fn run_as(world: &mut ScriptWorld, index: usize) -> anyhow::Result<()> {
     world.advance(
-        world.id(0).unwrap(),
-        ScriptStage::Body(Thread::Main),
+        world.id(index).unwrap(),
+        ScriptStage::OrdinaryMain,
         ScriptInputs {
             nominal_ticks: Some(1),
             frame_scale: Some(256),
@@ -147,4 +152,36 @@ fn point_at_on_the_running_actor_itself_has_no_difference_and_yaws_to_zero() {
     run(&mut world).unwrap();
     // Zero differences select the bearing helper's zero-X branch with a nonnegative Z.
     assert_eq!(yaw(&world, 0), 0);
+}
+
+#[test]
+fn point_at_faces_the_actor_whose_interpreter_entry_ran_last_and_needs_one() {
+    // The target is the shared native-command source, set by an ordinary interpreter entry.
+    let mut world = point_world(Object::Player, [0.0, 0.0, 5.0], [0.0; 3]);
+    // Without any interpreter entry the source is unknown: an explicit error, nothing written.
+    let before = yaw(&world, 2);
+    let error = format!(
+        "{:#}",
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_err()
+    );
+    assert!(error.contains("native source"), "{error}");
+    assert_eq!(yaw(&world, 2), before);
+    // A fresh world whose actor 0 enters the interpreter has it as the source: the player at the
+    // origin faces +Z (yaw zero).
+    let mut world = point_world(Object::Player, [0.0, 0.0, 5.0], [0.0; 3]);
+    run_as(&mut world, 0).unwrap();
+    assert_eq!(yaw(&world, 2), 0);
 }

@@ -602,8 +602,8 @@ fails with the original's error 196 after its position store. The contract follo
 and [changed-actor list](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#changed-actor-list).
 Natural installed gameplay parity remains Unknown.
 
-Verified: `MoveAboveMe(x, y, z, angle)` places its receiver relative to the actor whose script is
-running (the caller, when the call is routed to a named object): the source position, resolved as
+Verified: `MoveAboveMe(x, y, z, angle)` places its receiver relative to the shared native-command source
+(the actor of the most recent ordinary interpreter entry, whoever the receiver is): the source position, resolved as
 attached, linked or local, plus the offset turned by the source's matrix, lowered by the receiver's
 positive Y extent and raised by the installed `standing_height` shifted left eight bits. The
 selected player receives the pending placement that `MovePlayerAboveMe` uses; any other receiver is
@@ -612,8 +612,8 @@ source reports the original's diagnostic 137 before anything changes. The contra
 preservation's [MoveAboveMe](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#moveaboveme).
 Natural installed gameplay parity remains Unknown.
 
-Verified: `PointAt()` turns the receiver to face the actor whose script is running the call (the
-caller, when the call is routed to a named object). The yaw is the original's bearing of the
+Verified: `PointAt()` turns the receiver to face the shared native-command source (the actor of the most
+recent ordinary interpreter entry); a call on the source itself has no difference. The yaw is the original's bearing of the
 truncated differences between the two actors' stored model coordinates, written directly to the
 receiver's yaw without a matrix refresh or animation request; a call on the running actor itself
 has no difference and yaws to zero. The contract follows preservation's

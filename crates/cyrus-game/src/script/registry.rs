@@ -3641,6 +3641,26 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    /// The shared native-command source: the actor whose ordinary interpreter entry ran last. It is
+    /// the original's shared source actor reference, read by `MoveAboveMe` and `PointAt`
+    /// independently of their receiver. Unknown before any such entry, and a source retained from
+    /// a replaced world names a departed actor; both are explicit errors.
+    fn native_source_actor(&self, native: &str) -> Result<ScriptActorId> {
+        match self.registry.globals.native_source {
+            super::activation::NativeSource::Actor { generation, index }
+                if generation == self.generation =>
+            {
+                self.registry.id(index)
+            }
+            super::activation::NativeSource::Actor { .. } => {
+                anyhow::bail!("{native}: the retained native source belongs to a replaced world")
+            }
+            super::activation::NativeSource::Unknown => {
+                anyhow::bail!("{native}: no interpreter entry has established the native source")
+            }
+        }
+    }
+
     /// The changed-actor list capacity for a registration: the installed value from the scene the
     /// caller supplied, or unknown without one.
     fn map_update_capacity(&self) -> slope::MapUpdateCapacity {
@@ -6677,12 +6697,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        // PointAt turns the receiver to face the actor whose script is running (the caller, for a
-        // routed call): the negated shared query bearing of the truncated stored model coordinate
+        // PointAt turns the receiver to face the shared native-command source actor: the negated shared query bearing of the truncated stored model coordinate
         // differences, written straight to the receiver's yaw without a matrix refresh.
         if function == Native::PointAt {
             anyhow::ensure!(arguments.is_empty(), "PointAt requires no arguments");
-            let source = self.registry.routed_caller.unwrap_or(self.index);
+            let source = self.native_source_actor("PointAt")?.index;
             let stored = |index: usize, role: &str| {
                 self.registry.actors[index]
                     .model
@@ -6711,16 +6730,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .angles[1] = i32::from(yaw);
             return Ok(CallResult::Complete(0));
         }
-        // MoveAboveMe places the receiver relative to the actor whose script is running: the source
+        // MoveAboveMe places the receiver relative to the shared native-command source actor: the source
         // position plus the offset turned by the source's matrix, lowered by the receiver's
         // vertical extent and raised by the installed standing height. The selected player is
         // placed through the pending placement; any other receiver is written directly and
         // registered in the changed-actor list.
         if function == Native::MoveAboveMe {
             anyhow::ensure!(arguments.len() == 4, "MoveAboveMe requires four arguments");
-            let source = self
-                .registry
-                .id(self.registry.routed_caller.unwrap_or(self.index))?;
+            let source = self.native_source_actor("MoveAboveMe")?;
             anyhow::ensure!(
                 self.registry.actors[source.index].attributes[Attribute::Slave] == 0,
                 "MoveAboveMe world {} actor {}: original diagnostic 137: slave source",
