@@ -564,3 +564,52 @@ fn get_broadcast_sender_id_reports_unreadable_entries_and_leaves_the_local_uncha
         ScriptValue::Integer(0)
     );
 }
+
+#[test]
+fn is_broadcast_waiting_is_one_exactly_when_the_receiver_has_a_broadcast_selection() {
+    use cyrus_script::ScriptValue;
+    // (target, selections of actors 0 and 1, entries written, expected). The routed receiver is
+    // actor 0; the calling actor is 1.
+    for (target, selections, writes, expected) in [
+        (Object::Me, [0, 0], 0, 0),
+        (Object::Me, [0, 0], 1, 1),
+        (Object::Me, [0, 1], 1, 0),
+        (Object::Me, [0, 3], 1, 1),
+        (Object::Named { string: 0 }, [0, 1], 1, 1),
+        (Object::Named { string: 0 }, [1, 0], 1, 0),
+    ] {
+        let scripts = broadcast_query_scripts(Native::IsBroadcastWaiting, target.clone());
+        let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let mut world = broadcast_restore(&world, &scripts, |saved| {
+            for (index, selection) in selections.into_iter().enumerate() {
+                saved["actors"][index]["broadcast_index"] = selection.into();
+            }
+        });
+        let (sender, caller) = (world.id(0).unwrap(), world.id(1).unwrap());
+        for _ in 0..writes {
+            world
+                .send_combat_message(sender, caller, CombatMessageCode::HIT)
+                .unwrap();
+        }
+        let before = serde_json::to_value(world.globals()).unwrap();
+        actor_reference_step(&mut world, caller).unwrap();
+        assert_eq!(
+            sender_result(&world),
+            ScriptValue::Integer(expected),
+            "{target:?} {selections:?} writes {writes}"
+        );
+        assert_eq!(serde_json::to_value(world.globals()).unwrap(), before);
+    }
+    // A selection outside the queue is a contextual error, not a silent availability.
+    let scripts = broadcast_query_scripts(Native::IsBroadcastWaiting, Object::Me);
+    let world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let mut world = broadcast_restore(&world, &scripts, |saved| {
+        saved["actors"][1]["broadcast_index"] = 200.into()
+    });
+    let caller = world.id(1).unwrap();
+    let error = format!(
+        "{:#}",
+        actor_reference_step(&mut world, caller).unwrap_err()
+    );
+    assert!(error.contains("read cursor 200 outside queue"), "{error}");
+}

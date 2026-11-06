@@ -555,3 +555,9 @@ selected slot never written, a selection outside the queue and a sender from a r
 contextual errors. The contract follows preservation's
 [broadcast sender identifier query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#getbroadcastsenderid-query).
 Natural installed gameplay parity remains Unknown.
+
+Verified: `IsBroadcastWaiting()` returns one exactly when the receiver's broadcast selection
+differs from channel zero's no-selection index, and zero otherwise; it scans, consumes and changes
+nothing. A selection outside the queue is a contextual error. The contract follows preservation's
+[broadcast availability query](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#broadcast-availability-query).
+Natural installed gameplay parity remains Unknown.

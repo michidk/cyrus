@@ -7166,6 +7166,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.selected_message_entry(receiver)?.is_some(),
             )));
         }
+        // IsBroadcastWaiting is one when the receiver's broadcast selection differs from the
+        // no-selection index; it scans nothing and changes nothing.
+        if function == Native::IsBroadcastWaiting {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "IsBroadcastWaiting requires no arguments"
+            );
+            let receiver = self.registry.id(self.index)?;
+            return Ok(CallResult::Complete(i32::from(
+                self.registry.selected_broadcast_entry(receiver)?.is_some(),
+            )));
+        }
         // ReceiveBroadcast is ReceiveMessage over the broadcast selection and channel zero.
         if function == Native::ReceiveBroadcast {
             anyhow::ensure!(

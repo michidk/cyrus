@@ -2626,17 +2626,20 @@
     },
     {
       "native": "IsBroadcastWaiting",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named SOUP call dispatch; availability predicate and context/channel ownership recovered, receiver lifecycle boundary incomplete",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> unsupported native fallback",
-      "tests": [],
+      "scope": "Production named broadcast availability query over the retained channel-zero broadcast selection",
+      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call -> ScriptWorld::selected_broadcast_entry",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/delete_broadcast.rs::is_broadcast_waiting_is_one_exactly_when_the_receiver_has_a_broadcast_selection"
+      ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602261099",
         "https://github.com/michidk/redguard-preservation/commit/acbe00e4d34622bfe336f4d729a0fb3d0fd4a6f6",
-        "https://github.com/michidk/redguard-preservation/commit/9576ac3899900e4be2e587ae23a735a23cca54be"
+        "https://github.com/michidk/redguard-preservation/commit/9576ac3899900e4be2e587ae23a735a23cca54be",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6692161296"
       ],
-      "limits": "Verified: installed zero-argument named binding is byte-identical to the accepted broadcast-availability helper. With valid receiver storage and present context, equal selection/no-selection bytes return zero and unequal bytes return one; no consumption, entry lookup or sender read occurs. Absent context requests a diagnostic, not ordinary empty zero. Original receiver storage is not validated. Production GameHost still has no named handler. Implementation is blocked on authoritative messaging context presence, per-receiver selection and sentinel ownership with lifecycle/save/restore semantics; internal combat queues do not supply that contract. Existing helper evidence was reused without rerunning it. Unknown: natural diagnostic recovery. No Rust/public/native/browser runtime acceptance or implementation performed for this classification. Verified lifecycle increment: broadcast uses channel zero of the shared messaging context and sentinel bank; active teardown clears channel sentinels and releases arrays, leaving context/capacity absent. Separate-map record conversion retains receiver selection across task passes. This is not disk-save proof. Precise remaining original evidence blocker: selection initialization for independent/player/shell receivers, retirement/reuse and restored actor selection relative to the save-load context reset. No guessed snapshot defaults or production state/API implementation. Shared ownership agreement requested for a conditional isolated availability proposal; Rust/public/native/browser gates remain unrun.",
+      "limits": "Verified published availability contract. Public VM assertions cover no selection returning zero, a selection below the write cursor or on a never-written slot returning one, direct and object-routed receivers reading their own selection, unchanged selection and queue, and an out-of-queue selection as a contextual error (the original reads it unchecked). Absent-context diagnostics are not exposed. SendBroadcast remains separately owned. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "62b4de956080ee28d7edbc4eee4866cdd5b4797d"
     },
     {
