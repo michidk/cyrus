@@ -15,6 +15,16 @@ enum Step3 {
 }
 
 fn pose_world(steps: &[Step3]) -> ScriptWorld {
+    try_pose_world(steps, |_| {}, false).unwrap()
+}
+
+/// `edit` changes the scripts before the world is prepared; `refresh` runs one family pass before
+/// the script does.
+fn try_pose_world(
+    steps: &[Step3],
+    edit: impl FnOnce(&mut Scripts),
+    refresh: bool,
+) -> anyhow::Result<ScriptWorld> {
     let mut scripts = cache();
     let mut properties: Vec<Property> = vec![];
     let mut natives: Vec<Native> = vec![];
@@ -122,25 +132,33 @@ fn pose_world(steps: &[Step3]) -> ScriptWorld {
             )
         })
         .collect();
+    edit(&mut scripts);
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_spatial().unwrap();
+    if refresh {
+        world.refresh_families().unwrap();
+    }
     let id = world.id(0).unwrap();
-    world
-        .advance(
-            id,
-            ScriptStage::OrdinaryMain,
-            ScriptInputs {
-                nominal_ticks: Some(1),
-                frame_scale: Some(256),
-                ..Default::default()
-            },
-            None,
-            None,
-            100,
-        )
-        .unwrap();
-    world
+    world.advance(
+        id,
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            player_query: Some(cyrus_game::script::QueryInputs {
+                player: None,
+                distance_override: None,
+                fallback_position: None,
+                linked_position: None,
+            }),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    Ok(world)
 }
 
 fn locals(world: &ScriptWorld) -> Vec<i32> {
@@ -320,4 +338,98 @@ fn ov_is_the_held_ledge_point_and_shares_the_heading_word_with_move() {
         [0],
         "an actor holds no ledge point at creation"
     );
+}
+
+/// Actor 0 is a slave of actor 1 (rotated a quarter turn), as `AttachMe` leaves a family.
+fn attach_slave(scripts: &mut Scripts) {
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.attributes[Attribute::Slave] = 1;
+    let mut master = slave.clone();
+    master.attributes[Attribute::Slave] = 0;
+    master.attributes[Attribute::Master] = 1;
+    master.header_index = 1;
+    master.instances = 1;
+    master.namespace = Some("master".into());
+    master.instance_variables = vec![vec![0; master.program.variables.len()]];
+    let slave = scripts.actors.get_mut("LOGIC").unwrap();
+    slave.instances = 1;
+    slave.instance_variables.truncate(1);
+    scripts.instances[1].actor = "MASTER".into();
+    scripts.actors.insert("MASTER".into(), master);
+    scripts.instances[0].angles = [10, 20, 30];
+    scripts.instances[1].angles = [0, 512, 0];
+}
+
+#[test]
+fn slave_properties_are_the_family_composed_pose_and_the_one_before_it() {
+    let reads = [
+        Step3::Read(Property::SlavePosVx),
+        Step3::Read(Property::SlavePosVy),
+        Step3::Read(Property::SlavePosVz),
+        Step3::Read(Property::SlaveAngleVx),
+        Step3::Read(Property::SlaveAngleVy),
+        Step3::Read(Property::SlaveAngleVz),
+        Step3::Read(Property::LastSlavePosVx),
+        Step3::Read(Property::LastSlaveAngleVy),
+    ];
+    let world = try_pose_world(&reads, attach_slave, true).unwrap();
+    let id = world.id(0).unwrap();
+    let spatial = world.spatial(id).unwrap();
+    let effective = spatial.effective.unwrap();
+    assert_eq!(locals(&world)[..3], effective.position);
+    assert_eq!(locals(&world)[3..6], effective.angles);
+    assert_eq!(
+        locals(&world)[6],
+        spatial.previous_effective_position.unwrap()[0]
+    );
+    assert_eq!(
+        locals(&world)[7],
+        spatial.previous_effective_angles.unwrap()[1]
+    );
+    assert_eq!(spatial.parent, Some(1));
+    // Before any family pass the previous pose does not exist yet, and the error names the property.
+    let error = try_pose_world(&reads[6..7], attach_slave, false)
+        .err()
+        .unwrap();
+    assert!(
+        format!("{error:#}").contains("last_slave_pos.vx"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn slave_position_writes_reach_the_effective_position_distance_queries_use() {
+    let distance = |write: Option<i32>| {
+        let mut steps = vec![Step3::Read(Property::SlavePosVx)];
+        steps.extend(write.map(|value| Step3::Write(Property::SlavePosVx, value)));
+        steps.push(Step3::Call(Native::DistanceToLocation, vec![0]));
+        let world = try_pose_world(&steps, attach_slave, true).unwrap();
+        (locals(&world), world)
+    };
+    let (before, _) = distance(None);
+    assert_eq!(before[1], 0, "the composed pose is at the home location");
+    let (after, world) = distance(Some(before[0] + 5 * 256));
+    assert_eq!(after[1], 5 * 256);
+    let id = world.id(0).unwrap();
+    assert_eq!(
+        world.spatial(id).unwrap().query_pose().unwrap().position[0],
+        before[0] + 5 * 256
+    );
+    // The previous pose and the angles are plain whole-word fields too.
+    let world = try_pose_world(
+        &[
+            Step3::Write(Property::LastSlavePosVz, -9),
+            Step3::Write(Property::SlaveAngleVy, 1000),
+            Step3::Write(Property::LastSlaveAngleVx, 77),
+            Step3::Read(Property::LastSlavePosVz),
+            Step3::Read(Property::SlaveAngleVy),
+            Step3::Read(Property::LastSlaveAngleVx),
+        ],
+        attach_slave,
+        true,
+    )
+    .unwrap();
+    assert_eq!(locals(&world), [-9, 1000, 77]);
+    let spatial = world.spatial(world.id(0).unwrap()).unwrap();
+    assert_eq!(spatial.effective.unwrap().angles[1], 1000);
 }

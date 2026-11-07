@@ -7757,6 +7757,198 @@
       ],
       "limits": "Verified in the original: the triple is the actor's retained motion components; the rope release service stores the jump-off speed in the last word (negative for a backward jump), queued motion 24 reads its sign and magnitude, and falls and obstacle interruption clear the triple. cyrus keeps the rope speed in this same word (it no longer has a separate field), so a script write to move.vz changes a running rope jump; saves from before the merge restore their rope speed into it. Reads and writes are whole signed 32-bit values. The ordinary movement consumers of move.vx/vy in the original are not recovered, so those two words only carry the value cyrus's clearing sites use. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "7a0876cd0874d7fb258728becd9cc732b034f4c1"
+    },
+    {
+      "property": "slave_pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "slave_pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "slave_pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "slave_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "slave_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "slave_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "last_slave_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver family-composed attached pose coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706089403"
+      ],
+      "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
     }
   ],
   "property_groups": [
@@ -8187,21 +8379,9 @@
         "hand_pos.vx",
         "hand_pos.vy",
         "hand_pos.vz",
-        "last_slave_angle.vx",
-        "last_slave_angle.vy",
-        "last_slave_angle.vz",
-        "last_slave_pos.vx",
-        "last_slave_pos.vy",
-        "last_slave_pos.vz",
         "local_index",
         "origin",
         "origin_accum",
-        "slave_angle.vx",
-        "slave_angle.vy",
-        "slave_angle.vz",
-        "slave_pos.vx",
-        "slave_pos.vy",
-        "slave_pos.vz",
         "string_index",
         "task_variable2[0]",
         "task_variable2[1]",

@@ -664,4 +664,8 @@ Verified: `move.*` are the retained motion triple (whole 32-bit values); the rop
 jump-off speed in `move.vz` and queued motion 24 reads it, so one word serves both and old saves restore
 their separate rope speed into it. See preservation's
 [motion triple properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#motion-triple-properties).
-The slave and `ov` families stay unsupported.
+Verified: `slave_pos.*`, `slave_angle.*` and their `last_slave_*` counterparts read and write the pose the
+family update composes for an attached actor and the one before it; the queries read it for an attached
+actor, so a write is seen until the next refresh replaces it. See preservation's
+[slave pose properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#slave-pose-properties).
+The `ov` family stays unsupported.

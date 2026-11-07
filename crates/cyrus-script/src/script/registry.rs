@@ -5100,6 +5100,10 @@ enum PoseProperty {
     StartPosition(usize),
     LastAngle(usize),
     StartAngle(usize),
+    SlavePosition(usize),
+    LastSlavePosition(usize),
+    SlaveAngle(usize),
+    LastSlaveAngle(usize),
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
@@ -5181,8 +5185,10 @@ fn control_record_property(
 fn pose_property(name: Property) -> Option<PoseProperty> {
     use Property::{
         AngleVx, AngleVy, AngleVz, LastAngleVx, LastAngleVy, LastAngleVz, LastPosVx, LastPosVy,
-        LastPosVz, PosVx, PosVy, PosVz, StartAngleVx, StartAngleVy, StartAngleVz, StartPosVx,
-        StartPosVy, StartPosVz,
+        LastPosVz, LastSlaveAngleVx, LastSlaveAngleVy, LastSlaveAngleVz, LastSlavePosVx,
+        LastSlavePosVy, LastSlavePosVz, PosVx, PosVy, PosVz, SlaveAngleVx, SlaveAngleVy,
+        SlaveAngleVz, SlavePosVx, SlavePosVy, SlavePosVz, StartAngleVx, StartAngleVy, StartAngleVz,
+        StartPosVx, StartPosVy, StartPosVz,
     };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([PosVx, PosVy, PosVz])
@@ -5192,6 +5198,16 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
         .or_else(|| find([StartPosVx, StartPosVy, StartPosVz]).map(PoseProperty::StartPosition))
         .or_else(|| find([LastAngleVx, LastAngleVy, LastAngleVz]).map(PoseProperty::LastAngle))
         .or_else(|| find([StartAngleVx, StartAngleVy, StartAngleVz]).map(PoseProperty::StartAngle))
+        .or_else(|| find([SlavePosVx, SlavePosVy, SlavePosVz]).map(PoseProperty::SlavePosition))
+        .or_else(|| {
+            find([LastSlavePosVx, LastSlavePosVy, LastSlavePosVz])
+                .map(PoseProperty::LastSlavePosition)
+        })
+        .or_else(|| find([SlaveAngleVx, SlaveAngleVy, SlaveAngleVz]).map(PoseProperty::SlaveAngle))
+        .or_else(|| {
+            find([LastSlaveAngleVx, LastSlaveAngleVy, LastSlaveAngleVz])
+                .map(PoseProperty::LastSlaveAngle)
+        })
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -5459,6 +5475,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 [axis],
             PoseProperty::LastAngle(axis) => spatial.angle_history[axis],
             PoseProperty::StartAngle(axis) => spatial.initial_angles[axis],
+            PoseProperty::SlavePosition(axis) => spatial.attached_pose(name)?.position[axis],
+            PoseProperty::SlaveAngle(axis) => spatial.attached_pose(name)?.angles[axis],
+            PoseProperty::LastSlavePosition(axis) => spatial
+                .previous_effective_position
+                .with_context(|| format!("property {name}: no family refresh has run"))?[axis],
+            PoseProperty::LastSlaveAngle(axis) => spatial
+                .previous_effective_angles
+                .with_context(|| format!("property {name}: no family refresh has run"))?[axis],
         })
     }
 
@@ -5623,6 +5647,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             PoseProperty::LastAngle(axis) => spatial.angle_history[axis] = value,
             PoseProperty::StartAngle(axis) => spatial.initial_angles[axis] = value,
+            PoseProperty::SlavePosition(axis) => {
+                spatial.attached_pose_mut(name)?.position[axis] = value
+            }
+            PoseProperty::SlaveAngle(axis) => spatial.attached_pose_mut(name)?.angles[axis] = value,
+            PoseProperty::LastSlavePosition(axis) => {
+                spatial.previous_effective_position.get_or_insert([0; 3])[axis] = value
+            }
+            PoseProperty::LastSlaveAngle(axis) => {
+                spatial.previous_effective_angles.get_or_insert([0; 3])[axis] = value
+            }
         }
         Ok(())
     }

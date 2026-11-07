@@ -507,6 +507,23 @@ impl ActorSpatial {
         }
     }
 
+    /// The family-composed pose the `slave_*` properties read; unavailable, as for queries, until a
+    /// refresh has composed it.
+    pub(super) fn attached_pose(&self, property: impl std::fmt::Display) -> Result<&Pose> {
+        self.effective
+            .as_ref()
+            .with_context(|| format!("property {property}: no family refresh has run"))
+    }
+
+    pub(super) fn attached_pose_mut(
+        &mut self,
+        property: impl std::fmt::Display,
+    ) -> Result<&mut Pose> {
+        self.effective
+            .as_mut()
+            .with_context(|| format!("property {property}: no family refresh has run"))
+    }
+
     /// The linked record's cached position while it names an owner, as effective-position
     /// queries use it; `None` without an owner.
     pub fn linked_position(&self) -> Option<[i32; 3]> {
