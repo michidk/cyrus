@@ -118,11 +118,11 @@ impl SoundMaintenance {
     /// nonzero lockout retains the prior inhibition rather than enabling it.
     pub fn ordinary_actor(
         &mut self,
-        menu_state: u16,
+        menu_state: super::TopicMenuState,
         waiting_on_dialogue: bool,
         player_lockout: u16,
     ) {
-        if menu_state != 0 || waiting_on_dialogue {
+        if menu_state.is_set() || waiting_on_dialogue {
             self.inhibited = true;
         } else if player_lockout == 0 {
             self.inhibited = false;

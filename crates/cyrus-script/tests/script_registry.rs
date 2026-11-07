@@ -13,7 +13,7 @@ use cyrus_script::script::LivingState;
 use cyrus_script::script::MotionDirection;
 use cyrus_script::script::PointPhase;
 use cyrus_script::script::StepDirection;
-use cyrus_script::script::{ExecutorState, ScriptStage, ScriptWorld};
+use cyrus_script::script::{AiMode, ExecutorState, ScriptStage, ScriptWorld, TopicMenuState};
 use cyrus_soup::program::*;
 use cyrus_soup::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
 use cyrus_soup::{Attribute, Attributes};
@@ -11773,7 +11773,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 0);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.ai_type, AiType::DEAD);
-    assert_eq!(control.ai_mode, 0);
+    assert_eq!(control.ai_mode, AiMode::NONE);
     assert_eq!(world.animation_frame(id).unwrap(), Some(134));
 }
 
@@ -14040,11 +14040,11 @@ fn dialogue_record_updates_preserve_order_and_speech_specific_completion() {
 fn topic_menu_owner_keeps_its_state_separate_from_dialogue_and_lockout() {
     let scripts = cache();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-    assert_eq!(world.globals().menu_state(), 0);
+    assert_eq!(world.globals().menu_state(), TopicMenuState::CLOSED);
     world.globals_mut().begin_topic_menu();
-    assert_eq!(world.globals().menu_state(), 1);
+    assert_eq!(world.globals().menu_state(), TopicMenuState::OPEN);
     world.globals_mut().end_topic_menu();
-    assert_eq!(world.globals().menu_state(), 0);
+    assert_eq!(world.globals().menu_state(), TopicMenuState::CLOSED);
     assert_eq!(world.globals().lockout(), None);
     assert!(!world.globals().dialogue().unwrap().waiting());
 }
@@ -23329,7 +23329,7 @@ fn dialog_and_menu_natives_write_their_mode_words() {
         let world = run_native_world(calls).unwrap();
         (
             world.globals().dialogue_state(),
-            world.globals().menu_state(),
+            world.globals().menu_state().word(),
         )
     };
     assert_eq!(state(&[(Native::DialogBegin, &[])]), (Some(1), 0));
@@ -29377,7 +29377,7 @@ fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
         .unwrap();
     let control = world.actors()[0].control_state().unwrap();
     assert!(!control.killed);
-    assert_eq!((control.ai_type.byte(), control.ai_mode), (1, 0));
+    assert_eq!((control.ai_type.byte(), control.ai_mode.byte()), (1, 0));
 }
 
 #[test]
@@ -34933,7 +34933,7 @@ fn selected_health_damage_lets_an_attached_player_go_of_its_rope() {
         .unwrap();
     let control = world.actors()[index].control_state().unwrap();
     assert!(!control.rope_attached);
-    assert_eq!(control.jump_selector, 24);
+    assert_eq!(control.rope_countdown, 24);
     assert!(world.ropes()[0].attachments.is_empty());
     assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
 }
@@ -39456,7 +39456,7 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
         );
         if function == Native::EndCombat {
             assert_eq!(control.ai_type, AiType::FIND_PLAYER);
-            assert_eq!(control.ai_mode, 0);
+            assert_eq!(control.ai_mode, AiMode::NONE);
             assert_eq!(control.combat.as_ref().unwrap().flags.bits() & 4, 0);
         } else {
             assert_eq!(
@@ -44734,7 +44734,7 @@ fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_
         );
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
-            (control.queued_motion.byte(), control.jump_selector),
+            (control.queued_motion.byte(), control.rope_countdown),
             (24, 24)
         );
         assert_eq!(control.motion_vector[2], speed);
@@ -44790,7 +44790,7 @@ fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_que
     );
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
-        (control.queued_motion.byte(), control.jump_selector),
+        (control.queued_motion.byte(), control.rope_countdown),
         (24, 24)
     );
     assert_eq!(control.motion_classification, MotionDirection::FORWARD);
@@ -44893,7 +44893,7 @@ fn detached_rope_countdown_fixture_with(
         (
             control.queued_motion.byte(),
             control.falling_state.byte(),
-            control.jump_selector
+            control.rope_countdown
         ),
         (0, 0, 24)
     );
@@ -44915,7 +44915,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_countdown,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -44926,7 +44926,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_countdown,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -44952,7 +44952,7 @@ fn forced_countdown_jump_sound_failure_retains_queue_before_classification_and_b
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_countdown,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -45023,7 +45023,7 @@ fn rope_regrab_fixture() -> (
         world.actors()[player.index]
             .control_state()
             .unwrap()
-            .jump_selector,
+            .rope_countdown,
         24
     );
     assert_eq!(
@@ -45080,7 +45080,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
         (
-            control.jump_selector,
+            control.rope_countdown,
             control.queued_motion.byte(),
             control.falling_state.byte(),
             control.motion_classification
@@ -45130,7 +45130,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
         (
-            control.jump_selector,
+            control.rope_countdown,
             control.queued_motion.byte(),
             control.falling_state.byte(),
             control.motion_classification
@@ -45163,7 +45163,7 @@ fn rope_expiry_uses_full_nominal_ticks_and_retains_classification_on_grab_failur
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
             (
-                control.jump_selector,
+                control.rope_countdown,
                 control.queued_motion.byte(),
                 control.motion_classification
             ),
@@ -46224,7 +46224,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(live.selected_player_on_rope());
             let control = live.actors()[index].control_state().unwrap();
             assert_eq!(
-                (control.queued_motion, control.jump_selector),
+                (control.queued_motion, control.rope_countdown),
                 (JumpMotion::NONE, 0)
             );
             assert_ne!(
@@ -46239,7 +46239,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
             assert_eq!(
-                (control.queued_motion, control.jump_selector),
+                (control.queued_motion, control.rope_countdown),
                 (JumpMotion::ROPE, 24)
             );
             assert_eq!(
@@ -46255,7 +46255,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     "jump cooldown must prevent regrabbing the released rope after restore"
                 );
                 assert!(live.ropes()[0].attachments.is_empty());
-                assert!(live.actors()[index].control_state().unwrap().jump_selector > 0);
+                assert!(live.actors()[index].control_state().unwrap().rope_countdown > 0);
             }
         }
         let mut detached = ScriptActors::default();
@@ -49757,7 +49757,7 @@ fn ai_progress_preserves_or_resets_mode_after_retained_clearance() {
         if let Some((mode, delay)) = expected {
             assert_eq!(result.unwrap(), 1);
             let control = world.actors()[0].control_state().unwrap();
-            assert_eq!((control.ai_mode, control.ai_delay), (mode, delay));
+            assert_eq!((control.ai_mode.byte(), control.ai_delay), (mode, delay));
             assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 15);
             assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
         } else {
@@ -49825,7 +49825,7 @@ fn ai_progress_uses_full_response_word_from_real_overlap() {
             control.ai_delay,
             control.last_collide.bits()
         ),
-        (0, 255, 0x400)
+        (AiMode::NONE, 255, 0x400)
     );
 }
 
@@ -49944,7 +49944,7 @@ fn ai_progress_matches_original_public_caller_heading_and_refusal() {
         assert_eq!(world.spatial(ids[0]).unwrap().local.angles[1], 1224);
         assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!((control.ai_mode, control.ai_delay), (0, 255));
+        assert_eq!((control.ai_mode, control.ai_delay), (AiMode::NONE, 255));
     }
 }
 
@@ -49988,7 +49988,7 @@ fn ai_progress_retains_slide_and_collision_writes_before_service_failure() {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (control.ai_mode, control.ai_delay, control.sliding_state),
-        (0, 255, 1)
+        (AiMode::NONE, 255, 1)
     );
     assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 15);
     assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
@@ -50044,8 +50044,15 @@ fn ai_admission_obeys_mode_delay_clearance_and_releases_owned_nodes() {
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (control.ai_mode, control.ai_delay),
-            (if admitted { 11 } else { mode as u8 }, delay as u8)
+            (control.ai_mode.byte(), control.ai_delay),
+            (
+                if admitted {
+                    AiMode::DIRECT_DESTINATION.byte()
+                } else {
+                    mode as u8
+                },
+                delay as u8
+            )
         );
         assert_eq!(
             (

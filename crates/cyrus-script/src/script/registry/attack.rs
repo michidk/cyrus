@@ -1,12 +1,12 @@
 //! Receiver-owned attack execution through the four defense slots and shared animation owner.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
-use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use crate::script::JumpMotion;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
+use crate::script::{AiMode, AiType};
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_soup::{AnimationGroup, Attribute};
@@ -1123,7 +1123,7 @@ impl ScriptWorld {
         if !was_dead {
             if control.ai_type != AiType::FIND_PLAYER {
                 control.ai_type = AiType::FIND_PLAYER;
-                control.ai_mode = 0;
+                control.ai_mode = AiMode::NONE;
             }
             if control.killed {
                 control.script_control &= !2;

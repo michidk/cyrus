@@ -177,7 +177,7 @@ impl ScriptWorld {
                 .dialogue_state()
                 .context("player controller dialogue mode unavailable")?;
             let menu_state = world.globals.menu_state();
-            if dialogue_state == 1 || menu_state == 1 {
+            if dialogue_state == 1 || menu_state == crate::script::TopicMenuState::OPEN {
                 return Ok(());
             }
             let control = world.actors[id.index]

@@ -223,7 +223,7 @@ pub struct GameplayGlobals {
     /// Actors the selected player's body touched in its latest contact pass.
     pub(super) player_contacts: PlayerContacts,
     pub(super) sound_maintenance: super::SoundMaintenance,
-    pub(super) menu_state: u16,
+    pub(super) menu_state: super::TopicMenuState,
     /// Items and highlight of the scripted menu, retained across world replacement.
     pub(super) menu: super::menu::MenuState,
     dialogue_state: Option<u16>,
@@ -449,7 +449,7 @@ impl GameplayGlobals {
         if queued_motion == JumpMotion::NONE && falling == JumpMotion::NONE {
             state.conditional_ticks = state.conditional_ticks.saturating_sub(nominal_ticks);
         }
-        let waiting = if self.menu_state != 0 {
+        let waiting = if self.menu_state.is_set() {
             false
         } else {
             self.dialogue
@@ -457,7 +457,7 @@ impl GameplayGlobals {
                 .context("player controller: dialogue records unavailable")?
                 .waiting()
         };
-        let lockout = if self.menu_state != 0 || waiting {
+        let lockout = if self.menu_state.is_set() || waiting {
             0
         } else {
             self.lockout
@@ -583,19 +583,19 @@ impl GameplayGlobals {
     /// Retained SOUP topic-menu state, distinct from the startup book menu and
     /// dialogue state. Engine initialization starts it at zero; world replacement
     /// retains it. See preservation engine/sound.md.
-    pub fn menu_state(&self) -> u16 {
+    pub fn menu_state(&self) -> super::TopicMenuState {
         self.menu_state
     }
 
     /// The topic-menu task establishes active state before processing choices.
     /// This is an engine lifecycle operation, not an installed script function.
     pub fn begin_topic_menu(&mut self) {
-        self.menu_state = 1;
+        self.menu_state = super::TopicMenuState::OPEN;
     }
 
     /// Accepting a topic selection clears the engine menu-state word.
     pub fn end_topic_menu(&mut self) {
-        self.menu_state = 0;
+        self.menu_state = super::TopicMenuState::CLOSED;
     }
 
     /// Shared dialogue owner, absent until installed settings are prepared.
@@ -1267,7 +1267,7 @@ mod idle_tests {
                 .advance(1400, &mut |_| Ok(()))
                 .unwrap()
         );
-        globals.menu_state = 2;
+        globals.menu_state = crate::script::TopicMenuState::from_word(2);
         globals.controller_prelude.as_mut().unwrap().pending_action = true;
         assert!(
             globals
@@ -1282,7 +1282,7 @@ mod idle_tests {
                 })
                 .unwrap()
         );
-        globals.menu_state = 0;
+        globals.menu_state = crate::script::TopicMenuState::CLOSED;
         globals.controller_prelude.as_mut().unwrap().pending_action = false;
         globals
             .prepare_player_controller(1, JumpMotion::NONE, JumpMotion::NONE, 0)
@@ -1344,7 +1344,7 @@ mod idle_tests {
         );
         assert_eq!(random.state(), 2701728395);
         assert_eq!(globals.player_idle_counter(), Some(-1));
-        assert_eq!(globals.menu_state(), 1);
+        assert_eq!(globals.menu_state(), crate::script::TopicMenuState::OPEN);
         globals.advance_player_idle_clock(5);
         assert_eq!(
             globals
@@ -1405,7 +1405,7 @@ pub(super) struct GameplayGlobalsSnapshot {
     #[serde(default)]
     primary_body_contacts: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
-    menu_state: u16,
+    menu_state: super::TopicMenuState,
     #[serde(default)]
     menu: super::menu::MenuState,
     dialogue_state: Option<u16>,

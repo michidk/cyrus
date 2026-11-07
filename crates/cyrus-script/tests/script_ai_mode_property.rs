@@ -1,7 +1,7 @@
 //! Receiver-owned AI mode reaches real public native producers and consumers.
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
-use cyrus_script::script::{ScriptInputs, ScriptStage, ScriptWorld};
+use cyrus_script::script::{AiMode, ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_soup::program::*;
 use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
@@ -200,7 +200,7 @@ fn ai_mode_routes_unsigned_low_bytes_without_changing_adjacent_or_other_control(
                     .control_state()
                     .unwrap()
                     .ai_mode,
-                0
+                AiMode::NONE
             );
         }
     }
@@ -371,7 +371,7 @@ fn public_property_and_native_setter_share_mode_without_changing_ai_type() {
                         );
                         assert_eq!(world.flags(), [73]);
                         let control = world.actors()[receiver].control_state().unwrap();
-                        assert_eq!(control.ai_mode, mode as u8);
+                        assert_eq!(control.ai_mode, AiMode::from_byte(mode as u8));
                         assert_eq!(control.ai_type.byte(), 8);
                         assert!(!control.killed);
                         assert_eq!(control.script_control, 0);
@@ -380,7 +380,7 @@ fn public_property_and_native_setter_share_mode_without_changing_ai_type() {
                             health
                         );
                         let other = world.actors()[1 - receiver].control_state().unwrap();
-                        assert_eq!(other.ai_mode, 0);
+                        assert_eq!(other.ai_mode, AiMode::NONE);
                         assert_eq!(other.ai_type.byte(), 0);
                     }
                 }

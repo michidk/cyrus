@@ -623,7 +623,7 @@ impl super::ScriptWorld {
             .playback
             .current_group()
             .context("ordinary jump current group unavailable")?;
-        let force = control.jump_selector != 0;
+        let force = control.rope_countdown != 0;
         let selected = environment.selected_player == Some(id);
         let (queued, request) = if force {
             (JumpMotion::ROPE, AnimationGroup::ROPE_JUMP)

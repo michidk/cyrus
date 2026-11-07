@@ -1067,7 +1067,7 @@ fn update(
     if let Some(world) = world.as_mut() {
         let globals = world.globals();
         let mut remembered = None;
-        if globals.menu_state() == 1
+        if globals.menu_state() == cyrus_script::script::TopicMenuState::OPEN
             && let Some(dialogue) = globals.dialogue()
         {
             menu_text = menu_lines(hud, dialogue.settings().menu_start, globals.menu());

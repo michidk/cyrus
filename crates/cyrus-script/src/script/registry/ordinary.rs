@@ -1505,7 +1505,7 @@ pub fn run_ordinary(
     let stick = look.as_deref().and_then(|look| look.stick);
     let modern = match (modes, input.as_deref()) {
         // A topic menu reads forward and back as up and down, not as movement.
-        (Some((Mode::Modern, _)), Some(held)) if world.globals.menu_state() != 0 => {
+        (Some((Mode::Modern, _)), Some(held)) if world.globals.menu_state().is_set() => {
             Some((held.menu_directions(stick), None))
         }
         (Some((Mode::Modern, _)), Some(held)) => Some(

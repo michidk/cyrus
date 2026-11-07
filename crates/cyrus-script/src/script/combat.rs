@@ -1,7 +1,7 @@
 //! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
-use crate::script::AiType;
 use crate::script::LivingState;
+use crate::script::{AiMode, AiType};
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_soup::{Attribute, Attributes};
@@ -771,7 +771,7 @@ pub(super) fn end_combat_reset(control: &mut super::registry::ActorControlState)
     combat.close_distance_passes = 0;
     combat.attacker_selection_state = CombatControlState::COORDINATION_WAITING;
     control.ai_type = AiType::FIND_PLAYER;
-    control.ai_mode = 0;
+    control.ai_mode = AiMode::NONE;
     control.script_control &= !2;
     true
 }
@@ -849,7 +849,7 @@ mod sheath_tests {
     fn end_combat_resets_the_selector_mode_hook_flag_and_counters() {
         let mut control = ActorControlState {
             ai_type: AiType::COMBAT,
-            ai_mode: 3,
+            ai_mode: AiMode::from_byte(3),
             script_control: 0b1011,
             combat: Some(CombatControlState {
                 flags: CombatFlags::from_bits(0x07),
@@ -867,7 +867,10 @@ mod sheath_tests {
         assert_eq!(combat.attacker_selection_state, 0);
         // The cooldown belongs to sheathing, not to the reset.
         assert_eq!(combat.cooldown, 9);
-        assert_eq!((control.ai_type, control.ai_mode), (AiType::FIND_PLAYER, 0));
+        assert_eq!(
+            (control.ai_type, control.ai_mode),
+            (AiType::FIND_PLAYER, AiMode::NONE)
+        );
         assert_eq!(control.script_control, 0b1001);
         let mut bare = ActorControlState {
             ai_type: AiType::COMBAT,

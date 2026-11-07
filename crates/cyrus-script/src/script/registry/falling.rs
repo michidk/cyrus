@@ -413,7 +413,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated landing control")
-            .jump_selector = 0;
+            .rope_countdown = 0;
         let effect = match decision {
             OrdinaryLandingDecision::Fatal if environment.selected_player == Some(id) => {
                 let landing = selected

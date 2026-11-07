@@ -1,7 +1,7 @@
 //! Receiver-owned AI lifecycle selector reaches real public native producers and consumers.
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
-use cyrus_script::script::{ScriptInputs, ScriptStage, ScriptWorld};
+use cyrus_script::script::{AiMode, ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_soup::program::*;
 use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
@@ -362,7 +362,7 @@ fn public_property_and_setter_share_the_real_ai_and_death_consumers() {
                         assert_eq!(world.flags(), [73]);
                         let control = world.actors()[receiver].control_state().unwrap();
                         assert_eq!(control.ai_type.byte(), selector as u8);
-                        assert_eq!(control.ai_mode, 0);
+                        assert_eq!(control.ai_mode, AiMode::NONE);
                         assert!(!control.killed);
                         assert_eq!(control.script_control, 0);
                         assert_eq!(

@@ -161,7 +161,7 @@ pub(super) struct AmbientCall<'a> {
 pub(super) struct MenuCall<'a> {
     pub state: &'a mut super::menu::MenuState,
     /// The menu-active word that `menuBegin` raises and `menuEnd` clears.
-    pub active: &'a mut u16,
+    pub active: &'a mut super::TopicMenuState,
     pub input: Option<super::menu::MenuInput>,
 }
 
@@ -1183,13 +1183,13 @@ impl Task {
             Self::Menu => {
                 anyhow::ensure!(arguments.is_empty(), "menuProc requires no arguments");
                 let menu = services.menu.context("menuProc menu state unavailable")?;
-                *menu.active = 1;
+                *menu.active = super::TopicMenuState::OPEN;
                 let input = menu
                     .input
                     .context("menuProc controls, clock and delay settings unavailable")?;
                 let running = menu.state.step(input);
                 if !running {
-                    *menu.active = 0;
+                    *menu.active = super::TopicMenuState::CLOSED;
                 }
                 !running
             }

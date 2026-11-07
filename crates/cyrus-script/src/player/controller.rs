@@ -10,7 +10,7 @@ use super::input::PlayerInput;
 pub struct SheathedControllerState {
     pub lockout: u16,
     pub dialogue_state: u16,
-    pub menu_state: u16,
+    pub menu_state: crate::script::TopicMenuState,
     pub walk_mode: bool,
     /// The weapon-holding predicate or the combat flag: either forces the held-key choice.
     pub armed: bool,
@@ -69,7 +69,7 @@ pub fn select_sheathed_action(
         Some(ControllerReturn::Lockout)
     } else if state.dialogue_state == 1 {
         Some(ControllerReturn::Dialogue)
-    } else if state.menu_state == 1 {
+    } else if state.menu_state == crate::script::TopicMenuState::OPEN {
         Some(ControllerReturn::TopicMenu)
     } else if input.look {
         Some(ControllerReturn::View)

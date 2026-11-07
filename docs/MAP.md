@@ -213,7 +213,7 @@ module where it is defined and regenerate.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
-- `src/script/ai_type.rs` — The actor's AI type byte (`ai_type`, `MyAiType`/`SetAiType`): its lifecycle selector.
+- `src/script/ai_type.rs` — The actor's AI type (`ai_type`), its lifecycle selector, and the adjacent AI mode (`ai_mode`).
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attachment.rs` — Equipped-model geometry follows preservation's engine/attachment.md transform rules.

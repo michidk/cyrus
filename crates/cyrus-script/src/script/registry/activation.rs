@@ -62,7 +62,7 @@ pub(super) fn ordinary_inputs(
         lockout: globals
             .lockout()
             .context("activation lockout unavailable")?,
-        dialogue_open: globals.menu_state() != 0,
+        dialogue_open: globals.menu_state().is_set(),
         lineup_result: globals
             .lineup_result
             .context("activation player-lineup result unavailable")?,

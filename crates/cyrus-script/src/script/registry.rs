@@ -413,7 +413,7 @@ pub struct ActorControlState {
     /// The DEF `ai_type` lifecycle selector.
     pub ai_type: super::AiType,
     /// The DEF `ai_mode` byte, independent of the `ai_type` lifecycle selector.
-    pub ai_mode: u8,
+    pub ai_mode: super::AiMode,
     /// Receiver-owned unsigned AI delay, retained independently of mode and ordinary countdown.
     pub ai_delay: u8,
     /// The AI scratch fields scripts read and write by property.
@@ -462,8 +462,10 @@ pub struct ActorControlState {
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
-    /// Allocator-zero runtime jump selector, separate from living and torch state.
-    pub jump_selector: u8,
+    /// Rope-release countdown, allocated as zero: detach sets it to 24 and the attach test lowers
+    /// it by the elapsed ticks. While nonzero, a jump entry is the rope jump and the released rope
+    /// cannot be re-caught (preservation `docs/engine/SOUP.md`, rope attachment removal).
+    pub rope_countdown: u8,
     /// Validity of the separately retained stable local position.
     pub stable_position_valid: bool,
     /// Separately retained stable local Q8 coordinates, allocated as zero.
@@ -5284,7 +5286,6 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
         Property::ArmsTime => &mut control.action_transition_counter,
         Property::LastCollideCount => &mut control.last_collide_count,
         Property::DisableScript => &mut control.script_control,
-        Property::AiMode => &mut control.ai_mode,
         Property::AiDelay => &mut control.ai_delay,
         _ => return None,
     })
@@ -5831,6 +5832,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if matches!(
             name,
             Property::AiType
+                | Property::AiMode
                 | Property::ExtraFlag
                 | Property::FallFlag
                 | Property::JumpFlag
@@ -5846,6 +5848,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Property::AiType => control.ai_type.byte(),
                 // An unestablished held item reads as the allocator's zero.
                 Property::HandItem => control.held_item.unwrap_or(0),
+                Property::AiMode => control.ai_mode.byte(),
                 Property::ExtraFlag => control.living_state.byte(),
                 Property::FallFlag => control.falling_state.byte(),
                 Property::LastDirection => control.motion_classification.byte(),
@@ -6044,6 +6047,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if matches!(
             name,
             Property::AiType
+                | Property::AiMode
                 | Property::ExtraFlag
                 | Property::FallFlag
                 | Property::JumpFlag
@@ -6059,6 +6063,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             match name {
                 Property::HandItem => control.held_item = Some(byte),
                 Property::AiType => control.ai_type = super::AiType::from_byte(byte),
+                Property::AiMode => control.ai_mode = super::AiMode::from_byte(byte),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
                 Property::LastDirection => {
@@ -8451,7 +8456,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             if function == Native::SetAiType {
                 control.ai_type = AiType::from_byte(value);
             } else {
-                control.ai_mode = value;
+                control.ai_mode = super::AiMode::from_byte(value);
             }
             return Ok(CallResult::Complete(0));
         }
@@ -9217,7 +9222,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // notification byte; IsOnEdge holds for the ledge living states.
         let control_test: Option<fn(&ActorControlState) -> i32> = match function {
             Native::MyAiType => Some(|control| i32::from(control.ai_type.byte())),
-            Native::MyAiMode => Some(|control| i32::from(control.ai_mode)),
+            Native::MyAiMode => Some(|control| i32::from(control.ai_mode.byte())),
             Native::IsOnEdge => Some(|control| i32::from(control.living_state.is_ledge())),
             // The original also answers 0 while its transition lock (global word read by
             // dozens of routines) is set; cyrus has no transition state, so it is clear.

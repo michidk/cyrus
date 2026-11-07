@@ -2687,7 +2687,11 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
         variable, 7,
         "down wrapped from the second item to the first"
     );
-    assert_eq!(world.globals().menu_state(), 0, "the menu closed");
+    assert_eq!(
+        world.globals().menu_state(),
+        cyrus_script::script::TopicMenuState::CLOSED,
+        "the menu closed"
+    );
 }
 
 #[test]

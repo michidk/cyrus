@@ -1,6 +1,6 @@
 //! AI direct-destination progress composes facing, movement and retained clearance.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
-use crate::script::{AiType, ScriptSound};
+use crate::script::{AiMode, AiType, ScriptSound};
 use crate::script::{OrdinaryMovement, OrdinaryObstacleQuery, OrdinarySlopeInputs};
 use anyhow::{Context, Result, ensure};
 use cyrus_soup::Attribute;
@@ -25,7 +25,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .context("AI admission receiver control unavailable")?;
-            if control.ai_mode == 11 || control.ai_delay != 0 {
+            if control.ai_mode == AiMode::DIRECT_DESTINATION || control.ai_delay != 0 {
                 return Ok(false);
             }
             if !self.ai_destination_clear(id, selected_player, destination, query)? {
@@ -36,7 +36,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("admitted AI control")
-                .ai_mode = 11;
+                .ai_mode = AiMode::DIRECT_DESTINATION;
             Ok(true)
         })();
         result.with_context(|| {
@@ -107,7 +107,7 @@ impl ScriptWorld {
                 .as_ref()
                 .context("AI progress receiver control unavailable")?;
             ensure!(
-                control.ai_mode == 11,
+                control.ai_mode == AiMode::DIRECT_DESTINATION,
                 "AI destination progress requires mode eleven"
             );
             let player = facing
@@ -119,7 +119,7 @@ impl ScriptWorld {
                 .as_mut()
                 .context("AI progress receiver control unavailable")?;
             if control.sliding_state != 0 {
-                control.ai_mode = 0;
+                control.ai_mode = AiMode::NONE;
                 control.ai_delay = 255;
             }
             let difference = self.face_ordinary_point(id, destination, facing, sounds)?;
@@ -135,7 +135,7 @@ impl ScriptWorld {
                 .as_mut()
                 .context("AI progress receiver control unavailable")?;
             if !clear || !control.last_collide.is_empty() {
-                control.ai_mode = 0;
+                control.ai_mode = AiMode::NONE;
                 control.ai_delay = 255;
             }
             Ok(1)

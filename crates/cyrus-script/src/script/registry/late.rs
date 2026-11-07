@@ -465,8 +465,13 @@ impl ScriptWorld {
             )?;
             return Ok(());
         }
-        // A jump selector within three of 24 turns the support miss into the scripted jump entry.
-        if control.jump_selector != 0 && control.jump_selector.abs_diff(24) < 4 {
+        // Within three ticks of a rope release, a support miss becomes the scripted jump entry.
+        if control.rope_countdown != 0
+            && control
+                .rope_countdown
+                .abs_diff(super::rope_host::ROPE_RELEASE_TICKS)
+                < 4
+        {
             if environment.selected_player == Some(id) {
                 self.begin_player_jump(id, query, environment, timing, 8, sounds)?;
             } else {

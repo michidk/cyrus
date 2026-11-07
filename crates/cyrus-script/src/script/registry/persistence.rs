@@ -60,7 +60,8 @@ struct ControlSnapshot {
     hand_angles: [i32; 3],
     fall_origin_y: i32,
     fall_timer: u8,
-    jump_selector: u8,
+    #[serde(rename = "jump_selector")]
+    rope_countdown: u8,
     stable_position_valid: bool,
     stable_local_position: [i32; 3],
     sliding_distance: i32,
@@ -132,7 +133,7 @@ impl ControlSnapshot {
             point_command: control.point_command,
             script_control: control.script_control,
             death_selector: control.ai_type.byte(),
-            death_response: control.ai_mode,
+            death_response: control.ai_mode.byte(),
             ai_delay: control.ai_delay,
             ai_location: control.ai.var1,
             ai_record: Some(AiRecordSnapshot {
@@ -161,7 +162,7 @@ impl ControlSnapshot {
             hand_angles: control.hand_angles,
             fall_origin_y: control.fall_origin_y,
             fall_timer: control.fall_timer,
-            jump_selector: control.jump_selector,
+            rope_countdown: control.rope_countdown,
             stable_position_valid: control.stable_position_valid,
             stable_local_position: control.stable_local_position,
             sliding_distance: control.sliding_distance,
@@ -209,7 +210,7 @@ impl ControlSnapshot {
             point_command: self.point_command,
             script_control: self.script_control,
             ai_type: crate::script::AiType::from_byte(self.death_selector),
-            ai_mode: self.death_response,
+            ai_mode: crate::script::AiMode::from_byte(self.death_response),
             ai_delay: self.ai_delay,
             ai: {
                 let defaults = super::AiRecord::default();
@@ -245,7 +246,7 @@ impl ControlSnapshot {
             },
             fall_origin_y: self.fall_origin_y,
             fall_timer: self.fall_timer,
-            jump_selector: self.jump_selector,
+            rope_countdown: self.rope_countdown,
             stable_position_valid: self.stable_position_valid,
             stable_local_position: self.stable_local_position,
             sliding_distance: self.sliding_distance,

@@ -118,7 +118,7 @@ mod map_updates;
 mod markers;
 mod menu;
 pub use maintenance::{SoundMaintenance, SoundResetStage};
-pub use menu::{MenuInput, MenuItem, MenuState};
+pub use menu::{MenuInput, MenuItem, MenuState, TopicMenuState};
 pub use registry::body::{OrdinaryBodyQuery, OrdinaryResidualQuery};
 pub use registry::bounds::{BoundsSegment, ordinary_bounds_segments, ordinary_bounds_separation};
 pub use registry::falling::{
@@ -181,7 +181,7 @@ pub mod bounce;
 mod collision_flags;
 mod jump_motion;
 mod living_state;
-pub use ai_type::AiType;
+pub use ai_type::{AiMode, AiType};
 pub use collision_flags::CollisionFlags;
 pub use jump_motion::JumpMotion;
 pub use living_state::LivingState;

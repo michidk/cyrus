@@ -4,12 +4,13 @@ use cyrus_script::player::{
     },
     input::PlayerInput,
 };
+use cyrus_script::script::TopicMenuState;
 
 fn state() -> SheathedControllerState {
     SheathedControllerState {
         lockout: 0,
         dialogue_state: 0,
-        menu_state: 0,
+        menu_state: TopicMenuState::CLOSED,
         walk_mode: false,
         armed: false,
     }
@@ -81,7 +82,7 @@ fn every_nonzero_lockout_returns_before_other_dispatch() {
                 SheathedControllerState {
                     lockout,
                     dialogue_state: 1,
-                    menu_state: 1,
+                    menu_state: TopicMenuState::OPEN,
                     ..state()
                 },
             )
@@ -110,7 +111,7 @@ fn dialogue_and_topic_menu_return_only_for_exactly_one() {
         let menu = select_sheathed_action(
             &input,
             SheathedControllerState {
-                menu_state: word,
+                menu_state: TopicMenuState::from_word(word),
                 ..state()
             },
         )
@@ -131,7 +132,7 @@ fn dialogue_and_topic_menu_return_only_for_exactly_one() {
             &input,
             SheathedControllerState {
                 dialogue_state: 1,
-                menu_state: 1,
+                menu_state: TopicMenuState::OPEN,
                 ..state()
             },
         )

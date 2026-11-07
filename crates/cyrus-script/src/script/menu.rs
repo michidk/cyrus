@@ -2,6 +2,35 @@
 //! up and down controls, and the choice `menuSelection` reports. Layout and drawing are host-owned.
 use serde::{Deserialize, Serialize};
 
+/// The engine's topic-menu state word: `menuProc` sets it open while it runs and closed when a
+/// choice is accepted. It is separate from the dialogue-state word, starts closed and is kept across
+/// world replacement (preservation `docs/engine/sound.md`). The player controller returns only when
+/// the word is exactly [`TopicMenuState::OPEN`]; sound maintenance and activation test any nonzero
+/// word, so a restored word other than zero or one keeps those two tests apart.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TopicMenuState(u16);
+
+impl TopicMenuState {
+    pub const CLOSED: Self = Self(0);
+    pub const OPEN: Self = Self(1);
+
+    /// The state a data-supplied word holds.
+    pub const fn from_word(word: u16) -> Self {
+        Self(word)
+    }
+
+    /// The state word.
+    pub const fn word(self) -> u16 {
+        self.0
+    }
+
+    /// Whether the word is nonzero, the test sound maintenance and activation make.
+    pub const fn is_set(self) -> bool {
+        self.0 != 0
+    }
+}
+
 /// One item record. Clearing a menu empties the text but leaves the other fields, so
 /// `menuSelection` keeps reporting the old value until a new item overwrites the slot.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

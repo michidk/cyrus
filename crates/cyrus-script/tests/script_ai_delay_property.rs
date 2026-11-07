@@ -1,7 +1,7 @@
 //! Receiver-owned AI delay retains unsigned property values through public snapshots.
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
-use cyrus_script::script::{ScriptInputs, ScriptStage, ScriptWorld};
+use cyrus_script::script::{AiMode, ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_soup::Thread;
 use cyrus_soup::program::*;
 use std::collections::BTreeMap;
@@ -311,7 +311,7 @@ fn property_delay_is_consumed_by_public_save_restore_without_aliasing_ai_mode() 
         .unwrap();
         let control = restored.actors()[0].control_state().unwrap();
         assert_eq!(control.ai_delay, expected);
-        assert_eq!(control.ai_mode, 11);
+        assert_eq!(control.ai_mode, AiMode::DIRECT_DESTINATION);
         assert_eq!(control.ai_type.byte(), 0);
         assert_eq!(control.extra_time, 23);
         assert_eq!(restored.actors()[1].control_state().unwrap().ai_delay, 0);

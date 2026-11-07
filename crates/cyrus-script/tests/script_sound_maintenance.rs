@@ -1,5 +1,5 @@
 //! Public maintenance sequences follow preservation's sound-reset contract.
-use cyrus_script::script::{SoundMaintenance, SoundResetStage};
+use cyrus_script::script::{SoundMaintenance, SoundResetStage, TopicMenuState};
 
 fn sample(maintenance: &mut SoundMaintenance, ticks: u32) -> bool {
     maintenance.advance(ticks, &mut |_| Ok(())).unwrap()
@@ -21,32 +21,32 @@ fn periodic_reset_uses_strict_signed_tick_threshold_and_clears_each_update() {
 fn menu_or_dialogue_inhibits_and_lockout_retains_the_previous_state() {
     let mut maintenance = SoundMaintenance::default();
     assert!(!sample(&mut maintenance, 1400));
-    maintenance.ordinary_actor(1, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::OPEN, false, 0);
     assert!(!sample(&mut maintenance, 100));
-    maintenance.ordinary_actor(0, false, 1);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 1);
     assert!(!sample(&mut maintenance, 100));
-    maintenance.ordinary_actor(0, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 0);
     assert!(sample(&mut maintenance, 1));
     assert!(!sample(&mut maintenance, 1400));
-    maintenance.ordinary_actor(0, true, 0);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, true, 0);
     assert!(!sample(&mut maintenance, 100));
-    maintenance.ordinary_actor(0, false, 2);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 2);
     assert!(!sample(&mut maintenance, 100));
-    maintenance.ordinary_actor(0, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 0);
     assert!(sample(&mut maintenance, 1));
 }
 
 #[test]
 fn lockout_does_not_activate_inhibition_and_world_entry_restarts_the_counter() {
     let mut maintenance = SoundMaintenance::default();
-    maintenance.ordinary_actor(0, false, 1);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 1);
     assert!(!sample(&mut maintenance, 1400));
     maintenance.enter_world();
     assert!(!sample(&mut maintenance, 1));
-    maintenance.ordinary_actor(2, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::from_word(2), false, 0);
     maintenance.enter_world();
     assert!(!sample(&mut maintenance, 1401));
-    maintenance.ordinary_actor(0, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 0);
     assert!(sample(&mut maintenance, 1401));
 }
 
@@ -135,10 +135,10 @@ fn world_restore_cleans_services_before_actors_and_next_inhibited_sample_clears_
         ["ReleaseRtx", "ClearDialogue", "StopSamples", "actors"]
     );
     assert!(maintenance.reset().unwrap());
-    maintenance.ordinary_actor(1, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::OPEN, false, 0);
     assert!(!sample(&mut maintenance, 100));
     assert!(!maintenance.reset().unwrap());
-    maintenance.ordinary_actor(0, false, 0);
+    maintenance.ordinary_actor(TopicMenuState::CLOSED, false, 0);
     assert!(sample(&mut maintenance, 1));
 }
 
