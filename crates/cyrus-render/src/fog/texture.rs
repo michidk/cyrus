@@ -586,6 +586,7 @@ mod tests {
                     ambient: Vec4::ZERO,
                     directional: Vec4::ZERO,
                     direction: Vec4::ZERO,
+                    lighting: Vec4::ZERO,
                 },
                 lights: Handle::default(),
                 placement: Mat4::IDENTITY,

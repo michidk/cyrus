@@ -243,6 +243,12 @@ fn debug_menu(
         fidelity_control(
             ui,
             &mut fidelity,
+            Area::Textures,
+            "Textures (Modern: unfiltered pixels)",
+        );
+        fidelity_control(
+            ui,
+            &mut fidelity,
             Area::Music,
             "Music (Modern mutes CD data noise)",
         );

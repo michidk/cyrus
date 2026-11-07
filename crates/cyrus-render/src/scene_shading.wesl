@@ -9,7 +9,13 @@ struct SceneFog {
     ambient: vec4<f32>,
     directional: vec4<f32>,
     direction: vec4<f32>,
+    lighting: vec4<f32>,
 };
+
+// World textures are point sampled while `Area::Textures` is Modern.
+fn point_sampled() -> bool {
+    return fog.lighting.y != 0.0;
+}
 @group(MATERIAL_BIND_GROUP) @binding(100) var<uniform> fog: SceneFog;
 
 fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
@@ -22,9 +28,16 @@ fn scene_color_at_fog_position(color: vec3<f32>, depth: f32, pixel: vec2<f32>, p
     return framebuffer_rgb565(result, pixel);
 }
 
+// Higher values keep the near scene clearer and thicken the haze closer to the far clip; a Modern
+// tuning choice.
+const MODERN_FOG_STEEPNESS: f32 = 4.0;
+
 fn scene_fog_at_position(color: vec3<f32>, depth: f32, position: vec2<u32>) -> vec3<f32> {
     if fog.clipping.z != 0.0 {
-        let density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
+        // Modern fog: an exponential-squared haze normalised to be opaque at the far clip, so distant
+        // scenery fades into the sky colour instead of being cut off.
+        let t = clamp(depth / fog.clipping.y, 0.0, 1.0);
+        let density = 255.0 * (1.0 - exp(-MODERN_FOG_STEEPNESS * t * t)) / (1.0 - exp(-MODERN_FOG_STEEPNESS));
         return blend_fog(color, fog.color.rgb, density);
     }
     let next = min(position.x + 1u, 63u);

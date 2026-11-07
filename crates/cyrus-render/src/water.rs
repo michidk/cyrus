@@ -323,19 +323,26 @@ pub(crate) fn animate_water(
             .collect();
         playback.grid = grid;
     }
-    let view = cameras.single().ok().and_then(|(camera, transform)| {
-        let viewport = camera.physical_viewport_size()?.as_vec2();
-        let projection = camera.clip_from_view();
-        Some(crate::terrain::View {
-            camera_from_local: transform.to_matrix().inverse(),
-            scale: Vec2::new(projection.x_axis.x, -projection.y_axis.y),
-            viewport: viewport.to_array(),
-            clipping: distance
-                .as_ref()
-                .and_then(|d| d.effective(&fidelity))
-                .unwrap_or(environment.clipping),
-        })
-    });
+    // Modern lighting draws the whole unprojected terrain, which can cast shadows, instead of the
+    // original's per-frame camera-space preparation.
+    let prepare_for_camera = fidelity.mode(Area::Lighting) != Mode::Modern;
+    let view = cameras
+        .single()
+        .ok()
+        .filter(|_| prepare_for_camera)
+        .and_then(|(camera, transform)| {
+            let viewport = camera.physical_viewport_size()?.as_vec2();
+            let projection = camera.clip_from_view();
+            Some(crate::terrain::View {
+                camera_from_local: transform.to_matrix().inverse(),
+                scale: Vec2::new(projection.x_axis.x, -projection.y_axis.y),
+                viewport: viewport.to_array(),
+                clipping: distance
+                    .as_ref()
+                    .and_then(|d| d.effective(&fidelity))
+                    .unwrap_or(environment.clipping),
+            })
+        });
     let WaterPlayback {
         terrain,
         grid,
@@ -1023,6 +1030,10 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, dry_mesh);
         assert_eq!(positions(&app, &first), a);
+        // Modern lighting draws the unprojected terrain; the camera preparation below is Faithful's.
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Lighting, Mode::Faithful);
         app.world_mut().despawn(entity);
         app.world_mut().despawn(other);
         let replacement = app

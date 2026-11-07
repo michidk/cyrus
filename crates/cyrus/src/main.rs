@@ -154,7 +154,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             args.launch.controls,
         ),
         (cyrus_game::fidelity::Area::Camera, args.launch.camera),
-        (cyrus_game::fidelity::Area::Lighting, args.launch.lighting),
     ] {
         if let Some(value) = value {
             settings.fidelity.set(area, mode(&value));

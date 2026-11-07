@@ -1,28 +1,37 @@
-//! The sun, ambient light and object lights the stand-ins are lit with.
+//! The sun, ambient light and object lights the modern lighting shades the world with.
+//!
+//! The lights are calibrated against the camera's exposure so a surface that faces the sun shows
+//! its texture colour scaled by the original's light values, read as the original's 0..=255 light
+//! factors: Bevy's diffuse term is `albedo / π · illuminance · exposure` for the sun and
+//! `albedo · intensity · exposure` for a uniform environment light.
 use super::super::owns_prepared_environment;
 use super::plugin::Light;
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use bevy::{
     asset::RenderAssetUsages,
+    camera::Exposure,
     ecs::system::SystemParam,
-    light::{CascadeShadowConfigBuilder, EnvironmentMapLight, light_consts},
+    light::{CascadeShadowConfigBuilder, EnvironmentMapLight},
     prelude::*,
     render::render_resource::{
         Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
     },
 };
 use cyrus_assets::environment::{Environment, LocalLight, ModelLighting};
+use std::f32::consts::PI;
 
-/// Peak sun illuminance in lux for a directional strength of 255; a Modern tuning choice.
-const SUN_ILLUMINANCE: f32 = light_consts::lux::AMBIENT_DAYLIGHT;
-/// Environment light in cd/m² for an ambient strength of 255; a Modern tuning choice.
-const AMBIENT_LUMINANCE: f32 = 3000.0;
-/// Luminous power of an object light per squared world-unit radius, in lumens; a Modern tuning choice.
-const OBJECT_LIGHT_LUMENS: f32 = 160.0;
+/// Distance from an object light, as a fraction of its radius, where it lights a facing surface
+/// as fully as the sun at full strength; a Modern tuning choice.
+const OBJECT_LIGHT_FULL_AT: f32 = 0.25;
 /// Distance of the first sun shadow cascade, in world units; a Modern tuning choice.
-const SHADOW_FIRST_CASCADE: f32 = 60.0;
+const SHADOW_FIRST_CASCADE: f32 = 20.0;
 /// Distance the sun shadow cascades reach, in world units; a Modern tuning choice.
-const SHADOW_DISTANCE: f32 = 2000.0;
+const SHADOW_DISTANCE: f32 = 400.0;
+
+/// The camera exposure the lights are calibrated for; the view camera keeps Bevy's default.
+fn exposure() -> f32 {
+    Exposure::default().exposure()
+}
 /// Everything the lights were last built from.
 pub(super) struct Built {
     environment: AssetId<Environment>,
@@ -111,19 +120,22 @@ pub(super) fn sync_lights(
     });
 }
 
+/// An original 0..=255 light triple as a colour whose linear value is the light factor.
+fn light_color(rgb: [f32; 3]) -> Color {
+    let [r, g, b] = rgb.map(|value| (value / 255.0).clamp(0.0, 1.0));
+    Color::srgb(r, g, b)
+}
+
 fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
-    let sun = peak(lighting.directional);
     if let Ok(direction) = Dir3::new(Vec3::from(lighting.direction))
-        && sun >= 1.0
+        && peak(lighting.directional) >= 1.0
     {
-        let [r, g, b] = lighting
-            .directional
-            .map(|value| (value / sun).clamp(0.0, 1.0));
         commands.spawn((
             Light,
             DirectionalLight {
-                color: Color::srgb(r, g, b),
-                illuminance: SUN_ILLUMINANCE * sun / 255.0,
+                color: light_color(lighting.directional),
+                // Cancels Bevy's 1/π and the exposure, so the light factor reaches the surface.
+                illuminance: PI / exposure(),
                 shadow_maps_enabled: true,
                 contact_shadows_enabled: true,
                 ..default()
@@ -161,12 +173,13 @@ fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> Enviro
     EnvironmentMapLight {
         diffuse_map: cube.clone(),
         specular_map: cube,
-        intensity: AMBIENT_LUMINANCE * peak(lighting.ambient) / 255.0,
+        // The cube's sRGB texels are the light factor; this cancels the exposure.
+        intensity: 1.0 / exposure(),
         ..default()
     }
 }
 
-/// An object light as the world places it: position, reach in world units and colour.
+/// An object light as the world places it: position, reach in world units and 0..=255 colour.
 struct Placed {
     position: Vec3,
     radius: f32,
@@ -183,19 +196,25 @@ fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
                 light.position.map(f64::from),
             )),
             radius: f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE,
-            rgb: light.rgb.map(|value| f32::from(value) / 255.0),
+            rgb: light.rgb.map(f32::from),
         })
+}
+
+/// Luminous power, in lumens, of a point light that gives a facing surface the sun's full light
+/// factor at `distance` world units: `power / (4π·d²)` is the illuminance and `π / exposure` the
+/// sun's.
+fn point_light_power(distance: f32) -> f32 {
+    4.0 * PI * PI * distance * distance / exposure()
 }
 
 /// Object lights are point lights.
 fn spawn_object_lights(commands: &mut Commands, lights: &[LocalLight]) {
     for light in placed(lights) {
-        let [r, g, b] = light.rgb;
         commands.spawn((
             Light,
             PointLight {
-                color: Color::srgb(r, g, b),
-                intensity: OBJECT_LIGHT_LUMENS * light.radius * light.radius,
+                color: light_color(light.rgb),
+                intensity: point_light_power(light.radius * OBJECT_LIGHT_FULL_AT),
                 range: light.radius,
                 // Dozens of lights per world; shadows would multiply the shadow passes.
                 shadow_maps_enabled: false,

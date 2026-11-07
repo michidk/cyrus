@@ -103,6 +103,7 @@ mod tests {
             ambient: Vec4::splat(71.0),
             directional: Vec4::splat(137.0),
             direction: Vec4::new(0.0, 0.0, -1.0, 0.0),
+            lighting: Vec4::ZERO,
         };
         let mut draw = EffectDraw {
             texture: Handle::default(),

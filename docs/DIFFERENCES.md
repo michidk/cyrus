@@ -40,14 +40,25 @@ sync-marked data sectors and keeps the track's length and timing.
 
 ## Modern lighting
 
-The original lights models and terrain with vertex-driven shading and its own fog, clipping and palette
-arithmetic. The `lighting` fidelity area, Modern only, instead shades opaque world meshes with Bevy's
-physically based forward pipeline: a cascaded shadow-mapped sun, the ambient colour as an environment light
-and the object lights as point lights, all read from the world's installed lighting data. The camera adds
-screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and bloom. Brightness, shadow distances,
-the point lights' power and the effects are tuning choices, not measured matches. Flats, water, sky,
-alpha-masked or chroma-keyed meshes and the HUD keep their original shaders and draw over the lit scene;
-Glide fog and clipping do not apply to the lit meshes.
+The original lights models and terrain with vertex-driven shading in a 16-bit framebuffer. The `lighting`
+fidelity area, Modern only (set by `--mode modern` or the debug menu; it has no flag of its own), switches
+the world's own materials to physically based shading through Bevy's lights: a cascaded shadow-mapped sun,
+the ambient colour as an environment light and the object lights as point lights, all read from the world's
+installed lighting data. The lights are calibrated so a fully lit surface shows its texture colour, and
+tonemapping is off so the sky, water and flats keep the original's colours. Models and terrain draw their
+full world-space meshes instead of the original's screen-space prepared geometry, and they cast and
+receive shadows. The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
+bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
+measured matches. Flats keep their original shading.
+
+Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
+which moves six times farther than the world's installed clipping distance.
+
+## Unfiltered textures
+
+The original renders through 3dfx Glide with bilinear texture filtering, which Faithful reproduces.
+The `textures` fidelity area, Modern only (set by `--mode modern` or the debug menu), point-samples
+world model and terrain textures instead, so the pixel art stays sharp. The sky keeps its filtering.
 
 ## Credits scroll pace
 

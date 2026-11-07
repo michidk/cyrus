@@ -20,7 +20,13 @@ fn settings_toml_overrides_one_area() {
 #[test]
 fn environmental_modes_switch_independently_and_roundtrip() {
     let mut fidelity = Fidelity::default();
-    for area in [Area::Water, Area::Fog, Area::Sky, Area::Lighting] {
+    for area in [
+        Area::Water,
+        Area::Fog,
+        Area::Sky,
+        Area::Lighting,
+        Area::Textures,
+    ] {
         fidelity.set(area, Mode::Modern);
         let saved = toml::to_string(&fidelity).unwrap();
         let restored: Fidelity = toml::from_str(&saved).unwrap();

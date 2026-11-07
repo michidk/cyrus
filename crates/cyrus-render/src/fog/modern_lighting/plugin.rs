@@ -1,15 +1,14 @@
-//! The modern lighting plugin, its camera effects and teardown, and the markers the other lighting
-//! modules share.
-use super::{
-    Proxy,
-    lights::sync_lights,
-    proxies::{hide_draws, sync_proxies},
-};
+//! The modern lighting plugin, its camera effects and teardown, and the light marker the light
+//! module shares.
+use super::lights::sync_lights;
 use crate::camera::ViewCamera;
 use bevy::{
     anti_alias::smaa::Smaa,
-    camera::{Hdr, visibility::RenderLayers},
-    core_pipeline::prepass::{DepthPrepass, NormalPrepass},
+    camera::Hdr,
+    core_pipeline::{
+        prepass::{DepthPrepass, NormalPrepass},
+        tonemapping::Tonemapping,
+    },
     light::{EnvironmentMapLight, ShadowFilteringMethod},
     pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
     post_process::bloom::Bloom,
@@ -17,25 +16,20 @@ use bevy::{
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
 
-/// Lights the world with PBR stand-ins while `Area::Lighting` is Modern. Add after `DefaultPlugins`.
+/// Lights the world with PBR while `Area::Lighting` is Modern; the scene materials switch their
+/// own shading. Add after `DefaultPlugins`.
 pub struct ModernLightingPlugin;
 
 impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
+        // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
+        // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
         app.add_systems(
-            PostUpdate,
+            Update,
             (
-                (
-                    sync_proxies,
-                    hide_draws.after(sync_proxies),
-                    sync_lights,
-                    configure_camera,
-                )
-                    .run_if(lit),
+                (sync_lights, configure_camera).run_if(lit),
                 restore.run_if(not(lit)),
-            )
-                .after(TransformSystems::Propagate)
-                .after(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
+            ),
         );
     }
 }
@@ -44,28 +38,18 @@ fn lit(fidelity: Res<Fidelity>) -> bool {
     fidelity.mode(Area::Lighting) == Mode::Modern
 }
 
-/// The source mesh a [`Proxy`] stands in for.
-#[derive(Component)]
-pub(super) struct StandInOf(pub(super) Entity);
-
-/// A source mesh that has a stand-in; its own draw is hidden.
-#[derive(Component)]
-pub(super) struct Replaced;
-
-/// The render layers an entity had before its draw was hidden for stand-ins.
-#[derive(Component)]
-pub(super) struct Hidden(pub(super) Option<RenderLayers>);
-
 /// A light, or the marker that lights were built, owned by this module.
 #[derive(Component)]
 pub(super) struct Light;
 
-/// Camera effects. Everything is Bevy's own; a Modern tuning choice. Temporal
-/// anti-aliasing is left out: the stand-ins of animated meshes are rewritten in place, so they have
-/// no valid motion vectors, and the original shader draws write none.
+/// Camera effects. Everything is Bevy's own; a Modern tuning choice. Temporal anti-aliasing is
+/// left out because the original's mesh animation rewrites vertex positions in place without
+/// motion vectors. Tonemapping is off: the lights are calibrated so a fully lit surface shows
+/// its texture colour, and the sky, water and flats keep the original's colours.
 #[derive(Bundle)]
 struct CameraEffects {
     hdr: Hdr,
+    tonemapping: Tonemapping,
     // Screen-space ambient occlusion and contact shadows need depth, and the former normals.
     depth: DepthPrepass,
     normals: NormalPrepass,
@@ -80,6 +64,7 @@ impl Default for CameraEffects {
     fn default() -> Self {
         Self {
             hdr: Hdr,
+            tonemapping: Tonemapping::None,
             depth: DepthPrepass,
             normals: NormalPrepass,
             ambient_occlusion: ScreenSpaceAmbientOcclusion::default(),
@@ -101,49 +86,34 @@ fn configure_camera(
 }
 
 /// Undoes everything this module changed once modern lighting is off.
-#[allow(clippy::type_complexity)] // Bevy query filters.
 fn restore(
     mut commands: Commands,
     cameras: Query<Entity, (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>)>,
-    owned: Query<Entity, Or<(With<Proxy>, With<Light>)>>,
-    hidden: Query<(Entity, &Hidden)>,
+    lights: Query<Entity, With<Light>>,
 ) {
     for camera in &cameras {
-        commands.entity(camera).remove::<(
-            Hdr,
-            DepthPrepass,
-            NormalPrepass,
-            ScreenSpaceAmbientOcclusion,
-            ContactShadows,
-            Smaa,
-            Bloom,
-            ShadowFilteringMethod,
-            EnvironmentMapLight,
-        )>();
+        commands
+            .entity(camera)
+            .remove::<(
+                Hdr,
+                DepthPrepass,
+                NormalPrepass,
+                ScreenSpaceAmbientOcclusion,
+                ContactShadows,
+                Smaa,
+                Bloom,
+                ShadowFilteringMethod,
+                EnvironmentMapLight,
+            )>()
+            .insert(Tonemapping::default());
     }
-    for entity in &owned {
-        commands.entity(entity).despawn();
+    for light in &lights {
+        commands.entity(light).despawn();
     }
-    for (entity, hidden) in &hidden {
-        unhide(&mut commands, entity, hidden);
-    }
-}
-
-pub(super) fn unhide(commands: &mut Commands, entity: Entity, hidden: &Hidden) {
-    let mut entity = commands.entity(entity);
-    match &hidden.0 {
-        Some(layers) => entity.insert(layers.clone()),
-        None => entity.remove::<RenderLayers>(),
-    };
-    entity.remove::<(Hidden, Replaced)>();
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        lights::sync_lights,
-        proxies::{hide_draws, sync_proxies},
-    };
     use super::*;
 
     // Bevy rejects overlapping mutable and shared queries when a system is first set up, which
@@ -152,13 +122,7 @@ mod tests {
     fn systems_have_disjoint_queries() {
         let mut world = World::new();
         let mut schedule = Schedule::default();
-        schedule.add_systems((
-            restore,
-            sync_proxies,
-            hide_draws,
-            sync_lights,
-            configure_camera,
-        ));
+        schedule.add_systems((restore, sync_lights, configure_camera));
         schedule
             .initialize(&mut world)
             .expect("systems initialize without query conflicts");

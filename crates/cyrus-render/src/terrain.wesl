@@ -5,9 +5,12 @@ import bevy_pbr::render::{
     view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
+    pbr_types::PbrInput,
 };
+@if(MODERN_LIGHTING)
+import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::srgb_to_linear;
-import package::scene_shading::{fog, scene_color_at_fog_position};
+import package::scene_shading::{fog, point_sampled, scene_color_at_fog_position, scene_fog_at_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
@@ -93,6 +96,18 @@ fn vertex(raw: Vertex,
 }
 
 
+// The terrain lit by Bevy's lights as a matte material.
+@if(MODERN_LIGHTING)
+fn modern_lit(input: PbrInput, albedo: vec3<f32>) -> vec3<f32> {
+    var lit = input;
+    lit.material.base_color = vec4(albedo, 1.0);
+    lit.material.emissive = vec4(0.0);
+    lit.material.metallic = 0.0;
+    lit.material.perceptual_roughness = 1.0;
+    lit.material.reflectance = vec3(0.0);
+    return apply_pbr_lighting(lit).rgb;
+}
+
 @fragment
 fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var depth = -(view.view_from_world * in.world_position).z * 20.0;
@@ -126,13 +141,15 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Terrain lighting modulates encoded texture RGB before scene fog.
     var encoded: vec3<f32>;
 @if(!PREPARED_TERRAIN)
-    encoded = sample_encoded(surface.uv, false, true) * (in.color * in.position.w);
+    encoded = sample_encoded(surface.uv, point_sampled(), true) * (in.color * in.position.w);
 @if(PREPARED_TERRAIN) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
     let light = vec3(color_channel(in.red, offset), color_channel(in.green, offset), color_channel(in.blue, offset));
-    encoded = floor(round(sample_encoded(surface.uv, false, true) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
+    encoded = floor(round(sample_encoded(surface.uv, point_sampled(), true) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);
+@if(MODERN_LIGHTING)
+    color = modern_lit(input, srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true)));
     if water_weight > 0.0 {
         let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
         let to_camera = normalize(view.world_position - in.world_position.xyz);
@@ -143,5 +160,8 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     }
     var out: FragmentOutput;
     out.color = vec4(scene_color_at_fog_position(color, depth, in.position.xy, fog_position), base.a);
+    // Modern lighting keeps the scene fog but not the original's 16-bit framebuffer.
+@if(MODERN_LIGHTING)
+    out.color = vec4(scene_fog_at_position(color, depth, fog_position), base.a);
     return out;
 }

@@ -5,12 +5,14 @@ import bevy_pbr::render::{
     view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
-    pbr_types::STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT,
+    pbr_types::{STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT, PbrInput},
 };
 @if(PREMULTIPLY_ALPHA)
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
+@if(MODERN_LIGHTING)
+import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::scene_shading::{fog, scene_color, scene_fog_at_position};
+import package::scene_shading::{fog, point_sampled, scene_color, scene_fog_at_position};
 import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
@@ -86,6 +88,9 @@ fn vertex(raw: Vertex,
 }
     // The original model matrix acts directly on normals, retaining their magnitude.
     out.normal = (transform * vec4(vertex.normal, 0.0)).xyz;
+    // Physically based lighting needs unit world normals.
+@if(MODERN_LIGHTING)
+    out.normal = mesh_functions::mesh_normal_local_to_world(vertex.normal, raw.instance_index);
     out.uv = vertex.uv;
     let weight = max(0.0, -dot(fog.direction.xyz, out.normal));
     var color = fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz;
@@ -107,8 +112,24 @@ fn vertex(raw: Vertex,
     }
     // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
     out.color = clamp(color, vec3(0.0), vec3(255.0)) * (tint / 255.0) * out.position.w;
+    // Modern lighting replaces the vertex light; the tint is the surface colour.
+@if(MODERN_LIGHTING)
+    out.color = clamp(tint, vec3(0.0), vec3(1.0)) * out.position.w;
     out.instance_index = raw.instance_index;
     return out;
+}
+
+// The surface lit by Bevy's lights as a matte material, then the scene fog without the original's
+// 16-bit framebuffer.
+@if(MODERN_LIGHTING)
+fn modern_lit(input: PbrInput, albedo: vec3<f32>, depth: f32) -> vec3<f32> {
+    var lit = input;
+    lit.material.base_color = vec4(albedo, 1.0);
+    lit.material.emissive = vec4(0.0);
+    lit.material.metallic = 0.0;
+    lit.material.perceptual_roughness = 1.0;
+    lit.material.reflectance = vec3(0.0);
+    return scene_fog_at_position(apply_pbr_lighting(lit).rgb, depth, fog_table_position(depth));
 }
 
 @fragment
@@ -134,7 +155,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     var texture_rgb = linear_to_srgb(base.rgb);
     var texture_key = model.chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
-        texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u, false);
+        texture_rgb = sample_encoded(surface.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false);
         if model.compositing.x >= 0.0 {
             texture_rgb = sample_flat(surface.uv);
             texture_key = vec3(0.0);
@@ -145,13 +166,18 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
         let coordinate = texture_coordinates(in.texture_a, in.texture_b, in.texture_c, in.texture_d, in.texture_e, offset);
         texture_key = vec3(0.0);
-        texture_rgb = sample_model(coordinate, model.texture_layout, u32(model.texture_scale.z), (u32(model.parameters.w) & 1u) != 0u, texture_key);
+        texture_rgb = sample_model(coordinate, model.texture_layout, u32(model.texture_scale.z), point_sampled() || (u32(model.parameters.w) & 1u) != 0u, texture_key);
     }
 }
     if model.chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, texture_key) {
         discard;
     }
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
+@if(MODERN_LIGHTING) {
+    var lit_out: FragmentOutput;
+    lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), base.a);
+    return lit_out;
+}
     var encoded = texture_rgb * (in.color * in.position.w);
 @if(PREPARED_MODEL) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
