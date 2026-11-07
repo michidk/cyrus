@@ -6429,9 +6429,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let model = hud
                 .item_hand_model(item)?
                 .with_context(|| format!("{function}: item {item} is not in the item list"))?;
-            // An item without a hand model returns zero without allocating a record.
-            let Some(model) = model else {
-                return Ok(CallResult::Complete(0));
+            use cyrus_assets::hud::ItemHandModel;
+            let model = match model {
+                // An item without a hand model returns zero without allocating a record.
+                ItemHandModel::Absent => return Ok(CallResult::Complete(0)),
+                ItemHandModel::Model(model) => model,
+                ItemHandModel::Unexported => anyhow::bail!(
+                    "{function}: item {item}'s hand model is not in this HUD export; export the \
+                     installed assets again"
+                ),
             };
             let data = self
                 .inputs

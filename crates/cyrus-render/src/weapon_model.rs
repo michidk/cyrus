@@ -137,23 +137,25 @@ mod tests {
     use super::*;
     use crate::script_transform::scene_transform_at;
     use cyrus_assets::{animation::Animations, script::Scripts};
-    use cyrus_script::script::{AnimationData, ScriptInputs, ScriptStage, ScriptWorld};
+    use cyrus_script::script::{AnimationData, ScriptHud, ScriptInputs, ScriptStage, ScriptWorld};
     use serde_json::json;
 
-    fn world() -> (ScriptWorld, Animations) {
-        let mut value: serde_json::Value = serde_json::from_str(r##"{
+    fn world(native: &str, first_argument: &str) -> (ScriptWorld, Animations) {
+        let mut value: serde_json::Value = serde_json::from_str(&r##"{
             "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":true},
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
             "actor_pool_capacity":10,"content_id":"","world":17,
-            "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"},{"name":"DisplayHandModel","param_count":4,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+            "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"},{"name":"NATIVE","param_count":4,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
             "actors":{"STATIC":{"header_index":0,"code_origin":0,"instances":1,"instance_variables":[[]],"location_offsets":[],"attributes":[],
                 "program":{"version":4,"entry":0,"strings":["system\\hand.3d"],"steps":{
-                    "0":{"next":1,"operation":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":"DisplayHandModel","arguments":[
-                        {"type":"string","index":0},{"type":"integer","value":256},{"type":"integer","value":512},{"type":"integer","value":768}]}}},
+                    "0":{"next":1,"operation":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":"NATIVE","arguments":[
+                        FIRST,{"type":"integer","value":256},{"type":"integer","value":512},{"type":"integer","value":768}]}}},
                     "1":{"next":2,"operation":{"type":"end","target":0}}
                 }}}},
             "instances":[{"object_id":0,"actor":"STATIC","object_type":1,"active":0,"model_name":"test","model_mode":0,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[40,-60,80],"angles":[0,0,0]}],"unsupported":{}
-        }"##)
+        }"##
+        .replace("NATIVE", native)
+        .replace("FIRST", first_argument))
         .unwrap();
         value["actors"]["STATIC"]["attributes"] = json!(vec![0u8; 256]);
         let mut scripts: Scripts = serde_json::from_value(value).unwrap();
@@ -188,8 +190,9 @@ mod tests {
         (world, data)
     }
 
-    fn inputs(data: &Animations) -> ScriptInputs<'_> {
+    fn inputs<'a>(data: &'a Animations, hud: Option<&'a ScriptHud>) -> ScriptInputs<'a> {
         ScriptInputs {
+            hud,
             frame_scale: Some(256),
             nominal_ticks: Some(1),
             animations: Some(AnimationData(data)),
@@ -205,15 +208,18 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn display_attachments_are_drawn_at_their_pose_until_the_frame_ends() {
-        let (mut world, data) = world();
+    /// The world's script placed one display attachment; the plugin draws it at its pose and
+    /// drops it when the next ordinary update empties the frame's pool.
+    fn assert_drawn_until_the_frame_ends(
+        (mut world, data): (ScriptWorld, Animations),
+        hud: Option<&ScriptHud>,
+    ) {
         let id = world.id(0).unwrap();
         world
             .advance(
                 id,
                 ScriptStage::OrdinaryMain,
-                inputs(&data),
+                inputs(&data, hud),
                 Some(&mut |_, _| Ok(())),
                 None,
                 100,
@@ -262,7 +268,7 @@ mod tests {
                 &data,
                 [10, 30],
                 cyrus_script::script::OrdinaryInputs {
-                    scripts: inputs(&data),
+                    scripts: inputs(&data, hud),
                     scene: None,
                 },
                 &mut random,
@@ -272,5 +278,63 @@ mod tests {
             .unwrap();
         app.update();
         assert!(roots(&mut app).is_empty());
+    }
+
+    #[test]
+    fn display_attachments_are_drawn_at_their_pose_until_the_frame_ends() {
+        assert_drawn_until_the_frame_ends(
+            world("DisplayHandModel", r#"{"type":"string","index":0}"#),
+            None,
+        );
+    }
+
+    #[test]
+    fn item_display_attachments_are_drawn_from_the_item_lists_hand_model() {
+        use cyrus_assets::hud::{HudAsset, InventoryItem, ItemHandModel};
+        let mut item = InventoryItem {
+            count: 1,
+            total: 100,
+            player_max: 100,
+            ..Default::default()
+        };
+        item.hand_model = ItemHandModel::Model("HAND".into());
+        let asset = HudAsset {
+            labels: Default::default(),
+            images: vec![],
+            candle_mode: 0,
+            candle: [0; 2],
+            candle_size: [0; 2],
+            pickup: [0; 2],
+            prompt: [0; 2],
+            override_ticks: 0,
+            compass: [0; 2],
+            compass_size: [0; 2],
+            world_compass: Default::default(),
+            powerup_slots: [[0; 2]; 2],
+            powerup_sizes: vec![],
+            logbook: [0; 2],
+            logbook_size: [0; 2],
+            walk_mode: false,
+            auto_defend: false,
+            notices: Default::default(),
+            inventory: [(4, item)].into_iter().collect(),
+            start_items: vec![],
+            items: vec![],
+            selected: None,
+            bindings: [0; 15],
+            font: Default::default(),
+            text_alpha: [0; 2],
+            player_text_alpha: [0; 2],
+            used_text_alpha: [0; 2],
+            torch_time: None,
+            inventory_screen: Default::default(),
+            island_map: Default::default(),
+        };
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+        assert_drawn_until_the_frame_ends(
+            world("DisplayHandItem", r#"{"type":"integer","value":4}"#),
+            Some(&hud),
+        );
     }
 }

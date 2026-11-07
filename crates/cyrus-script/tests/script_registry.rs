@@ -33805,8 +33805,10 @@ fn run_display_items(
 
 /// The item list: item 4 has the hand model `HAND`, item 5 has no hand model.
 fn display_item_hud() -> cyrus_script::script::ScriptHud {
-    let mut asset = inventory_asset(&[(4, 1), (5, 1)]);
-    asset.inventory.get_mut(&4).unwrap().hand_model = Some("HAND".into());
+    let mut asset = inventory_asset(&[(4, 1), (5, 1), (7, 1)]);
+    asset.inventory.get_mut(&4).unwrap().hand_model =
+        cyrus_assets::hud::ItemHandModel::Model("HAND".into());
+    asset.inventory.get_mut(&5).unwrap().hand_model = cyrus_assets::hud::ItemHandModel::Absent;
     let hud = cyrus_script::script::ScriptHud::default();
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
     hud
@@ -33862,6 +33864,32 @@ fn display_items_place_the_item_list_hand_model_for_the_frame() {
         )
         .unwrap();
     assert!(world.display_attachments().is_empty());
+}
+
+#[test]
+fn display_items_from_an_export_without_hand_models_refuse_instead_of_reading_as_none() {
+    // Item 7 stands for an export written before hand models were recorded: its record has the
+    // default (unexported) hand model, which must not read as an item without a hand model.
+    let hud = display_item_hud();
+    let (mut world, data, _) = display_model_fixture(
+        "hand",
+        "hilt",
+        [0; 3],
+        false,
+        vec![display_item_call(7, Native::DisplayHandItem)],
+    );
+    let error = run_display_items(&mut world, &data, &hud).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("not in this HUD export"),
+        "{error:#}"
+    );
+    // An old item record without the field deserializes as unexported.
+    let old: cyrus_assets::hud::InventoryItem = serde_json::from_value(serde_json::json!({
+        "weapon": false, "count": 0, "total": 1, "player_max": 1, "hidden": false, "flags": 0,
+        "required_items": [], "drop_add_items": [], "add_items": [], "remove_drop_items": []
+    }))
+    .unwrap();
+    assert_eq!(old.hand_model, cyrus_assets::hud::ItemHandModel::Unexported);
 }
 
 #[test]
