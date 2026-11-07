@@ -98,6 +98,7 @@ native exporter is required.
 | `?new-game=true` | `--new-game` |
 | `?movie=2` | `--movie 2` |
 | `?skip-movies=true` | `--skip-movies` |
+| `?volume=0` | `--volume 0` |
 | `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
 | `?sky=modern` | `--sky modern` |

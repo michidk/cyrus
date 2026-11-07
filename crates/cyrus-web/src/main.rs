@@ -47,6 +47,12 @@ fn main() {
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))
+            .set(bevy::audio::AudioPlugin {
+                global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                    cyrus_app::launch::volume_gain(options.volume),
+                )),
+                ..default()
+            })
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()

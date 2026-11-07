@@ -217,6 +217,12 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins(
             DefaultPlugins
                 .set(cyrus_app::window("cyrus"))
+                .set(bevy::audio::AudioPlugin {
+                    global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                        cyrus_app::launch::volume_gain(args.launch.volume),
+                    )),
+                    ..default()
+                })
                 .add_before::<bevy::pbr::PbrPlugin>(rendering::SoftwareRenderingPlugin)
                 .disable::<bevy::log::LogPlugin>(),
         );
