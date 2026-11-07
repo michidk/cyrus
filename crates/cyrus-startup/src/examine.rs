@@ -455,6 +455,52 @@ mod tests {
         assert!(towards.get_pixel(320, 240).0[0] > away.get_pixel(320, 240).0[0] + 50);
     }
 
+    /// Every installed inventory model draws visibly at its resting pose with the installed
+    /// extents, so a draw that culls or misplaces real geometry is caught.
+    #[test]
+    fn every_installed_inventory_model_is_visible_at_its_resting_pose() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match cyrus_assets::install::GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let files = cyrus_assets::game::prepare(&source, "hud/overlay.hud").unwrap();
+        let artwork: ExamineArtwork = serde_json::from_slice(&files["hud/examine.models"]).unwrap();
+        artwork.validate().unwrap();
+        let hud: serde_json::Value = serde_json::from_slice(&files["hud/overlay.hud"]).unwrap();
+        let look = ExamineLook {
+            ambient: [64.0; 3],
+            directional: [128.0; 3],
+            direction: [0.3, -0.6, 0.7],
+            palette: (0..=255).map(|i| [i as u8; 3]).collect(),
+        };
+        let mut drawn = 0;
+        for (id, item) in hud["inventory"].as_object().unwrap() {
+            let Some(name) = item["inventory_model"]["Model"].as_str() else {
+                continue;
+            };
+            let extents = item["inventory_extents"].as_array().unwrap();
+            let depth = extents[2].as_i64().unwrap() as f32 + 180.0;
+            let pose = ViewerPose {
+                position: [0.0, 0.0, depth],
+                ..pose()
+            };
+            let image = paint(&artwork, &artwork.models[name], &pose, &look).unwrap();
+            let visible = image.pixels().filter(|pixel| pixel.0[3] != 0).count();
+            assert!(
+                visible > 100,
+                "item {id} model {name}: {visible} visible pixels"
+            );
+            drawn += 1;
+        }
+        assert!(drawn > 20, "only {drawn} models drawn");
+    }
+
     #[test]
     fn a_missing_world_palette_is_a_contextual_error() {
         let (artwork, model) = quad(0);
