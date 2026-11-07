@@ -5334,7 +5334,60 @@ fn task_word(name: Property) -> Option<(usize, super::tasks::TaskWord)> {
     })
 }
 
+/// The task slot field a `task_status`, `task_pause` or `task_timer` property names.
+fn task_slot_name(name: Property) -> Option<(usize, cyrus_soup::TaskSlotField)> {
+    use Property::*;
+    use cyrus_soup::TaskSlotField;
+    [
+        (
+            TaskSlotField::Status,
+            [
+                TaskStatus0,
+                TaskStatus1,
+                TaskStatus2,
+                TaskStatus3,
+                TaskStatus4,
+                TaskStatus5,
+            ],
+        ),
+        (
+            TaskSlotField::Pause,
+            [
+                TaskPause0, TaskPause1, TaskPause2, TaskPause3, TaskPause4, TaskPause5,
+            ],
+        ),
+        (
+            TaskSlotField::Timer,
+            [
+                TaskTimer0, TaskTimer1, TaskTimer2, TaskTimer3, TaskTimer4, TaskTimer5,
+            ],
+        ),
+    ]
+    .into_iter()
+    .find_map(|(field, names)| {
+        names
+            .iter()
+            .position(|&candidate| candidate == name)
+            .map(|slot| (slot, field))
+    })
+}
+
 impl Host for GameHost<'_, '_, '_, '_> {
+    fn task_slot_property(
+        &mut self,
+        target: &Target,
+        reference: u16,
+    ) -> Result<Option<cyrus_soup::TaskSlotProperty>> {
+        let Some((slot, field)) = task_slot_name(self.property(target, reference)?) else {
+            return Ok(None);
+        };
+        Ok(Some(cyrus_soup::TaskSlotProperty {
+            slot,
+            field,
+            own: self.property_receiver(target)? == self.index,
+        }))
+    }
+
     fn take_actor_result(&mut self) -> Option<ScriptActorId> {
         self.registry.globals.actor_result.take()
     }
@@ -5565,6 +5618,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 actor.broadcast_index
             }));
         }
+        if let Some((slot, field)) = task_slot_name(name) {
+            let index = self.property_receiver(target)?;
+            return Ok(self.registry.actors[index]
+                .runtime
+                .as_ref()
+                .with_context(|| {
+                    format!("property {name}: task slots of actor {index} unavailable")
+                })?
+                .task_slot_field(slot, field));
+        }
         if let Some((slot, word)) = task_word(name) {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index].native_commands[slot].word(word) as i32);
@@ -5739,6 +5802,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 actor.broadcast_index = value as u8;
             }
+            return Ok(());
+        }
+        if let Some((slot, field)) = task_slot_name(name) {
+            let index = self.property_receiver(target)?;
+            self.registry.actors[index]
+                .runtime
+                .as_mut()
+                .with_context(|| {
+                    format!("property {name}: task slots of actor {index} unavailable")
+                })?
+                .set_task_slot_field(slot, field, value);
             return Ok(());
         }
         if let Some((slot, word)) = task_word(name) {

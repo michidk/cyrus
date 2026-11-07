@@ -606,6 +606,22 @@ impl Host for Tasks {
         self.cancelled.push(token);
         Ok(())
     }
+    /// References 0, 1 and 2 name slot zero's status, pause and timer.
+    fn task_slot_property(
+        &mut self,
+        _: &Target,
+        reference: u16,
+    ) -> anyhow::Result<Option<TaskSlotProperty>> {
+        Ok(Some(TaskSlotProperty {
+            slot: 0,
+            field: [
+                TaskSlotField::Status,
+                TaskSlotField::Pause,
+                TaskSlotField::Timer,
+            ][usize::from(reference)],
+            own: true,
+        }))
+    }
     fn end(&mut self, _: Thread) -> anyhow::Result<()> {
         Ok(())
     }
@@ -1756,5 +1772,164 @@ fn a_task_that_completes_on_its_first_invocation_retains_no_slot() {
         vm.invoke(Thread::Main, &mut host, &mut [], 10).unwrap();
         assert_eq!(vm.active_tasks(), 0);
         assert_eq!(host.calls, [INSTANT]);
+    }
+}
+
+fn property(reference: u16) -> Place {
+    Place::Property {
+        object: Object::Me,
+        reference,
+    }
+}
+fn read_into(local: u8, reference: u16) -> Operation {
+    Operation::Assign {
+        destination: Place::Local { index: local },
+        formula: Formula {
+            first: Value::Read {
+                place: property(reference),
+            },
+            rest: vec![],
+        },
+    }
+}
+/// A program with three locals, for scripts that read slot properties into them.
+fn slot_runtime(ops: Vec<Operation>) -> Runtime {
+    let mut program = program(0, ops);
+    program.variables = vec![0; 3];
+    Runtime::new(program, "world 17 actor TEST script".into()).unwrap()
+}
+fn locals(vm: &Runtime) -> Vec<i32> {
+    vm.variables()
+        .iter()
+        .map(|v| v.integer().unwrap())
+        .collect()
+}
+
+#[test]
+fn slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass() {
+    use TaskSlotField::{Pause, Status, Timer};
+    let mut vm = slot_runtime(vec![
+        call(OBSERVE, CallKind::Multitask),
+        read_into(0, 0),
+        read_into(1, 1),
+        read_into(2, 2),
+        Operation::Yield,
+        // A raw write pauses the slot; the pass skips it and leaves its timer.
+        assign(property(1), 1),
+        Operation::Yield,
+        assign(property(1), 256),
+        Operation::Yield,
+        read_into(2, 2),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    // Allocation: a multitask holds status zero, no pause and timer one.
+    assert_eq!(locals(&vm), [0, 0, 1]);
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(
+        vm.task_slot_field(0, Timer),
+        2,
+        "the pass counted its invocation"
+    );
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(vm.task_slot_field(0, Pause), 1);
+    let polls = host.invocations.len();
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(host.invocations.len(), polls, "a paused slot is not polled");
+    assert!(!vm.has_unpaused_task());
+    assert_eq!(vm.task_slot_field(0, Timer), 2);
+    // Any byte whose low eight bits are zero resumes it, and the pass runs again.
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(vm.task_slot_field(0, Pause), 0);
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(locals(&vm)[2], 3);
+    assert_eq!(vm.task_slot_field(0, Status), 0);
+}
+
+#[test]
+fn a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer() {
+    use TaskSlotField::{Pause, Status, Timer};
+    let mut vm = slot_runtime(vec![
+        call(OBSERVE, CallKind::Task),
+        read_into(0, 0),
+        read_into(2, 2),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(vm.waiting(Thread::Main), Some(1));
+    assert_eq!(
+        [Status, Pause, Timer].map(|field| vm.task_slot_field(0, field)),
+        [1, 0, 1]
+    );
+    // A raw write of zero stops the slot blocking its thread without removing it.
+    vm.set_task_slot_field(0, Status, 0);
+    assert_eq!(vm.waiting(Thread::Main), None);
+    assert_eq!(vm.active_tasks(), 1);
+    vm.set_task_slot_field(0, Status, 1);
+    host.ready = true;
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(vm.active_tasks(), 0);
+    // Completion clears the status and leaves the timer the pass advanced.
+    assert_eq!(
+        [Status, Pause, Timer].map(|field| vm.task_slot_field(0, field)),
+        [0, 0, 2]
+    );
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(locals(&vm), [0, 0, 2]);
+}
+
+#[test]
+fn task_stop_clears_status_and_pause_but_not_the_timer() {
+    use TaskSlotField::{Pause, Status, Timer};
+    let mut vm = slot_runtime(vec![
+        call(OBSERVE, CallKind::Task),
+        Operation::TaskPause { label: 0 },
+        Operation::Yield,
+        Operation::TaskStop { label: 0 },
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    // The blocking slot gates the thread, so the stage waits with the pause not yet issued.
+    vm.set_task_slot_field(0, Status, 0);
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(
+        [Status, Pause, Timer].map(|field| vm.task_slot_field(0, field)),
+        [0, 1, 2]
+    );
+    vm.set_task_slot_field(0, Status, 5);
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(host.cancelled, [1]);
+    assert_eq!(
+        [Status, Pause, Timer].map(|field| vm.task_slot_field(0, field)),
+        [0, 0, 2]
+    );
+}
+
+#[test]
+fn slot_fields_keep_their_widths_and_signs() {
+    use TaskSlotField::{Pause, Status, Timer};
+    let mut vm = slot_runtime(vec![Operation::End { target: 0 }]);
+    for (field, written, read) in [
+        (Status, 0x1_ff, 0xff),
+        (Pause, -1, 0xff),
+        (Timer, 0x1_8000, -0x8000),
+        (Timer, 0xffff, -1),
+    ] {
+        vm.set_task_slot_field(0, field, written);
+        assert_eq!(vm.task_slot_field(0, field), read, "{field:?} {written:#x}");
     }
 }

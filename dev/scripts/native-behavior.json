@@ -7865,6 +7865,330 @@
       "reviewed_revision": "7a0876cd0874d7fb258728becd9cc732b034f4c1"
     },
     {
+      "property": "task_status[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_status[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_status[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_status[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_status[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_status[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::a_blocking_slot_holds_status_one_until_completion_clears_it_and_keeps_its_timer",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1 for a blocking task and 0 for a multitask; the task pass sums the status of unpaused occupied slots; completion and TaskStop clear it. Byte read zero-extended, write keeps the low byte; a raw write changes whether the slot blocks its thread but removes nothing and cancels nothing. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_pause[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control byte",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: TaskPause stores 1, TaskResume 0, any nonzero byte pauses, the pass skips a paused slot without polling or advancing its timer; TaskStop clears it, completion leaves it. Byte read zero-extended, write keeps the low byte. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "task_timer[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver task slot control word",
+      "caller": "Runtime read/write -> Host::task_slot_property -> cyrus-soup slot arrays (own) or GameHost::read_property/write_property -> actor runtime (other actors)",
+      "tests": [
+        "crates/cyrus-soup/tests/runtime.rs::slot_properties_follow_allocation_pause_resume_and_the_timer_of_every_pass",
+        "crates/cyrus-soup/tests/persistence.rs::the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707223301"
+      ],
+      "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
       "property": "task_variable[0]",
       "status": "partial",
       "owner": 5,
@@ -8845,18 +9169,6 @@
         "sflags",
         "static_data",
         "surface_time",
-        "task_pause[0]",
-        "task_pause[1]",
-        "task_pause[2]",
-        "task_pause[3]",
-        "task_pause[4]",
-        "task_pause[5]",
-        "task_status[0]",
-        "task_status[1]",
-        "task_status[2]",
-        "task_status[3]",
-        "task_status[4]",
-        "task_status[5]",
         "under_surface",
         "weapon_drawn"
       ],
@@ -8937,12 +9249,6 @@
         "last_frame",
         "last_handle",
         "panic_group",
-        "task_timer[0]",
-        "task_timer[1]",
-        "task_timer[2]",
-        "task_timer[3]",
-        "task_timer[4]",
-        "task_timer[5]",
         "yangle_change"
       ],
       "status": "missing",

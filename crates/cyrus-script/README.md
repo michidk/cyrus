@@ -673,4 +673,10 @@ Verified: `task_variable*[n]` read and write the four whole 32-bit words task sl
 handler (continuation, pause countdown, second continuation, packed command word/phase/counter); a write is
 what the slot's next resumption loads. See preservation's
 [task slot word properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#task-slot-word-properties).
-`task[n]`, `task_status`, `task_pause` and `task_timer` stay unsupported.
+
+Verified: `task_status[n]`, `task_pause[n]` and `task_timer[n]` read and write the slot's blocking byte, pause byte
+and 16-bit timer, which the interpreter keeps in slot arrays that survive an empty slot and a save (older saves
+migrate). The running actor's own slots are served by its interpreter and another actor's through its stored
+runtime; a write only changes the field. See preservation's
+[task slot control properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#task-slot-control-properties).
+`task[n]` stays unsupported: its call pointers have no portable encoding.

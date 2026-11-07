@@ -209,14 +209,13 @@ fn malformed_state_content_and_missing_bindings_reject_without_changing_the_live
     let snapshot = serde_json::to_value(runtime.snapshot(&sources).unwrap()).unwrap();
     let before = serde_json::to_value(runtime.state()).unwrap();
     for (pointer, value) in [
-        ("/version", json!(2)),
+        ("/version", json!(3)),
         ("/state/variables", json!([])),
         ("/state/threads/0", json!(null)),
         ("/state/threads/1", json!({"cursor": 0})),
         ("/state/threads/0/cursor", json!(999)),
         ("/state/return_to", json!(999)),
         ("/state/tasks/0/operand", json!(999)),
-        ("/state/tasks/0/blocking", json!(false)),
         ("/state/tasks/0/source/instruction", json!(0)),
         ("/state/tasks/0/source/object_call", json!(true)),
         ("/programs/100/strings", json!(["changed"])),
@@ -320,10 +319,10 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
     ]);
     assert!(receiver.snapshot(&BTreeMap::new()).is_err());
     let mut document = serde_json::to_value(receiver.snapshot(&sources).unwrap()).unwrap();
-    let mut task = document["state"]["tasks"][0].take();
-    task["paused"] = json!(true);
-    task["counter"] = json!(65535);
+    let task = document["state"]["tasks"][0].take();
     document["state"]["tasks"][4] = task;
+    document["state"]["task_pause"][4] = json!(1);
+    document["state"]["task_timer"][4] = json!(65535);
     let saved: Snapshot = serde_json::from_value(document).unwrap();
     let descriptors = saved.task_calls().unwrap();
     assert_eq!(descriptors.len(), 1);
@@ -351,8 +350,8 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
     assert!(restored_host.polls.is_empty());
     let mut resumed = serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap();
     assert!(resumed["state"]["tasks"][0].is_null());
-    assert_eq!(resumed["state"]["tasks"][4]["counter"], 65535);
-    resumed["state"]["tasks"][4]["paused"] = json!(false);
+    assert_eq!(resumed["state"]["task_timer"][4], 65535);
+    resumed["state"]["task_pause"][4] = json!(0);
     let mut restored = Runtime::from_snapshot(
         CodeOrigin(100),
         serde_json::from_value(resumed).unwrap(),
@@ -563,4 +562,57 @@ fn saved_task_calls_are_validated_unevaluated_and_keep_the_source_operand() {
     malformed["state"]["tasks"][0]["source"]["instruction"] = json!(0);
     let malformed: Snapshot = serde_json::from_value(malformed).unwrap();
     assert!(malformed.task_calls().is_err());
+}
+
+/// A saved version 1 document: the slot bytes sit in the task records, not in state arrays.
+fn version_one(
+    snapshot: &serde_json::Value,
+    blocking: bool,
+    paused: bool,
+    counter: u16,
+) -> Snapshot {
+    let mut document = snapshot.clone();
+    document["version"] = json!(1);
+    for field in ["task_status", "task_pause", "task_timer"] {
+        document["state"].as_object_mut().unwrap().remove(field);
+    }
+    document["state"]["tasks"][0]["legacy"] =
+        json!({"blocking": blocking, "paused": paused, "counter": counter});
+    serde_json::from_value(document).unwrap()
+}
+
+#[test]
+fn the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slot_arrays() {
+    let (mut runtime, _, sources) = waiting();
+    runtime.set_task_slot_field(0, TaskSlotField::Pause, 1);
+    runtime.set_task_slot_field(0, TaskSlotField::Timer, -2);
+    runtime.set_task_slot_field(3, TaskSlotField::Status, 7);
+    let snapshot = serde_json::to_value(runtime.snapshot(&sources).unwrap()).unwrap();
+    assert_eq!(snapshot["version"], 2);
+    let bindings = BTreeMap::from([(10, 1000)]);
+    let restore = |saved: Snapshot| {
+        Runtime::from_snapshot(
+            CodeOrigin(100),
+            saved,
+            &sources,
+            &bindings,
+            "actor A".into(),
+        )
+    };
+    let restored = restore(serde_json::from_value(snapshot.clone()).unwrap()).unwrap();
+    // Raw values survive, including those of an empty slot.
+    let read = |vm: &Runtime| {
+        [
+            vm.task_slot_field(0, TaskSlotField::Status),
+            vm.task_slot_field(0, TaskSlotField::Pause),
+            vm.task_slot_field(0, TaskSlotField::Timer),
+            vm.task_slot_field(3, TaskSlotField::Status),
+        ]
+    };
+    assert_eq!(read(&restored), [1, 1, -2, 7]);
+    // A version 1 save carries the three values in the task record.
+    let older = restore(version_one(&snapshot, true, true, 9)).unwrap();
+    assert_eq!(read(&older)[..3], [1, 1, 9]);
+    // Its blocking flag still has to agree with the call kind.
+    assert!(restore(version_one(&snapshot, false, false, 1)).is_err());
 }
