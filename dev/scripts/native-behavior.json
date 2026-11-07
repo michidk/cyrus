@@ -7039,11 +7039,11 @@
       "property": "angle.vy",
       "status": "partial",
       "owner": 5,
-      "scope": "Local heading with current bounded representation; original complete32-bit field not fully supported",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver",
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose",
+        "crates/cyrus-script/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver",
         "crates/cyrus-script/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
       ],
       "evidence": [
@@ -7051,7 +7051,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures resolve installed descriptor aliases at full references, write512 and preserve other pose fields; write4096 rejects without changing1536 heading. Preservation specifies complete32-bit field without normalization. Current source stores bounded u16 and refuses outside0..2048. This concrete representation gap remains unsupported, not full property parity. Unknown: wider installed writes and three-host continuation. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
     },
     {
@@ -7200,7 +7200,7 @@
       "property": "angle.vx",
       "status": "partial",
       "owner": 5,
-      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
@@ -7210,14 +7210,14 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "angle.vz",
       "status": "partial",
       "owner": 5,
-      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
@@ -7227,7 +7227,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
