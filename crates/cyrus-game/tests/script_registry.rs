@@ -35624,6 +35624,19 @@ fn scheduler_round_with(
     player_tasks: bool,
     ordinary: bool,
 ) -> anyhow::Result<()> {
+    scheduler_round_for(world, data, scene, round, player_tasks, ordinary, Some(0))
+}
+
+/// One scheduler round whose caller is the given actor (`None`: only the player's tasks run).
+fn scheduler_round_for(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    scene: &cyrus_game::player::data::PlayerScene,
+    round: usize,
+    player_tasks: bool,
+    ordinary: bool,
+    caller: Option<usize>,
+) -> anyhow::Result<()> {
     use cyrus_game::script::{
         LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
         ScriptActorSource, ScriptInputs, ScriptStage,
@@ -35634,8 +35647,11 @@ fn scheduler_round_with(
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
     let player = world.id(index).unwrap();
-    let map = world.id(0).unwrap();
-    let actors = vec![player, map];
+    let map = world.id(caller.unwrap_or(0)).unwrap();
+    let mut actors = vec![player, world.id(0).unwrap()];
+    if map.index != 0 {
+        actors.push(map);
+    }
     let hud = cyrus_game::script::ScriptHud::default();
     let prepared = world
         .prepare_ordinary_collision_query(player, scene, data, [10, 30], &actors)
@@ -35670,14 +35686,23 @@ fn scheduler_round_with(
         ..Default::default()
     };
     let mut random = cyrus_game::random::EngineRandom::default();
-    let stages: &[ScriptStage] = if ordinary {
+    let stages: &[ScriptStage] = if caller.is_none() {
+        &[]
+    } else if ordinary {
         &[ScriptStage::OrdinaryMain]
     } else if round == 0 {
         &[ScriptStage::Body(Thread::Main)]
     } else {
         &[ScriptStage::Tasks, ScriptStage::Body(Thread::Main)]
     };
-    for &stage in stages {
+    if caller.is_some_and(|caller| caller != 0) {
+        // A created caller runs in the separate update, whose entry publishes the native source.
+        world.update_created(inputs, &mut random, &mut |_, _| Ok(()), 20)?;
+    }
+    for &stage in stages
+        .iter()
+        .filter(|_| caller.is_none_or(|caller| caller == 0))
+    {
         world.advance(
             map,
             stage,
@@ -35797,6 +35822,8 @@ fn object_lineup_walks_the_receiver_to_the_callers_frame_and_ends_with_the_flag_
 fn lineup_receiver_fixture(
     native: Native,
     angle: i32,
+    caller_kills_itself: bool,
+    forward_walk: u8,
 ) -> (
     Scripts,
     ScriptWorld,
@@ -35812,7 +35839,15 @@ fn lineup_receiver_fixture(
             param_count: 3,
             kind: CallKind::Task,
         });
-        scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 3;
+        scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = forward_walk;
+        let kill_id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::KillMe,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        let kill =
+            caller_kills_itself.then(|| wait(kill_id, Native::KillMe, CallKind::Function, vec![]));
         scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
             Operation::ObjectCall {
                 call: Call {
@@ -35828,9 +35863,10 @@ fn lineup_receiver_fixture(
                 },
             },
             set_flag(7),
-            Operation::End { target: 0 },
         ]
         .into_iter()
+        .chain(kill)
+        .chain([Operation::End { target: 0 }])
         .enumerate()
         .map(|(index, operation)| {
             (
@@ -35860,7 +35896,7 @@ fn object_pickup_lineup_arrives_completes_and_the_caller_continues() {
     // and the default animation completes the task in the player's own slot; the caller continued
     // at once.
     let (_, mut world, data, scene, index) =
-        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024);
+        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024, false, 3);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35894,7 +35930,7 @@ fn line_up_walks_the_receiver_to_the_retained_source_frame_and_the_caller_contin
     // LineUp is the close mover on the receiver: it turns to the final heading, steps toward the
     // rotated offset point of the source actor retained on the first invocation and completes
     // with the default animation, while the caller continued at once.
-    let (_, mut world, data, scene, index) = lineup_receiver_fixture(Native::LineUp, 0);
+    let (_, mut world, data, scene, index) = lineup_receiver_fixture(Native::LineUp, 0, false, 3);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35924,7 +35960,7 @@ fn object_parallel_lineup_arrives_completes_and_the_caller_continues() {
     // The plain mover on the receiver toward the caller's frame: angle 1024 puts the final
     // heading on the player's own, so it steps (no path test) and finishes at caller X/Z + offsets.
     let (_, mut world, data, scene, index) =
-        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024);
+        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024, false, 3);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35950,6 +35986,55 @@ fn object_parallel_lineup_arrives_completes_and_the_caller_continues() {
 }
 
 #[test]
+fn a_departed_source_ends_the_receivers_lineup_with_an_explicit_error() {
+    // A created caller starts the task on the player and is then killed and removed (the
+    // original frees the record; a stale pointer is undefined there, so this build reports it).
+    // LineUp retained the caller on its first invocation; the object natives read the shared
+    // source, which still names the departed caller until another entry runs.
+    for (native, angle) in [
+        (Native::LineUp, 0),
+        (Native::ObjectParallelLineUp, 1024),
+        (Native::ObjectLineUp, 0),
+    ] {
+        let (_, mut world, data, scene, index) = lineup_receiver_fixture(native, angle, true, 3);
+        let player = world.id(index).unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let map = world.id(0).unwrap();
+        let position = world.spatial(map).unwrap().local.position;
+        let caller = world.create_object(map, "LOGIC", position, [0; 3]).unwrap();
+        scheduler_round_for(
+            &mut world,
+            &data,
+            &scene,
+            0,
+            false,
+            false,
+            Some(caller.index),
+        )
+        .unwrap();
+        assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 1);
+        assert!(
+            world.actors()[caller.index].runtime().is_none(),
+            "the killed created caller is removed in its own update"
+        );
+        let tasks = world.actors()[index].runtime().unwrap().active_tasks();
+        let error = scheduler_round_for(&mut world, &data, &scene, 4, true, false, None)
+            .expect_err(&format!(
+                "{native:?}: the departed source must end the task with an error (tasks {tasks})"
+            ));
+        assert!(
+            format!("{error:#}").contains("retired created receiver"),
+            "{native:?}: {error:#}"
+        );
+        let failure = world.actors()[index].failure().unwrap_or_default();
+        assert!(
+            failure.contains("retired created receiver"),
+            "{native:?}: the player's runtime records the failure: {failure}"
+        );
+    }
+}
+
+#[test]
 fn object_pickup_lineup_abandons_on_a_stale_collision_response_without_moving() {
     assert_stale_response_abandons(Native::ObjectPickupLineUp);
 }
@@ -35961,7 +36046,7 @@ fn object_parallel_lineup_abandons_on_a_stale_collision_response_without_moving(
 
 fn assert_stale_response_abandons(native: Native) {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
-    let (scripts, mut world, data, scene, index) = lineup_receiver_fixture(native, 1024);
+    let (scripts, mut world, data, scene, index) = lineup_receiver_fixture(native, 1024, false, 3);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let start = world.spatial(player).unwrap().local.position;
