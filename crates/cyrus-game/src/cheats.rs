@@ -22,6 +22,7 @@ pub enum CheatEffect {
     ActorUpdateSkip,
     MagicCarpet,
     DamageSuppression,
+    PlayerCollisionSkip,
     TaskSystem,
     AnimationSystem,
     Unsupported,
@@ -125,6 +126,7 @@ impl Cheats {
             "drno" => CheatEffect::ActorUpdateSkip,
             "magiccarpet" => CheatEffect::MagicCarpet,
             "drevil" => CheatEffect::DamageSuppression,
+            "moonraker" => CheatEffect::PlayerCollisionSkip,
             "task" => CheatEffect::TaskSystem,
             "animation" => CheatEffect::AnimationSystem,
             _ => CheatEffect::Unsupported,
@@ -158,6 +160,16 @@ impl Cheats {
             .value("magiccarpet")
             .context("missing magiccarpet state")?
             == 1)
+    }
+
+    /// The moonraker state: the selected player skips the forward obstacle probes and the actor
+    /// overlap pass of the late collision stage. Active for any nonzero value.
+    pub fn player_collision_skipped(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("moonraker")
+            .context("missing moonraker state")?
+            != 0)
     }
 
     /// The `task` state: the task scheduling system runs only for the value 1.

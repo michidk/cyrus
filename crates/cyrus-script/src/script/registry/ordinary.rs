@@ -1613,6 +1613,9 @@ pub fn run_ordinary(
                 magic_carpet: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.magic_carpet().ok()),
+                player_collision_skipped: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.player_collision_skipped().ok()),
                 combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),

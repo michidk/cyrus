@@ -265,6 +265,9 @@ pub struct ScriptInputs<'a> {
     /// Shared magiccarpet state (the value 1): the selected player's probe clears its falling
     /// byte and ends. Absence is the cheat being off.
     pub magic_carpet: Option<bool>,
+    /// Shared moonraker state: the selected player skips the forward obstacle probes and the actor
+    /// overlap pass of the late collision stage. Absence is the cheat being off.
+    pub player_collision_skipped: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,

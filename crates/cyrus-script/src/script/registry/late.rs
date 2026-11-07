@@ -1141,10 +1141,12 @@ impl ScriptWorld {
             self.world,
             id.index
         );
-        if !special {
+        // The moonraker cheat takes the selected player out of both collision passes.
+        let uncollided = skips_collision(environment.selected_player, id, script);
+        if !special && !uncollided {
             self.resolve_ordinary_obstacle_wrapper(id, obstacle_query(), environment, sounds)?;
         }
-        if mask & 8 != 0 {
+        if mask & 8 != 0 && !uncollided {
             self.resolve_ordinary_overlap_stage(id, obstacle_query(), environment, sounds)?;
         }
         self.ground_response_stage(
@@ -1276,5 +1278,45 @@ impl ScriptWorld {
         }
         self.rollback_ordinary_water(id, environment.selected_player, rollback, sounds)?;
         Ok(())
+    }
+}
+
+/// Whether the moonraker cheat takes `id` out of the late collision passes: only the selected player
+/// is exempt, and an unknown cheat state leaves the passes on.
+fn skips_collision(
+    selected_player: Option<ScriptActorId>,
+    id: ScriptActorId,
+    script: super::ScriptInputs<'_>,
+) -> bool {
+    selected_player == Some(id) && script.player_collision_skipped == Some(true)
+}
+
+#[cfg(test)]
+mod moonraker_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_selected_player_under_a_known_active_cheat_skips_collision() {
+        let player = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let other = ScriptActorId {
+            generation: 1,
+            index: 1,
+        };
+        for (selected, id, state, expected) in [
+            (Some(player), player, Some(true), true),
+            (Some(player), player, Some(false), false),
+            (Some(player), player, None, false),
+            (Some(player), other, Some(true), false),
+            (None, player, Some(true), false),
+        ] {
+            let inputs = super::super::ScriptInputs {
+                player_collision_skipped: state,
+                ..Default::default()
+            };
+            assert_eq!(skips_collision(selected, id, inputs), expected);
+        }
     }
 }
