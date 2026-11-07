@@ -1,0 +1,10 @@
+package cyrus:movement;
+
+world guest {
+    use wasvy:ecs/app@0.0.11.{query};
+    use cyrus:mods/components@0.1.0.{input, movement};
+
+    export steer: func(query: query);
+
+    include wasvy:ecs/guest@0.0.11;
+}

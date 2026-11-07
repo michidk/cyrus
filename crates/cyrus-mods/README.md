@@ -18,9 +18,10 @@ while the F1 menu is open, saves activation to `cyrus-config/mods.json`, and
 reloads an active mod's files when they change (polled every half second).
 `register_source` must run before the asset plugin is added.
 
-The API lives on one host entity with `Water`, `Camera` and `Input` components
-(`src/api.rs`). `PreUpdate` hands last frame's mod answers to cyrus-render's
-`WaterWaves` and `CameraTakeover` and publishes this frame's state, so answers
+The API lives on one host entity with `Water`, `Camera`, `Movement` and `Input`
+components (`src/api.rs`). `PreUpdate` hands last frame's mod answers to
+cyrus-render's `WaterWaves` and `CameraTakeover` and cyrus-game's `MovementWish`
+and publishes this frame's state, so answers
 apply one frame later. A hook a mod stops answering returns to the original.
 
 Security: wasvy grants mods inherited stdio and network access. Only run mods

@@ -137,6 +137,51 @@ fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
 }
 
 #[test]
+fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
+    use cyrus_game::player::input::{ModernLook, MovementWish, Wish};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
+        .add_plugins(PlayerPlugin);
+    app.update();
+    let look = |app: &App| {
+        let look = app.world().resource::<ModernLook>();
+        (look.driven, look.stick)
+    };
+    assert_eq!(
+        look(&app),
+        (false, None),
+        "no mod answers: original controls"
+    );
+    let wish = Wish {
+        direction: Vec2::new(0.0, 0.5),
+        jump: true,
+    };
+    app.insert_resource(MovementWish(Some(wish)));
+    app.update();
+    assert_eq!(look(&app), (true, Some(wish.direction)));
+    let input = app.world().resource::<PlayerInput>();
+    assert!(input.jump && input.walk);
+    // Standing still still hands control to the mod, without a stick.
+    app.insert_resource(MovementWish(Some(Wish {
+        direction: Vec2::ZERO,
+        jump: false,
+    })));
+    app.update();
+    assert_eq!(look(&app), (true, None));
+    app.insert_resource(MovementWish(None));
+    app.update();
+    assert_eq!(
+        look(&app),
+        (false, None),
+        "a mod that stops answering hands control back"
+    );
+}
+
+#[test]
 fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))

@@ -1,0 +1,2 @@
+name = "Modern movement (WASD)"
+description = "WASD moves the player relative to the camera, Space jumps, Left Shift runs; the original arrow-key controls stay."

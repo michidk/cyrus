@@ -3189,6 +3189,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "cyrus-debug",
+ "cyrus-game",
  "cyrus-render",
  "serde",
  "serde_json",

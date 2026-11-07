@@ -4,11 +4,12 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Water` and `Camera` (queried `Mut`) take
+//! and panics on a mismatch, so `Water`, `Camera` and `Movement` (queried `Mut`) take
 //! `&mut self` throughout and `Input` (queried `Ref`) takes `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
+use cyrus_game::player::input::{MovementWish, Wish};
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
 use wasvy::prelude::*;
@@ -61,6 +62,19 @@ impl Camera {
 
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
+pub struct Movement {
+    wish: Option<(f32, f32, bool)>,
+}
+
+#[wasvy::methods]
+impl Movement {
+    pub fn steer(&mut self, x: f32, y: f32, jump: bool) {
+        self.wish = Some((x, y, jump));
+    }
+}
+
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
 pub struct Input {
     pressed: Vec<String>,
     just_pressed: Vec<String>,
@@ -89,6 +103,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Name::new("cyrus mod API"),
         Water::default(),
         Camera::default(),
+        Movement::default(),
         Input::default(),
     ));
 }
@@ -96,15 +111,16 @@ pub(crate) fn spawn_host(mut commands: Commands) {
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn exchange(
-    mut host: Query<(&mut Water, &mut Camera, &mut Input)>,
+    mut host: Query<(&mut Water, &mut Camera, &mut Movement, &mut Input)>,
     mut waves: ResMut<WaterWaves>,
+    mut movement: ResMut<MovementWish>,
     mut takeover: ResMut<CameraTakeover>,
     view: Query<&Transform, With<ViewCamera>>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
-    let Ok((mut water, mut camera, mut input)) = host.single_mut() else {
+    let Ok((mut water, mut camera, mut steering, mut input)) = host.single_mut() else {
         return;
     };
     waves.heights = water.heights.take();
@@ -122,6 +138,18 @@ pub(crate) fn exchange(
         _ => {
             warn_once!("mod camera pose needs 7 values, got {}", pose.len());
             None
+        }
+    });
+    movement.0 = steering.wish.take().map(|(x, y, jump)| {
+        let direction = Vec2::new(x, y);
+        Wish {
+            // A mod's NaN or infinity must not become a heading.
+            direction: if direction.is_finite() {
+                direction.clamp_length_max(1.0)
+            } else {
+                Vec2::ZERO
+            },
+            jump,
         }
     });
     camera.pose = view.single().map_or_else(

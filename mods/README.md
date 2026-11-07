@@ -9,6 +9,7 @@ the Mods window that opens with F1. The browser build does not load mods.
 | --- | --- | --- |
 | `modern-water` | water waves, water shader | Smooth crossing waves, texture ripples, sky sheen |
 | `flycam` | camera, input | F3 toggles a free camera: WASD, Space/Left Shift, mouse look |
+| `movement` | movement, input | WASD moves relative to the camera, Space jumps, Left Shift runs; arrow keys keep working |
 
 ## Writing a mod
 
@@ -31,10 +32,14 @@ fn setup(app: App) {
   and `seconds()`; call `answer(generation, heights)` every frame.
 - `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
   and suppresses player input. Stop calling it to hand control back.
+- `movement`: `steer(x, y, jump)` every frame moves the player like a tilted
+  left stick relative to the camera (x right, y forward; a length below 0.75
+  walks, from 0.75 runs). While a mod steers, a quick sword key among WASD does
+  not draw the sword.
 - `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
   `delta` (seconds).
 
-Query `water` and `camera` with `QueryFor::Mut` and `input` with
+Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input` with
 `QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
 the other mutability.
 

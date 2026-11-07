@@ -3,7 +3,8 @@
 //! A mod is a folder under `cyrus-config/mods/<id>/` with a `mod.toml`
 //! (`name`, `description`) and any of:
 //!
-//! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`.
+//! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
+//!   (water waves, camera, movement and input hooks).
 //! - `water_surface.wesl`: a replacement for cyrus-render's water shading library.
 //!
 //! Without an active mod every hook keeps the original behaviour. Activation is
@@ -57,6 +58,7 @@ impl Plugin for ModsPlugin {
             .insert_resource(catalog)
             .init_resource::<cyrus_render::WaterWaves>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
+            .init_resource::<cyrus_game::player::input::MovementWish>()
             .add_systems(Startup, api::spawn_host)
             .add_systems(PreUpdate, api::exchange)
             .add_systems(Update, (watch, apply).chain())

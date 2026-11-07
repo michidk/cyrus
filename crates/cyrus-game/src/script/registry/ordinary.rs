@@ -1502,12 +1502,14 @@ pub fn run_ordinary(
     // Modern movement reads the held directions or the left stick relative to the drawn
     // camera's heading.
     let stick = look.as_deref().and_then(|look| look.stick);
-    let modern = match (modes, input.as_deref()) {
+    let driven = look.as_deref().is_some_and(|look| look.driven);
+    let camera_relative = modes.is_some_and(|(controller, _)| controller == Mode::Modern || driven);
+    let modern = match (camera_relative, input.as_deref()) {
         // A topic menu reads forward and back as up and down, not as movement.
-        (Some((Mode::Modern, _)), Some(held)) if world.globals.menu_state() != 0 => {
+        (true, Some(held)) if world.globals.menu_state() != 0 => {
             Some((held.menu_directions(stick), None))
         }
-        (Some((Mode::Modern, _)), Some(held)) => Some(
+        (true, Some(held)) => Some(
             held.camera_relative(
                 camera_frame
                     .as_deref()

@@ -92,6 +92,23 @@ pub struct ModernLook {
     pub turn: f32,
     /// The left stick beyond the dead zone (x right, y forward), for Modern movement.
     pub stick: Option<Vec2>,
+    /// A mod's [`MovementWish`] is steering, so movement reads camera-relative whatever the
+    /// controller mode.
+    pub driven: bool,
+}
+
+/// Movement a mod asks for this frame, replacing the original keys. `None` leaves movement
+/// to the original controls (or Modern, when selected), so no mod active means no change.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct MovementWish(pub Option<Wish>);
+
+/// A mod's movement request, read like a tilted left stick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Wish {
+    /// Direction relative to the camera (x right, y forward). Zero asks for no movement.
+    /// Below [`RUN_TILT`] the player walks, from it the player runs.
+    pub direction: Vec2,
+    pub jump: bool,
 }
 
 const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
@@ -660,6 +677,7 @@ pub(super) fn sample(
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
     mut look: ResMut<ModernLook>,
+    wish: Res<MovementWish>,
 ) {
     if suppressed.0
         || pending_world.is_some()
@@ -703,6 +721,15 @@ pub(super) fn sample(
             MODERN_MOVEMENT.map(|key| keys.pressed(key));
         input.jump |= keys.pressed(KeyCode::Space);
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    }
+    look.driven = wish.0.is_some();
+    if let Some(wish) = wish.0 {
+        input.jump |= wish.jump;
+        if wish.direction != Vec2::ZERO {
+            look.stick = Some(wish.direction);
+            // The stick's tilt chooses walking or running.
+            input.walk = true;
+        }
     }
 }
 
