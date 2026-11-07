@@ -49077,3 +49077,6 @@ mod parameter_diagnostics_tests;
 
 #[path = "script_registry/header_hook.rs"]
 mod header_hook_tests;
+
+#[path = "script_registry/pose_properties.rs"]
+mod pose_properties_tests;

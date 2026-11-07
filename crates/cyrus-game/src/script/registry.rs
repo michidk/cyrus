@@ -5084,9 +5084,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .with_context(|| format!("object target {target:?}"))
     }
 }
+/// The actor-record triples a position or angle property names: the local pose, the previous
+/// position, the saved start position (location zero) and the angle history.
 enum PoseProperty {
     Position(usize),
     Angle(usize),
+    LastPosition(usize),
+    StartPosition(usize),
+    LastAngle(usize),
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
@@ -5150,11 +5155,17 @@ fn ai_record_property(control: &mut ActorControlState, name: Property) -> Option
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
-    use Property::{AngleVx, AngleVy, AngleVz, PosVx, PosVy, PosVz};
+    use Property::{
+        AngleVx, AngleVy, AngleVz, LastAngleVx, LastAngleVy, LastAngleVz, LastPosVx, LastPosVy,
+        LastPosVz, PosVx, PosVy, PosVz, StartPosVx, StartPosVy, StartPosVz,
+    };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([PosVx, PosVy, PosVz])
         .map(PoseProperty::Position)
         .or_else(|| find([AngleVx, AngleVy, AngleVz]).map(PoseProperty::Angle))
+        .or_else(|| find([LastPosVx, LastPosVy, LastPosVz]).map(PoseProperty::LastPosition))
+        .or_else(|| find([StartPosVx, StartPosVy, StartPosVz]).map(PoseProperty::StartPosition))
+        .or_else(|| find([LastAngleVx, LastAngleVy, LastAngleVz]).map(PoseProperty::LastAngle))
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -5413,6 +5424,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
         Ok(match pose {
             PoseProperty::Position(axis) => spatial.local.position[axis],
             PoseProperty::Angle(axis) => spatial.local.angles[axis],
+            PoseProperty::LastPosition(axis) => spatial.previous_local_position[axis],
+            PoseProperty::StartPosition(axis) => spatial
+                .locations
+                .first()
+                .with_context(|| format!("property {name}: saved start position unavailable"))?
+                [axis],
+            PoseProperty::LastAngle(axis) => spatial.angle_history[axis],
         })
     }
 
@@ -5559,16 +5577,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} write unsupported"))?;
         let index = self.property_receiver(target)?;
-        let local = &mut self
+        let spatial = self
             .registry
             .spatial
             .as_mut()
             .with_context(|| format!("property {target:?}.{reference}: spatial owner unavailable"))?
-            .actor_mut(index)?
-            .local;
+            .actor_mut(index)?;
         match pose {
-            PoseProperty::Position(axis) => local.position[axis] = value,
-            PoseProperty::Angle(axis) => local.angles[axis] = value,
+            PoseProperty::Position(axis) => spatial.local.position[axis] = value,
+            PoseProperty::Angle(axis) => spatial.local.angles[axis] = value,
+            PoseProperty::LastPosition(axis) => spatial.previous_local_position[axis] = value,
+            PoseProperty::StartPosition(axis) => {
+                spatial.locations.first_mut().with_context(|| {
+                    format!("property {name}: saved start position unavailable")
+                })?[axis] = value
+            }
+            PoseProperty::LastAngle(axis) => spatial.angle_history[axis] = value,
         }
         Ok(())
     }

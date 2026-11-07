@@ -650,3 +650,10 @@ selection bytes (unsigned, low eight bits kept) over the cursors the message and
 use, and any byte now survives a save: the natives report a selection outside the eight-entry queue
 when they use it. See preservation's
 [message selection properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#message-selection-properties).
+
+Verified: `last_pos.*`, `start_pos.*` and `last_angle.*` read and write whole 32-bit values of the
+previous position (what `SetPosition` stores with the current one), the saved start position
+(what `DistanceFromStart` measures against) and the angle history (what `SetRotation` stores), with no
+matrix refresh. See preservation's
+[position and angle history properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#position-and-angle-history-properties).
+The slave, start-angle, valid-position, `move` and `ov` families stay unsupported.

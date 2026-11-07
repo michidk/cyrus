@@ -7398,6 +7398,150 @@
       ],
       "limits": "Verified: the message and broadcast natives read these actor-record bytes as the receiver's selections; the property reads zero-extend and writes keep the low eight bits, over the same retained cursor those natives use (the broadcast test selects through it). A stored value outside the eight-entry queue is reported by the natives when used; the original uses it unchecked. Saved with the actor. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "cceb9e8364f3fce349dd17561b0a99f85cc9fe5a"
+    },
+    {
+      "property": "last_pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver previous local position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_pos_is_the_previous_position_set_position_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The previous-position triple SetPosition stores with the current position; a raw write moves only the history. No matrix refresh or movement service runs. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver previous local position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_pos_is_the_previous_position_set_position_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The previous-position triple SetPosition stores with the current position; a raw write moves only the history. No matrix refresh or movement service runs. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver previous local position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_pos_is_the_previous_position_set_position_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The previous-position triple SetPosition stores with the current position; a raw write moves only the history. No matrix refresh or movement service runs. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "start_pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver saved start position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_pos_is_the_saved_start_distance_from_start_measures"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The saved start (location zero) DistanceFromStart measures against and SetStartPosition restores from; a raw write changes DistanceFromStart's result. An actor without a location table is an explicit error. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "start_pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver saved start position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_pos_is_the_saved_start_distance_from_start_measures"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The saved start (location zero) DistanceFromStart measures against and SetStartPosition restores from; a raw write changes DistanceFromStart's result. An actor without a location table is an explicit error. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "start_pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver saved start position coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_pos_is_the_saved_start_distance_from_start_measures"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The saved start (location zero) DistanceFromStart measures against and SetStartPosition restores from; a raw write changes DistanceFromStart's result. An actor without a location table is an explicit error. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver angle history coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_angle_is_the_angle_history_set_rotation_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The angle history SetRotation stores with the local angles (masked to eleven bits by that native); a raw write stores the whole 32-bit value in the history only. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver angle history coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_angle_is_the_angle_history_set_rotation_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The angle history SetRotation stores with the local angles (masked to eleven bits by that native); a raw write stores the whole 32-bit value in the history only. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver angle history coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_angle_is_the_angle_history_set_rotation_stores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704769471"
+      ],
+      "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The angle history SetRotation stores with the local angles (masked to eleven bits by that native); a raw write stores the whole 32-bit value in the history only. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     }
   ],
   "property_groups": [
@@ -7829,12 +7973,6 @@
         "hand_pos.vx",
         "hand_pos.vy",
         "hand_pos.vz",
-        "last_angle.vx",
-        "last_angle.vy",
-        "last_angle.vz",
-        "last_pos.vx",
-        "last_pos.vy",
-        "last_pos.vz",
         "last_slave_angle.vx",
         "last_slave_angle.vy",
         "last_slave_angle.vz",
@@ -7862,9 +8000,6 @@
         "start_angle.vx",
         "start_angle.vy",
         "start_angle.vz",
-        "start_pos.vx",
-        "start_pos.vy",
-        "start_pos.vz",
         "string_index",
         "task_variable2[0]",
         "task_variable2[1]",
