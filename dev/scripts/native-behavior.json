@@ -6006,7 +6006,7 @@
       "scope": "Four-argument function placing the named installed model as a frame transient on the actor's grip vertex pair with three offsets",
       "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::display_model_attachment -> attachment::prepare_weapon_attachment",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::display_models_overwrite_the_equipped_weapons_retained_words_and_expire_with_the_frame",
+        "crates/cyrus-script/tests/script_registry.rs::display_models_replace_the_equipped_placements_retained_words_and_expire_with_the_frame",
         "crates/cyrus-render/src/weapon_model.rs::display_attachments_are_drawn_at_their_pose_until_the_frame_ends",
         "crates/cyrus-script/tests/script_registry.rs::display_hand_and_hilt_models_place_frame_transients_on_the_attachment_pairs",
         "crates/cyrus-script/tests/script_registry.rs::display_models_reject_an_unknown_name_and_a_full_pool"
@@ -6015,7 +6015,7 @@
         "https://github.com/michidk/redguard-preservation/blob/04a8ba8/docs/engine/SOUP.md#hand-and-hilt-model-helpers",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
-      "limits": "Verified installed function parms4/exact79-byte named wrapper/full100 resolver/full171 ordered resource lookup and original name/string/memory dependency execution.756 original CPU cases PASS:504 exact error-service entry stops/252 exact accepted shared-hand-helper entry stops.13 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS. Six ASCII name/path forms/three receivers including null/three XYZ tuples/seven two-list/type profiles/two patterns. Original basename8/ASCII uppercase/copy/compare/split-path and instrumented fill/copy execute under explicit single-byte locale0/debug0/locking0; no arbitrary service returns. First matching first-list then second-list resource, stored-name case retained; missing error33/type2 error34 with original name pointer. Success clears temporary pointer and forwards receiver/resolved embedded model/XYZ to independently identity-verified663 helper without repeating accepted helper matrix. Full actor/name/node/scratch/namebuf/debug-locale-lock/head/temp/error memory, entry arguments/stack/canary checked. Unknown other locale/debug/locking states/natural initialization/name edge/full joint domain/error effects/return/continuation/resource producer/heap/geometry/render/VM admission/native/browser/pixels/gameplay parity. Production remains missing; no implementation acceptance. Implementation (current): Verified in the original (handler and helper disassembled through the native table): name resolution, shared temporary-model pointer clear, transient-pool allocation (900 records, reset once per world frame, overflow is runtime error 35), grip/scabbard vertex pair, offsets added before the actor matrix, hand midpoint / hilt first-vertex position. Routed tests: the placements for an animated actor, name resolution by base file name, unknown name and full pool errors. Cyrus keeps the frame list on the script world (emptied at the start of each ordinary update, not saved). Follow-up: the helper's retained attachment point and angles now land on the equipped weapon's geometry words (or an unsaved slot without one) and are readable through retained_attachment; the production WeaponModelPlugin draws the frame's display attachments at their pose and drops them when the next ordinary update empties the list (render unit test with the production plugin systems). Unknown: DisplayHandItem/DisplayHiltItem need the full item table; resource type 2 (error 34) cannot occur with the installed animation models; no original/native/browser comparison of the drawn placement.",
+      "limits": "Verified installed function parms4/exact79-byte named wrapper/full100 resolver/full171 ordered resource lookup and original name/string/memory dependency execution.756 original CPU cases PASS:504 exact error-service entry stops/252 exact accepted shared-hand-helper entry stops.13 effective original-byte semantic controls require normal exit/full output; final original reexecution PASS. Six ASCII name/path forms/three receivers including null/three XYZ tuples/seven two-list/type profiles/two patterns. Original basename8/ASCII uppercase/copy/compare/split-path and instrumented fill/copy execute under explicit single-byte locale0/debug0/locking0; no arbitrary service returns. First matching first-list then second-list resource, stored-name case retained; missing error33/type2 error34 with original name pointer. Success clears temporary pointer and forwards receiver/resolved embedded model/XYZ to independently identity-verified663 helper without repeating accepted helper matrix. Full actor/name/node/scratch/namebuf/debug-locale-lock/head/temp/error memory, entry arguments/stack/canary checked. Unknown other locale/debug/locking states/natural initialization/name edge/full joint domain/error effects/return/continuation/resource producer/heap/geometry/render/VM admission/native/browser/pixels/gameplay parity. Production remains missing; no implementation acceptance. Implementation (current): Verified in the original (handler and helper disassembled through the native table): name resolution, shared temporary-model pointer clear, transient-pool allocation (900 records, reset once per world frame, overflow is runtime error 35), grip/scabbard vertex pair, offsets added before the actor matrix, hand midpoint / hilt first-vertex position. Routed tests: the placements for an animated actor, name resolution by base file name, unknown name and full pool errors. Cyrus keeps the frame list on the script world (emptied at the start of each ordinary update, not saved). Follow-up: the helper's retained attachment point and angles now are the actor's hand_pos/hand_angle control words, shared with the equipped-weapon placement, persisted in the snapshot and read and written by scripts (routed test); the production WeaponModelPlugin draws the frame's display attachments at their pose and drops them when the next ordinary update empties the list (render unit test with the production plugin systems). Unknown: DisplayHandItem/DisplayHiltItem need the full item table; resource type 2 (error 34) cannot occur with the installed animation models; no original/native/browser comparison of the drawn placement.",
       "reviewed_revision": "3352e0df405720b883bf642b94532e63fb9d0acd"
     },
     {
@@ -6041,7 +6041,7 @@
       "scope": "Four-argument function placing the named installed model as a frame transient on the actor's scabbard vertex pair with three offsets",
       "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::display_model_attachment -> attachment::prepare_weapon_attachment",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::display_models_overwrite_the_equipped_weapons_retained_words_and_expire_with_the_frame",
+        "crates/cyrus-script/tests/script_registry.rs::display_models_replace_the_equipped_placements_retained_words_and_expire_with_the_frame",
         "crates/cyrus-render/src/weapon_model.rs::display_attachments_are_drawn_at_their_pose_until_the_frame_ends",
         "crates/cyrus-script/tests/script_registry.rs::display_hand_and_hilt_models_place_frame_transients_on_the_attachment_pairs",
         "crates/cyrus-script/tests/script_registry.rs::display_models_reject_an_unknown_name_and_a_full_pool"
@@ -6050,7 +6050,7 @@
         "https://github.com/michidk/redguard-preservation/blob/04a8ba8/docs/engine/SOUP.md#hand-and-hilt-model-helpers",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
-      "limits": "Verified independent installed function parms4/exact79-byte named wrapper and actual original resolver633-byte hilt-helper identity audits.108 target-specific original CPU cases PASS:72 exact error-service entry stops/36 exact hilt-helper entry stops.7 effective target original-byte controls require normal exit/full output, including early-clear ordering and wrong-hand-helper entry capture without return. Final original corpus rerun PASS. Two ASCII names/three receivers incl null/three XYZ tuples/missing-valid-type2 profiles/two patterns; accepted resource algorithm identity reused, no duplicate full resource/helper matrices. Resolution precedes temporary-pointer clear even for null actor; success forwards resolved embedded model/receiver/all XYZ to distinct hilt helper. Full mapped actor/name/node/scratch/namebuf/debug-lock-locale/head/temp/error memory, entry register+stack args/canary/stack checked. Explicit single-byte locale0/debug0/locking0 originals execute, no fabricated service returns. Unknown other platform settings/natural initialization/full joint domain/error effects/continuation/heap/geometry/render/lifecycle/VM admission/native/browser/pixel/gameplay parity. Production remains missing; no implementation acceptance. Implementation (current): Verified in the original (handler and helper disassembled through the native table): name resolution, shared temporary-model pointer clear, transient-pool allocation (900 records, reset once per world frame, overflow is runtime error 35), grip/scabbard vertex pair, offsets added before the actor matrix, hand midpoint / hilt first-vertex position. Routed tests: the placements for an animated actor, name resolution by base file name, unknown name and full pool errors. Cyrus keeps the frame list on the script world (emptied at the start of each ordinary update, not saved). Follow-up: the helper's retained attachment point and angles now land on the equipped weapon's geometry words (or an unsaved slot without one) and are readable through retained_attachment; the production WeaponModelPlugin draws the frame's display attachments at their pose and drops them when the next ordinary update empties the list (render unit test with the production plugin systems). Unknown: DisplayHandItem/DisplayHiltItem need the full item table; resource type 2 (error 34) cannot occur with the installed animation models; no original/native/browser comparison of the drawn placement.",
+      "limits": "Verified independent installed function parms4/exact79-byte named wrapper and actual original resolver633-byte hilt-helper identity audits.108 target-specific original CPU cases PASS:72 exact error-service entry stops/36 exact hilt-helper entry stops.7 effective target original-byte controls require normal exit/full output, including early-clear ordering and wrong-hand-helper entry capture without return. Final original corpus rerun PASS. Two ASCII names/three receivers incl null/three XYZ tuples/missing-valid-type2 profiles/two patterns; accepted resource algorithm identity reused, no duplicate full resource/helper matrices. Resolution precedes temporary-pointer clear even for null actor; success forwards resolved embedded model/receiver/all XYZ to distinct hilt helper. Full mapped actor/name/node/scratch/namebuf/debug-lock-locale/head/temp/error memory, entry register+stack args/canary/stack checked. Explicit single-byte locale0/debug0/locking0 originals execute, no fabricated service returns. Unknown other platform settings/natural initialization/full joint domain/error effects/continuation/heap/geometry/render/lifecycle/VM admission/native/browser/pixel/gameplay parity. Production remains missing; no implementation acceptance. Implementation (current): Verified in the original (handler and helper disassembled through the native table): name resolution, shared temporary-model pointer clear, transient-pool allocation (900 records, reset once per world frame, overflow is runtime error 35), grip/scabbard vertex pair, offsets added before the actor matrix, hand midpoint / hilt first-vertex position. Routed tests: the placements for an animated actor, name resolution by base file name, unknown name and full pool errors. Cyrus keeps the frame list on the script world (emptied at the start of each ordinary update, not saved). Follow-up: the helper's retained attachment point and angles now are the actor's hand_pos/hand_angle control words, shared with the equipped-weapon placement, persisted in the snapshot and read and written by scripts (routed test); the production WeaponModelPlugin draws the frame's display attachments at their pose and drops them when the next ordinary update empties the list (render unit test with the production plugin systems). Unknown: DisplayHandItem/DisplayHiltItem need the full item table; resource type 2 (error 34) cannot occur with the installed animation models; no original/native/browser comparison of the drawn placement.",
       "reviewed_revision": "27166112a2f435b5829ecd1ec06b16de4811e5a7"
     },
     {
@@ -7561,13 +7561,14 @@
       "scope": "Receiver collision shape extent (positive side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7577,13 +7578,14 @@
       "scope": "Receiver collision shape extent (positive side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7593,13 +7595,14 @@
       "scope": "Receiver collision shape extent (positive side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7609,13 +7612,14 @@
       "scope": "Receiver collision shape extent (negative side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7625,13 +7629,14 @@
       "scope": "Receiver collision shape extent (negative side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7641,13 +7646,14 @@
       "scope": "Receiver collision shape extent (negative side)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore",
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::probes_consume_the_written_extents_with_32_bit_wrapping"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
