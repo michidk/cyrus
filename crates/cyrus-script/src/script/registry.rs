@@ -5182,6 +5182,22 @@ fn control_record_property(
     })
 }
 
+/// The bounds-record extent a `size.psize.v*` or `size.msize.v*` property names: whether it is the
+/// negative extent, and the axis.
+fn collision_extent_property(name: Property) -> Option<(bool, usize)> {
+    use Property::{SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePsizeVx, SizePsizeVy, SizePsizeVz};
+    [SizePsizeVx, SizePsizeVy, SizePsizeVz]
+        .iter()
+        .position(|&n| n == name)
+        .map(|axis| (false, axis))
+        .or_else(|| {
+            [SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]
+                .iter()
+                .position(|&n| n == name)
+                .map(|axis| (true, axis))
+        })
+}
+
 fn pose_property(name: Property) -> Option<PoseProperty> {
     use Property::{
         AngleVx, AngleVy, AngleVz, LastAngleVx, LastAngleVy, LastAngleVz, LastPosVx, LastPosVy,
@@ -5455,6 +5471,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         }
+        if let Some((negative, axis)) = collision_extent_property(name) {
+            let index = self.property_receiver(target)?;
+            let shape = self.registry.actors[index]
+                .collision
+                .as_ref()
+                .with_context(|| {
+                    format!("property {target:?}.{name}: collision shape not prepared")
+                })?;
+            return Ok(if negative {
+                shape.negative_extent[axis]
+            } else {
+                shape.positive_extent[axis]
+            });
+        }
         let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} unsupported"))?;
         let index = self.property_receiver(target)?;
@@ -5624,6 +5654,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
             match scabbard {
                 Some(word) => control.scabbard_override[word] = Some(value as i16),
                 None => control.hidden = value as u8 != 0,
+            }
+            return Ok(());
+        }
+        if let Some((negative, axis)) = collision_extent_property(name) {
+            // The saved shape holds nonnegative extents, so a negative write is refused rather
+            // than stored as a record the actor could not be restored from.
+            anyhow::ensure!(
+                value >= 0,
+                "property {target:?}.{name}: extent {value} is negative"
+            );
+            let index = self.property_receiver(target)?;
+            let shape = self.registry.actors[index]
+                .collision
+                .as_mut()
+                .with_context(|| {
+                    format!("property {target:?}.{name}: collision shape not prepared")
+                })?;
+            if negative {
+                shape.negative_extent[axis] = value;
+            } else {
+                shape.positive_extent[axis] = value;
             }
             return Ok(());
         }

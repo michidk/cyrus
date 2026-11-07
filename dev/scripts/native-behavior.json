@@ -7555,6 +7555,102 @@
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
+      "property": "size.psize.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (positive side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.psize.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (positive side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.psize.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (positive side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.msize.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (negative side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.msize.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (negative side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.msize.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape extent (negative side)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape extents",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::extent_writes_replace_the_shape_extents_and_survive_a_restore"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes go to the actor's collision shape extents, which are saved with the actor; a negative write is refused because the saved shape holds nonnegative extents. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
       "property": "last_angle.vx",
       "status": "partial",
       "owner": 5,
@@ -8282,15 +8378,9 @@
       "properties": [
         "size",
         "size.address",
-        "size.msize.vx",
-        "size.msize.vy",
-        "size.msize.vz",
         "size.pos.vx",
         "size.pos.vy",
         "size.pos.vz",
-        "size.psize.vx",
-        "size.psize.vy",
-        "size.psize.vz",
         "size.size.vx",
         "size.size.vy",
         "size.size.vz"
