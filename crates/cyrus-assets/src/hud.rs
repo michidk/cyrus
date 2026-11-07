@@ -124,6 +124,10 @@ pub struct InventoryItem {
     /// ITEM.INI `drop_use_item_list`: one unit of each is dropped when the item is used.
     #[serde(default)]
     pub drop_use_items: Vec<u16>,
+    /// ITEM.INI `hand_object_file`: the uppercase model stem the hand and hilt item display
+    /// natives place; absent for an item without a hand model.
+    #[serde(default)]
+    pub hand_model: Option<String>,
 }
 
 /// ITEM.INI item `type` code (preservation item-ini.md). `UseItem` draws the sword for a weapon,
