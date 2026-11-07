@@ -222,6 +222,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins((
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
+            cyrus_render::fog::RayTracingPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));
         app.add_systems(

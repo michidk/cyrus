@@ -4,11 +4,15 @@ mod compositing;
 mod effects;
 mod observation;
 mod preparation;
+pub(crate) mod raytracing;
 pub use observation::BoundSceneLightImage;
 mod texture;
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
+#[cfg(feature = "raytracing")]
+pub use raytracing::RayTracingPlugin;
+pub use raytracing::RayTracingSupport;
 pub use texture::{
     EffectDraw, EffectDrawView, TextureAnimations, TextureFrame, TexturePlaybackSnapshot,
     TextureSourcesSnapshot,
@@ -259,6 +263,7 @@ impl Plugin for FogPlugin {
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
+            .init_resource::<RayTracingSupport>()
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
@@ -308,7 +313,7 @@ fn apply_scene_fog(
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
         ),
-        Without<RejectedLighting>,
+        (Without<RejectedLighting>, Without<raytracing::Proxy>),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,

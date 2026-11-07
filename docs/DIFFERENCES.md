@@ -38,6 +38,17 @@ Faithful music plays every installed byte. `--music modern` (browser
 sync-marked data sectors and keeps the track's length and timing.
 **Unknown:** whether the original's playback path makes the noise audible.
 
+## Ray-traced lighting
+
+The original has no ray tracing. The debug menu's **Ray tracing** switch (the `ray_tracing` fidelity
+area, Modern only, native builds only) lights opaque world meshes with Bevy Solari instead of the original's
+vertex-driven shading. It needs a GPU with ray-query support and is greyed out without one. The sun,
+the ambient colour and the object lights come from the world's installed lighting data, but their
+brightness is a tuning choice, not a measured match. Flats, water, sky, alpha-masked or chroma-keyed
+meshes and the HUD keep their original shaders and draw over the lit scene; Glide fog and clipping do not
+apply to traced meshes. **Unknown:** the result on ray-query hardware, since it was written without a
+GPU to run it.
+
 ## Credits scroll pace
 
 **Verified:** the original scrolls the credits one pixel per buffer swap with swap interval one, and opens

@@ -279,6 +279,7 @@ module where it is defined and regenerate.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
+- `src/fog/raytracing.rs` — Hardware ray-traced lighting through Bevy Solari, selected by `Area::RayTracing`.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
 - `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.
