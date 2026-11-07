@@ -2948,7 +2948,6 @@ dependencies = [
  "rustc_apfloat",
  "serde",
  "serde_json",
- "toml",
 ]
 
 [[package]]
