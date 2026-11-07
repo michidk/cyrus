@@ -1,7 +1,7 @@
 //! Item viewer rules: the pose, fade and exit of the modal that `ShowItem` opens, and the
 //! description line sequence. Independent of presentation and audio; the host feeds one update
 //! per BIOS-timer tick. Rules follow preservation's `docs/engine/SOUP.md` "Item viewer".
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 
 /// Held actions at one update, after the host resolves the installed bindings.
 #[derive(Clone, Copy, Default)]
@@ -20,7 +20,7 @@ pub struct ViewerInput {
 
 /// Where the model is drawn: rotation about the vertical axis, then the horizontal axis, then
 /// the view axis (2048 units per turn), and the position in the original's map units.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct ViewerPose {
     pub turn: u16,
     pub pitch: u16,
@@ -228,6 +228,301 @@ impl Iterator for DescriptionLines {
     type Item = [u8; 4];
     fn next(&mut self) -> Option<Self::Item> {
         self.labels.next()
+    }
+}
+
+/// What the examine view shows for one item.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExamineItem {
+    /// Uppercase stem of the item's inventory model; `None` when ITEM.INI names none.
+    pub model: Option<String>,
+    /// False for a HUD export that predates the inventory model record.
+    pub exported: bool,
+    pub extents: Option<[i32; 3]>,
+    /// The item's `description` RTX label.
+    pub description: Option<String>,
+}
+
+/// Where a description line is in its speech.
+#[derive(Default, Debug)]
+enum Line {
+    #[default]
+    Idle,
+    /// The audio owner has been asked to start this label and has not answered.
+    Requested,
+    Playing {
+        until: std::time::Duration,
+    },
+    /// No further lines: the sequence ended or a label has no record.
+    Ended,
+}
+
+/// The examine view's modal state. The overlay owner sets [`Self::enabled`]; until then pending
+/// requests stay with the script world. Gameplay stays suspended while the view is open and until
+/// View, Activate, Enter and Escape are released after it closes.
+#[derive(bevy::prelude::Resource, Default, serde::Serialize)]
+pub struct ExamineScreen {
+    /// A presentation exists that draws [`Self::pose`].
+    pub enabled: bool,
+    pub open: bool,
+    pub waiting_for_release: bool,
+    /// Uppercase stem of the model being examined.
+    pub model: Option<String>,
+    /// The pose to draw after the latest update.
+    pub pose: Option<ViewerPose>,
+    pub error: Option<String>,
+    /// A label the audio owner starts as speech (and its subtitle), then answers through
+    /// [`Self::speech_reply`].
+    pub speech_request: Option<[u8; 4]>,
+    /// The audio owner's answer: the clip length in seconds, or `None` when the label has no
+    /// speech record, which ends the line sequence.
+    pub speech_reply: Option<Option<f32>>,
+    #[serde(skip)]
+    viewer: Option<ItemViewer>,
+    #[serde(skip)]
+    lines: Option<DescriptionLines>,
+    #[serde(skip)]
+    line: Line,
+    #[serde(skip)]
+    last_tick: Option<u32>,
+    #[serde(skip)]
+    checkpoint: Option<crate::clock::ClockCheckpoint>,
+    #[serde(skip)]
+    paused_virtual_time: bool,
+}
+
+impl ExamineScreen {
+    /// Gameplay input must not be consumed.
+    pub fn suspended(&self) -> bool {
+        self.open || self.waiting_for_release
+    }
+}
+
+pub fn register(app: &mut bevy::prelude::App) {
+    use bevy::prelude::*;
+    app.init_resource::<ExamineScreen>().add_systems(
+        PreUpdate,
+        drive
+            .after(cyrus_console::ConsoleInput)
+            .after(bevy::input::InputSystems),
+    );
+}
+
+/// Screen height over width of the 640 by 480 view.
+const ASPECT: f32 = 0.75;
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)] // One shared input, clock and request transition; the tuple only groups optional resources past the system parameter limit.
+fn drive(
+    state: bevy::prelude::Res<bevy::prelude::State<cyrus_game::AppState>>,
+    keys: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
+    inputs: crate::player::input::Inputs,
+    time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
+    mut screen: bevy::prelude::ResMut<ExamineScreen>,
+    (hud, actors, console): (
+        Option<bevy::prelude::Res<crate::script::ScriptHud>>,
+        Option<bevy::prelude::ResMut<crate::script::ScriptActors>>,
+        Option<bevy::prelude::Res<cyrus_console::Console>>,
+    ),
+    mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
+    mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
+) {
+    use crate::player::input::Action;
+    use bevy::prelude::KeyCode;
+    let tick = crate::clock::bios_tick(time.elapsed());
+    let resume =
+        |screen: &mut ExamineScreen,
+         virtual_time: &mut Option<
+            bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>,
+        >,
+         clock: &mut Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>| {
+            if screen.paused_virtual_time {
+                if let Some(time) = virtual_time.as_mut() {
+                    time.unpause();
+                }
+                screen.paused_virtual_time = false;
+            }
+            if let (Some(clock), Some(checkpoint)) = (clock.as_mut(), screen.checkpoint.take()) {
+                clock.restore(checkpoint, tick);
+            }
+        };
+    if *state.get() != cyrus_game::AppState::InGame {
+        resume(&mut screen, &mut virtual_time, &mut None);
+        *screen = ExamineScreen {
+            enabled: screen.enabled,
+            ..default_screen()
+        };
+        return;
+    }
+    let exit_held = inputs.pressed(Action::View)
+        || inputs.pressed(Action::Use)
+        || keys.pressed(KeyCode::Enter)
+        || keys.pressed(KeyCode::Escape);
+    if screen.waiting_for_release {
+        if !exit_held {
+            screen.waiting_for_release = false;
+        }
+        return;
+    }
+    if !screen.open {
+        if !screen.enabled || console.is_some_and(|console| console.open) {
+            return;
+        }
+        let (Some(hud), Some(mut actors)) = (hud, actors) else {
+            return;
+        };
+        let Some(world) = actors.current.as_mut() else {
+            return;
+        };
+        let Some(request) = world.globals_mut().take_item_viewer_request() else {
+            return;
+        };
+        let opened = open(&hud, world.globals(), &request);
+        match opened {
+            Ok(Some((viewer, lines, model))) => {
+                screen.error = None;
+                screen.model = Some(model);
+                screen.pose = Some(viewer.pose());
+                screen.viewer = Some(viewer);
+                screen.lines = (!request.no_rtx).then_some(lines);
+                screen.line = if request.no_rtx {
+                    Line::Ended
+                } else {
+                    Line::Idle
+                };
+                if let Some(time) = virtual_time.as_mut()
+                    && !time.is_paused()
+                {
+                    time.pause();
+                    screen.paused_virtual_time = true;
+                }
+                screen.checkpoint = clock.as_ref().map(|clock| clock.checkpoint());
+                screen.last_tick = Some(tick);
+                screen.open = true;
+            }
+            Ok(None) => world.globals_mut().finish_item_viewer(),
+            Err(error) => {
+                log::warn!("item viewer: {error:#}");
+                screen.error = Some(format!("{error:#}"));
+                world.globals_mut().finish_item_viewer();
+            }
+        }
+        return;
+    }
+    if screen.last_tick == Some(tick) {
+        return;
+    }
+    screen.last_tick = Some(tick);
+    let input = ViewerInput {
+        left: inputs.pressed(Action::Left),
+        right: inputs.pressed(Action::Right),
+        up: inputs.pressed(Action::Forward),
+        down: inputs.pressed(Action::Back),
+        walk: inputs.pressed(Action::Walk),
+        jump: inputs.pressed(Action::Jump),
+        exit: exit_held,
+    };
+    let Some(viewer) = screen.viewer.as_mut() else {
+        return;
+    };
+    let finished = viewer.update(input);
+    let (exiting, pose) = (viewer.exiting(), viewer.pose());
+    screen.pose = Some(pose);
+    if exiting {
+        screen.line = Line::Ended;
+    } else {
+        advance_line(&mut screen, time.elapsed());
+    }
+    if finished {
+        screen.open = false;
+        screen.waiting_for_release = true;
+        screen.model = None;
+        screen.pose = None;
+        screen.viewer = None;
+        screen.lines = None;
+        screen.speech_request = None;
+        screen.speech_reply = None;
+        if let Some(mut actors) = actors
+            && let Some(world) = actors.current.as_mut()
+        {
+            world.globals_mut().finish_item_viewer();
+        }
+        resume(&mut screen, &mut virtual_time, &mut clock);
+    }
+}
+
+fn default_screen() -> ExamineScreen {
+    ExamineScreen::default()
+}
+
+/// The viewer, description lines and model for a request; `None` is an item absent from the list.
+fn open(
+    hud: &crate::script::ScriptHud,
+    globals: &crate::script::GameplayGlobals,
+    request: &crate::script::ItemViewerRequest,
+) -> Result<Option<(ItemViewer, DescriptionLines, String)>> {
+    let Some(item) = hud.examine_item(request.item as u32)? else {
+        return Ok(None);
+    };
+    ensure!(
+        item.exported,
+        "item {}: the HUD export predates the inventory model record; export it again",
+        request.item
+    );
+    let model = item.model.with_context(|| {
+        format!(
+            "item {}: ITEM.INI names no inventory_object_file",
+            request.item
+        )
+    })?;
+    let extents = item.extents.with_context(|| {
+        format!(
+            "item {}: inventory model {model} has no extents",
+            request.item
+        )
+    })?;
+    let viewer = ItemViewer::open(extents, request.words, ASPECT)
+        .with_context(|| format!("item {}", request.item))?;
+    let potion = usize::try_from((request.item - 20) / 2)
+        .ok()
+        .and_then(|index| globals.potion(index))
+        .unwrap_or(0);
+    let lines = DescriptionLines::new(request.item, item.description.as_deref(), potion);
+    Ok(Some((viewer, lines, model)))
+}
+
+/// Start the next description line when none is playing, and end the sequence at a label with no
+/// speech record. A line ends with its speech clip, measured on the real clock.
+fn advance_line(screen: &mut ExamineScreen, now: std::time::Duration) {
+    loop {
+        match screen.line {
+            Line::Idle => {
+                let Some(label) = screen.lines.as_mut().and_then(Iterator::next) else {
+                    screen.line = Line::Ended;
+                    return;
+                };
+                screen.speech_request = Some(label);
+                screen.speech_reply = None;
+                screen.line = Line::Requested;
+                return;
+            }
+            Line::Requested => match screen.speech_reply.take() {
+                Some(Some(seconds)) => {
+                    screen.line = Line::Playing {
+                        until: now + std::time::Duration::from_secs_f32(seconds.max(0.0)),
+                    };
+                    return;
+                }
+                Some(None) => screen.line = Line::Ended,
+                None => return,
+            },
+            Line::Playing { until } => {
+                if now < until {
+                    return;
+                }
+                screen.line = Line::Idle;
+            }
+            Line::Ended => return,
+        }
     }
 }
 

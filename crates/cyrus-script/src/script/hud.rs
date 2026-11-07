@@ -535,6 +535,18 @@ impl ScriptHud {
         Ok(state.inventory.is_some())
     }
 
+    /// The examine view's data for item `id`; `None` is the original's absent item.
+    pub fn examine_item(&self, id: u32) -> Result<Option<crate::item_viewer::ExamineItem>> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .and_then(|items| items.examine_item(id)))
+    }
+
     /// The hand model of installed item `id` for the display natives. `None` is the original's
     /// no match: the item system is off or the list does not hold the id.
     pub(super) fn item_hand_model(

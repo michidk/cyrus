@@ -27,6 +27,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         logbook::register(app);
         inventory_screen::register(app);
+        item_viewer::register(app);
         island_map::register(app);
         app.init_resource::<preferences::Preferences>()
             .init_resource::<MovieUnlocks>()

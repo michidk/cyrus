@@ -30,6 +30,7 @@ module where it is defined and regenerate.
 - `src/effects.rs` — Installed environmental effect textures and map-owned drawing attributes.
 - `src/environment.rs` — Validated world environment records.
 - `src/environment_export.rs` — Per-world environment preparation from original bytes on either target.
+- `src/examine.rs` — Inventory models for the examine view, exported once and shaded at view time with the loaded
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.

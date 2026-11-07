@@ -5912,6 +5912,144 @@ fn show_item_natives_leave_a_pending_viewer_request() {
 }
 
 #[test]
+fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
+    use bevy::prelude::*;
+    use cyrus_assets::hud::{InventoryItem, ItemHandModel};
+    use cyrus_game::{AppState, preferences::Preferences};
+    use cyrus_script::{
+        item_viewer::ExamineScreen,
+        script::{ScriptActors, ScriptHud},
+    };
+    for (native, values, lines) in [
+        (Native::ShowItemNoRtx, vec![4, 0, 0], false),
+        (Native::ShowItem, vec![4, 0, 0, 0], true),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Call {
+                call: Call {
+                    function_id: 3,
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    function: native,
+                    arguments: values
+                        .iter()
+                        .map(|&value| Value::Integer { value })
+                        .collect(),
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: native,
+            param_count: values.len() as u8,
+            kind: CallKind::Function,
+        });
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        let mut asset = hud_asset();
+        asset.inventory = [(
+            4,
+            InventoryItem {
+                count: 1,
+                total: 1,
+                player_max: 1,
+                inventory_model: ItemHandModel::Model("IHEALTH".into()),
+                inventory_extents: Some([100, 60, 40]),
+                description: Some("cisw".into()),
+                ..Default::default()
+            },
+        )]
+        .into();
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        let mut app = App::new();
+        app.insert_resource(State::new(AppState::InGame))
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(Time::<Virtual>::default())
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(hud)
+            .insert_resource(actors);
+        cyrus_script::item_viewer::register(&mut app);
+        let tick = |app: &mut App, enter: bool| {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            if enter {
+                keys.press(KeyCode::Enter);
+            }
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(std::time::Duration::from_millis(60));
+            app.update();
+        };
+        // Without a presentation the request stays pending and the game keeps running.
+        tick(&mut app, false);
+        assert!(!app.world().resource::<ExamineScreen>().open);
+        assert!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .globals()
+                .item_viewer_request()
+                .pending
+        );
+        app.world_mut().resource_mut::<ExamineScreen>().enabled = true;
+        tick(&mut app, false);
+        {
+            let screen = app.world().resource::<ExamineScreen>();
+            assert!(screen.open && screen.suspended());
+            assert_eq!(screen.model.as_deref(), Some("IHEALTH"));
+            assert_eq!(screen.pose.unwrap().position, [0.0, 0.0, 220.0 + 1490.0]);
+        }
+        assert!(app.world().resource::<Time<Virtual>>().is_paused());
+        let globals = |app: &App| {
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .globals()
+                .item_viewer_request()
+        };
+        assert!(!globals(&app).pending);
+        // The first line is the item's own label; the audio owner answers with its length.
+        tick(&mut app, false);
+        let screen = app.world().resource::<ExamineScreen>();
+        assert_eq!(screen.speech_request, lines.then_some(*b"cisw"));
+        if lines {
+            app.world_mut().resource_mut::<ExamineScreen>().speech_reply = Some(Some(0.01));
+        }
+        for _ in 0..8 {
+            tick(&mut app, false);
+        }
+        let screen = app.world().resource::<ExamineScreen>();
+        assert_eq!(screen.pose.unwrap().position, [0.0, 0.0, 220.0]);
+        // An exit held from the start would not count; this one follows released updates.
+        tick(&mut app, true);
+        assert!(app.world().resource::<ExamineScreen>().open);
+        let mut updates = 0;
+        while app.world().resource::<ExamineScreen>().open {
+            tick(&mut app, false);
+            updates += 1;
+            assert!(updates < 12);
+        }
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(screen.waiting_for_release && screen.suspended());
+        assert!(!app.world().resource::<Time<Virtual>>().is_paused());
+        assert!(!globals(&app).no_rtx);
+        tick(&mut app, true);
+        assert!(app.world().resource::<ExamineScreen>().waiting_for_release);
+        tick(&mut app, false);
+        assert!(!app.world().resource::<ExamineScreen>().suspended());
+    }
+}
+
+#[test]
 fn print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit() {
     let mut data = scripts(vec![
         Operation::Call {

@@ -220,6 +220,23 @@ impl Inventory {
         Ok(())
     }
 
+    /// What the examine view shows for `id`; `None` is an item absent from the list.
+    pub(super) fn examine_item(&self, id: u32) -> Option<crate::item_viewer::ExamineItem> {
+        let item = self.definitions.get(&u16::try_from(id).ok()?)?;
+        Some(crate::item_viewer::ExamineItem {
+            model: match &item.inventory_model {
+                cyrus_assets::hud::ItemHandModel::Model(name) => Some(name.clone()),
+                _ => None,
+            },
+            exported: !matches!(
+                item.inventory_model,
+                cyrus_assets::hud::ItemHandModel::Unexported
+            ),
+            extents: item.inventory_extents,
+            description: item.description.clone(),
+        })
+    }
+
     /// The installed item list's hand model for `id`; `None` is no match (an absent item).
     pub(super) fn hand_model(&self, id: u32) -> Option<&cyrus_assets::hud::ItemHandModel> {
         Some(&self.definitions.get(&u16::try_from(id).ok()?)?.hand_model)
