@@ -23,6 +23,8 @@ pub enum CheatEffect {
     MagicCarpet,
     DamageSuppression,
     PlayerCollisionSkip,
+    /// A slot the executable never reads after startup, so its value has no gameplay effect.
+    RecognizedOnly,
     TaskSystem,
     AnimationSystem,
     Unsupported,
@@ -127,6 +129,7 @@ impl Cheats {
             "magiccarpet" => CheatEffect::MagicCarpet,
             "drevil" => CheatEffect::DamageSuppression,
             "moonraker" => CheatEffect::PlayerCollisionSkip,
+            "nodemarker" | "oddjob" => CheatEffect::RecognizedOnly,
             "task" => CheatEffect::TaskSystem,
             "animation" => CheatEffect::AnimationSystem,
             _ => CheatEffect::Unsupported,
