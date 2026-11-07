@@ -2,10 +2,12 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
 pub use observation::BoundSceneLightImage;
 mod texture;
+pub use modern_lighting::ModernLightingPlugin;
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
@@ -94,6 +96,14 @@ struct TerrainExtension {
 }
 
 impl MaterialExtension for TerrainExtension {
+    // The extra vertex attributes collide with the default prepass shader's locations; shadow
+    // casting uses the same shader. The lit stand-ins cast the shadows.
+    fn enable_prepass() -> bool {
+        false
+    }
+    fn enable_shadows() -> bool {
+        false
+    }
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_render/terrain.wesl".into()
     }
@@ -195,6 +205,14 @@ impl From<&ModelExtension> for ModelKey {
 }
 
 impl MaterialExtension for ModelExtension {
+    // The extra vertex attributes collide with the default prepass shader's locations; shadow
+    // casting uses the same shader. The lit stand-ins cast the shadows.
+    fn enable_prepass() -> bool {
+        false
+    }
+    fn enable_shadows() -> bool {
+        false
+    }
     fn specialize(
         _pipeline: &bevy::pbr::MaterialExtensionPipeline,
         descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
@@ -308,7 +326,7 @@ fn apply_scene_fog(
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
         ),
-        Without<RejectedLighting>,
+        (Without<RejectedLighting>, Without<modern_lighting::Proxy>),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
@@ -830,6 +848,16 @@ fn prepare_model_geometry<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The lit cameras enable prepasses and shadow maps; these materials' vertex layouts cannot use
+    // either.
+    #[test]
+    fn scene_materials_stay_out_of_prepasses() {
+        assert!(!<SceneMaterial as Material>::enable_prepass());
+        assert!(!<TerrainMaterial as Material>::enable_prepass());
+        assert!(!<SceneMaterial as Material>::enable_shadows());
+        assert!(!<TerrainMaterial as Material>::enable_shadows());
+    }
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]

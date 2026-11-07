@@ -117,10 +117,17 @@ pub(crate) fn register(app: &mut App) {
         );
 }
 
+#[allow(clippy::type_complexity)] // Bevy query filters.
 fn prepare(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut candidates: Query<(Entity, &mut Mesh3d), Without<Inspected>>,
+    mut candidates: Query<
+        (Entity, &mut Mesh3d),
+        (
+            Without<Inspected>,
+            Without<crate::fog::modern_lighting::Proxy>,
+        ),
+    >,
     parents: Query<&ChildOf>,
     extras: Query<&GltfExtras>,
     names: Query<&Name>,

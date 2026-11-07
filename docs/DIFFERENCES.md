@@ -38,6 +38,17 @@ Faithful music plays every installed byte. `--music modern` (browser
 sync-marked data sectors and keeps the track's length and timing.
 **Unknown:** whether the original's playback path makes the noise audible.
 
+## Modern lighting
+
+The original lights models and terrain with vertex-driven shading and its own fog, clipping and palette
+arithmetic. The `lighting` fidelity area, Modern only, instead shades opaque world meshes with Bevy's
+physically based forward pipeline: a cascaded shadow-mapped sun, the ambient colour as an environment light
+and the object lights as point lights, all read from the world's installed lighting data. The camera adds
+screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and bloom. Brightness, shadow distances,
+the point lights' power and the effects are tuning choices, not measured matches. Flats, water, sky,
+alpha-masked or chroma-keyed meshes and the HUD keep their original shaders and draw over the lit scene;
+Glide fog and clipping do not apply to the lit meshes.
+
 ## Credits scroll pace
 
 **Verified:** the original scrolls the credits one pixel per buffer swap with swap interval one, and opens

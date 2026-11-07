@@ -238,7 +238,7 @@ fn debug_menu(
             ui,
             &mut fidelity,
             Area::Lighting,
-            "Lighting (Modern uses Faithful)",
+            "Lighting (Modern: shadows, PBR)",
         );
         fidelity_control(
             ui,

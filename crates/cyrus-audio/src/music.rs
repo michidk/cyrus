@@ -370,6 +370,7 @@ fn finish_track(
 /// Applies a changed `redbook_volume`: accepted values set the drive level.
 fn apply_volume(
     settings: Res<SoundSettings>,
+    global: Option<Res<bevy::audio::GlobalVolume>>,
     mut music: ResMut<Music>,
     mut sinks: Query<&mut bevy::audio::AudioSink, With<MusicPlayer>>,
     mut playback: Query<&mut PlaybackSettings, With<MusicPlayer>>,
@@ -380,9 +381,11 @@ fn apply_volume(
     for mut settings in &mut playback {
         settings.volume = bevy::audio::Volume::Linear(music.gain);
     }
+    // Bevy applies the global volume only when a sink starts; a direct change must include it.
+    let global = global.map_or(1.0, |global| global.volume.to_linear());
     for mut sink in &mut sinks {
         use bevy::audio::AudioSinkPlayback;
-        sink.set_volume(bevy::audio::Volume::Linear(music.gain));
+        sink.set_volume(bevy::audio::Volume::Linear(music.gain * global));
     }
 }
 

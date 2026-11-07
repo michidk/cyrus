@@ -226,6 +226,7 @@ fn main() -> Result<()> {
                 alternate_collision: false,
                 sidedness: false,
                 surface_update: SurfaceUpdate::Assign,
+                bounds: None,
             };
             let prior = surface;
             let support = query
@@ -386,6 +387,7 @@ fn grounded_steps(
             alternate_collision: false,
             sidedness: false,
             surface_update: SurfaceUpdate::Assign,
+            bounds: None,
         };
         let mut input = GroundedUpdate {
             motion: ForwardWalk {

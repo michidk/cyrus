@@ -30,7 +30,7 @@ struct Source {
 }
 
 #[derive(Component)]
-struct Draw;
+pub(super) struct Draw;
 
 #[derive(Component)]
 struct Inspected;
