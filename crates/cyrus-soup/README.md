@@ -63,6 +63,11 @@ task token for completion on a later task pass. Hosts receive elapsed
 zero for initial task calls, and unpaused total/blocking slot counts that reflect
 earlier completions in the same pass. Untimed animation passes and Function calls
 have no established elapsed input. `Yield`, Anchor and ScriptRV retain actor state.
+Each slot's blocking byte, pause byte and 16-bit timer sit in state arrays that keep their values
+while the slot is empty; `Runtime::task_slot_field` and `set_task_slot_field` read and write them
+(bytes zero-extended, the timer sign-extended) for the `task_status`, `task_pause` and `task_timer`
+properties, which `Host::task_slot_property` names. Snapshots are version 2; version 1 saves carry the
+three values in the task record and migrate on restore.
 Exceeding task capacity fails before a seventh host effect. Full save restoration
 and complete native command services remain unsupported.
 
