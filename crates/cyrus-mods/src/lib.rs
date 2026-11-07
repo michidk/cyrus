@@ -5,7 +5,10 @@
 //!
 //! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
 //!   (water waves, camera, movement and input hooks).
-//! - `water_surface.wesl`: a replacement for cyrus-render's water shading library.
+//! - any shader files that `mod.toml` lists as `[[shader]]` replacements: `replaces` is
+//!   the asset path of the shader to swap (for example
+//!   `embedded://cyrus_render/water_surface.wesl`) and `file` is the replacement in the
+//!   mod folder. Each shader is one slot: the first active mod in id order supplies it.
 //!
 //! `mod.toml` may also give a `version`, an `author` and `[[setting]]` entries (see
 //! [`settings`]); the Mods window draws the settings of each active mod.
@@ -16,7 +19,7 @@
 mod api;
 mod settings;
 
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use bevy::asset::io::AssetSourceBuilder;
 // Explicit imports: the Bevy prelude's `ContextExt` collides with `anyhow::Context`.
 use bevy::asset::{AssetApp, AssetServer, Assets, Handle};
@@ -28,6 +31,7 @@ use bevy::shader::Shader;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use serde::{Deserialize, Serialize};
 use settings::{ModSettings, Setting};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use wasvy::prelude::*;
@@ -40,7 +44,6 @@ wasvy::auto_host_components! {
 
 const MODS_DIR: &str = "cyrus-config/mods";
 const ACTIVE_FILE: &str = "cyrus-config/mods.json";
-const WATER_SHADER: &str = "embedded://cyrus_render/water_surface.wesl";
 
 /// Registers the `mods://` asset source; call before the asset plugin is added.
 pub fn register_source(app: &mut App) {
@@ -96,6 +99,17 @@ struct Manifest {
     author: Option<String>,
     #[serde(default, rename = "setting")]
     settings: Vec<Setting>,
+    #[serde(default, rename = "shader")]
+    shaders: Vec<ShaderReplacement>,
+}
+
+/// One shader a mod swaps for another.
+#[derive(Deserialize)]
+struct ShaderReplacement {
+    /// Asset path of the shader to replace.
+    replaces: String,
+    /// Replacement source, a plain file name in the mod folder.
+    file: String,
 }
 
 struct Entry {
@@ -103,7 +117,6 @@ struct Entry {
     manifest: Manifest,
     active: bool,
     has_wasm: bool,
-    has_shader: bool,
     /// The running wasvy instance while active.
     instance: Option<Entity>,
     modified: Option<SystemTime>,
@@ -112,10 +125,10 @@ struct Entry {
 #[derive(Resource, Default)]
 struct Catalog {
     entries: Vec<Entry>,
-    /// The built-in water library, kept to restore it when no mod supplies one.
-    original_water: Option<Shader>,
-    /// Whether a mod's water library is installed.
-    water_replaced: bool,
+    /// Each replaced shader as it was before any mod, by asset path, to restore it.
+    original_shaders: HashMap<String, Shader>,
+    /// The asset paths whose shader a mod currently supplies.
+    replaced_shaders: HashSet<String>,
     status: Option<String>,
 }
 
@@ -158,10 +171,16 @@ impl Catalog {
             for setting in &manifest.settings {
                 setting.validate().with_context(|| format!("mod {id}"))?;
             }
+            for shader in &manifest.shaders {
+                ensure!(
+                    Path::new(&shader.file).file_name() == Some(shader.file.as_ref()),
+                    "mod {id}: shader file {:?} must be a plain file name",
+                    shader.file
+                );
+            }
             entries.push(Entry {
                 active: saved.active.contains(&id),
                 has_wasm: dir.join("mod.wasm").is_file(),
-                has_shader: dir.join("water_surface.wesl").is_file(),
                 id,
                 manifest,
                 instance: None,
@@ -196,7 +215,7 @@ fn mod_file(id: &str, file: &str) -> PathBuf {
     Path::new(MODS_DIR).join(id).join(file)
 }
 
-/// Starts and stops wasm instances and installs the active water shader.
+/// Starts and stops wasm instances and installs the active shader replacements.
 fn apply(
     mut catalog: ResMut<Catalog>,
     mut mods: Mods,
@@ -224,48 +243,77 @@ fn apply(
             _ => {}
         }
     }
-    // The water shader is one slot: the first active mod in id order supplies it.
-    let mut suppliers = catalog
-        .entries
-        .iter()
-        .filter(|entry| entry.active && entry.has_shader);
-    let supplier = suppliers.next().map(|entry| entry.id.clone());
-    if let Some(other) = suppliers.next() {
-        warn!(
-            "mods: {} and {} both replace the water shader; using {}",
-            supplier.as_deref().unwrap_or_default(),
-            other.id,
-            supplier.as_deref().unwrap_or_default()
-        );
-    }
-    let handle: Handle<Shader> = asset_server.load(WATER_SHADER);
-    // The embedded library may not have loaded yet; try again next frame.
-    let Some(current) = shaders.get(&handle).cloned() else {
-        *shader_pending = true;
-        return;
-    };
-    *shader_pending = false;
-    let original = catalog.original_water.get_or_insert(current).clone();
-    if supplier.is_none() && !catalog.water_replaced {
-        return;
-    }
-    catalog.water_replaced = supplier.is_some();
-    let shader = match &supplier {
-        Some(id) => match std::fs::read_to_string(mod_file(id, "water_surface.wesl")) {
-            Ok(source) => Shader::from_wesl(source, WATER_SHADER),
-            Err(error) => {
-                catalog.status = Some(format!("{id}: water_surface.wesl: {error}"));
-                original
+    // Each shader is one slot: the first active mod in id order supplies it.
+    let mut suppliers: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for entry in catalog.entries.iter().filter(|entry| entry.active) {
+        for shader in &entry.manifest.shaders {
+            match suppliers.get(&shader.replaces) {
+                Some((first, _)) => warn!(
+                    "mods: {first} and {} both replace {}; using {first}",
+                    entry.id, shader.replaces
+                ),
+                None => {
+                    suppliers.insert(
+                        shader.replaces.clone(),
+                        (entry.id.clone(), shader.file.clone()),
+                    );
+                }
             }
-        },
-        None => original,
-    };
-    match shaders.insert(&handle, shader) {
-        Ok(()) => info!(
-            "mods: water shader from {}",
-            supplier.as_deref().unwrap_or("the original")
-        ),
-        Err(error) => error!("mods: water shader: {error}"),
+        }
+    }
+    let targets: BTreeSet<String> = suppliers
+        .keys()
+        .chain(&catalog.replaced_shaders)
+        .cloned()
+        .collect();
+    let mut status = None;
+    let mut installed = Vec::new();
+    for target in targets {
+        let handle: Handle<Shader> = asset_server.load(&target);
+        // An embedded library may not have loaded yet; try again next frame.
+        let Some(current) = shaders.get(&handle).cloned() else {
+            *shader_pending = true;
+            continue;
+        };
+        let original = catalog
+            .original_shaders
+            .entry(target.clone())
+            .or_insert(current)
+            .clone();
+        let supplier = suppliers.get(target.as_str());
+        if supplier.is_none() && !catalog.replaced_shaders.contains(&target) {
+            continue;
+        }
+        let shader = match supplier {
+            Some((id, file)) => match std::fs::read_to_string(mod_file(id, file)) {
+                Ok(source) => Shader::from_wesl(source, target.clone()),
+                Err(error) => {
+                    status = Some(format!("{id}: {file}: {error}"));
+                    original
+                }
+            },
+            None => original,
+        };
+        match shaders.insert(&handle, shader) {
+            Ok(()) => {
+                info!(
+                    "mods: {target} from {}",
+                    supplier.map_or("the original", |(id, _)| id)
+                );
+                installed.push((target, supplier.is_some()));
+            }
+            Err(error) => error!("mods: {target}: {error}"),
+        }
+    }
+    for (target, replaced) in installed {
+        if replaced {
+            catalog.replaced_shaders.insert(target);
+        } else {
+            catalog.replaced_shaders.remove(&target);
+        }
+    }
+    if status.is_some() {
+        catalog.status = status;
     }
 }
 
@@ -285,8 +333,14 @@ fn watch(
         if !entry.active {
             continue;
         }
-        let modified = ["mod.wasm", "water_surface.wesl"]
-            .iter()
+        let modified = std::iter::once("mod.wasm")
+            .chain(
+                entry
+                    .manifest
+                    .shaders
+                    .iter()
+                    .map(|shader| shader.file.as_str()),
+            )
             .filter_map(|file| std::fs::metadata(mod_file(&entry.id, file)).ok())
             .filter_map(|meta| meta.modified().ok())
             .max();
@@ -295,7 +349,7 @@ fn watch(
             if entry.instance.is_some() {
                 asset_server.reload(format!("mods://{}/mod.wasm", entry.id));
             }
-            shader_changed |= entry.has_shader;
+            shader_changed |= !entry.manifest.shaders.is_empty();
         }
         entry.modified = modified;
     }
@@ -357,4 +411,27 @@ fn window(
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_manifest_lists_any_number_of_shader_replacements() {
+        let manifest: Manifest = toml::from_str(
+            r#"
+            name = "Looks"
+            [[shader]]
+            replaces = "embedded://cyrus_render/water_surface.wesl"
+            file = "water.wesl"
+            [[shader]]
+            replaces = "embedded://cyrus_render/sky.wesl"
+            file = "sky.wesl"
+            "#,
+        )
+        .unwrap();
+        let files: Vec<_> = manifest.shaders.iter().map(|s| s.file.as_str()).collect();
+        assert_eq!(files, ["water.wesl", "sky.wesl"]);
+    }
 }

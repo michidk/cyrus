@@ -51,7 +51,7 @@ mods:
         mkdir -p "cyrus-config/mods/$id"; \
         cp "$dir/mod.toml" "cyrus-config/mods/$id/"; \
         cp "target/mods/wasm32-wasip2/release/${id//-/_}.wasm" "cyrus-config/mods/$id/mod.wasm"; \
-        if [ -f "$dir/water_surface.wesl" ]; then cp "$dir/water_surface.wesl" "cyrus-config/mods/$id/"; fi; \
+        for shader in "$dir"/*.wesl; do [ -f "$shader" ] && cp "$shader" "cyrus-config/mods/$id/"; done; true; \
     done
 
 run *ARGS:

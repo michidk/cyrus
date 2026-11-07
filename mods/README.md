@@ -7,13 +7,13 @@ the Mods window that opens with F1. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
-| `modern-water` | water waves, water shader | Smooth crossing waves, texture ripples, sky sheen |
+| `modern-water` | water waves, shader replacement | Smooth crossing waves, texture ripples, sky sheen |
 | `flycam` | camera, input | F3 toggles a free camera: WASD, Space/Left Shift, mouse look |
 | `movement` | movement, player, settings, input | Moves relative to the camera with your key bindings or WASD; optionally owns the locomotion with its own heading and speed |
 
 ## Writing a mod
 
-A mod folder holds `mod.toml` plus `mod.wasm`, a `water_surface.wesl`, or both.
+A mod folder holds `mod.toml` plus `mod.wasm`, shader files, or both.
 Copy one of these crates as a start.
 
 **Manifest** (`mod.toml`). `name` is required; `description`, `version` and
@@ -108,11 +108,21 @@ the other mutability.
 Answers apply one frame after they are written. A hook a mod stops answering
 returns to the original behaviour.
 
-**Shading** (`water_surface.wesl`). Implement the two functions of
-`crates/cyrus-render/src/water_surface.wesl` with the same signatures: a texture
-coordinate offset and the final colour of water fragments. The file replaces
-the built-in library, so a compile error shows up in the log and hides terrain
-until it is fixed.
+**Shading** (`[[shader]]`). Any shader asset can be replaced; list each one in
+`mod.toml`:
+
+```toml
+[[shader]]
+replaces = "embedded://cyrus_render/water_surface.wesl"   # asset path of the original
+file = "water_surface.wesl"                                # in the mod folder
+```
+
+The replacement must keep the original's exported functions and signatures (see
+the file under `crates/cyrus-render/src/`; the water library has a texture
+coordinate offset and the final colour of water fragments). It replaces the
+built-in source, so a compile error shows up in the log and can hide what the
+shader draws until it is fixed. Each shader is one slot: the first active mod in
+id order wins and a warning is logged. Turning the mod off restores the original.
 
 Rust mods use `wit-bindgen` through `wasvy_macros::guest_bindings!`, at the same version as
 `crates/cyrus-mods/Cargo.toml`. Other wasvy guest languages

@@ -10,8 +10,10 @@ A mod is a folder `cyrus-config/mods/<id>/` with `mod.toml` (`name`,
 
 - `mod.wasm`: a component built against `wit/cyrus.wit` (the mod API) and the
   vendored `wit/deps/wasvy-ecs.wit`. It runs with access to the whole world.
-- `water_surface.wesl`: replaces cyrus-render's water shading library. One slot;
-  if several active mods supply it, the first by id wins and a warning is logged.
+- shader files listed as `[[shader]]` in `mod.toml` (`replaces` = asset path of the
+  shader to swap, `file` = replacement in the mod folder). Any shader asset can be
+  replaced. Each shader is one slot; if several active mods replace it, the first by
+  id wins and a warning is logged.
 
 `ModsPlugin` discovers the folders at startup, lists them in a Mods window
 while the F1 menu is open, saves activation to `cyrus-config/mods.json`, and
