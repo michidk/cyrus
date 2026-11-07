@@ -668,4 +668,3 @@ Verified: `slave_pos.*`, `slave_angle.*` and their `last_slave_*` counterparts r
 family update composes for an attached actor and the one before it; the queries read it for an attached
 actor, so a write is seen until the next refresh replaces it. See preservation's
 [slave pose properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#slave-pose-properties).
-The `ov` family stays unsupported.
