@@ -299,13 +299,15 @@
       "scope": "Duration-scaled translation along the receiver orientation",
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/tasks.rs (NativeTasks call/poll)",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_along_axis_matches_the_original_routine"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_along_axis_matches_the_original_routine",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::move_along_axis_moves_until_its_running_sum_reaches_the_delta_without_moving_then"
       ],
       "evidence": [
-        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
+        "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified by inspection: NativeTasks call/poll literal fixture checks positions and completion using supplied spatial state. It does not execute the public ScriptWorld caller or separate-object host propagation. Unknown: installed original/native/browser admission and family-refresh timing.",
-      "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "MoveByAxis",
@@ -4030,14 +4032,17 @@
       "scope": "Per-invocation receiver displacement task",
       "caller": "GameHost native_task_call -> Task variant -> receiver spatial/PointHost/locomotion owner",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::move_adds_each_operand_times_the_nominal_ticks_until_the_duration_elapses",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::a_zero_duration_has_no_successful_result"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/17"
+        "https://github.com/michidk/cyrus/issues/17",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified: supplied-state Task::Move helper adds operand times nominal ticks and ends on elapsed duration; fixture asserts literal position progression. Named task dispatcher exists; separate receiver without runtime identifier is explicitly unsupported. Unknown successful named public dispatch, collision/relocation consequences and direct three-host traces. Existing #17 fresh suite receipt leaves broader production parity open. Zero decoded calls in27 historical schema27 exports do not prove original absence; Rust assertions inspected only, no new runtime acceptance.",
-      "reviewed_revision": "15298b729cddd5e0cbc26a4fb9ee3764e96ed6e4"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "MoveBackward",
@@ -4266,14 +4271,17 @@
       "scope": "Per-invocation three-angle rotation",
       "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::rotate_and_srotate_are_one_routine_that_stores_the_angle_unmasked",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::a_zero_duration_has_no_successful_result"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified supplied-state task fixture checks angle increments/duration completion; named Task::Rotate dispatch exists. Helper pose/time injection is not public production input/relocation or three-host parity. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Rotate and sRotate are one routine and store the angle unmasked (previously cyrus masked it). Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "sMove",
@@ -4282,14 +4290,17 @@
       "scope": "Scaled three-axis translation",
       "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::smove_adds_the_quantised_step_whatever_the_tick_count",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::a_zero_duration_has_no_successful_result"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified helper fixture distinguishes scaled per-invocation step from nominal-tick Move, including negative arithmetic and elapsed completion. Separate receiver without runtime identifier remains unsupported; no successful named public acceptance located. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "sRotate",
@@ -4298,14 +4309,17 @@
       "scope": "Scaled three-angle rotation",
       "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::rotate_and_srotate_are_one_routine_that_stores_the_angle_unmasked",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::a_zero_duration_has_no_successful_result"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified supplied-state helper fixture asserts scaled angle progression and completion. Named dispatch exists; not production input capture, routed/separate lifetime or matched three-host behavior. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Rotate and sRotate are one routine and store the angle unmasked (previously cyrus masked it). Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "sMoveAlongAxis",
@@ -4314,14 +4328,17 @@
       "scope": "Scaled movement along rotated local axis",
       "caller": "GameHost::call/native_task_call -> Task spatial transform or receiver/selected-player helper",
       "tests": [
-        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::scaled_axis_movement_rotates_the_step_like_the_original_routine"
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::scaled_axis_movement_rotates_the_step_like_the_original_routine",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::smove_along_axis_spreads_the_step_over_the_duration_in_frames",
+        "crates/cyrus-script/tests/script_registry/movement_tasks.rs::smove_along_axis_without_a_frame_scale_step_has_no_successful_result"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602599712",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md"
       ],
-      "limits": "Verified direct task helper compares literal original-emulator rows with supplied axis/delta/duration/scale/elapsed/matrix pose. No successful public named dispatch/production pose or separate relocation acceptance established. Zero static calls in27 historical schema27 exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser acceptance.",
-      "reviewed_revision": "575a36c899e1b8b11f95e0f604b4ac59d17d8118"
+      "limits": "Verified in the original (handlers disassembled, published in preservation) and through the public task stages (ScriptWorld Body/Tasks): the per-invocation arithmetic, the completion rule and the zero-duration fault. Unknown: a separate receiver without a runtime identifier (explicitly unsupported), collision/relocation consequences and matched original/native/browser traces. Natural authored gameplay parity remains Unknown (no installed script calls these).",
+      "reviewed_revision": "26e78008940fd0c59cff53d6d418a2f9ff0da540"
     },
     {
       "native": "sMoveByAxis",

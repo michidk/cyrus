@@ -1363,7 +1363,8 @@ impl Task {
                             .wrapping_mul(elapsed)
                             >> 8;
                         let step = if operand < 0 { -step } else { step };
-                        input.angles[axis] = wrap(input.angles[axis].wrapping_add(step));
+                        // The original stores the sum unmasked; matrix builds mask it when they read it.
+                        input.angles[axis] = input.angles[axis].wrapping_add(step);
                     }
                 }
                 duration.wrapping_sub(1) <= elapsed
