@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input` and `settings` with `QueryFor::Ref`;
+/// Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input`, `settings` and `player` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
@@ -46,6 +46,31 @@ interface components {
     /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame. Set `wasd` when
     /// the mod reads W, A, S and D, so the game's own actions on those keys stay quiet.
     steer: func(x: f32, y: f32, jump: bool, wasd: bool);
+    /// Take over the player's ground locomotion for this frame: the original bindings read as
+    /// released and the original turn, walk, run and jump selection do not run. Face `heading`
+    /// (engine units, 2048 to a turn) and move along it `speed` map units per nominal update
+    /// (see `player.speed`), walking or running; zero speed stands. `jump` starts the original
+    /// jump. The engine still resolves ground, slopes and collision, and keeps death, dialogue
+    /// and combat; it keeps control while the player is airborne or a script moves it. A claim
+    /// lasts one frame, so call it every frame; when a mod stops, the original controls return.
+    claim: func(heading: u32, speed: f32, run: bool, jump: bool);
+  }
+
+  /// The selected player's state (empty before a world has one).
+  /// wasvy:type-path=cyrus_mods::api::Player
+  resource player {
+    constructor(component: component);
+    /// x, y, z in map units, original axes.
+    position: func() -> list<f32>;
+    /// Facing, in engine units (2048 to a turn).
+    heading: func() -> u32;
+    /// The direction the camera looks, in the same units as `heading`: the heading a
+    /// player facing forward through the screen has.
+    view: func() -> u32;
+    /// A jump or fall is in progress.
+    airborne: func() -> bool;
+    /// The player's walking or running speed, in map units per nominal update.
+    speed: func(run: bool) -> f32;
   }
 
   /// The player's values for the `[[setting]]` entries in mod.toml. `id` is the mod's folder

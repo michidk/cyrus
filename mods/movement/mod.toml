@@ -1,6 +1,6 @@
 name = "Modern movement"
-description = "Moves the player relative to the camera. Follows your key bindings from the game's key settings, or WASD, Space and Left Shift."
-version = "0.2.0"
+description = "Moves the player relative to the camera. Follows your key bindings from the game's key settings, or WASD, Space and Left Shift. Optionally owns the locomotion with its own speed."
+version = "0.3.0"
 author = "cyrus"
 
 [[setting]]
@@ -15,3 +15,17 @@ key = "run_by_default"
 label = "Run by default (the walk key walks)"
 type = "bool"
 default = false
+
+[[setting]]
+key = "own_movement"
+label = "Own the movement (replaces the original walk, run and jump selection)"
+type = "bool"
+default = false
+
+[[setting]]
+key = "speed_scale"
+label = "Speed (own movement only)"
+type = "number"
+default = 1
+min = 0.25
+max = 3

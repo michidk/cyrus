@@ -16060,6 +16060,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
                     walk_mode: true,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16173,6 +16174,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
                     walk_mode: false,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16196,6 +16198,125 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
     );
     assert_eq!(after.position[0], before.position[0]);
     assert_eq!(after.angles, before.angles);
+    assert_eq!(
+        world.actors()[index]
+            .control_state()
+            .unwrap()
+            .motion_direction,
+        MotionDirection::FORWARD
+    );
+}
+
+#[test]
+fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed() {
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: Default::default(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
+        torch_time: None,
+        inventory_screen: Default::default(),
+        island_map: Default::default(),
+    };
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    world.begin_player_movement_update(player, 0).unwrap();
+    let before = world.spatial(player).unwrap().local;
+    let held = cyrus_game::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut cues = Vec::new();
+    world
+        .advance_player_controller(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            cyrus_game::clock::ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 0,
+                fine_ticks: 0,
+            },
+            ScriptInputs {
+                player_controller: Some(PlayerControllerInput {
+                    held: &held,
+                    walk_mode: false,
+                    auto_defend: false,
+                    steer: None,
+                    claim: Some(cyrus_game::player::input::LocomotionClaim {
+                        heading: 512,
+                        speed: 4.0,
+                        gait: cyrus_game::player::input::Gait::Run,
+                        jump: false,
+                    }),
+                }),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |id, cue| {
+                cues.push((id, cue));
+                Ok(())
+            },
+        )
+        .unwrap();
+    let after = world.spatial(player).unwrap().local;
+    // The held forward key would run along +Z; the claim faces a quarter turn and moves
+    // four map units (1024 in Q8) along that heading instead. Inferred from the sidestep
+    // test above that the quarter-turn residual leaves the other axis unchanged.
+    assert_eq!(after.angles[1], 512, "{before:?} -> {after:?}");
+    assert_eq!(
+        (after.position[0] - before.position[0]).abs(),
+        1024,
+        "{before:?} -> {after:?}"
+    );
+    assert_eq!(after.position[2], before.position[2]);
     assert_eq!(
         world.actors()[index]
             .control_state()
@@ -16284,6 +16405,7 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
                     walk_mode: false,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16399,6 +16521,7 @@ fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
                         walk_mode: false,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     hud: Some(&hud),
                     fine_ticks: Some(0),
@@ -16545,6 +16668,7 @@ fn a_sliding_player_keeps_its_controller_running_but_takes_no_step() {
                     walk_mode: false,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16644,6 +16768,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
                     walk_mode: false,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16755,6 +16880,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
                     walk_mode: false,
                     auto_defend: false,
                     steer: None,
+                    claim: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -17057,6 +17183,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         walk_mode: true,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     ..Default::default()
                 },
@@ -17184,6 +17311,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         walk_mode: true,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     ..Default::default()
                 },
@@ -17228,6 +17356,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                             walk_mode: true,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         ..Default::default()
                     },
@@ -22326,6 +22455,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                             walk_mode: true,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         hud: (ticks == 0).then_some(&hud),
                         ..Default::default()
@@ -42774,6 +42904,7 @@ fn climbing_forward_queues_motion_without_leaving_the_climb() {
                         walk_mode: false,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -42857,6 +42988,7 @@ fn hanging_backward_releases_without_the_walk_key() {
                         walk_mode: false,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -43763,6 +43895,7 @@ fn sample_rope_jump_controller(
                 walk_mode: false,
                 auto_defend: false,
                 steer: None,
+                claim: None,
             }),
             hud: Some(&hud),
             fine_ticks: Some(0),
@@ -43932,6 +44065,7 @@ fn tick_rope_classification_with_timing(
                         walk_mode: true,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     ..Default::default()
                 },
@@ -45400,6 +45534,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                             walk_mode: true,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         ..Default::default()
                     },
@@ -46448,6 +46583,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                             walk_mode: false,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         shell_execution: Some(false),
                         fine_ticks: Some(0),
@@ -46544,6 +46680,7 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
                         walk_mode: false,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     nominal_ticks: Some(1),
                     frame_scale: Some(256),
@@ -46939,6 +47076,7 @@ fn selected_player_update(
                         walk_mode: true,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
                     }),
                     ground_bypass: cheats.0,
                     magic_carpet: cheats.1,
@@ -47467,6 +47605,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
                             walk_mode: true,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         ground_bypass: Some(cheats.ground_bypass().unwrap()),
                         script_keys: known_keys.then_some(ScriptKeys {
@@ -48341,6 +48480,7 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
                             walk_mode: false,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
                         }),
                         nominal_ticks: Some(1),
                         frame_scale: Some(256),

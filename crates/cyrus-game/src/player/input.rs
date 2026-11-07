@@ -102,6 +102,35 @@ pub struct ModernLook {
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
 pub struct MovementWish(pub Option<Wish>);
 
+/// How fast a claimed player moves: the walk or the run animation and motion class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gait {
+    Walk,
+    Run,
+}
+
+/// A mod's ownership of the selected player's ground locomotion for one update. While it is
+/// claimed the movement bindings read as released and the original turn, walk, run, sidestep and
+/// jump selection do not run; the controller still handles death, dialogue, combat and idle, and
+/// the engine's ground, slope and collision stages still resolve the displacement. A claim
+/// does not apply while the player is airborne, sliding, hanging or under script control.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LocomotionClaim {
+    /// Heading to face, in 1/2048 turns as engine headings count.
+    pub heading: u16,
+    /// Distance to travel along the heading per nominal update, in map units like the actor's
+    /// speed attributes. Zero or less stands still.
+    pub speed: f32,
+    pub gait: Gait,
+    /// Starts the original jump entry for the current gait.
+    pub jump: bool,
+}
+
+/// The claim a mod made for the next update; the game consumes it and hands control back as
+/// soon as a mod stops claiming.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct LocomotionClaimed(pub Option<LocomotionClaim>);
+
 /// A mod's movement request, read like a tilted left stick.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Wish {
@@ -681,6 +710,7 @@ pub(super) fn sample(
     mut dialogue_skip: ResMut<DialogueSkip>,
     mut look: ResMut<ModernLook>,
     wish: Res<MovementWish>,
+    mut claimed: ResMut<LocomotionClaimed>,
 ) {
     if suppressed.0
         || pending_world.is_some()
@@ -690,6 +720,8 @@ pub(super) fn sample(
         *input = PlayerInput::default();
         dialogue_skip.0 = false;
         *look = ModernLook::default();
+        // Menus, the console and loading take the player back from a mod.
+        claimed.0 = None;
         return;
     }
     // The installed dead zone; an install without a joystick reads no stick, as Faithful does.
@@ -725,8 +757,22 @@ pub(super) fn sample(
         input.jump |= keys.pressed(KeyCode::Space);
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     }
-    look.driven = wish.0.is_some();
-    if let Some(wish) = wish.0 {
+    if claimed.0.is_some() {
+        // The mod owns locomotion: the original movement bindings read as released.
+        let input = &mut *input;
+        for held in [
+            &mut input.forward,
+            &mut input.backward,
+            &mut input.left,
+            &mut input.right,
+            &mut input.jump,
+            &mut input.walk,
+        ] {
+            *held = false;
+        }
+    }
+    look.driven = claimed.0.is_none() && wish.0.is_some();
+    if let Some(wish) = wish.0.filter(|_| claimed.0.is_none()) {
         input.jump |= wish.jump;
         if wish.direction != Vec2::ZERO {
             look.stick = Some(wish.direction);

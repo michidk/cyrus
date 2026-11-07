@@ -881,6 +881,7 @@ pub struct OrdinaryContext<'w, 's> {
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
     look: Option<ResMut<'w, crate::player::input::ModernLook>>,
+    claimed: Option<Res<'w, crate::player::input::LocomotionClaimed>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
@@ -1313,6 +1314,7 @@ pub fn run_ordinary(
         entry,
         input,
         mut look,
+        claimed,
         quick,
         script_keys,
         toggles,
@@ -1528,6 +1530,7 @@ pub fn run_ordinary(
         ),
         _ => None,
     };
+    let claim = claimed.as_deref().and_then(|claimed| claimed.0);
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)
@@ -1542,12 +1545,14 @@ pub fn run_ordinary(
                     walk_mode: false,
                     auto_defend: toggles.auto_defend,
                     steer: *steer,
+                    claim,
                 },
                 None => super::player::PlayerControllerInput {
                     held,
                     walk_mode: toggles.walk_mode,
                     auto_defend: toggles.auto_defend,
                     steer: None,
+                    claim,
                 },
             })
     } else {

@@ -75,6 +75,7 @@ impl Plugin for ModsPlugin {
             .init_resource::<cyrus_render::WaterWaves>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_game::player::input::MovementWish>()
+            .init_resource::<cyrus_game::player::input::LocomotionClaimed>()
             .add_systems(Startup, api::spawn_host)
             .add_systems(PreUpdate, api::exchange)
             .add_systems(Update, (watch, apply).chain())

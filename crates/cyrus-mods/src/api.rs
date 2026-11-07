@@ -10,7 +10,10 @@
 use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
-use cyrus_game::player::input::{Inputs, MovementWish, PlayerInput, Wish};
+use cyrus_game::player::input::{
+    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, Wish,
+};
+use cyrus_game::script::{CameraFrameState, ScriptActors};
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
 use std::collections::HashMap;
@@ -66,12 +69,47 @@ impl Camera {
 #[reflect(Component)]
 pub struct Movement {
     wish: Option<(f32, f32, bool, bool)>,
+    claim: Option<(u32, f32, bool, bool)>,
 }
 
 #[wasvy::methods]
 impl Movement {
     pub fn steer(&mut self, x: f32, y: f32, jump: bool, wasd: bool) {
         self.wish = Some((x, y, jump, wasd));
+    }
+    pub fn claim(&mut self, heading: u32, speed: f32, run: bool, jump: bool) {
+        self.claim = Some((heading, speed, run, jump));
+    }
+}
+
+/// The selected player as the last update left it.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Player {
+    position: Vec<f32>,
+    heading: u32,
+    view: u32,
+    airborne: bool,
+    walk_speed: f32,
+    run_speed: f32,
+}
+
+#[wasvy::methods]
+impl Player {
+    pub fn position(&self) -> Vec<f32> {
+        self.position.clone()
+    }
+    pub fn heading(&self) -> u32 {
+        self.heading
+    }
+    pub fn view(&self) -> u32 {
+        self.view
+    }
+    pub fn airborne(&self) -> bool {
+        self.airborne
+    }
+    pub fn speed(&self, run: bool) -> f32 {
+        if run { self.run_speed } else { self.walk_speed }
     }
 }
 
@@ -142,6 +180,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Camera::default(),
         Movement::default(),
         Settings::default(),
+        Player::default(),
         Input::default(),
     ));
 }
@@ -154,8 +193,12 @@ pub(crate) fn exchange(
         &mut Camera,
         &mut Movement,
         &mut Settings,
+        &mut Player,
         &mut Input,
     )>,
+    actors: Option<Res<ScriptActors>>,
+    camera_frame: Option<Res<CameraFrameState>>,
+    mut claimed: ResMut<LocomotionClaimed>,
     values: Res<ModSettings>,
     mut waves: ResMut<WaterWaves>,
     mut movement: ResMut<MovementWish>,
@@ -166,7 +209,8 @@ pub(crate) fn exchange(
     mouse: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
-    let Ok((mut water, mut camera, mut steering, mut settings, mut input)) = host.single_mut()
+    let Ok((mut water, mut camera, mut steering, mut settings, mut player, mut input)) =
+        host.single_mut()
     else {
         return;
     };
@@ -219,6 +263,34 @@ pub(crate) fn exchange(
             wasd,
         }
     });
+    claimed.0 = steering
+        .claim
+        .take()
+        .map(|(heading, speed, run, jump)| LocomotionClaim {
+            heading: (heading & 2047) as u16,
+            speed,
+            gait: if run { Gait::Run } else { Gait::Walk },
+            jump,
+        });
+    if let Some(status) = actors
+        .as_deref()
+        .and_then(|actors| actors.current.as_ref()?.locomotion_status())
+    {
+        player.position = status.position.map(|q8| q8 as f32 / 256.0).to_vec();
+        player.heading = u32::from(status.heading);
+        player.airborne = status.airborne;
+        player.walk_speed = f32::from(status.walk_speed);
+        player.run_speed = f32::from(status.run_speed);
+    } else {
+        *player = Player::default();
+    }
+    // The same heading the game derives for camera-relative movement: the view yaw, mirrored.
+    player.view = camera_frame
+        .as_deref()
+        .and_then(|frame| frame.published.as_ref())
+        .map_or(player.heading, |camera| {
+            u32::from(camera.view_angles[1].wrapping_neg() & 2047)
+        });
     camera.pose = view.single().map_or_else(
         |_| Vec::new(),
         |t| {

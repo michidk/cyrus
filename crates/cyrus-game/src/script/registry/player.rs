@@ -46,6 +46,40 @@ pub struct PlayerControllerInput<'a> {
     /// Modern controls: the heading the held direction steers toward, in place of the held
     /// left and right turn. Faithful samples carry `None`.
     pub steer: Option<u16>,
+    /// A mod's ownership of ground locomotion this update; `None` leaves it to the original.
+    pub claim: Option<crate::player::input::LocomotionClaim>,
+}
+
+/// The selected player's state, for mods that own its locomotion.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocomotionStatus {
+    /// Position in Q8 map units (eight fractional bits), original axes.
+    pub position: [i32; 3],
+    /// Heading in 1/2048 turns.
+    pub heading: u16,
+    /// A jump or fall is in progress.
+    pub airborne: bool,
+    /// `attr_forward_walk` and `attr_forward_speed`: map units per nominal update.
+    pub walk_speed: u8,
+    pub run_speed: u8,
+}
+
+impl ScriptWorld {
+    /// The selected player's state, or `None` before one exists.
+    pub fn locomotion_status(&self) -> Option<LocomotionStatus> {
+        let id = self.selected_player()?;
+        let actor = &self.actors[id.index];
+        let control = actor.control.as_ref()?;
+        let local = &self.spatial(id).ok()?.local;
+        Some(LocomotionStatus {
+            position: local.position,
+            heading: local.wrapped_angles()[1],
+            airborne: control.queued_motion != JumpMotion::NONE
+                || control.falling_state != JumpMotion::NONE,
+            walk_speed: actor.attributes[Attribute::ForwardWalk],
+            run_speed: actor.attributes[Attribute::ForwardSpeed],
+        })
+    }
 }
 
 impl ScriptWorld {
@@ -270,6 +304,25 @@ impl ScriptWorld {
                 group,
                 Some(AnimationGroup::SHEATH_SWORD | AnimationGroup::DRAW_SWORD)
             ) {
+                return Ok(());
+            }
+            if let Some(claim) = input.claim {
+                // A mod owns ground locomotion: nothing of the original turn, walk, run or
+                // sidestep selection runs. Airborne and sliding stay with the engine.
+                if !airborne && !sliding {
+                    world.run_claimed_locomotion(id, claim, timing, sounds)?;
+                    if claim.jump {
+                        let jump = crate::player::input::PlayerInput {
+                            jump: true,
+                            ..Default::default()
+                        };
+                        world.jump_key_arbitration(id, &jump, query, inputs, timing, sounds)?;
+                    }
+                }
+                if holding {
+                    world
+                        .run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
+                }
                 return Ok(());
             }
             world.turn_player(id, input.held, holding, timing, sounds)?;
@@ -749,6 +802,76 @@ impl ScriptWorld {
             spatial.local.angles[2] = i32::from(roll);
             spatial.refresh_transform()?;
         }
+        Ok(())
+    }
+
+    /// One update of a mod's claimed locomotion: face the claimed heading, then, when it moves,
+    /// request the gait's animation and displace along the heading as ordinary running or
+    /// walking does. The ordinary late stages resolve the translation against the ground and
+    /// collision.
+    fn run_claimed_locomotion(
+        &mut self,
+        id: super::ScriptActorId,
+        claim: crate::player::input::LocomotionClaim,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        use crate::player::input::Gait;
+        let index = self.resolve(id)?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("claimed locomotion spatial registry unavailable")?
+            .actor_mut(index)?;
+        let heading = i32::from(claim.heading & 2047);
+        if spatial.local.angles[1] != heading {
+            spatial.local.angles[1] = heading;
+            spatial.refresh_transform()?;
+        }
+        // Q8 distance: map units per nominal update times the frame scale, which has eight
+        // fractional bits. A NaN speed reads as zero.
+        let distance = (claim.speed.clamp(0.0, 255.0) * timing.frame_scale as f32).round() as i32;
+        if distance <= 0 {
+            return Ok(());
+        }
+        let (group, motion) = match claim.gait {
+            Gait::Walk => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
+            Gait::Run => (AnimationGroup::RUN, MotionDirection::FORWARD),
+        };
+        let position = self.spatial(id)?.local.position;
+        let surface = self.actor_surface(id)?;
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
+        let animation = self.actors[index]
+            .animation
+            .as_mut()
+            .context("claimed locomotion animation unavailable")?;
+        let frame = animation.playback.request_with_sounds(
+            group,
+            0,
+            timing.nominal_ticks,
+            &mut |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                }
+                sounds(
+                    id,
+                    super::super::ScriptSound::Animation {
+                        sound,
+                        surface: Some(surface),
+                        position: Some(position),
+                    },
+                )
+            },
+        )?;
+        animation.frame = frame.or(animation.frame);
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("claimed locomotion control unavailable")?
+            .motion_classification = motion;
+        self.apply_ordinary_directional_motion(id, motion.byte(), distance)?;
         Ok(())
     }
 

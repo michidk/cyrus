@@ -133,7 +133,7 @@ pub use registry::model::{
 };
 pub use registry::obstacle::{OrdinaryForwardHit, OrdinaryObstacleQuery, ordinary_forward_hit};
 pub use registry::overlap::{OrdinaryOverlapMotion, OrdinaryOverlapPass, ordinary_overlap_motion};
-pub use registry::player::PlayerControllerInput;
+pub use registry::player::{LocomotionStatus, PlayerControllerInput};
 pub use registry::prevalidation::{OrdinaryGroundPrevalidation, ordinary_ground_prevalidation};
 pub use registry::queued::{OrdinaryQueuedAction, OrdinaryQueuedInputs, ordinary_queued_action};
 pub use registry::recovery::{OrdinaryRollbackSnapshot, OrdinaryStableRecoveryInputs};
