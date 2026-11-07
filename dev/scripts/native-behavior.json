@@ -5180,36 +5180,36 @@
     },
     {
       "native": "CountAiShells",
-      "status": "missing",
-      "owner": 5,
-      "scope": "Named CountAiShells original AI-list query and string-service boundary; rebuild dispatch remains unsupported",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
-        "https://github.com/michidk/redguard-preservation/pull/255",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6609897852"
+      "status": "partial",
+      "owner": 6,
+      "scope": "One-argument function counting running shell scripts by filename stem over the shell list",
+      "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::count_shell_matches over shell_list",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/effects.rs::count_and_find_ai_shells_walk_the_running_shell_list_by_filename_stem",
+        "crates/cyrus-script/tests/script_registry/effects.rs::an_eight_character_shell_name_depends_on_its_next_link"
       ],
-      "limits": "Verified: independent installed1-argument function/native/full213-byte handler. Disabled or empty AI list returns0; otherwise traverses next links and counts zero case-insensitive comparisons against normalized query stem. Receiver not dereferenced/list unchanged. Node copy9 includes low next-pointer byte after8 name bytes; no appended terminator.1749 bounded original-instruction contexts/12 effective controls pass over finite0..8-node lists/all binary comparison patterns and selected head/enable/receiver/key/state. String services controlled; retained library instructions statically inspected separately. Exact service arguments/order/copy9/return/register/stack/list preservation checked. Unknown malformed/cyclic lists, count overflow, scratch reentrancy, list lifecycle, locale/platform paths and natural original/native/browser acceptance. Missing status retains absent named rebuild implementation. No product change/Rust runtime tests; static corpus cannot prove exhaustive call absence.",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#countaishells-list-query",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified: independent installed1-argument function/native/full213-byte handler. Disabled or empty AI list returns0; otherwise traverses next links and counts zero case-insensitive comparisons against normalized query stem. Receiver not dereferenced/list unchanged. Node copy9 includes low next-pointer byte after8 name bytes; no appended terminator.1749 bounded original-instruction contexts/12 effective controls pass over finite0..8-node lists/all binary comparison patterns and selected head/enable/receiver/key/state. String services controlled; retained library instructions statically inspected separately. Exact service arguments/order/copy9/return/register/stack/list preservation checked. Unknown malformed/cyclic lists, count overflow, scratch reentrancy, list lifecycle, locale/platform paths and natural original/native/browser acceptance. Missing status retains absent named rebuild implementation. No product change/Rust runtime tests; static corpus cannot prove exhaustive call absence. Implementation (current): Verified (static, handler and list owner read through the native table): the 'AI shell list' is the shell-script list the world loop updates (newest record first, finished shells unlinked), the same set running_shells counts; the walk compares the uppercase eight-character filename stem. Inferred: the shell list is the whole of that list, so an empty one is the original's null head. Routed tests: duplicates, directory/extension stripping, presence versus count, empty list, shorter names. Unknown: a stem of eight characters also compares the low byte of the entry's next link; the list tail matches and any other equal entry depends on a heap address and is an explicit error; no installed script calls it; no original/native/browser comparison.",
       "reviewed_revision": "dd8b246661ab618e8866f50c5b8858e06052a200"
     },
     {
       "native": "FindAiShell",
-      "status": "missing",
-      "owner": 5,
-      "scope": "Named FindAiShell original first-match AI-list query and string-service boundary; rebuild dispatch remains unsupported",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
-        "https://github.com/michidk/redguard-preservation/pull/257",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6610090946"
+      "status": "partial",
+      "owner": 6,
+      "scope": "One-argument function testing for running shell scripts by filename stem over the shell list",
+      "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::count_shell_matches over shell_list",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/effects.rs::count_and_find_ai_shells_walk_the_running_shell_list_by_filename_stem",
+        "crates/cyrus-script/tests/script_registry/effects.rs::an_eight_character_shell_name_depends_on_its_next_link"
       ],
-      "limits": "Verified: independent installed1-argument function/native/full210-byte handler. Disabled/empty AI list0, first zero comparison1 before next-pointer word/later-node access, exhausted no-match list0. Boolean presence, not pointer/count; receiver not dereferenced/list unchanged. Shared scratch separate from CountAiShells; nine-byte node copy includes low next-pointer byte, no appended terminator.1749 original contexts/13 effective controls pass over finite0..8-node lists/all equality patterns and selected receiver/head/enable/key/state. String services controlled; independently retained original library/list-init spans statically inspected. Exact service args/order/copy9/first-hit truncation/return/register/stack/list-global preservation checked. Unknown malformed/cyclic lists, lifecycle, scratch reentrancy, locale/platform paths and natural original/native/browser acceptance. Missing status retains absent named rebuild implementation. No product change/Rust runtime tests; static corpus cannot prove exhaustive call absence.",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#countaishells-list-query",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified: independent installed1-argument function/native/full210-byte handler. Disabled/empty AI list0, first zero comparison1 before next-pointer word/later-node access, exhausted no-match list0. Boolean presence, not pointer/count; receiver not dereferenced/list unchanged. Shared scratch separate from CountAiShells; nine-byte node copy includes low next-pointer byte, no appended terminator.1749 original contexts/13 effective controls pass over finite0..8-node lists/all equality patterns and selected receiver/head/enable/key/state. String services controlled; independently retained original library/list-init spans statically inspected. Exact service args/order/copy9/first-hit truncation/return/register/stack/list-global preservation checked. Unknown malformed/cyclic lists, lifecycle, scratch reentrancy, locale/platform paths and natural original/native/browser acceptance. Missing status retains absent named rebuild implementation. No product change/Rust runtime tests; static corpus cannot prove exhaustive call absence. Implementation (current): Verified (static, handler and list owner read through the native table): the 'AI shell list' is the shell-script list the world loop updates (newest record first, finished shells unlinked), the same set running_shells counts; the walk compares the uppercase eight-character filename stem. Inferred: the shell list is the whole of that list, so an empty one is the original's null head. Routed tests: duplicates, directory/extension stripping, presence versus count, empty list, shorter names. Unknown: a stem of eight characters also compares the low byte of the entry's next link; the list tail matches and any other equal entry depends on a heap address and is an explicit error; no installed script calls it; no original/native/browser comparison.",
       "reviewed_revision": "747f615b6c712e11f08c0077a83fe719713215d4"
     },
     {

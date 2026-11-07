@@ -6660,6 +6660,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.add_light_effect(values)?,
             ));
         }
+        // CountAiShells(name) counts the running shells of that name; FindAiShell(name) reports
+        // whether one runs. Both walk the shell list; the receiver is not read.
+        if kind == CallKind::Function
+            && (function == Native::CountAiShells || function == Native::FindAiShell)
+        {
+            let [Argument::String(name)] = arguments else {
+                anyhow::bail!("{function} requires one script name")
+            };
+            let first = function == Native::FindAiShell;
+            return Ok(CallResult::Complete(
+                self.registry.count_shell_matches(name, first)?,
+            ));
+        }
         // OpenShell(name) starts the named shell script; it runs from the next update.
         if kind == CallKind::Function && function == Native::OpenShell {
             let [Argument::String(name)] = arguments else {

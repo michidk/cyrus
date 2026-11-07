@@ -42,6 +42,8 @@ cyrus-config = { path = "crates/cyrus-config" }
 bitmap2ttf = { git = "https://github.com/michidk/bitmap2ttf", rev = "6801e76ffee2edf96f3086ec70cd163cd6984081" }
 cpal = { path = "dev/vendor/cpal" }
 rodio = { path = "dev/vendor/rodio" }
+# Solari prepares a replaced BLAS twice for compaction, which wgpu rejects every frame.
+bevy_solari = { path = "dev/vendor/bevy_solari" }
 
 
 # Thin LTO keeps downloads small; parallel codegen avoids the single-unit build bottleneck.

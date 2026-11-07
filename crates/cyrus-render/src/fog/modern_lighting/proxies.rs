@@ -1,26 +1,27 @@
-//! Stand-in entities that replace the world's shader-driven draws with plain PBR ones.
+//! Stand-in entities that give Solari the world meshes in the layout it accepts.
 use super::super::{SceneMaterial, TerrainMaterial, clipping::Draw};
 use super::{
-    Proxy,
-    plugin::{Hidden, Replaced, StandInOf, unhide},
+    Proxy, Tier,
+    plugin::{ActiveTier, Hidden, StandInOf, Traced, unhide},
 };
 use crate::flat::Flat;
 use bevy::{
     asset::{RenderAssetUsages, UntypedAssetId},
     camera::visibility::RenderLayers,
     ecs::system::SystemParam,
-    mesh::{PrimitiveTopology, VertexAttributeValues},
+    material::OpaqueRendererMethod,
+    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
     prelude::*,
 };
 use std::collections::{HashMap, HashSet};
 #[derive(Default)]
 pub(super) struct StandIns {
     meshes: HashMap<AssetId<Mesh>, Handle<Mesh>>,
-    materials: HashMap<UntypedAssetId, Handle<StandardMaterial>>,
+    materials: HashMap<(UntypedAssetId, Tier), Handle<StandardMaterial>>,
 }
-/// The replaceable material of a source: asset identity, base material and solid tint.
-/// Meshes whose look depends on shader-side alpha or chroma keying cannot be replaced.
-fn replaceable<'a>(
+/// The traceable material of a source: asset identity, base material and solid tint.
+/// Meshes whose look depends on shader-side alpha or chroma keying are not traceable.
+fn traceable<'a>(
     scene: Option<&MeshMaterial3d<SceneMaterial>>,
     terrain: Option<&MeshMaterial3d<TerrainMaterial>>,
     scene_materials: &'a Assets<SceneMaterial>,
@@ -45,8 +46,9 @@ fn replaceable<'a>(
     (!keyed && matches!(base.alpha_mode, AlphaMode::Opaque)).then_some((id, base, solid))
 }
 
-/// A copy of `source` with only position, normal and UV 0, so the original's baked colours and
-/// projection attributes cannot reach the PBR shader.
+/// A copy of `source` with the exact vertex layout Solari accepts: position, normal, UV 0
+/// and tangent, as an indexed triangle list. Tangents are zero because no material here
+/// has a normal map.
 fn standin_mesh(source: &Mesh) -> Option<Mesh> {
     if source.primitive_topology() != PrimitiveTopology::TriangleList {
         return None;
@@ -58,20 +60,24 @@ fn standin_mesh(source: &Mesh) -> Option<Mesh> {
         Some(VertexAttributeValues::Float32x2(uvs)) => uvs.clone(),
         _ => vec![[0.0; 2]; count],
     };
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
+    let indices = match source.indices() {
+        Some(indices) => indices.iter().map(|index| index as u32).collect(),
+        None => (0..count as u32).collect(),
+    };
+    Some(
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions.to_vec())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals.to_vec())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, vec![[0.0; 4]; count])
+        .with_inserted_indices(Indices::U32(indices)),
     )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions.to_vec())
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals.to_vec())
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    if let Some(indices) = source.indices() {
-        mesh.insert_indices(indices.clone());
-    }
-    Some(mesh)
 }
 
-fn standin_material(base: &StandardMaterial, solid: Vec4) -> StandardMaterial {
+fn standin_material(base: &StandardMaterial, solid: Vec4, tier: Tier) -> StandardMaterial {
     StandardMaterial {
         base_color: if solid.w != 0.0 {
             Color::srgb(solid.x / 256.0, solid.y / 256.0, solid.z / 256.0)
@@ -84,6 +90,10 @@ fn standin_material(base: &StandardMaterial, solid: Vec4) -> StandardMaterial {
         // The original has no specular term.
         perceptual_roughness: 1.0,
         reflectance: 0.0,
+        opaque_render_method: match tier {
+            Tier::Raster => OpaqueRendererMethod::Forward,
+            Tier::Traced => OpaqueRendererMethod::Deferred,
+        },
         ..default()
     }
 }
@@ -110,7 +120,7 @@ impl StandIns {
                 && let Some(mesh) = meshes.get(*id).and_then(standin_mesh)
                 && let Err(error) = meshes.insert(handle.id(), mesh)
             {
-                warn!("stand-in mesh {id}: {error}");
+                warn!("ray tracing stand-in mesh {id}: {error}");
             }
         }
         self.meshes.retain(|id, _| meshes.contains(*id));
@@ -131,13 +141,14 @@ impl StandIns {
         &mut self,
         standard: &mut Assets<StandardMaterial>,
         id: UntypedAssetId,
+        tier: Tier,
         base: &StandardMaterial,
         solid: Vec4,
     ) -> Handle<StandardMaterial> {
         let handle = self
             .materials
-            .entry(id)
-            .or_insert_with(|| standard.add(standin_material(base, solid)))
+            .entry((id, tier))
+            .or_insert_with(|| standard.add(standin_material(base, solid, tier)))
             .clone();
         // Texture animation edits the source material's base texture in place.
         if standard
@@ -158,7 +169,7 @@ type SourceData = (
     &'static InheritedVisibility,
     Option<&'static MeshMaterial3d<SceneMaterial>>,
     Option<&'static MeshMaterial3d<TerrainMaterial>>,
-    Has<Replaced>,
+    Has<Traced>,
     Option<&'static Hidden>,
     Option<&'static RenderLayers>,
 );
@@ -187,39 +198,51 @@ pub(super) fn sync_proxies(
     sources: Query<SourceData, SourceFilter>,
     mut proxies: Query<ProxyData, With<Proxy>>,
     mut stand_ins: Local<StandIns>,
+    tier: ActiveTier,
 ) {
+    let Some(tier) = tier.get() else {
+        return;
+    };
     stand_ins.rebuild_edited(&mut assets.meshes, &mut mesh_events);
     let live = update_proxies(
         &mut commands,
         &mut assets,
         &mut stand_ins,
+        tier,
         &sources,
         &mut proxies,
     );
-    spawn_proxies(&mut commands, &mut assets, &mut stand_ins, &sources, &live);
+    spawn_proxies(
+        &mut commands,
+        &mut assets,
+        &mut stand_ins,
+        tier,
+        &sources,
+        &live,
+    );
 }
 
-/// Follows each stand-in to its source, and drops those whose source stopped being replaceable.
+/// Follows each stand-in to its source, and drops those whose source stopped being traceable.
 /// Returns the sources that still have one.
 fn update_proxies(
     commands: &mut Commands,
     assets: &mut StandInAssets,
     stand_ins: &mut StandIns,
+    tier: Tier,
     sources: &Query<SourceData, SourceFilter>,
     proxies: &mut Query<ProxyData, With<Proxy>>,
 ) -> HashSet<Entity> {
     let mut live = HashSet::new();
     for (entity, stand_in, mut transform, mut global, mut mesh, mut material) in proxies {
-        let replaceable = sources.get(stand_in.0).ok().and_then(
+        let traceable = sources.get(stand_in.0).ok().and_then(
             |(_, source_mesh, source_global, inherited, scene, terrain, ..)| {
-                let (id, base, solid) =
-                    replaceable(scene, terrain, &assets.scene, &assets.terrain)?;
+                let (id, base, solid) = traceable(scene, terrain, &assets.scene, &assets.terrain)?;
                 inherited
                     .get()
                     .then_some((source_mesh, source_global, id, base, solid))
             },
         );
-        let Some((source_mesh, source_global, id, base, solid)) = replaceable else {
+        let Some((source_mesh, source_global, id, base, solid)) = traceable else {
             commands.entity(entity).despawn();
             continue;
         };
@@ -233,7 +256,7 @@ fn update_proxies(
         {
             mesh.0 = handle.clone();
         }
-        let handle = stand_ins.material(&mut assets.standard, id, base, solid);
+        let handle = stand_ins.material(&mut assets.standard, id, tier, base, solid);
         if material.0 != handle {
             material.0 = handle;
         }
@@ -241,23 +264,23 @@ fn update_proxies(
     live
 }
 
-/// Gives every replaceable source without a stand-in one, and hides the source's own draw.
+/// Gives every traceable source without a stand-in one, and hides the source's own draw.
 fn spawn_proxies(
     commands: &mut Commands,
     assets: &mut StandInAssets,
     stand_ins: &mut StandIns,
+    tier: Tier,
     sources: &Query<SourceData, SourceFilter>,
     live: &HashSet<Entity>,
 ) {
-    for (entity, source_mesh, global, inherited, scene, terrain, replaced, hidden, layers) in
-        sources
+    for (entity, source_mesh, global, inherited, scene, terrain, traced, hidden, layers) in sources
     {
-        let replaceable = inherited
+        let traceable = inherited
             .get()
-            .then(|| replaceable(scene, terrain, &assets.scene, &assets.terrain))
+            .then(|| traceable(scene, terrain, &assets.scene, &assets.terrain))
             .flatten();
-        let Some((id, base, solid)) = replaceable else {
-            if replaced && let Some(hidden) = hidden {
+        let Some((id, base, solid)) = traceable else {
+            if traced && let Some(hidden) = hidden {
                 unhide(commands, entity, hidden);
             }
             continue;
@@ -268,7 +291,7 @@ fn spawn_proxies(
         let Some(mesh) = stand_ins.mesh(&mut assets.meshes, &source_mesh.0) else {
             continue;
         };
-        let material = stand_ins.material(&mut assets.standard, id, base, solid);
+        let material = stand_ins.material(&mut assets.standard, id, tier, base, solid);
         commands.spawn((
             Proxy,
             StandInOf(entity),
@@ -278,7 +301,7 @@ fn spawn_proxies(
             *global,
         ));
         let mut source = commands.entity(entity);
-        source.insert(Replaced);
+        source.insert(Traced);
         if hidden.is_none() {
             source.insert((Hidden(layers.cloned()), RenderLayers::none()));
         }
@@ -290,10 +313,10 @@ fn spawn_proxies(
 pub(super) fn hide_draws(
     mut commands: Commands,
     draws: Query<(Entity, &ChildOf, Option<&RenderLayers>), (With<Draw>, Without<Hidden>)>,
-    replaced: Query<(), With<Replaced>>,
+    traced: Query<(), With<Traced>>,
 ) {
     for (draw, parent, layers) in &draws {
-        if replaced.contains(parent.parent()) {
+        if traced.contains(parent.parent()) {
             commands
                 .entity(draw)
                 .insert((Hidden(layers.cloned()), RenderLayers::none()));
@@ -303,10 +326,9 @@ pub(super) fn hide_draws(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::mesh::Indices;
 
     #[test]
-    fn stand_in_mesh_keeps_only_position_normal_uv_and_indices() {
+    fn stand_in_mesh_has_exactly_the_layout_solari_accepts() {
         let source = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
@@ -330,9 +352,10 @@ mod tests {
                 Mesh::ATTRIBUTE_POSITION.id,
                 Mesh::ATTRIBUTE_NORMAL.id,
                 Mesh::ATTRIBUTE_UV_0.id,
+                Mesh::ATTRIBUTE_TANGENT.id,
             ]
         );
-        assert!(matches!(stand_in.indices(), Some(Indices::U16(indices)) if indices == &[0, 1, 2]));
+        assert!(matches!(stand_in.indices(), Some(Indices::U32(indices)) if indices == &[0, 1, 2]));
     }
 
     #[test]

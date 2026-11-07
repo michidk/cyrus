@@ -58,7 +58,7 @@ fn main() {
     )
     .insert_resource({
         // `--mode` sets every area the browser supports; the per-area options override it. Modern
-        // lighting is native only.
+        // lighting and ray tracing are native only.
         let modern = |own: &Option<String>| {
             if own.as_ref().or(options.mode.as_ref()).map(String::as_str) == Some("modern") {
                 Mode::Modern
