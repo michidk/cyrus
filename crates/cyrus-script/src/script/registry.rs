@@ -5737,12 +5737,6 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(());
         }
         if let Some((negative, axis)) = collision_extent_property(name) {
-            // The saved shape holds nonnegative extents, so a negative write is refused rather
-            // than stored as a record the actor could not be restored from.
-            anyhow::ensure!(
-                value >= 0,
-                "property {target:?}.{name}: extent {value} is negative"
-            );
             let index = self.property_receiver(target)?;
             let shape = self.registry.actors[index]
                 .collision

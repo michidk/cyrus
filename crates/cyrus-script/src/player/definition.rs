@@ -102,24 +102,29 @@ impl PlayerDefinition {
 
     /// Build the forward clearance probe in runtime units using the actor matrix.
     /// Preserves actor Y; conversion follows preservation player.md's forward probe rules.
+    ///
+    /// `positive_extent` is the actor's live positive extent; the distance wraps as the original's
+    /// 32-bit arithmetic does.
     pub fn forward_probe(
         &self,
+        positive_extent: [i32; 3],
         position: [i64; 3],
         rotation: bevy::math::Mat3,
     ) -> anyhow::Result<[i64; 3]> {
-        let distance = (i64::from(self.positive_extent[2]) + i64::from(self.forward_walk)) * 256;
-        let distance = i32::try_from(distance)
-            .context("CYRUS forward probe: local distance outside runtime i32 range")?
-            as f32;
+        let distance = positive_extent[2]
+            .wrapping_add(i32::from(self.forward_walk))
+            .wrapping_mul(256) as f32;
         let mut probe = position;
         for axis in [0, 2] {
             let offset = (rotation.z_axis[axis] * distance).round_ties_even();
-            anyhow::ensure!(
-                offset.is_finite() && (-2147483648.0..2147483648.0).contains(&f64::from(offset)),
-                "CYRUS forward probe axis {axis}: rotated offset outside runtime i32 range"
-            );
+            // An out-of-range conversion stores the x87 integer indefinite (SOUP.md).
+            let offset = if (-2147483648.0..2147483648.0).contains(&f64::from(offset)) {
+                offset as i64
+            } else {
+                i64::from(i32::MIN)
+            };
             probe[axis] = position[axis]
-                .checked_add(offset as i64)
+                .checked_add(offset)
                 .with_context(|| format!("CYRUS forward probe axis {axis}: position overflow"))?;
         }
         Ok(probe)

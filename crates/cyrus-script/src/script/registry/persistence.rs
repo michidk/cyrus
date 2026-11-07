@@ -346,13 +346,6 @@ impl CollisionSnapshot {
             ensure!(radius >= 0, "saved collision sphere has negative radius");
             Ok(cyrus_collision::actor_shape::BodySphere { center, radius })
         };
-        ensure!(
-            self.positive_extent
-                .iter()
-                .chain(&self.negative_extent)
-                .all(|&value| value >= 0),
-            "saved collision extent is negative"
-        );
         Ok(ground::OrdinaryCollisionShape {
             positive_extent: self.positive_extent,
             negative_extent: self.negative_extent,
