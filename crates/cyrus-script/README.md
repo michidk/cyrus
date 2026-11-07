@@ -704,3 +704,7 @@ Verified: `dead` (the killed marker `KillMe` sets; a script that writes it is sk
 `weapon_drawn` read and write the receiver's killed marker and drawn byte, and `invisible` the draw-only byte the renderer
 honours for the body (scripts, animation and collision continue); all read as 0 or 1 here and a nonzero low byte sets them. See preservation's
 [killed and weapon-drawn properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#killed-weapon-drawn-and-invisible-properties).
+
+Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` returns); a write is refused because the
+identifier is installed identity that name lookup and restore validation key on. See preservation's
+[runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).

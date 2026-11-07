@@ -8625,6 +8625,22 @@
       "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
     },
     {
+      "property": "id",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver runtime identifier word (read-only)",
+      "caller": "ScriptWorld::advance -> Runtime read -> GameHost::read_property -> ScriptActor.runtime_identifier",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::id_is_the_runtime_identifier_my_id_returns_and_cannot_be_overwritten"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified: preservation names id as the low-word runtime identifier MyId returns; tag w width 2, read sign-extended; an actor without an identifier is an explicit error. Writes are explicitly unsupported: the identifier is installed identity that name lookup, route ownership and restore validation key on, so a raw store is not modelled. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "f2963aafefc6f94968f2540c8a40bbf1108f9c12"
+    },
+    {
       "property": "invisible",
       "status": "partial",
       "owner": 5,
@@ -9674,7 +9690,6 @@
         "frame",
         "fspheres",
         "handle",
-        "id",
         "last_frame",
         "last_handle",
         "panic_group",

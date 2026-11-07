@@ -595,3 +595,17 @@ fn invisible_is_a_draw_only_flag_the_script_keeps_running_under() {
     assert!(world.actors()[0].control_state().unwrap().invisible);
     assert!(!world.actors()[0].control_state().unwrap().killed);
 }
+
+#[test]
+fn id_is_the_runtime_identifier_my_id_returns_and_cannot_be_overwritten() {
+    let world = pose_world(&[Step3::Read(Property::Id), Step3::Call(Native::MyId, vec![])]);
+    let values = locals(&world);
+    assert_eq!(values[0], values[1]);
+    let error = try_pose_world(&[Step3::Write(Property::Id, 5)], |_| {}, false)
+        .err()
+        .expect("a write is refused");
+    assert!(
+        format!("{error:#}").contains("runtime identifier is installed identity"),
+        "{error:#}"
+    );
+}

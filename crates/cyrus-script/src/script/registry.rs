@@ -5781,6 +5781,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 actor.broadcast_index
             }));
         }
+        if name == Property::Id {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .runtime_identifier
+                .map(i32::from)
+                .with_context(|| format!("property {name}: runtime identifier unavailable"));
+        }
         if let Some((slot, field)) = task_slot_name(name) {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
@@ -5977,6 +5984,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
+        anyhow::ensure!(
+            name != Property::Id,
+            "property {name} write unsupported: the runtime identifier is installed identity that name lookup, route ownership and restore validation key on"
+        );
         if let Some((slot, field)) = task_slot_name(name) {
             let index = self.property_receiver(target)?;
             self.registry.actors[index]
