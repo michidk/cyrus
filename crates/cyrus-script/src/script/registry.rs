@@ -5428,7 +5428,27 @@ impl GameHost<'_, '_, '_, '_> {
                 let attributes = &mut self.registry.actors[self.index].attributes;
                 let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
                 attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
-                anyhow::ensure!(!kills || sum > 0, "{function}: death sequence unavailable");
+                if kills && sum <= 0 {
+                    let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
+                    let ticks = self
+                        .inputs
+                        .nominal_ticks
+                        .with_context(|| format!("{function}: death nominal ticks unavailable"))?;
+                    let id = self.registry.id(self.index)?;
+                    let sounds = &mut self.sounds;
+                    self.registry.dispatch_zap_object_death(
+                        id,
+                        holding,
+                        ticks,
+                        &mut |actor, sound| {
+                            sounds
+                                .as_deref_mut()
+                                .context("zap death sound executor unavailable")?(
+                                actor, sound
+                            )
+                        },
+                    )?;
+                }
                 return Ok(CallResult::CompleteWithoutValue);
             }
         }

@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
+use crate::script::JumpMotion;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
@@ -872,6 +873,79 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("contact death control unavailable")?
+            .ai_type = AiType::DEAD;
+        Ok(())
+    }
+
+    /// The death of a nonplayer receiver that `ZapObject` drove to zero health. A receiver holding
+    /// a weapon force-starts `anim_death_fight_hard` when it has the group and
+    /// `anim_death_fight_stab` otherwise, releases its walk nodes, stores death default 124 or 123
+    /// and resets its combat action selector. Any other receiver force-starts `anim_land_death`
+    /// when it is in a fight-landing group or falling and `anim_death_explore` otherwise, leaving
+    /// its death default alone. Both take death selector eight. Follows preservation's Zap natives.
+    pub(super) fn dispatch_zap_object_death(
+        &mut self,
+        id: ScriptActorId,
+        holding_weapon: bool,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let animation = self.actors[index].animation.as_ref();
+        let group = if holding_weapon {
+            if animation.is_some_and(|a| a.playback.has_group(AnimationGroup::DEATH_FIGHT_HARD)) {
+                AnimationGroup::DEATH_FIGHT_HARD
+            } else {
+                AnimationGroup::DEATH_FIGHT_STAB
+            }
+        } else {
+            let falling = self.actors[index]
+                .control
+                .as_ref()
+                .context("zap death control unavailable")?
+                .falling_state
+                != JumpMotion::NONE;
+            let landing = matches!(
+                animation.and_then(|a| a.playback.current_group()),
+                Some(
+                    AnimationGroup::FIGHT_LAND
+                        | AnimationGroup::FIGHT_LAND_ATTACK
+                        | AnimationGroup::FIGHT_LAND_RIGHT
+                        | AnimationGroup::FIGHT_LAND_LEFT
+                )
+            );
+            if landing || falling {
+                AnimationGroup::LAND_DEATH
+            } else {
+                AnimationGroup::DEATH_EXPLORE
+            }
+        };
+        if animation.is_some() {
+            self.force_death_group(id, index, group, ticks, sounds)?;
+        }
+        if holding_weapon {
+            self.release_held_walk_nodes(id)?;
+            let combat = self.actors[index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .context("zap death combat record unavailable")?;
+            combat.action = CombatControlState::NO_ACTION;
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("validated zap death control")
+                .combat_death_default =
+                Some(i32::from(if group == AnimationGroup::DEATH_FIGHT_HARD {
+                    AnimationGroup::DEATH_FIGHT_HARD_END
+                } else {
+                    AnimationGroup::DEATH_FIGHT_STAB_END
+                }));
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("zap death control unavailable")?
             .ai_type = AiType::DEAD;
         Ok(())
     }

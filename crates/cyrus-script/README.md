@@ -694,6 +694,6 @@ stay unsupported; writing `anim.current` too.
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player
 additive and death-owning services `AdjustHealth` uses (`ZapPlayer` names its receiver as the damage source, the
 object natives gate on attributes 120 and 97 first) and clamp a non-selected receiver's health byte to 0..255; a
-non-selected receiver killed by `ZapObject` stops at the non-player death sequence, which stays unavailable. See
+non-selected receiver killed by `ZapObject` takes the recovered death dispatch (the armed branch needs a combat record). See
 preservation's [Zap natives](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#zap-natives-and-the-selected-player-health-services).
 They return no value (the original's results are pointer residuals), so consuming one is an explicit error.

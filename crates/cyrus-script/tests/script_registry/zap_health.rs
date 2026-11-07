@@ -57,8 +57,9 @@ fn a_receivers_health_byte_takes_the_wrapped_sum_clamped_to_a_byte() {
             // i32::MAX wraps the sum negative: the byte clears.
             let (world, result) = object_world(function, amount, &[]);
             if function == Native::ZapObject && expected == 0 {
+                // The kill first asks whether the receiver holds a weapon, which needs the inventory.
                 let error = format!("{:#}", result.unwrap_err());
-                assert!(error.contains("death sequence unavailable"), "{error}");
+                assert!(error.contains("inventory owner unavailable"), "{error}");
             } else {
                 result.unwrap();
             }
@@ -235,4 +236,111 @@ fn a_fatal_player_zap_names_the_receiver_as_the_damage_source_only_for_zap_playe
     assert_eq!((health, group, error), (0, Some(0), None));
     let (health, group, error) = player_world(Native::ZapObject, -40, true);
     assert_eq!((health, group, error), (0, Some(0), None));
+}
+
+/// Actor 0 is an animated nonplayer with 5 health; `ZapObject(-50)` kills it. `current` starts
+/// that group first, `holding` sets the weapon-holding attribute and `combat` gives it a record.
+fn killed_world(
+    holding: bool,
+    combat: bool,
+    current: AnimationGroup,
+) -> (ScriptWorld, anyhow::Result<()>) {
+    let mut scripts = wait_cache(vec![
+        wait(
+            1,
+            Native::ZapObject,
+            CallKind::Function,
+            vec![Value::Integer { value: -50 }],
+        ),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions[1] = Function {
+        name: Native::ZapObject,
+        param_count: 1,
+        kind: CallKind::Function,
+    };
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.attributes[Attribute::Health] = 5;
+    logic.attributes[Attribute::HoldingWeapon] = u8::from(holding);
+    logic.attributes[Attribute::Combat] = u8::from(combat);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let id = world.id(0).unwrap();
+    let groups = [114, 121, 122, 74, 134].map(|group| {
+        serde_json::json!({"group_index": group, "anim_id": 1, "anim_type": 0, "commands": [
+            {"opcode": 0, "frame_reference": group}, {"opcode": 2, "value": 0}]})
+    });
+    let mut data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id, "actors": [{
+            "script_name": world.actors()[0].name(), "animation_groups": groups}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    data.metadata["actors"][0]["animation_groups"] = groups.to_vec().into();
+    world.bind_animation(id, &data, current).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            0,
+        )
+        .unwrap();
+    let hud = ScriptHud::default();
+    let result = world.advance(
+        id,
+        ScriptStage::Body(Thread::Main),
+        ScriptInputs {
+            hud: Some(&hud),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    );
+    (world, result)
+}
+
+fn current_group(world: &ScriptWorld) -> i64 {
+    world.inspect(0, 1)["actors"][0]["animation"]["current_group"]
+        .as_i64()
+        .unwrap()
+}
+
+#[test]
+fn a_zapped_nonplayer_dies_into_the_group_its_state_selects() {
+    use cyrus_script::script::AiType;
+    // Not holding a weapon: the explore death, or the land death from a fight-landing group.
+    let (world, result) = killed_world(false, false, AnimationGroup::IDLE_LEDGE);
+    result.unwrap();
+    assert_eq!(health(&world), 0);
+    assert_eq!(current_group(&world), 134);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().ai_type,
+        AiType::DEAD
+    );
+    let (world, result) = killed_world(false, false, AnimationGroup::FIGHT_LAND);
+    result.unwrap();
+    assert_eq!(current_group(&world), 74);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().ai_type,
+        AiType::DEAD
+    );
+}
+
+#[test]
+fn a_zapped_armed_nonplayer_without_a_combat_record_faults() {
+    let (_, result) = killed_world(true, false, AnimationGroup::IDLE_LEDGE);
+    let error = format!("{:#}", result.unwrap_err());
+    assert!(error.contains("combat record unavailable"), "{error}");
 }
