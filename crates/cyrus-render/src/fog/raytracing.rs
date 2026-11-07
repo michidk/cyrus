@@ -30,9 +30,7 @@ impl RayTracingSupport {
 
 /// A world mesh's ray-traced stand-in. It has no parent, so scene preparation ignores it.
 #[derive(Component)]
-pub(crate) struct Proxy {
-    source: Entity,
-}
+pub(crate) struct Proxy;
 
 #[cfg(feature = "raytracing")]
 pub use solari::RayTracingPlugin;
@@ -127,6 +125,10 @@ mod solari {
     fn active(fidelity: Res<Fidelity>, support: Res<RayTracingSupport>) -> bool {
         fidelity.mode(Area::RayTracing) == Mode::Modern && support.is_available()
     }
+
+    /// The source mesh a [`Proxy`] stands in for.
+    #[derive(Component)]
+    struct StandInOf(Entity);
 
     /// A source mesh that has a stand-in; its own draw is hidden.
     #[derive(Component)]
@@ -305,7 +307,7 @@ mod solari {
         >,
         mut proxies: Query<(
             Entity,
-            &Proxy,
+            &StandInOf,
             &mut Transform,
             &mut GlobalTransform,
             &mut Mesh3d,
@@ -327,10 +329,10 @@ mod solari {
         stand_ins.meshes.retain(|id, _| meshes.contains(*id));
 
         let mut live = HashSet::new();
-        for (entity, proxy, mut transform, mut global, mut mesh, mut tracing, mut material) in
+        for (entity, stand_in, mut transform, mut global, mut mesh, mut tracing, mut material) in
             &mut proxies
         {
-            let traceable = sources.get(proxy.source).ok().and_then(
+            let traceable = sources.get(stand_in.0).ok().and_then(
                 |(_, source_mesh, source_global, inherited, scene, terrain, ..)| {
                     let (id, base, solid) =
                         traceable(scene, terrain, &scene_materials, &terrain_materials)?;
@@ -343,7 +345,7 @@ mod solari {
                 commands.entity(entity).despawn();
                 continue;
             };
-            live.insert(proxy.source);
+            live.insert(stand_in.0);
             if *global != *source_global {
                 *global = *source_global;
                 *transform = source_global.compute_transform();
@@ -404,7 +406,8 @@ mod solari {
                 .or_insert_with(|| standard.add(standin_material(base, solid)))
                 .clone();
             commands.spawn((
-                Proxy { source: entity },
+                Proxy,
+                StandInOf(entity),
                 Mesh3d(mesh.clone()),
                 RaytracingMesh3d(mesh),
                 MeshMaterial3d(material),
