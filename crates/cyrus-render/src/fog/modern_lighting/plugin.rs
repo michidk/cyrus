@@ -1,5 +1,6 @@
 //! The modern lighting plugin, its camera effects and teardown, and the light marker the light
 //! module shares.
+use super::day_night::{self, DayNight, Daylight};
 use super::lights::sync_lights;
 use crate::camera::ViewCamera;
 use bevy::{
@@ -24,13 +25,21 @@ impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
         // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
         // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
-        app.add_systems(
-            Update,
-            (
-                (sync_lights, configure_camera).run_if(lit),
-                restore.run_if(not(lit)),
-            ),
-        );
+        app.init_resource::<DayNight>()
+            .init_resource::<Daylight>()
+            .add_systems(
+                Update,
+                (
+                    (
+                        (day_night::advance, sync_lights, day_night::apply).chain(),
+                        configure_camera,
+                    )
+                        .run_if(lit),
+                    restore.run_if(not(lit)),
+                    day_night::tint_sky,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -90,7 +99,9 @@ fn restore(
     mut commands: Commands,
     cameras: Query<Entity, (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>)>,
     lights: Query<Entity, With<Light>>,
+    mut daylight: ResMut<Daylight>,
 ) {
+    daylight.set_if_neq(Daylight(None));
     for camera in &cameras {
         commands
             .entity(camera)
@@ -122,7 +133,16 @@ mod tests {
     fn systems_have_disjoint_queries() {
         let mut world = World::new();
         let mut schedule = Schedule::default();
-        schedule.add_systems((restore, sync_lights, configure_camera));
+        world.init_resource::<DayNight>();
+        world.init_resource::<Daylight>();
+        schedule.add_systems((
+            restore,
+            sync_lights,
+            configure_camera,
+            day_night::advance,
+            day_night::apply,
+            day_night::tint_sky,
+        ));
         schedule
             .initialize(&mut world)
             .expect("systems initialize without query conflicts");

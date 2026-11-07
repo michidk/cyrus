@@ -106,10 +106,16 @@ pub(super) fn sync_lights(
     for light in &existing {
         commands.entity(light).despawn();
     }
-    // Marks that lights were built, even for an environment that has none.
-    commands.spawn(Light);
     spawn_sun(&mut commands, &environment.model_lighting);
     let ambient = ambient_light(&mut assets.images, &environment.model_lighting);
+    // Marks that lights were built, even for an environment that has none.
+    commands.spawn((
+        Light,
+        Ambient {
+            image: ambient.diffuse_map.clone(),
+            rgb: environment.model_lighting.ambient,
+        },
+    ));
     for (camera, _) in &cameras {
         commands.entity(camera).insert(ambient.clone());
     }
@@ -120,10 +126,40 @@ pub(super) fn sync_lights(
     });
 }
 
+/// The world's sun as installed: its 0..=255 colour and the direction its light travels.
+#[derive(Component)]
+pub(super) struct Sun {
+    pub(super) rgb: [f32; 3],
+    pub(super) direction: Dir3,
+}
+
+/// The ambient environment cube and the world's installed 0..=255 ambient colour it was made of.
+#[derive(Component)]
+pub(super) struct Ambient {
+    pub(super) image: Handle<Image>,
+    pub(super) rgb: [f32; 3],
+}
+
 /// An original 0..=255 light triple as a colour whose linear value is the light factor.
-fn light_color(rgb: [f32; 3]) -> Color {
+pub(super) fn light_color(rgb: [f32; 3]) -> Color {
     let [r, g, b] = rgb.map(|value| (value / 255.0).clamp(0.0, 1.0));
     Color::srgb(r, g, b)
+}
+
+/// A light shining along `direction`; straight up or down keeps a horizontal up axis.
+pub(super) fn light_transform(direction: Dir3) -> Transform {
+    let up = if direction.y.abs() > 0.999 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    };
+    Transform::IDENTITY.looking_to(direction, up)
+}
+
+/// The texels of a uniform ambient cube of a 0..=255 colour.
+pub(super) fn ambient_texels(rgb: [f32; 3]) -> Vec<u8> {
+    let [r, g, b] = rgb.map(|value| value.clamp(0.0, 255.0) as u8);
+    (0..6).flat_map(|_| [r, g, b, 255]).collect()
 }
 
 fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
@@ -132,6 +168,10 @@ fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
     {
         commands.spawn((
             Light,
+            Sun {
+                rgb: lighting.directional,
+                direction,
+            },
             DirectionalLight {
                 color: light_color(lighting.directional),
                 // Cancels Bevy's 1/π and the exposure, so the light factor reaches the surface.
@@ -146,14 +186,14 @@ fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
                 ..default()
             }
             .build(),
-            Transform::IDENTITY.looking_to(direction, Vec3::Y),
+            light_transform(direction),
         ));
     }
 }
 
 /// The world's ambient colour as a uniform environment cubemap.
 fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> EnvironmentMapLight {
-    let [r, g, b] = lighting.ambient.map(|value| value.clamp(0.0, 255.0) as u8);
+    // Kept in the main world too, so the day/night cycle can retint it.
     let mut cube = Image::new(
         Extent3d {
             width: 1,
@@ -161,9 +201,9 @@ fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> Enviro
             depth_or_array_layers: 6,
         },
         TextureDimension::D2,
-        (0..6).flat_map(|_| [r, g, b, 255]).collect(),
+        ambient_texels(lighting.ambient),
         TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
+        RenderAssetUsages::default(),
     );
     cube.texture_view_descriptor = Some(TextureViewDescriptor {
         dimension: Some(TextureViewDimension::Cube),

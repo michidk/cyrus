@@ -127,9 +127,10 @@ fn handle(
     inbox: Res<Inbox>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut taps: ResMut<TapRelease>,
-    (mut fidelity, mut sky_scroll): (
+    (mut fidelity, mut sky_scroll, mut day_night): (
         ResMut<Fidelity>,
         Option<ResMut<cyrus_render::environment::SkyScrollSync>>,
+        Option<ResMut<cyrus_render::fog::DayNight>>,
     ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
@@ -403,11 +404,23 @@ fn handle(
                         Ok(json!(*fidelity))
                     }
                     _ => Err(
-                        "area must be player_controller|camera|water|fog|sky|lighting|music, mode faithful|modern"
+                        "area must be player_controller|camera|water|fog|sky|lighting|textures|music, mode faithful|modern"
                             .into(),
                     ),
                 }
             }
+            Command::SetDayNight { hour, running } => match (day_night.as_deref_mut(), hour) {
+                (None, _) => Err("modern lighting is unavailable".into()),
+                (Some(_), Some(hour)) if !(0.0..=24.0).contains(&hour) => {
+                    Err("hour must be within 0 to 24".into())
+                }
+                (Some(cycle), hour) => {
+                    cycle.enabled = hour.is_some();
+                    cycle.hour = hour.unwrap_or(cycle.hour);
+                    cycle.running = running;
+                    Ok(json!({"enabled": cycle.enabled, "hour": cycle.hour, "running": cycle.running}))
+                }
+            },
             Command::SetSkyScroll { direction, offset } => match sky_scroll.as_deref_mut() {
                 Some(reference) => reference
                     .set(direction, offset)

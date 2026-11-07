@@ -140,6 +140,13 @@ pub enum Command {
         area: String,
         mode: String,
     },
+    /// Set the modern lighting's day/night cycle: `hour` (0 to 24) turns it on at that hour and
+    /// null turns it off; `running` lets the hour advance. Needs `lighting` Modern to show.
+    SetDayNight {
+        hour: Option<f32>,
+        #[serde(default)]
+        running: bool,
+    },
     /// Match a captured original sky direction and texture offsets for comparison.
     SetSkyScroll {
         direction: u16,

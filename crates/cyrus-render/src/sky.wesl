@@ -13,7 +13,14 @@ struct SkyParameters {
     scroll: vec4<f32>,
     sun_position: vec4<f32>,
     sun_color: vec4<f32>,
+    day_night: vec4<f32>,
+    day_night_sun: vec4<f32>,
 };
+
+// Rotates `v` by the unit quaternion `q`.
+fn rotate(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
 @group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> sky_parameters: SkyParameters;
 
 struct VertexOutput {
@@ -111,8 +118,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let near = near_h.xyz / near_h.w;
     let ray = (view.world_from_view * vec4(near, 0.0)).xyz;
     var color = cloud_color(ray, near);
-    if sky_parameters.sun_position.w > 0.0 {
-        let center = (view.view_from_world * vec4(sky_parameters.sun_position.xyz, 0.0)).xyz;
+    // The modern day/night cycle tints the encoded sky; neutral leaves it untouched.
+    if any(sky_parameters.day_night.rgb != vec3(1.0)) {
+        color = srgb_to_linear(linear_to_srgb(color) * sky_parameters.day_night.rgb);
+    }
+    if sky_parameters.sun_position.w > 0.0 && sky_parameters.day_night.w > 0.0 {
+        let sun_center = rotate(sky_parameters.day_night_sun, sky_parameters.sun_position.xyz);
+        let center = (view.view_from_world * vec4(sun_center, 0.0)).xyz;
         let depth = -center.z;
         let uv = (near.xy * (depth / -near.z) - center.xy) * vec2(1.0, -1.0)
             / (2.0 * vec2(sky_parameters.sun_position.w, sky_parameters.sun_color.w)) + vec2(0.5);
@@ -125,6 +137,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 opacity = textureSampleLevel(sun, sun_sampler, uv, 0.0).r;
             }
+            opacity *= sky_parameters.day_night.w;
             color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
         }
     }

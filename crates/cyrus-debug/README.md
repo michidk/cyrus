@@ -25,6 +25,12 @@ the window is open, so the plots are already filled in when it opens; the counts
 only gathered while it is open. Like the inspector, the window stays open
 independently of the F1 menu and does not capture game input.
 
+Press F1, then click **Open day/night** for the modern lighting's time of day:
+turn the cycle on, pick the hour (12:00 is the world's installed sun) or jump to
+dawn, noon, dusk or night, and let it run at a chosen speed. It needs Modern
+lighting, and the panel offers to switch it. The browser build has no modern
+lighting and says so.
+
 The dependency pins the unreleased Bevy 0.20 port from
 [upstream PR #324](https://github.com/jakobhellermann/bevy-inspector-egui/pull/324).
 Its egui adapter is patched to the same released `bevy_egui` 0.43 used by Cyrus.

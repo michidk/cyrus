@@ -7,7 +7,7 @@ mod observation;
 mod preparation;
 pub use observation::BoundSceneLightImage;
 mod texture;
-pub use modern_lighting::ModernLightingPlugin;
+pub use modern_lighting::{DayNight, Daylight, ModernLightingPlugin, SkyLight};
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
@@ -377,7 +377,7 @@ fn apply_scene_fog(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
-    fidelity: Res<Fidelity>,
+    (fidelity, daylight): (Res<Fidelity>, Option<Res<Daylight>>),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
         (
@@ -477,7 +477,11 @@ fn apply_scene_fog(
             perspective.far = far / 20.0;
         }
     }
-    let extension = fog_extension(environment, &fidelity, [near, far]);
+    let mut extension = fog_extension(environment, &fidelity, [near, far]);
+    // The modern day/night cycle tints the fog with the sky.
+    if let Some(sky) = daylight.and_then(|daylight| daylight.0) {
+        extension.color = (extension.color.truncate() * sky.tint).extend(extension.color.w);
+    }
     if request.is_changed()
         || previous
             .as_ref()

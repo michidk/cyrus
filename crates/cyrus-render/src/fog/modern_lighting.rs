@@ -10,6 +10,10 @@
 //! unprojected mesh, instead of the original's per-frame camera-space preparation, so they can
 //! cast shadows and fill the depth prepass. Flats, water and sky keep the original's shading.
 //! The sun, the ambient colour and the object lights come from the world's environment.
+//!
+//! The day/night cycle (`day_night`) moves and tints these lights by the hour.
+mod day_night;
 mod lights;
 mod plugin;
+pub use day_night::{DayNight, Daylight, SkyLight};
 pub use plugin::ModernLightingPlugin;

@@ -94,6 +94,18 @@ pub(crate) struct SkyMaterial {
     /// Encoded tint and half-height in Bevy units.
     #[uniform(2)]
     pub sun_color: Vec4,
+    /// The modern day/night cycle's factor on the encoded sky colour, and the sun disc's
+    /// visibility; `Vec4::ONE` leaves the sky as installed.
+    #[uniform(2)]
+    pub day_night: Vec4,
+    /// The cycle's rotation of the sun disc as a quaternion; identity (`Vec4::W`) leaves it.
+    #[uniform(2)]
+    pub day_night_sun: Vec4,
+}
+
+impl SkyMaterial {
+    /// `day_night` and `day_night_sun` while the day/night cycle changes nothing.
+    pub(crate) const NEUTRAL_DAY_NIGHT: [Vec4; 2] = [Vec4::ONE, Vec4::W];
 }
 
 impl Material for SkyMaterial {
@@ -223,6 +235,8 @@ mod tests {
                 plane: Vec4::ZERO,
                 fog_rgb: Vec4::ZERO,
                 scroll: Vec4::new(255.0, -255.0, 0.0, 0.0),
+                day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
+                day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
             });
         app.world_mut().spawn((
             Sky {

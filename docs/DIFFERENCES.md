@@ -54,6 +54,16 @@ measured matches. Flats keep their original shading.
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
 which moves six times farther than the world's installed clipping distance.
 
+## Day/night cycle
+
+**Verified:** the original has one fixed sun per world, read from its lighting data, and night is a
+separate world variant. Under Modern lighting, the debug menu's day/night panel (and the control
+port's `set_day_night`) can turn on a time of day. Noon reproduces the world's installed sun; the sun
+moves on an arc through it and sets at 6 and 18 o'clock, and its colour, the ambient light, the fog and
+the sky darken and warm with the hour, with a dim moonlight at night. Worlds without an installed sun,
+such as interiors, are not affected. The cycle is off by default, and every colour, the speed and the
+direction of the arc are Modern tuning choices.
+
 ## Unfiltered textures
 
 The original renders through 3dfx Glide with bilinear texture filtering, which Faithful reproduces.

@@ -129,6 +129,9 @@ impl SkySnapshot {
                 scroll: Vec4::from_array(self.scroll),
                 sun_position: Vec4::from_array(self.sun_position),
                 sun_color: Vec4::from_array(self.sun_color),
+                // The day/night cycle reapplies its own values every frame.
+                day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
+                day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
             },
             sync: SkyScrollSync {
                 pending: self
@@ -203,6 +206,8 @@ mod tests {
                 scroll: Vec4::new(255.9, -3.5, 0.0, 0.0),
                 sun_position: Vec4::ZERO,
                 sun_color: Vec4::ZERO,
+                day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
+                day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
             });
         original.world_mut().spawn((
             Sky {
