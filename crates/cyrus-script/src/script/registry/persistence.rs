@@ -85,6 +85,8 @@ struct ControlSnapshot {
     #[serde(default)]
     scabbard_override: [Option<i16>; 2],
     #[serde(default)]
+    grip_override: [Option<i16>; 2],
+    #[serde(default)]
     killed: bool,
     #[serde(default)]
     creator: Option<usize>,
@@ -181,6 +183,7 @@ impl ControlSnapshot {
             hidden: control.hidden,
             invisible: control.invisible,
             scabbard_override: control.scabbard_override,
+            grip_override: control.grip_override,
             killed: control.killed,
             creator: control.creator,
             combat_death_default: control.combat_death_default,
@@ -267,6 +270,7 @@ impl ControlSnapshot {
             hidden: self.hidden,
             invisible: self.invisible,
             scabbard_override: self.scabbard_override,
+            grip_override: self.grip_override,
             killed: self.killed,
             creator,
             combat_death_default: self.combat_death_default,

@@ -7061,7 +7061,7 @@
       "scope": "Logical rope-attached zero/nonzero query, not original rope pointer",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
@@ -7129,7 +7129,7 @@
       "scope": "Signed16 first scabbard word with override readback",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors",
         "crates/cyrus-script/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
       ],
       "evidence": [
@@ -7147,7 +7147,7 @@
       "scope": "Signed16 second scabbard word with override readback",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors",
         "crates/cyrus-script/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
       ],
       "evidence": [
@@ -7165,7 +7165,7 @@
       "scope": "Logical hidden-state byte presentation as Boolean",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
@@ -7234,34 +7234,36 @@
       "property": "grip[0]",
       "status": "partial",
       "owner": 30,
-      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "scope": "Signed16 grip word with override readback: reads the RAEX word the loader copied, a write replaces it",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/30"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads-32768 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified: preservation names grip[0]/grip[1] as signed words copied from RAEX with the scabbard words, and a property write replaces the stored word (low sixteen bits kept), the same rule the scabbard words follow; cyrus keeps the written word beside the installed one, reads it back without needing animation data, saves it with the actor and returns it from every attachment query. Public tests read the installed signed words and write/read back -77 and 70000 (as 4464). Unknown: installed original/native/browser script writes (none use the property) and every attachment model. Verified static-only census: zero decoded read/write/update occurrences in 27 historical exports.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "grip[1]",
       "status": "partial",
       "owner": 30,
-      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "scope": "Signed16 grip word with override readback: reads the RAEX word the loader copied, a write replaces it",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/30"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads32767 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified: preservation names grip[0]/grip[1] as signed words copied from RAEX with the scabbard words, and a property write replaces the stored word (low sixteen bits kept), the same rule the scabbard words follow; cyrus keeps the written word beside the installed one, reads it back without needing animation data, saves it with the actor and returns it from every attachment query. Public tests read the installed signed words and write/read back -77 and 70000 (as 4464). Unknown: installed original/native/browser script writes (none use the property) and every attachment model. Verified static-only census: zero decoded read/write/update occurrences in 27 historical exports.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {

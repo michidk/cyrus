@@ -495,6 +495,8 @@ pub struct ActorControlState {
     /// The signed RAEX `scabbard0`/`scabbard1` words a script rewrote through `scabbard[0]` and
     /// `scabbard[1]`; None keeps the installed value the loader copied into the actor.
     pub scabbard_override: [Option<i16>; 2],
+    /// The signed RAEX `grip0`/`grip1` words a script rewrote through `grip[0]` and `grip[1]`.
+    pub grip_override: [Option<i16>; 2],
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
     /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
@@ -5257,21 +5259,24 @@ enum PoseProperty {
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
-/// installed value the loader copied, unless a script rewrote a scabbard word through the property.
+/// installed value the loader copied, unless a script rewrote the word through its property.
 pub(super) fn raex_word(
     control: Option<&ActorControlState>,
     metadata: &serde_json::Value,
     field: &str,
 ) -> Option<i16> {
-    let word = ["scabbard0", "scabbard1"]
-        .iter()
-        .position(|name| *name == field);
-    word.and_then(|word| control?.scabbard_override[word])
-        .or_else(|| {
-            metadata["raex"][field]
-                .as_i64()
-                .and_then(|value| i16::try_from(value).ok())
-        })
+    let overridden = |control: &ActorControlState| match field {
+        "scabbard0" => control.scabbard_override[0],
+        "scabbard1" => control.scabbard_override[1],
+        "grip0" => control.grip_override[0],
+        "grip1" => control.grip_override[1],
+        _ => None,
+    };
+    control.and_then(overridden).or_else(|| {
+        metadata["raex"][field]
+            .as_i64()
+            .and_then(|value| i16::try_from(value).ok())
+    })
 }
 
 /// Script properties that name actor motion bytes. The engine's property descriptors (preservation
@@ -5759,14 +5764,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .with_context(|| format!("{name} control owner unavailable"))?;
-            let data = self
-                .inputs
-                .animations
-                .with_context(|| format!("{name} animation data unavailable"))?
-                .0;
-            let field = ["grip0", "grip1"][word];
-            let value = raex_word(Some(control), data.actor(actor.name())?, field)
-                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            let value = if let Some(value) = control.grip_override[word] {
+                value
+            } else {
+                let data = self
+                    .inputs
+                    .animations
+                    .with_context(|| format!("{name} animation data unavailable"))?
+                    .0;
+                let field = ["grip0", "grip1"][word];
+                raex_word(Some(control), data.actor(actor.name())?, field)
+                    .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?
+            };
             return Ok(i32::from(value));
         }
         if let Some(word) = [Property::Scabbard0, Property::Scabbard1]
@@ -6134,15 +6143,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let scabbard = [Property::Scabbard0, Property::Scabbard1]
             .iter()
             .position(|&word| word == name);
-        if name == Property::Hide || scabbard.is_some() {
+        let grip = [Property::Grip0, Property::Grip1]
+            .iter()
+            .position(|&word| word == name);
+        if name == Property::Hide || scabbard.is_some() || grip.is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            match scabbard {
-                Some(word) => control.scabbard_override[word] = Some(value as i16),
-                None => control.hidden = value as u8 != 0,
+            match (scabbard, grip) {
+                (Some(word), _) => control.scabbard_override[word] = Some(value as i16),
+                (_, Some(word)) => control.grip_override[word] = Some(value as i16),
+                _ => control.hidden = value as u8 != 0,
             }
             return Ok(());
         }

@@ -21291,7 +21291,7 @@ fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
 }
 
 #[test]
-fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
+fn hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
     // (property, value written first, then read back)
     for (name, write, read) in [
@@ -21299,6 +21299,8 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
         (Property::Rope, None, true),
         (Property::Scabbard0, Some(42), true),
         (Property::Scabbard1, Some(-3), true),
+        (Property::Grip0, Some(-77), true),
+        (Property::Grip1, Some(70000), true),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name;
@@ -21360,6 +21362,15 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
             Property::Scabbard0 => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [42]);
                 assert_eq!(control["scabbard_override"], serde_json::json!([42, null]));
+            }
+            Property::Grip0 => {
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [-77]);
+                assert_eq!(control["grip_override"], serde_json::json!([-77, null]));
+            }
+            Property::Grip1 => {
+                // The word keeps the low sixteen bits of the stored value.
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4464]);
+                assert_eq!(control["grip_override"], serde_json::json!([null, 4464]));
             }
             _ => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [-3]);
