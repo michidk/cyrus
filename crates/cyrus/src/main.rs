@@ -138,10 +138,12 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_game::fidelity::Mode::Faithful
         }
     };
-    // `--mode` sets every area; the per-area flags below override it.
+    // `--mode` sets every area but ray tracing; the per-area flags below override it.
     if let Some(value) = &args.launch.mode {
         for area in cyrus_game::fidelity::Area::ALL {
-            settings.fidelity.set(area, mode(value));
+            if area != cyrus_game::fidelity::Area::RayTracing {
+                settings.fidelity.set(area, mode(value));
+            }
         }
     }
     for (area, value) in [
@@ -155,6 +157,10 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         ),
         (cyrus_game::fidelity::Area::Camera, args.launch.camera),
         (cyrus_game::fidelity::Area::Lighting, args.launch.lighting),
+        (
+            cyrus_game::fidelity::Area::RayTracing,
+            args.launch.ray_tracing,
+        ),
     ] {
         if let Some(value) = value {
             settings.fidelity.set(area, mode(&value));
@@ -230,6 +236,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
             cyrus_render::fog::ModernLightingPlugin,
+            cyrus_render::fog::RayTracingPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));
         app.add_systems(

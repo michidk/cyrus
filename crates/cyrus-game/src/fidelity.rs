@@ -22,17 +22,20 @@ pub enum Area {
     Fog,
     Sky,
     Lighting,
+    /// Hardware ray-traced lighting; Modern replaces the original's shading where the GPU supports it.
+    RayTracing,
     Music,
 }
 
 impl Area {
-    pub const ALL: [Area; 7] = [
+    pub const ALL: [Area; 8] = [
         Area::PlayerController,
         Area::Camera,
         Area::Water,
         Area::Fog,
         Area::Sky,
         Area::Lighting,
+        Area::RayTracing,
         Area::Music,
     ];
 }
@@ -47,6 +50,8 @@ pub struct Fidelity {
     pub sky: Mode,
     /// Modern lighting currently reuses the faithful terrain implementation.
     pub lighting: Mode,
+    /// Modern traces rays for lighting through the debug menu's ray-tracing switch.
+    pub ray_tracing: Mode,
     /// Modern mutes CD-ROM data-sector bytes that a disc image places inside an audio track.
     pub music: Mode,
 }
@@ -60,6 +65,7 @@ impl Fidelity {
             Area::Fog => self.fog,
             Area::Sky => self.sky,
             Area::Lighting => self.lighting,
+            Area::RayTracing => self.ray_tracing,
             Area::Music => self.music,
         }
     }
@@ -71,6 +77,7 @@ impl Fidelity {
             Area::Fog => self.fog = mode,
             Area::Sky => self.sky = mode,
             Area::Lighting => self.lighting = mode,
+            Area::RayTracing => self.ray_tracing = mode,
             Area::Music => self.music = mode,
         }
     }

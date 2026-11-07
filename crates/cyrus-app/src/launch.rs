@@ -57,7 +57,7 @@ pub struct GameOptions {
     /// Enter a new game without its introduction movie, from this launch and from the menu entry.
     #[arg(long)]
     pub skip_movies: bool,
-    /// Sets every presentation area, including the modern lighting pipeline.
+    /// Sets every presentation area except ray tracing, including the modern lighting pipeline.
     /// The per-area flags below override it for their area.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub mode: Option<String>,
@@ -82,6 +82,10 @@ pub struct GameOptions {
     /// Lighting; modern shades the world with shadow-mapped PBR instead of the original's vertex lighting.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub lighting: Option<String>,
+    /// Hardware ray-traced lighting through Bevy Solari; modern needs a GPU with ray queries and
+    /// otherwise falls back to the lighting mode. Not part of `--mode`.
+    #[arg(long, value_parser = ["faithful", "modern"])]
+    pub ray_tracing: Option<String>,
     /// Installed 3dfx splash: the GOG Windows launch's `3DfxSpl2.dll` or the DOS Glide overlay.
     #[arg(long, value_parser = ["windows", "dos"])]
     pub splash: Option<String>,
@@ -198,10 +202,12 @@ mod tests {
             "--camera=modern",
             "--mode=modern",
             "--lighting=faithful",
+            "--ray-tracing=modern",
         ])
         .unwrap();
         assert_eq!(game.mode.as_deref(), Some("modern"));
         assert_eq!(game.lighting.as_deref(), Some("faithful"));
+        assert_eq!(game.ray_tracing.as_deref(), Some("modern"));
         assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.controls.as_deref(), Some("modern"));
         assert_eq!(game.camera.as_deref(), Some("modern"));
