@@ -498,6 +498,7 @@ mod tests {
         let mut selected = vec![false; 40 * 40];
         selected[20 * 40 + 20] = true;
         let environment = environments.add(Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 40,
@@ -682,6 +683,7 @@ mod tests {
         };
         water.animated_vertices[12] = true;
         let environment = Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 5,
@@ -817,6 +819,7 @@ mod tests {
             .id();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 2,
@@ -957,6 +960,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                world_palette: Vec::new(),
                 effects: None,
                 terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                     side: 2,
@@ -987,6 +991,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                world_palette: Vec::new(),
                 effects: None,
                 terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                     side: 2,

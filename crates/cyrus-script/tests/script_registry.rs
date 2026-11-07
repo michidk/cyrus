@@ -43703,6 +43703,7 @@ fn bind_scheduler_environment(
         .insert(
             handle.id(),
             Environment {
+                world_palette: Vec::new(),
                 effects: Some(water_model_tests::effects()),
                 texture_scale: [1, 1],
                 sky: None,

@@ -243,6 +243,18 @@ pub struct ExamineItem {
     pub description: Option<String>,
 }
 
+/// The loaded world's look that the examine view draws with: model lighting inputs in the
+/// original's axes and the palette textures resolve through (preservation `engine/hud.md`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
+pub struct ExamineLook {
+    pub ambient: [f32; 3],
+    pub directional: [f32; 3],
+    /// Direction of the directional light in the original's axes.
+    pub direction: [f32; 3],
+    /// 256 entries, entry zero black.
+    pub palette: Vec<[u8; 3]>,
+}
+
 /// Where a description line is in its speech.
 #[derive(Default, Debug)]
 enum Line {
@@ -271,6 +283,8 @@ pub struct ExamineScreen {
     /// The pose to draw after the latest update.
     pub pose: Option<ViewerPose>,
     pub error: Option<String>,
+    /// The loaded world's look, published by the renderer that owns it.
+    pub look: Option<ExamineLook>,
     /// A label the audio owner starts as speech (and its subtitle), then answers through
     /// [`Self::speech_reply`].
     pub speech_request: Option<[u8; 4]>,

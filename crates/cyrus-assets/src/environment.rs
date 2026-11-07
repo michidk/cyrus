@@ -28,6 +28,11 @@ pub struct Environment {
     pub terrain_lighting: Option<TerrainLighting>,
     /// Ambient and directional model inputs, including worlds without terrain.
     pub model_lighting: ModelLighting,
+    /// The world palette as the Glide upload leaves it (each channel `4 * floor(c / 4)`, entry
+    /// zero black), which textures drawn over the world resolve through. Empty in caches that
+    /// predate it.
+    #[serde(default)]
+    pub world_palette: Vec<[u8; 3]>,
     /// Authored static placements and admitted map lights for the world-entry bake.
     pub prelighting: Prelighting,
     /// Authored kind-6 runtime lights in file order, before active-region selection.

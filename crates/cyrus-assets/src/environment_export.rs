@@ -417,6 +417,18 @@ pub(crate) fn prepare(
             prelighting,
             object_lights,
             model_lighting,
+            world_palette: palette
+                .colors
+                .iter()
+                .enumerate()
+                .map(|(index, color)| {
+                    if index == 0 {
+                        [0; 3]
+                    } else {
+                        color.map(|c| c & !3)
+                    }
+                })
+                .collect(),
             terrain_lighting,
             sky,
             background,

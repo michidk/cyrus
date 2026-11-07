@@ -1065,6 +1065,7 @@ mod tests {
                         direction: [0.0, -1.0, 0.0],
                     },
                     prelighting: Default::default(),
+                    world_palette: Vec::new(),
                     object_lights: vec![cyrus_assets::environment::LocalLight {
                         position: [9216, 0, 9728],
                         radius: 100,
@@ -1304,6 +1305,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 2,

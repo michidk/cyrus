@@ -16,6 +16,8 @@ pub struct ExamineArtwork {
 /// One model's first-frame geometry, in original model units.
 #[derive(Serialize, Deserialize)]
 pub struct ExamineModel {
+    /// The model header's bounding radius.
+    pub radius: f32,
     pub vertices: Vec<[f32; 3]>,
     pub faces: Vec<ExamineFace>,
 }

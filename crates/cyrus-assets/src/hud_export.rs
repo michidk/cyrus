@@ -561,6 +561,7 @@ fn examine_artwork(
         artwork.models.insert(
             key,
             ExamineModel {
+                radius: model.header.radius as f32,
                 vertices: model
                     .vertex_coords
                     .iter()

@@ -469,6 +469,7 @@ fn paint(
                     texture: face.texture,
                     color: face.color,
                     light: Some([levels[0], levels[corner], levels[corner + 1]]),
+                    light_rgb: None,
                 });
             }
         }

@@ -104,6 +104,10 @@ pub struct MenuFace {
     /// `floor(texel * (L + 1) / 256)`; `None` draws the texture unlit.
     #[serde(default)]
     pub light: Option<[f32; 3]>,
+    /// Per-channel lighting level at each corner; when present it replaces `light`, and each
+    /// colour channel takes its own interpolated level.
+    #[serde(default)]
+    pub light_rgb: Option<[[f32; 3]; 3]>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
