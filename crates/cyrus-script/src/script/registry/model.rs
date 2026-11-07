@@ -1252,18 +1252,7 @@ impl ScriptWorld {
             DisplayAttachment, TRANSIENT_MODEL_CAPACITY, prepare_weapon_attachment,
         };
         self.require_model_identity(data)?;
-        let stem = name
-            .rsplit(['\\', '/', ':'])
-            .next()
-            .unwrap_or(name)
-            .split('.')
-            .next()
-            .unwrap_or_default();
-        let model: String = stem
-            .chars()
-            .take(8)
-            .collect::<String>()
-            .to_ascii_uppercase();
+        let model = resource_stem(name);
         ensure!(
             data.models.contains_key(&model),
             "display model {name:?}: installed model {model} unavailable"
@@ -1729,4 +1718,19 @@ fn float_to_model_integer(value: f64) -> i32 {
     } else {
         i32::MIN
     }
+}
+
+/// A resource name as the original's lookups key it: the base file name without directory, drive
+/// or extension, at most eight characters, upper case.
+pub(super) fn resource_stem(name: &str) -> String {
+    name.rsplit(['\\', '/', ':'])
+        .next()
+        .unwrap_or(name)
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(8)
+        .collect::<String>()
+        .to_ascii_uppercase()
 }
