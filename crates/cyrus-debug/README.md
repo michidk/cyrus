@@ -15,6 +15,16 @@ do not register the debug UI.
 Press F1, then click **Open inspector**. Click **Close inspector** or the
 inspector window's close button to hide it.
 
+Press F1, then click **Open performance** for a Performance window. It plots the
+frame rate and the frame time of every real-time frame over the last 30 seconds
+(newest on the right, value axis from zero to the next round number), with the
+average, 1% low (the slowest 1% of frames) and worst frame below the plots. Beneath
+that it lists the GPU adapter, window resolution, entity count, visible and total
+meshes, lights, and loaded mesh and image assets. Frames are recorded whether or not
+the window is open, so the plots are already filled in when it opens; the counts are
+only gathered while it is open. Like the inspector, the window stays open
+independently of the F1 menu and does not capture game input.
+
 The dependency pins the unreleased Bevy 0.20 port from
 [upstream PR #324](https://github.com/jakobhellermann/bevy-inspector-egui/pull/324).
 Its egui adapter is patched to the same released `bevy_egui` 0.43 used by Cyrus.
