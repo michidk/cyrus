@@ -5416,7 +5416,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         AppState,
         script::{ScriptActors, ScriptPlugin, ScriptView},
     };
-    use cyrus_script::program::Function;
+    use cyrus_soup::program::Function;
     use cyrus_world::{
         animation::{AnimationRequest, AnimationTick},
         lifecycle::PreparedWorld,
