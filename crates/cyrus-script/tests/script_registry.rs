@@ -23297,6 +23297,18 @@ fn dialog_and_menu_natives_write_their_mode_words() {
         )
     };
     assert_eq!(state(&[(Native::DialogBegin, &[])]), (Some(1), 0));
+    // DialogBegin empties the remembered topic text; the other three leave it untouched.
+    let remembered = |call: Native| {
+        run_native_world(&[(call, &[])])
+            .unwrap()
+            .globals()
+            .highlighted_choice()
+            .map(str::to_owned)
+    };
+    assert_eq!(remembered(Native::DialogBegin), Some(String::new()));
+    for call in [Native::DialogEnd, Native::MenuBegin, Native::MenuEnd] {
+        assert_eq!(remembered(call), None, "{call}");
+    }
     assert_eq!(
         state(&[(Native::DialogBegin, &[]), (Native::DialogEnd, &[])]),
         (Some(0), 0)

@@ -615,6 +615,10 @@ impl GameplayGlobals {
     pub fn highlighted_choice(&self) -> Option<&str> {
         self.highlighted_choice.as_deref()
     }
+    /// `DialogBegin` empties the remembered text, so the next menu highlights its first item.
+    pub(super) fn forget_choice(&mut self) {
+        self.highlighted_choice = Some(String::new());
+    }
     /// The topic-menu owner supplies the text selected from its installed entries.
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);

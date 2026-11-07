@@ -7990,8 +7990,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             ) as i32));
         }
-        // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
-        // owner is not yet identified; that write is not modelled.
+        // The dialogue and topic-menu mode words. DialogBegin also empties the remembered topic
+        // text, the first byte of the buffer the menu compares new entries against.
         if let Some((dialogue, begin)) = match function {
             Native::DialogBegin => Some((true, true)),
             Native::DialogEnd => Some((true, false)),
@@ -8001,7 +8001,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
         } {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             match (dialogue, begin) {
-                (true, begin) => self.registry.globals.set_dialogue_state(begin),
+                (true, begin) => {
+                    if begin {
+                        self.registry.globals.forget_choice();
+                    }
+                    self.registry.globals.set_dialogue_state(begin)
+                }
                 (false, true) => self.registry.globals.begin_topic_menu(),
                 (false, false) => self.registry.globals.end_topic_menu(),
             }
