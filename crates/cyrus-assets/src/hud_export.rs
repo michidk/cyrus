@@ -64,6 +64,12 @@ pub(crate) fn prepare(
     .with_context(|| format!("hud: {item_path}"))?;
     let keys = read("KEYS.INI")?;
     let worlds = read("WORLD.INI")?;
+    let inventory_models = read("fxart/INVENTRY.ROB")?;
+    let sphere_scale = settings
+        .system
+        .sphere_object_scale
+        .filter(|scale| *scale > 0)
+        .unwrap_or(256);
     let system_fields = ini_fields(&system, "SYSTEM.INI")?;
     let atlas_name = definitions
         .settings
@@ -102,8 +108,8 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        14u32,
-        (&system, &items, &keys, &worlds),
+        15u32,
+        (&system, &items, &keys, &worlds, &inventory_models),
         (&selected_bytes, &border_bytes, &arrow_bytes),
         (&map_bytes, &cross_bytes),
         (
@@ -230,6 +236,8 @@ pub(crate) fn prepare(
         !map.frames.is_empty() && !cross.frames.is_empty(),
         "hud: system/MAPMAP.GXA and system/CROSS.GXA need at least one frame"
     );
+    let models =
+        rgpre::import::rob::parse_rob_file(&inventory_models).context("hud: fxart/INVENTRY.ROB")?;
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
     for (id, item) in &definitions.items {
@@ -295,6 +303,12 @@ pub(crate) fn prepare(
                         crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
                     }),
                 description: item.description.clone(),
+                inventory_extents: item
+                    .inventory_object_file
+                    .as_deref()
+                    .map(|path| model_extents(&models, path, sphere_scale))
+                    .transpose()
+                    .with_context(|| format!("hud: {item_path} inventory_object_file[{id}]"))?,
             },
         );
         if item.hide.unwrap_or(false) {
@@ -412,6 +426,53 @@ pub(crate) fn prepare(
     output.publish(&directory.join("overlay.hud"), &serde_json::to_vec(&hud)?)?;
     output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
+}
+
+/// The examine view's model extents (x, y, z): per axis the largest positive and the largest
+/// negative magnitude of the first frame's vertices, each rounded to nearest-even as it is
+/// compared, with x and z scaled by `scale / 256` (preservation `engine/hud.md` examine view).
+fn model_extents(
+    models: &rgpre::import::rob::RobFile,
+    path: &str,
+    scale: i32,
+) -> anyhow::Result<[i32; 3]> {
+    let key = crate::animation::model_key(path);
+    let segment = models
+        .segments
+        .iter()
+        .find(|segment| crate::animation::model_key(&segment.name()) == key)
+        .with_context(|| format!("model {key} absent from INVENTRY.ROB"))?;
+    let model = segment
+        .parse_embedded_3d_data()
+        .with_context(|| format!("model {key}"))?;
+    let (mut positive, mut negative) = ([0i32; 3], [0i32; 3]);
+    for vertex in &model.vertex_coords {
+        for (axis, value) in [vertex.x, vertex.y, vertex.z].into_iter().enumerate() {
+            if value >= 0.0 {
+                if value > positive[axis] as f32 {
+                    positive[axis] = value.round_ties_even() as i32;
+                }
+            } else if value < negative[axis] as f32 {
+                negative[axis] = value.round_ties_even() as i32;
+            }
+        }
+    }
+    let mut extents = [0; 3];
+    for axis in 0..3 {
+        let (high, low) = (positive[axis], negative[axis].checked_abs());
+        let low = low.with_context(|| format!("model {key}: axis {axis} magnitude overflow"))?;
+        let scaled = |value: i32| -> anyhow::Result<i32> {
+            if axis == 1 {
+                return Ok(value);
+            }
+            Ok(value
+                .checked_mul(scale)
+                .with_context(|| format!("model {key}: axis {axis} scaled extent overflow"))?
+                >> 8)
+        };
+        extents[axis] = scaled(high)? + scaled(low)?;
+    }
+    Ok(extents)
 }
 
 fn text<'a>(fields: &'a Fields, file: &str, section: &str, key: &str) -> anyhow::Result<&'a str> {

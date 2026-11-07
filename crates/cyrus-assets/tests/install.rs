@@ -696,6 +696,13 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     for (id, item) in data["inventory"].as_object().unwrap() {
         assert_ne!(item["hand_model"], "Unexported", "item {id}");
         assert_ne!(item["inventory_model"], "Unexported", "item {id}");
+        if item["inventory_model"] != "Absent" {
+            let extents = item["inventory_extents"].as_array().unwrap();
+            assert!(
+                extents.iter().all(|axis| axis.as_i64().unwrap() > 0),
+                "item {id}: {extents:?}"
+            );
+        }
         if item["weapon"] == true {
             assert!(
                 item["hand_model"]["Model"]
