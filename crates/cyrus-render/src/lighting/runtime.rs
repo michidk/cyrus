@@ -10,10 +10,10 @@ use cyrus_assets::environment::{Environment, LocalLight};
 /// Logical map-list view, with source identity checked before consuming camera publication.
 #[derive(SystemParam)]
 pub(crate) struct LightView<'w> {
-    drive: Option<Res<'w, cyrus_game::script::CameraDrive>>,
-    frame: Option<Res<'w, cyrus_game::script::CameraFrameState>>,
+    drive: Option<Res<'w, cyrus_script::script::CameraDrive>>,
+    frame: Option<Res<'w, cyrus_script::script::CameraFrameState>>,
     flycam: Option<Res<'w, crate::camera::FlycamSettings>>,
-    view: Option<Res<'w, cyrus_game::script::ScriptView>>,
+    view: Option<Res<'w, cyrus_script::script::ScriptView>>,
     request: Option<Res<'w, cyrus_world::animation::AnimationRequest>>,
 }
 
@@ -21,7 +21,7 @@ impl LightView<'_> {
     pub(crate) fn position(
         &self,
         rendered: Vec3,
-        current: Option<cyrus_game::script::camera::CameraPose>,
+        current: Option<cyrus_script::script::camera::CameraPose>,
     ) -> [i32; 2] {
         if self.drive.as_ref().is_some_and(|drive| drive.enabled)
             && !self.flycam.as_ref().is_some_and(|flycam| flycam.enabled)

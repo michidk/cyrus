@@ -32,7 +32,7 @@ pub fn prepare_scene_materials(
     clipping: [f32; 2],
     camera_position: Vec3,
     object_lights: &[cyrus_assets::environment::LocalLight],
-    actor_prelighting: &std::collections::BTreeMap<usize, cyrus_game::script::ActorPrelight>,
+    actor_prelighting: &std::collections::BTreeMap<usize, cyrus_script::script::ActorPrelight>,
 ) -> Result<()> {
     ensure!(
         camera_position.is_finite()

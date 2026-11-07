@@ -20,8 +20,9 @@ reloads an active mod's files when they change (polled every half second).
 
 The API lives on one host entity with `Water`, `Camera`, `Movement`, `Settings`
 and `Input` components (`src/api.rs`). `PreUpdate` hands last frame's mod answers
-to cyrus-render's `WaterWaves` and `CameraTakeover` and cyrus-game's
-`MovementWish` and publishes this frame's state, so answers apply one frame
+to cyrus-render's `WaterWaves` and `CameraTakeover` and cyrus-script's
+`MovementWish` and `LocomotionClaimed` and publishes this frame's state (including the
+selected player's `Player` status), so answers apply one frame
 later. Setting values come from `src/settings.rs`: mods declare them in
 `mod.toml`, the Mods window edits them and `mod-settings.json` keeps them. A hook a mod stops answering returns to the original.
 

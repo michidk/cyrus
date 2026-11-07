@@ -1,7 +1,7 @@
 //! Player model replacement without a second animation interpreter.
 use bevy::prelude::*;
-use cyrus_game::player::Player;
 use cyrus_render::player_model::PlayerModelPlugin;
+use cyrus_script::player::Player;
 use cyrus_world::{
     animation::{AnimationPlugin, AnimationPose},
     lifecycle::PreparedWorld,
@@ -133,7 +133,7 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
 
 #[test]
 fn map_actor_replaces_foreign_geometry_and_restores_original_visibility() {
-    use cyrus_game::script::{ScriptActorId, ScriptBinding};
+    use cyrus_script::script::{ScriptActorId, ScriptBinding};
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,

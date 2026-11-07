@@ -38,7 +38,7 @@ pub(super) fn respond(world: &mut World) {
                 "bound light observation requires an active world"
             );
             let current = world
-                .get_resource::<cyrus_game::script::ScriptActors>()
+                .get_resource::<cyrus_script::script::ScriptActors>()
                 .and_then(|actors| actors.current.as_ref())
                 .ok_or_else(|| anyhow::anyhow!("bound light observation: logical world absent"))?;
             anyhow::ensure!(

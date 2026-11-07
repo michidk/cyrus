@@ -3,9 +3,9 @@ mod persistence;
 pub(crate) mod projection;
 use bevy::{camera::primitives::Aabb, input::mouse::AccumulatedMouseMotion, prelude::*};
 use cyrus_game::AppState;
-use cyrus_game::player::Player;
-use cyrus_game::player::input::InputSample;
-use cyrus_game::player::input::InputSuppressed;
+use cyrus_script::player::Player;
+use cyrus_script::player::input::InputSample;
+use cyrus_script::player::input::InputSuppressed;
 pub use persistence::{CameraCandidate, CameraSnapshot};
 /// The view camera is independent of the player transform.
 #[derive(Component)]
@@ -136,7 +136,7 @@ fn grab_cursor(
     state: Option<Res<State<cyrus_game::AppState>>>,
     suppressed: Res<InputSuppressed>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
-    logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>,
+    logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<cyrus_game::fidelity::Fidelity>,
     mouse: Option<Res<ButtonInput<MouseButton>>>,
@@ -171,7 +171,7 @@ fn grab_cursor(
 /// triple's orientation matrix carries the local +Z axis along the look direction with the
 /// engine X axis mirrored, and the scene axes negate X and Y (**Inferred** from the camera
 /// orientation stage's angles for known offsets; the comparison with the original decides).
-pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Option<Transform> {
+pub fn driven_view_transform(camera: &cyrus_script::script::PublishedCamera) -> Option<Transform> {
     // The driver samples shake once over the interpolated angles. Render reads do not
     // consume another impulse or feed the wobble back into the next frame's glide.
     let angles = camera.view_angles;
@@ -190,7 +190,7 @@ pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Op
 fn provide_camera_terrain(
     request: Option<Res<crate::environment::EnvironmentRequest>>,
     environments: Option<Res<Assets<cyrus_assets::environment::Environment>>>,
-    mut frame: ResMut<cyrus_game::script::CameraFrameState>,
+    mut frame: ResMut<cyrus_script::script::CameraFrameState>,
     mut provided: Local<Option<AssetId<cyrus_assets::environment::Environment>>>,
 ) {
     let (Some(request), Some(environments)) = (request, environments) else {
@@ -208,8 +208,8 @@ fn provide_camera_terrain(
 
 /// Draw the driven camera. Active only when the driver is switched on and has published a pose.
 fn drive_view_camera(
-    drive: Res<cyrus_game::script::CameraDrive>,
-    frame: Res<cyrus_game::script::CameraFrameState>,
+    drive: Res<cyrus_script::script::CameraDrive>,
+    frame: Res<cyrus_script::script::CameraFrameState>,
     mut camera: Query<&mut Transform, With<ViewCamera>>,
 ) {
     let (true, Some(published), Ok(mut camera)) =
@@ -237,9 +237,9 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         // The game camera is part of the script world. Keep the render camera attached to that
         // pose so its height, offset and collision follow gameplay rather than the actor origin.
-        app.insert_resource(cyrus_game::script::CameraDrive { enabled: true });
-        app.init_resource::<cyrus_game::script::CameraDrive>()
-            .init_resource::<cyrus_game::script::CameraFrameState>()
+        app.insert_resource(cyrus_script::script::CameraDrive { enabled: true });
+        app.init_resource::<cyrus_script::script::CameraDrive>()
+            .init_resource::<cyrus_script::script::CameraFrameState>()
             .init_resource::<crate::fog::RenderDistance>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
@@ -251,9 +251,9 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 script_view
-                    .before(cyrus_game::script::ModelPreparation)
+                    .before(cyrus_script::script::ModelPreparation)
                     .after(follow_player)
-                    .before(cyrus_game::script::OrdinaryUpdates)
+                    .before(cyrus_script::script::OrdinaryUpdates)
                     .run_if(in_state(AppState::InGame)),
             )
             .add_systems(
@@ -263,18 +263,18 @@ impl Plugin for CameraPlugin {
                         f.0 && camera.enabled
                     }),
                     flycam_controller.run_if(
-                        |f: Res<FlycamSettings>, console: Option<Res<cyrus_console::Console>>, logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
+                        |f: Res<FlycamSettings>, console: Option<Res<cyrus_console::Console>>, logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>| {
                             f.enabled && !console.is_some_and(|console| console.open) && !logbook.is_some_and(|screen| screen.suspended())
                         },
                     ),
                     follow_player
-                        .after(cyrus_game::player::placement::PlayerPlacement)
-                        .run_if(|f: Res<FlycamSettings>, drive: Res<cyrus_game::script::CameraDrive>, t: Res<CameraTakeover>| {
+                        .after(cyrus_script::player::placement::PlayerPlacement)
+                        .run_if(|f: Res<FlycamSettings>, drive: Res<cyrus_script::script::CameraDrive>, t: Res<CameraTakeover>| {
                             !f.enabled && !drive.enabled && t.0.is_none()
                         }),
-                    provide_camera_terrain.before(cyrus_game::script::OrdinaryUpdates),
+                    provide_camera_terrain.before(cyrus_script::script::OrdinaryUpdates),
                     drive_view_camera
-                        .after(cyrus_game::script::OrdinaryUpdates)
+                        .after(cyrus_script::script::OrdinaryUpdates)
                         .run_if(|f: Res<FlycamSettings>| !f.enabled),
                     apply_takeover,
                 )
@@ -292,19 +292,19 @@ pub(crate) fn script_view(
     ready: Option<Res<crate::ReadyScene>>,
     flycam: Res<FlycamSettings>,
     camera: Query<&Transform, With<ViewCamera>>,
-    placed_player: Query<&cyrus_game::player::placement::PlayerPose, With<Player>>,
-    drive: Option<Res<cyrus_game::script::CameraDrive>>,
-    driven: Option<Res<cyrus_game::script::CameraFrameState>>,
+    placed_player: Query<&cyrus_script::player::placement::PlayerPose, With<Player>>,
+    drive: Option<Res<cyrus_script::script::CameraDrive>>,
+    driven: Option<Res<cyrus_script::script::CameraFrameState>>,
 ) {
     let (Some(request), Ok(camera)) = (request, camera.single()) else {
-        commands.remove_resource::<cyrus_game::script::ScriptView>();
+        commands.remove_resource::<cyrus_script::script::ScriptView>();
         return;
     };
     if ready.is_none_or(|ready| ready.0 != request.0)
         || (flycam.enabled && frame.0)
         || (!flycam.enabled && placed_player.single().is_err())
     {
-        commands.remove_resource::<cyrus_game::script::ScriptView>();
+        commands.remove_resource::<cyrus_script::script::ScriptView>();
         return;
     }
     // A driven camera's world view is its published position, as the original builds its map list.
@@ -323,16 +323,16 @@ pub(crate) fn script_view(
             }),
         };
         match position {
-            Some(position) => commands.insert_resource(cyrus_game::script::ScriptView {
+            Some(position) => commands.insert_resource(cyrus_script::script::ScriptView {
                 source: request.0.clone(),
                 position,
             }),
-            None => commands.remove_resource::<cyrus_game::script::ScriptView>(),
+            None => commands.remove_resource::<cyrus_script::script::ScriptView>(),
         }
         return;
     }
     let position = camera.translation;
-    commands.insert_resource(cyrus_game::script::ScriptView {
+    commands.insert_resource(cyrus_script::script::ScriptView {
         source: request.0.clone(),
         position: [
             (-f64::from(position.x) * 20.0 * 256.0).floor() as i32,
@@ -423,12 +423,12 @@ mod tests {
 
     #[test]
     fn driven_view_uses_render_angles_during_a_glide() {
-        let camera = cyrus_game::script::PublishedCamera {
-            pose: cyrus_game::script::camera::CameraPose {
+        let camera = cyrus_script::script::PublishedCamera {
+            pose: cyrus_script::script::camera::CameraPose {
                 position: [0, 0, 0],
                 angles: [0, 0, 0],
             },
-            render: cyrus_game::script::camera::RenderPose {
+            render: cyrus_script::script::camera::RenderPose {
                 position: [0.0, 0.0, 0.0],
                 angles: [0, 512, 0],
             },
@@ -449,21 +449,21 @@ mod tests {
 
     #[test]
     fn driven_view_reuses_the_sampled_shake_without_changing_camera_poses() {
-        let published = cyrus_game::script::PublishedCamera {
-            pose: cyrus_game::script::camera::CameraPose {
+        let published = cyrus_script::script::PublishedCamera {
+            pose: cyrus_script::script::camera::CameraPose {
                 position: [0; 3],
                 angles: [0; 3],
             },
-            render: cyrus_game::script::camera::RenderPose {
+            render: cyrus_script::script::camera::RenderPose {
                 position: [20.0, 40.0, 60.0],
                 angles: [64, 512, 0],
             },
             view_angles: [32, 512, 0],
         };
-        let mut frame = cyrus_game::script::CameraFrameState::default();
+        let mut frame = cyrus_script::script::CameraFrameState::default();
         frame.published = Some(published);
         let mut app = App::new();
-        app.insert_resource(cyrus_game::script::CameraDrive { enabled: true })
+        app.insert_resource(cyrus_script::script::CameraDrive { enabled: true })
             .insert_resource(frame)
             .add_systems(Update, drive_view_camera);
         let entity = app
@@ -485,7 +485,7 @@ mod tests {
             assert!(transform.forward().dot(expected) > 0.99999);
             assert_eq!(
                 app.world()
-                    .resource::<cyrus_game::script::CameraFrameState>()
+                    .resource::<cyrus_script::script::CameraFrameState>()
                     .published,
                 Some(published)
             );
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn ordinary_view_uses_camera_and_waits_for_scene_framing() {
-        use cyrus_game::script::ScriptView;
+        use cyrus_script::script::ScriptView;
         use cyrus_world::animation::AnimationRequest;
         let mut app = App::new();
         let source = Handle::default();
@@ -565,7 +565,7 @@ mod tests {
         assert!(!app.world().contains_resource::<ScriptView>());
         app.world_mut().spawn((
             Player,
-            cyrus_game::player::placement::PlayerPose {
+            cyrus_script::player::placement::PlayerPose {
                 position: [0; 3],
                 heading: 0,
             },

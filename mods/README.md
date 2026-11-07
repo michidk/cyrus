@@ -9,7 +9,7 @@ the Mods window that opens with F1. The browser build does not load mods.
 | --- | --- | --- |
 | `modern-water` | water waves, water shader | Smooth crossing waves, texture ripples, sky sheen |
 | `flycam` | camera, input | F3 toggles a free camera: WASD, Space/Left Shift, mouse look |
-| `movement` | movement, input | WASD moves relative to the camera, Space jumps, Left Shift runs; arrow keys keep working |
+| `movement` | movement, player, settings, input | Moves relative to the camera with your key bindings or WASD; optionally owns the locomotion with its own heading and speed |
 
 ## Writing a mod
 
@@ -66,6 +66,18 @@ fn setup(app: App) {
   left stick relative to the camera (x right, y forward; a length below 0.75
   walks, from 0.75 runs). While a mod steers, a quick sword key among WASD does
   not draw the sword.
+- `movement.claim(heading, speed, run, jump)`: take over the player's ground
+  locomotion for this frame (call it every frame). The original bindings read as
+  released and the original turn, walk, run and jump selection do not run; the
+  mod faces `heading` (2048 to a turn) and moves `speed` map units per nominal
+  update along it, walking or running; `jump` starts the original jump. The engine
+  still resolves ground, slopes and collision, and keeps death, dialogue and
+  combat; it keeps control while the player is airborne, sliding or hanging, or a
+  script moves it, and menus, the console and loading take control back.
+  Stopping the claim returns the original controls.
+- `player`: `position()` (map units), `heading()`, `view()` (the camera's
+  heading, same units), `airborne()` and `speed(run)` (the player's own walk or
+  run speed per nominal update, the base for a speed scale).
 - `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
   player's values; `id` is the mod's folder name. Read them every frame so a
   change in the window takes effect at once.

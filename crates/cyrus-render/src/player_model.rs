@@ -2,7 +2,7 @@
 mod persistence;
 use bevy::{asset::AssetPath, prelude::*};
 use cyrus_assets::animation::Animations;
-use cyrus_game::{
+use cyrus_script::{
     player::Player,
     script::{ScriptActors, ScriptBinding},
 };
@@ -267,7 +267,7 @@ mod tests {
 
     fn binding() -> ScriptBinding {
         ScriptBinding {
-            actor: cyrus_game::script::ScriptActorId {
+            actor: cyrus_script::script::ScriptActorId {
                 generation: 1,
                 index: 0,
             },

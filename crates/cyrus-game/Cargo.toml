@@ -1,22 +1,15 @@
 [package]
 name = "cyrus-game"
-description = "Portable player rules, input and fidelity policy."
+description = "Gameplay state shared by hosts: fidelity policy, preferences, cheats, random stream, application state and ropes."
 version.workspace = true
 edition.workspace = true
 [dependencies]
-rustc_apfloat = "0.2.3"
-cyrus-console.workspace = true
-log.workspace = true
 bevy = { workspace = true, features = ["bevy_log", "bevy_asset", "bevy_state", "gamepad", "keyboard", "mouse"] }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
-cyrus-collision.workspace = true
-cyrus-soup.workspace = true
 anyhow.workspace = true
-blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 [dev-dependencies]
-toml.workspace = true
 cyrus-assets = { workspace = true, features = ["native"] }
-redguard-preservation.workspace = true
+cyrus-collision.workspace = true

@@ -116,7 +116,7 @@ struct StartupContent;
 impl Plugin for StartupPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartupPresentation>()
-            .init_resource::<cyrus_game::script::DeathDispatch>()
+            .init_resource::<cyrus_script::script::DeathDispatch>()
             .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
             .add_message::<QuitRequest>()
             .insert_resource(ClearColor(Color::BLACK))
@@ -138,7 +138,7 @@ impl Plugin for StartupPlugin {
             Last,
             // The death exit requests the book in this same schedule; the view is captured after it.
             save_load::capture_gameplay
-                .after(cyrus_game::script::WorldLoopExit)
+                .after(cyrus_script::script::WorldLoopExit)
                 .run_if(in_state(AppState::InGame)),
         );
         app.add_systems(OnExit(AppState::Menu), save_load::discard_gameplay);

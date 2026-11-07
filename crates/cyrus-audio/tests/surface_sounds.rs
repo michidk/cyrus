@@ -12,7 +12,7 @@ use cyrus_audio::{
     AudioListener,
     sound::{Effect, Panned, PlayingSound, SoundEffects, SoundPlugin},
 };
-use cyrus_game::script::{ScriptActorId, ScriptBinding};
+use cyrus_script::script::{ScriptActorId, ScriptBinding};
 use cyrus_world::{
     animation::AnimationSound,
     sound::{ScriptSound, SoundCue, SoundSurface},
@@ -460,12 +460,12 @@ fn synchronous_ambient_and_immediate_commands_share_reusable_slots_and_live_gain
 fn ordinary_and_animation_audio_drains_do_not_replay_the_same_cue() {
     fn early_audio(world: &mut World) {
         let execute = world
-            .resource::<cyrus_game::script::OrdinarySoundExecutor>()
+            .resource::<cyrus_script::script::OrdinarySoundExecutor>()
             .0;
-        execute(world, cyrus_game::script::OrdinaryPhase::Simulation);
+        execute(world, cyrus_script::script::OrdinaryPhase::Simulation);
     }
     let (mut app, _) = fixture();
-    app.init_resource::<cyrus_game::script::ScriptActors>()
+    app.init_resource::<cyrus_script::script::ScriptActors>()
         .init_resource::<cyrus_game::random::EngineRandom>()
         .init_asset::<cyrus_assets::animation::Animations>()
         .add_systems(Update, early_audio.before(cyrus_audio::PlayCues));
@@ -682,7 +682,7 @@ fn separately_initialized_player_role_uses_player_samples_without_becoming_contr
         }
         assert!(
             app.world()
-                .get::<cyrus_game::player::Player>(actor)
+                .get::<cyrus_script::player::Player>(actor)
                 .is_none()
         );
         play(&mut app, actor, 200);

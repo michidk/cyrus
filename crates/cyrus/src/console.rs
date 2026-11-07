@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use cyrus_assets::install::GameInstall;
 use cyrus_console::{Console, Preferences, Store};
-use cyrus_game::console::markers::{MarkerStorage, MarkerStore};
+use cyrus_script::console::markers::{MarkerStorage, MarkerStore};
 use std::path::PathBuf;
 
 struct LocalConsole {

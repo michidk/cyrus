@@ -57,7 +57,7 @@ impl RenderDistance {
 type SceneMaterial = ExtendedMaterial<StandardMaterial, ModelExtension>;
 
 fn owns_prepared_environment(
-    world: &cyrus_game::script::ScriptWorld,
+    world: &cyrus_script::script::ScriptWorld,
     prepared: &cyrus_world::lifecycle::PreparedWorld,
     environment: &EnvironmentRequest,
     request: Option<&cyrus_world::animation::AnimationRequest>,
@@ -268,7 +268,7 @@ impl Plugin for FogPlugin {
                 Update,
                 (apply_scene_fog, prepare_flat_compositing)
                     .after(crate::flat::PrepareFlats)
-                    .after(cyrus_game::script::OrdinaryUpdates),
+                    .after(cyrus_script::script::OrdinaryUpdates),
             );
     }
 }
@@ -317,7 +317,7 @@ fn apply_scene_fog(
     hierarchy: (
         Query<&ChildOf>,
         Query<(), With<crate::persistence::StagedRenderRoot>>,
-        Query<&cyrus_game::script::ScriptBinding>,
+        Query<&cyrus_script::script::ScriptBinding>,
     ),
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
     mut converted: Local<MaterialCache>,
@@ -332,7 +332,7 @@ fn apply_scene_fog(
         Query<&bevy::gltf::GltfExtras>,
         Query<&crate::flat::Flat>,
         (
-            Option<Res<cyrus_game::script::ScriptActors>>,
+            Option<Res<cyrus_script::script::ScriptActors>>,
             Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
             Option<Res<cyrus_world::animation::AnimationRequest>>,
             Option<Res<Assets<cyrus_assets::animation::Animations>>>,
@@ -833,7 +833,7 @@ mod tests {
         use cyrus_assets::{
             animation::Animations, install::GameInstall, native::Files, script::Scripts,
         };
-        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        use cyrus_script::script::{ScriptActors, ScriptWorld};
         use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld};
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
@@ -1008,8 +1008,8 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     fn logical_camera_selects_bound_light_rows_before_render_glide() -> anyhow::Result<()> {
         use cyrus_assets::{install::GameInstall, native::Files, script::Scripts};
-        use cyrus_game::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
-        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        use cyrus_script::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
+        use cyrus_script::script::{ScriptActors, ScriptWorld};
         use cyrus_world::lifecycle::PreparedWorld;
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
@@ -1079,11 +1079,11 @@ mod tests {
         });
         let mut frame = CameraFrameState::default();
         frame.published = Some(PublishedCamera {
-            pose: cyrus_game::script::camera::CameraPose {
+            pose: cyrus_script::script::camera::CameraPose {
                 position: [5120 * 256, 0, 10000 * 256],
                 angles: [0; 3],
             },
-            render: cyrus_game::script::camera::RenderPose {
+            render: cyrus_script::script::camera::RenderPose {
                 position: [5119.0, 0.0, 10000.0],
                 angles: [0; 3],
             },
@@ -1776,7 +1776,7 @@ mod actor_prelight_tests {
     #[test]
     fn installed_static_actor_binds_baked_rgb_to_private_mesh() -> anyhow::Result<()> {
         use cyrus_assets::{install::GameInstall, native::Files};
-        use cyrus_game::script::ScriptWorld;
+        use cyrus_script::script::ScriptWorld;
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -1794,7 +1794,7 @@ mod actor_prelight_tests {
         };
         let scripts = serde_json::from_slice(&prepare("TAVERN.scripts")?)?;
         let animations = serde_json::from_slice(&prepare("TAVERN.animations")?)?;
-        let scene = cyrus_game::player::data::PlayerScene::decode(&prepare("TAVERN.player")?)?;
+        let scene = cyrus_script::player::data::PlayerScene::decode(&prepare("TAVERN.player")?)?;
         let models = cyrus_collision::actor_models::ActorModelCollision::new(
             scene.collision.actor_models.as_ref().unwrap(),
         )?;

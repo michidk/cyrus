@@ -4,7 +4,7 @@ use bevy::prelude::{
     Assets, Commands, Entity, Handle, Name, Quat, Transform, Vec3, Visibility, World,
 };
 use cyrus_audio::persistence::AudioRestoreBindings;
-use cyrus_game::script::{
+use cyrus_script::script::{
     ScriptActorId, ScriptActorSource, ScriptActors, ScriptBinding, ScriptEntityBinding, ScriptWorld,
 };
 use cyrus_world::animation::{AnimationPose, Animations};
@@ -146,7 +146,7 @@ impl EntityBindingCandidate {
         ensure!(
             world.get::<ScriptBinding>(self.entity).is_none()
                 && world
-                    .get::<cyrus_game::player::Player>(self.entity)
+                    .get::<cyrus_script::player::Player>(self.entity)
                     .is_none(),
             "session entity publication target {:?} already has a live owner",
             self.entity
@@ -305,9 +305,9 @@ pub(super) fn validate_retirement_ancestry(world: &World, target: Entity) -> Res
                     .get::<cyrus_render::camera::ViewCamera>(entity)
                     .is_none()
                 && world
-                    .get::<cyrus_game::script::ScriptedPlayback>(entity)
+                    .get::<cyrus_script::script::ScriptedPlayback>(entity)
                     .is_none()
-                && world.get::<cyrus_game::player::Player>(entity).is_none()
+                && world.get::<cyrus_script::player::Player>(entity).is_none()
                 && world
                     .get::<cyrus_audio::sound::PlayingSound>(entity)
                     .is_none()

@@ -498,7 +498,7 @@ mod tests {
                 .insert((
                     Name::new("B_001_ACTOR"),
                     ScriptBinding {
-                        actor: cyrus_game::script::ScriptActorId {
+                        actor: cyrus_script::script::ScriptActorId {
                             generation: 1,
                             index: 1,
                         },
@@ -641,7 +641,7 @@ mod tests {
                 .insert((
                     Name::new("B_001_ACTOR"),
                     ScriptBinding {
-                        actor: cyrus_game::script::ScriptActorId {
+                        actor: cyrus_script::script::ScriptActorId {
                             generation: 2,
                             index: 1,
                         },

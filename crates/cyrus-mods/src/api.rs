@@ -10,12 +10,12 @@
 use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
-use cyrus_game::player::input::{
-    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, Wish,
-};
-use cyrus_game::script::{CameraFrameState, ScriptActors};
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
+use cyrus_script::player::input::{
+    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, Wish,
+};
+use cyrus_script::script::{CameraFrameState, ScriptActors};
 use std::collections::HashMap;
 use wasvy::prelude::*;
 

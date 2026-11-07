@@ -1,14 +1,14 @@
 //! Exact matrix presentation and binding lifetime through the public plugin.
 use bevy::prelude::*;
 use cyrus_assets::{animation::Animations, script::Scripts};
-use cyrus_game::script::{Pose, ScriptActors, ScriptBinding, ScriptWorld};
 use cyrus_render::script_transform::{ScriptTransformPlugin, scene_transform};
+use cyrus_script::script::{Pose, ScriptActors, ScriptBinding, ScriptWorld};
 use cyrus_world::transform::Matrix;
 use serde_json::json;
 
 #[test]
 fn script_visibility_and_stored_position_follow_binding_lifetime() {
-    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
     for (function, expected) in [
         ("HideMe", Visibility::Hidden),
         ("ShowMe", Visibility::Inherited),
@@ -74,7 +74,7 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
             .unwrap();
         if function == "ShowMe" {
             let collision = Default::default();
-            let sources = cyrus_game::script::WorldSnapshotSources {
+            let sources = cyrus_script::script::WorldSnapshotSources {
                 identity_memo: None,
                 effects: None,
                 player: None,
@@ -90,7 +90,7 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
             world = ScriptWorld::from_snapshot(
                 serde_json::from_value(saved).unwrap(),
                 &sources,
-                cyrus_game::script::WorldRestoreContext {
+                cyrus_script::script::WorldRestoreContext {
                     generation: 2,
                     globals: Default::default(),
                     samples: &Default::default(),

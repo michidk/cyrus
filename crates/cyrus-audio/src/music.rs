@@ -172,9 +172,9 @@ fn request(assets: &AssetServer, music: &mut Music, track: u32) {
 }
 
 fn start_menu_track(
-    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
-    confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
-    ending: Option<Res<cyrus_game::script::EndingEntry>>,
+    death: Option<Res<cyrus_script::script::DeathBookEntry>>,
+    confirmation: Option<Res<cyrus_script::script::LastGameEntry>>,
+    ending: Option<Res<cyrus_script::script::EndingEntry>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     settings: Option<Res<SoundSettings>>,
@@ -196,7 +196,7 @@ fn start_menu_track(
 /// The ending's credits play the book's CD track and stop the CD when they end.
 fn credits_track(
     mut commands: Commands,
-    credits: Option<Res<cyrus_game::script::CreditsPlaying>>,
+    credits: Option<Res<cyrus_script::script::CreditsPlaying>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     enabled: (Option<Res<SoundSettings>>, Option<Res<Assets<AudioSource>>>),
@@ -422,7 +422,7 @@ mod tests {
         world.insert_resource(GameInstall {
             root: std::env::temp_dir().join("cyrus-absent-install"),
         });
-        world.insert_resource(cyrus_game::script::DeathBookEntry { override_group: 74 });
+        world.insert_resource(cyrus_script::script::DeathBookEntry { override_group: 74 });
         world.insert_resource(Music {
             track: Some(7),
             ..default()
@@ -431,9 +431,9 @@ mod tests {
         let music = world.resource::<Music>();
         assert_eq!(music.track, Some(7));
         assert!(music.load.is_none());
-        world.remove_resource::<cyrus_game::script::DeathBookEntry>();
-        world.insert_resource(cyrus_game::script::LastGameEntry {
-            save: cyrus_game::script::LastSaveSelection {
+        world.remove_resource::<cyrus_script::script::DeathBookEntry>();
+        world.insert_resource(cyrus_script::script::LastGameEntry {
+            save: cyrus_script::script::LastSaveSelection {
                 slot: 17,
                 description: "Example".into(),
             },
@@ -609,12 +609,12 @@ mod tests {
         app.insert_resource(GameInstall {
             root: std::env::temp_dir().join("cyrus-absent-install"),
         });
-        app.insert_resource(cyrus_game::script::CreditsPlaying);
+        app.insert_resource(cyrus_script::script::CreditsPlaying);
         app.update();
         app.world_mut().resource_mut::<Music>().track = Some(2);
         app.world_mut().spawn(MusicPlayer);
         app.world_mut()
-            .remove_resource::<cyrus_game::script::CreditsPlaying>();
+            .remove_resource::<cyrus_script::script::CreditsPlaying>();
         app.update();
         assert_eq!(app.world().resource::<Music>().track, None);
         assert!(

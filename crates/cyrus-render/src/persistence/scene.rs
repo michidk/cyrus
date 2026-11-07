@@ -196,7 +196,7 @@ impl SceneCandidate {
         );
         ensure!(
             world
-                .get::<cyrus_game::script::ScriptScene>(target.root)
+                .get::<cyrus_script::script::ScriptScene>(target.root)
                 .is_none()
                 && world.get::<crate::SceneEntity>(target.root).is_none(),
             "scene replacement root already has a live owner"
@@ -298,7 +298,7 @@ impl SceneCandidate {
             )));
             world.entity_mut(target.root).insert((
                 crate::SceneEntity,
-                cyrus_game::script::ScriptScene::new(self.animations.clone()),
+                cyrus_script::script::ScriptScene::new(self.animations.clone()),
                 Visibility::Inherited,
             ));
             world.insert_resource(crate::ReadyScene(self.animations.clone()));

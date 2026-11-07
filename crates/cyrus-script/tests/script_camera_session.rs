@@ -1,0 +1,1622 @@
+//! The session camera lives with the world and carries the `showPlayer` task through
+//! the public stages and snapshots.
+use cyrus_assets::{animation::Animations, script::*};
+use cyrus_script::script::{
+    GameplayGlobals, ScriptHud, ScriptInputs, ScriptStage, ScriptWorld, WorldRestoreContext,
+    WorldSnapshotSources,
+};
+use cyrus_soup::Attribute;
+use cyrus_soup::Native;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
+use serde_json::json;
+use std::collections::BTreeMap;
+
+const BODY: ScriptStage = ScriptStage::Body(Thread::Main);
+const TASKS: ScriptStage = ScriptStage::Tasks;
+
+fn actor(operations: Vec<Operation>, origin: u32) -> Actor {
+    Actor {
+        header_index: 0,
+        code_origin: origin,
+        instances: 1,
+        namespace: None,
+        instance_variables: vec![vec![]],
+        location_offsets: vec![],
+        attributes: Default::default(),
+        combat_taunts: vec![],
+        native_hook: None,
+        program: Program {
+            version: 4,
+            entry: 0,
+            variables: vec![],
+            strings: vec![],
+            steps: operations
+                .into_iter()
+                .enumerate()
+                .map(|(index, operation)| {
+                    (
+                        index as u32,
+                        Step {
+                            next: index as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect(),
+        },
+    }
+}
+
+/// One map actor that calls `showPlayer` and then sets the flag, beside the standalone roles.
+fn scripts(standalone: &[&str]) -> Scripts {
+    let show_player = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: Native::ShowPlayer,
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: vec![],
+        },
+    };
+    let set_flag = Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Integer { value: 9 },
+            rest: vec![],
+        },
+    };
+    let end = || vec![Operation::End { target: 0 }];
+    let mut actors = BTreeMap::from([(
+        "ACTOR".into(),
+        actor(vec![show_player, set_flag, Operation::End { target: 0 }], 0),
+    )]);
+    for (index, name) in standalone.iter().enumerate() {
+        actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
+    }
+    let mut result = Scripts {
+        version: 30,
+        weapons: Default::default(),
+        camera: Default::default(),
+        combat_attacks: vec![],
+        combat_defenses: vec![],
+        in_combat_threshold: None,
+        lineup_distance: None,
+        view_distance: None,
+        texture_frames: Default::default(),
+        non_engaged_spacing: None,
+        combat_clank_effects: [None; 2],
+        node_timer: None,
+        dialogue: DialogueSettings {
+            menu_start: [35, 25],
+            max_menu_items: 300,
+            max_dialog_lines: 20,
+            max_text_width: 500,
+            menu_traverse_delay: 4,
+            print_text: true,
+            use_speech: true,
+            max_distance: 1600,
+            rtx_filename: "ENGLISH.RTX".into(),
+        },
+        player_distance_override: false,
+        updates: UpdateSettings {
+            rope: None,
+            ropes_load: None,
+            fall_death_ticks: 144,
+            fall_landing: None,
+            dummy_model_manager: false,
+            task_system: true,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: false,
+            final_version: false,
+        },
+        clock: ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        },
+        actor_pool_capacity: 10,
+        content_id: String::new(),
+        shells: Vec::new(),
+        world: 17,
+        definition: Definition {
+            functions: [
+                (Native::NullFunction, 0, CallKind::Function),
+                (Native::ShowPlayer, 0, CallKind::Task),
+            ]
+            .into_iter()
+            .map(|(name, param_count, kind)| Function {
+                name,
+                param_count,
+                kind,
+            })
+            .collect(),
+            flags: vec![Flag {
+                name: "Ready".into(),
+                flag_type: "NUMBER".into(),
+                initial_value: 0,
+            }],
+            references: vec![],
+            attributes: vec![],
+        },
+        actors,
+        instances: vec![Instance {
+            object_id: 0,
+            actor: "ACTOR".into(),
+            object_type: Default::default(),
+            active: 0,
+            model_name: String::new(),
+            model_mode: 0,
+            light_intensity: 0,
+            light_radius: 0,
+            light_rgb: [0; 3],
+            texture: 0,
+            map_position: [0; 3],
+            angles: [0; 3],
+        }],
+        unsupported: BTreeMap::new(),
+    };
+    result.content_id = result.content_identity().unwrap();
+    result
+}
+
+fn run(
+    world: &mut ScriptWorld,
+    index: usize,
+    stage: ScriptStage,
+    hud: Option<&ScriptHud>,
+) -> anyhow::Result<()> {
+    let id = world.id(index).unwrap();
+    world.advance(
+        id,
+        stage,
+        ScriptInputs {
+            hud,
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        None,
+        None,
+        30,
+    )
+}
+
+fn flags(world: &ScriptWorld, slot: usize) -> u8 {
+    world.camera().unwrap().records[slot].flags.bits()
+}
+
+const PLAYER: usize = 1;
+const CAMERA: usize = 2;
+
+#[test]
+fn camera_session_exists_only_with_the_player_and_camera_roles() {
+    let world = ScriptWorld::prepare(&scripts(&["CYRUS", "CAMERA"]), 7).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected, CameraSlot::new(0).unwrap());
+    assert_eq!(camera.records[0].actor, world.id(PLAYER).unwrap());
+    assert_eq!(camera.camera_actor, world.id(CAMERA).unwrap());
+    assert_eq!(camera.alternate_actor, camera.camera_actor);
+    assert_eq!(flags(&world, 0), 0x40);
+    assert_eq!(flags(&world, 5), 0xc0);
+    for roles in [&["CYRUS"][..], &["CAMERA"][..], &[][..]] {
+        assert!(
+            ScriptWorld::prepare(&scripts(roles), 7)
+                .unwrap()
+                .camera()
+                .is_none()
+        );
+    }
+}
+
+use cyrus_script::script::camera::CameraSlot;
+
+#[test]
+fn show_player_holds_the_snap_bit_for_one_poll_then_completes() {
+    let mut world = ScriptWorld::prepare(&scripts(&["CYRUS", "CAMERA"]), 7).unwrap();
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(flags(&world, 0), 0x41);
+    assert!(
+        !world.camera().unwrap().marks.hold,
+        "the first call only cuts"
+    );
+    run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(flags(&world, 0), 0x40);
+    assert!(
+        world.camera().unwrap().marks.hold,
+        "the release holds the render camera"
+    );
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn show_player_requests_the_combat_slot_while_the_player_holds_a_weapon() {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected, CameraSlot::new(3).unwrap());
+    assert_eq!(flags(&world, 3), 0x41);
+    assert_eq!(flags(&world, 0), 0x40);
+    run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    assert_eq!(flags(&world, 3), 0x40);
+}
+
+#[test]
+fn show_player_fails_before_changing_the_camera_without_its_inputs() {
+    let mut world = ScriptWorld::prepare(&scripts(&["CYRUS", "CAMERA"]), 7).unwrap();
+    let error = run(&mut world, 0, BODY, None).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("inventory owner unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(flags(&world, 0), 0x40);
+
+    let mut world = ScriptWorld::prepare(&scripts(&["CYRUS"]), 7).unwrap();
+    let hud = ScriptHud::default();
+    let error = run(&mut world, 0, BODY, Some(&hud)).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("camera session unavailable"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn drno_skips_the_map_actor_but_preserves_player_and_camera_stage_admission() {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    let show_player = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: Native::ShowPlayer,
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: vec![],
+        },
+    };
+    for (name, origin) in [("CYRUS", 100), ("CAMERA", 200)] {
+        data.actors.insert(
+            name.into(),
+            actor(
+                vec![show_player.clone(), Operation::End { target: 0 }],
+                origin,
+            ),
+        );
+    }
+    data.content_id = data.content_identity().unwrap();
+    let observe = |world: &ScriptWorld, index: usize| {
+        let runtime = world.actors()[index].runtime().unwrap();
+        (
+            runtime.active_tasks(),
+            runtime.program_counter(Thread::Main),
+        )
+    };
+    let main_stage = |skipped: Option<bool>| {
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let hud = ScriptHud::default();
+        let before: Vec<_> = (0..3).map(|index| observe(&world, index)).collect();
+        for index in 0..3 {
+            let id = world.id(index).unwrap();
+            let result = world.advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    actor_update_skipped: skipped,
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            );
+            if index == CAMERA {
+                // The camera has no ordinary control record. Its exemption reaches the same
+                // lifecycle refusal with drno on or off instead of taking the skip return.
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains("script-control lifecycle unavailable"),
+                    "{error}"
+                );
+            } else {
+                result.unwrap();
+            }
+        }
+        let after: Vec<_> = (0..3).map(|index| observe(&world, index)).collect();
+        (before, after)
+    };
+    let (before, ordinary) = main_stage(None);
+    assert_ne!(ordinary[0], before[0], "the map actor's main stage starts");
+    let (_, off) = main_stage(Some(false));
+    assert_eq!(off, ordinary, "the cheat off changes nothing");
+    let (_, skipped) = main_stage(Some(true));
+    assert_eq!(skipped[0], before[0], "the map actor is skipped");
+    assert_eq!(skipped[PLAYER], ordinary[PLAYER], "the player is exempt");
+    assert_eq!(
+        skipped[CAMERA], ordinary[CAMERA],
+        "the camera actor is exempt"
+    );
+}
+
+#[test]
+fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
+    let data = scripts(&["CYRUS", "CAMERA"]);
+    let animations = Animations {
+        version: 2,
+        world: data.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id": data.content_id, "actors": []}),
+    };
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &data,
+        animations: &animations,
+        collision: &collision,
+    };
+    let hud = ScriptHud::default();
+    let mut live = ScriptWorld::prepare(&data, 7).unwrap();
+    run(&mut live, 0, BODY, Some(&hud)).unwrap();
+    let bytes = serde_json::to_vec(&live.snapshot(&sources).unwrap()).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_slice(&bytes).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 19,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let camera = restored.camera().unwrap();
+    assert_eq!(camera.records[0].actor, restored.id(PLAYER).unwrap());
+    assert_eq!(camera.camera_actor, restored.id(CAMERA).unwrap());
+    assert_eq!(flags(&restored, 0), 0x41);
+    run(&mut restored, 0, TASKS, Some(&hud)).unwrap();
+    assert_eq!(flags(&restored, 0), 0x40);
+    assert_eq!(flags(&live, 0), 0x41, "the live world is unchanged");
+}
+
+#[test]
+fn show_player_pan_task_runs_to_completion_and_restores_the_selection() {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    data.definition.functions[1] = Function {
+        name: Native::ShowPlayerPan,
+        param_count: 1,
+        kind: CallKind::Task,
+    };
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: Native::ShowPlayerPan,
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: vec![Value::Integer { value: 3 }],
+        },
+    };
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(PLAYER).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    let hud = ScriptHud::default();
+    let before = world.camera().unwrap().records[0].clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(
+        world.camera().unwrap().selected.index(),
+        2,
+        "pan edits record two"
+    );
+    assert_eq!(world.camera().unwrap().scripted_active, 1);
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected.index(), 0, "showPlayer re-selects the slot");
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+    assert_eq!(camera.records[0].angle_offset, before.angle_offset);
+    assert_eq!(camera.records[0].flags.bits(), 0x40);
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.flags(), [9], "the script continues after the pan");
+}
+
+#[test]
+fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
+    use cyrus_script::script::camera::CameraSettings;
+    let settings = CameraSettings {
+        offset_pos: [-3, 2000, 3003],
+        target_offset: [41, 50, 63],
+        distance: 251,
+        min_distance: 121,
+        max_vel: 900,
+        ..Default::default()
+    };
+    for (player_type, offset, target, distance, minimum) in [
+        (0, [-3, 2000, 3003], [41, 50, 63], 251, 121),
+        (1, [-2, 6400, 1501], [20, 6400, 31], 125, 60),
+    ] {
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = settings.clone();
+        data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::PlayerType] = player_type;
+        data.content_id = data.content_identity().unwrap();
+        let world = ScriptWorld::prepare(&data, 7).unwrap();
+        let records = &world.camera().unwrap().records;
+        let zero = &records[0];
+        assert_eq!(
+            (
+                zero.position_offset,
+                zero.target_offset,
+                zero.distance,
+                zero.minimum_distance
+            ),
+            (offset, target, distance, minimum),
+            "player type {player_type}"
+        );
+        // Other records keep the installed values the setup copied before the reload.
+        assert_eq!(records[1].position_offset, [-3, 2000, 3003]);
+        assert_eq!(records[1].distance, 251);
+        assert_eq!(records[3].target_offset, [41, 50, 63]);
+        assert_eq!(zero.flags.bits(), 0x40);
+    }
+}
+
+/// The standalone roles plus a map actor whose only camera call is `name(arguments)`.
+fn scripts_calling(name: Native, arguments: &[i32]) -> Scripts {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    data.definition.functions[1] = Function {
+        name,
+        param_count: arguments.len() as u8,
+        kind: CallKind::Task,
+    };
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: name,
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: arguments
+                .iter()
+                .map(|&value| Value::Integer { value })
+                .collect(),
+        },
+    };
+    data
+}
+
+fn prepared(data: &mut Scripts) -> ScriptWorld {
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(PLAYER).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    world
+}
+
+#[test]
+fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected.index(), 2, "the pan edits record two");
+    assert_eq!(camera.records[2].actor, world.id(0).unwrap());
+    assert_eq!(camera.scripted_active, 1);
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let position = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    let camera = world.camera().unwrap();
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+    let record = &camera.records[2];
+    // The default attr_camera_move is zero: an absolute request of the vector plus the bound position.
+    assert_eq!(
+        record.request,
+        [768 + position[0], -512 + position[1], 1280 + position[2]]
+    );
+    assert_eq!(
+        record.flags.bits() & 0x09,
+        0x08,
+        "absolute request, no retained flag"
+    );
+    assert_eq!(flags(&world, 0), 0x40, "showObjPan marked the old record");
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.flags(), [9], "the script continues after the pan");
+}
+
+#[test]
+fn is_within_view_compares_the_horizontal_camera_distance_with_the_installed_distance() {
+    use cyrus_script::script::camera::CameraPose;
+    // The camera sits `offset` map units (x, z) and `height` Q8 units (y) from the receiver.
+    let run_case = |offset: [i32; 2], height: i32, threshold: Option<i32>| -> anyhow::Result<i32> {
+        let mut data = scripts_calling(Native::IsWithinView, &[]);
+        data.definition.functions[1] = Function {
+            name: Native::IsWithinView,
+            param_count: 0,
+            kind: CallKind::Function,
+        };
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: Native::IsWithinView,
+                        target: Object::Me,
+                        kind: CallKind::Function,
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        };
+        // The fixture's own later steps overwrite flag zero, so the result goes to a local.
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        actor.program.variables = vec![4];
+        actor.instance_variables = vec![vec![0]];
+        data.view_distance = threshold;
+        let mut world = prepared(&mut data);
+        let receiver = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+        world.initialize_camera_pose(CameraPose {
+            position: [
+                receiver[0] + offset[0] * 256,
+                receiver[1] + height,
+                receiver[2] + offset[1] * 256,
+            ],
+            angles: [0; 3],
+        })?;
+        run(&mut world, 0, BODY, Some(&ScriptHud::default()))?;
+        world.actors()[0].runtime().unwrap().variables()[0].integer()
+    };
+    // A 3-4-5 offset: the boundary is inclusive and one less excludes it.
+    assert_eq!(
+        run_case([3, 4], 0, Some(5)).unwrap(),
+        1,
+        "distance equals the limit"
+    );
+    assert_eq!(
+        run_case([3, 4], 0, Some(4)).unwrap(),
+        0,
+        "distance exceeds the limit"
+    );
+    assert_eq!(
+        run_case([-3, -4], 0, Some(5)).unwrap(),
+        1,
+        "direction does not matter"
+    );
+    // The rounded distance of 3-5 is 6 (5.83), above a limit of 5.
+    assert_eq!(run_case([3, 5], 0, Some(5)).unwrap(), 0);
+    assert_eq!(run_case([3, 5], 0, Some(6)).unwrap(), 1);
+    assert_eq!(
+        run_case([0, 0], 0, Some(0)).unwrap(),
+        1,
+        "the same point is within zero"
+    );
+    assert_eq!(run_case([1, 0], 0, Some(0)).unwrap(), 0);
+    assert_eq!(
+        run_case([3, 4], 1_000_000 * 256, Some(5)).unwrap(),
+        1,
+        "the vertical difference does not contribute"
+    );
+    let error = run_case([3, 4], 0, None).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("IsWithinView: installed view distance unavailable"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn player_snap_copies_the_receivers_horizontal_position_onto_the_selected_player_only() {
+    let snap = |arguments: [i32; 3]| {
+        let mut data = scripts_calling(Native::PlayerSnap, &arguments);
+        data.definition.functions[1].kind = CallKind::Function;
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        function: Native::PlayerSnap,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: arguments
+                            .iter()
+                            .map(|&value| Value::Integer { value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
+            },
+        };
+        // The fixture's own later steps overwrite flag zero, so the result goes to a local.
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        actor.program.variables = vec![4];
+        actor.instance_variables = vec![vec![7]];
+        data.instances[0].map_position = [20, 30, 40];
+        let mut world = prepared(&mut data);
+        let receiver = world.id(0).unwrap();
+        let player = world.id(PLAYER).unwrap();
+        let receiver_before = world.spatial(receiver).unwrap().local;
+        let player_before = world.spatial(player).unwrap().clone();
+        run(&mut world, 0, BODY, Some(&ScriptHud::default())).unwrap();
+        (world, receiver, player, receiver_before, player_before)
+    };
+    let (world, receiver, player, receiver_before, player_before) = snap([5, 100, -100]);
+    let after = world.spatial(player).unwrap();
+    assert_ne!(
+        [
+            player_before.local.position[0],
+            player_before.local.position[2]
+        ],
+        [receiver_before.position[0], receiver_before.position[2]],
+        "the fixture starts the player elsewhere"
+    );
+    assert_eq!(
+        [after.local.position[0], after.local.position[2]],
+        [receiver_before.position[0], receiver_before.position[2]],
+        "X and Z come straight from the receiver"
+    );
+    assert_eq!(
+        after.local.position[1], player_before.local.position[1],
+        "the player's Y stays"
+    );
+    assert_eq!(
+        after.local.angles, player_before.local.angles,
+        "the heading stays"
+    );
+    assert_eq!(
+        after.previous_local_position, player_before.previous_local_position,
+        "the history is not written"
+    );
+    let receiver_after = world.spatial(receiver).unwrap().local;
+    assert_eq!(receiver_after.position, receiver_before.position);
+    assert_eq!(receiver_after.angles, receiver_before.angles);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables()[0], 0);
+    // The angle and offsets supply no positional offset.
+    let (other, _, other_player, _, _) = snap([0, 0, 0]);
+    assert_eq!(
+        other.spatial(other_player).unwrap().local.position,
+        after.local.position
+    );
+}
+
+#[test]
+fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 3]);
+    // A nonzero slave attribute selects the composed pose: the master's pose plus the offset.
+    let mut master = actor(vec![Operation::End { target: 0 }], 900);
+    master.attributes[Attribute::Master] = 1;
+    data.actors.insert("MASTER".into(), master);
+    let mut placement = data.instances[0].clone();
+    placement.object_id = 1;
+    placement.actor = "MASTER".into();
+    placement.map_position = [20, 30, 40];
+    data.instances.push(placement);
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    // The second map instance shifts the standalone roles by one.
+    let player = world.id(PLAYER + 1).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    world.refresh_families().unwrap();
+    let receiver = world.id(0).unwrap();
+    let spatial = world.spatial(receiver).unwrap();
+    let composed = spatial.effective.unwrap().position;
+    assert_ne!(
+        composed, spatial.local.position,
+        "the test must tell the poses apart"
+    );
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    assert_eq!(
+        world.camera().unwrap().records[2].request,
+        [768 + composed[0], -512 + composed[1], 1280 + composed[2]]
+    );
+}
+
+#[test]
+fn world_snapshot_resumes_an_object_pan_mid_flight() {
+    let mut data = scripts_calling(Native::ShowObjPan, &[3, -2, 5, 4]);
+    let mut live = prepared(&mut data);
+    let animations = Animations {
+        version: 2,
+        world: data.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id": data.content_id, "actors": []}),
+    };
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &data,
+        animations: &animations,
+        collision: &collision,
+    };
+    let hud = ScriptHud::default();
+    run(&mut live, 0, BODY, Some(&hud)).unwrap();
+    run(&mut live, 0, TASKS, Some(&hud)).unwrap();
+    let bytes = serde_json::to_vec(&live.snapshot(&sources).unwrap()).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_slice(&bytes).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 19,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(restored.actors()[0].runtime().unwrap().active_tasks(), 1);
+    for world in [&mut live, &mut restored] {
+        let mut passes = 0;
+        while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+            passes += 1;
+            assert!(passes <= 8, "the pan must finish within its duration");
+            run(world, 0, TASKS, Some(&hud)).unwrap();
+        }
+    }
+    let (live, restored) = (live.camera().unwrap(), restored.camera().unwrap());
+    assert_eq!(live.scripted_nesting, 0);
+    assert_eq!(restored.scripted_nesting, 0);
+    assert_eq!(restored.records[2].request, live.records[2].request);
+    assert_eq!(restored.records[2].flags, live.records[2].flags);
+}
+
+#[test]
+fn look_task_fixes_the_orientation_until_it_finishes() {
+    let mut data = scripts_calling(Native::LookObj, &[3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0x02,
+        "orientation fixed"
+    );
+    assert_eq!(camera.records[2].actor, world.id(0).unwrap());
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the look must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0,
+        "orientation released"
+    );
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+}
+
+#[test]
+fn look_cyrus_turns_the_camera_toward_the_selected_player_instead_of_the_receiver() {
+    let mut data = scripts_calling(Native::LookCyrus, &[3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0x02,
+        "orientation fixed"
+    );
+    assert_eq!(camera.records[2].actor, world.id(PLAYER).unwrap());
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the look must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0,
+        "orientation released"
+    );
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+}
+
+#[test]
+fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() {
+    let mut data = scripts_calling(Native::ShowCyrusPan, &[3, -2, 5, 3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(
+        world.camera().unwrap().records[2].actor,
+        world.id(PLAYER).unwrap()
+    );
+    assert_eq!(world.camera().unwrap().scripted_active, 1);
+
+    let mut data = scripts_calling(Native::ShowCyrusPan, &[3, -2, 5, 3]);
+    data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
+    let mut world = prepared(&mut data);
+    let before = world.camera().unwrap().clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.scripted_active, 0,
+        "the guard returns before any camera work"
+    );
+    assert_eq!(camera.selected, before.selected);
+    assert_eq!(camera.records[0].flags, before.records[0].flags);
+}
+
+#[test]
+fn show_obj_rot_completes_without_touching_the_camera() {
+    let mut data = scripts_calling(Native::ShowObjRot, &[1, 2, 3, 4]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    let before = world.camera().unwrap().clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.camera().unwrap().selected, before.selected);
+    assert_eq!(world.camera().unwrap().scripted_active, 0);
+}
+
+mod live {
+    use super::*;
+    use cyrus_script::script::ScriptActorId;
+    use cyrus_script::script::camera::{
+        CameraGeometry, CameraHitSelection, CameraPose, CameraSettings, CameraUpdateSettings,
+        MovementLimits,
+    };
+
+    struct Geometry {
+        fail: bool,
+    }
+    impl CameraGeometry for Geometry {
+        fn segment(
+            &mut self,
+            _: [i32; 3],
+            _: [i32; 3],
+            _: ScriptActorId,
+        ) -> anyhow::Result<Vec<cyrus_collision::collision_mesh::IntegerSegmentContact>> {
+            anyhow::ensure!(!self.fail, "segment service failed");
+            Ok(vec![])
+        }
+        fn contacts(&mut self, _: [i32; 3], _: ScriptActorId) -> anyhow::Result<Vec<[i32; 3]>> {
+            Ok(vec![])
+        }
+        fn terrain_height(&mut self, _: [i32; 2]) -> anyhow::Result<f32> {
+            anyhow::bail!("terrain is disabled in this scene")
+        }
+    }
+
+    fn hits() -> CameraHitSelection {
+        CameraHitSelection {
+            minimum_position: [0; 3],
+            maximum_position: [0; 3],
+            minimum_normal: [0; 3],
+            maximum_normal: [0; 3],
+        }
+    }
+
+    fn settings() -> CameraUpdateSettings {
+        CameraUpdateSettings {
+            movement: MovementLimits {
+                budget_increment: 5000,
+                vertical: -5000,
+                frame_scale: 256,
+                selected_player_special_state: false,
+            },
+            body_radius: 10.0,
+            body_clearance: 5.0,
+            terrain_enabled: false,
+        }
+    }
+
+    /// Player at (1000, 2000, 3000); record zero places the camera 2560 above it.
+    fn world() -> ScriptWorld {
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let player = world.id(PLAYER).unwrap();
+        world
+            .initialize_player_spatial(player, [1000, 2000, 3000], [0; 3])
+            .unwrap();
+        world
+    }
+
+    fn start() -> CameraPose {
+        CameraPose {
+            position: [1000, 3000, 3000],
+            angles: [0; 3],
+        }
+    }
+
+    #[test]
+    fn camera_setup_seeds_bound_position_history_from_the_selected_player() {
+        let mut world = world();
+        assert_eq!(
+            world.camera().unwrap().records[0].bound_position_history,
+            [0; 3],
+            "construction has no live actor pose yet"
+        );
+        world.initialize_camera_pose(start()).unwrap();
+        assert_eq!(
+            world.camera().unwrap().records[0].bound_position_history,
+            [1000, 2000, 3000]
+        );
+    }
+
+    #[test]
+    fn update_publishes_one_pose_to_the_state_and_the_camera_actor_together() {
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let camera = world.id(CAMERA).unwrap();
+        assert_eq!(
+            world.spatial(camera).unwrap().local.position,
+            start().position
+        );
+        let pose = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap();
+        assert_eq!(pose.position, [1000, 4560, 3000]);
+        let state = world.camera().unwrap();
+        assert_eq!(state.current, pose);
+        assert_eq!(state.previous, start());
+        assert_eq!(world.spatial(camera).unwrap().local.position, pose.position);
+    }
+
+    #[test]
+    fn render_camera_cuts_after_setup_then_glides_by_the_installed_factors() {
+        use cyrus_script::script::camera::GlidePlayer;
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            glide: CameraGlide {
+                position: [0.5, 0.25, 1.0],
+                angles: [0.5; 3],
+            },
+            ..Default::default()
+        };
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let player = world.id(PLAYER).unwrap();
+        world
+            .initialize_player_spatial(player, [1000, 2000, 3000], [0; 3])
+            .unwrap();
+        world.initialize_camera_pose(start()).unwrap();
+        let player = GlidePlayer {
+            holding_weapon: false,
+            rope_attached: false,
+        };
+        world.present_camera(player, true, &mut |_| Ok(())).unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(
+            state.render.position,
+            [3.0, 11.0, 11.0],
+            "setup's snap cuts"
+        );
+        assert!(!state.marks.snap);
+        world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap();
+        world.present_camera(player, true, &mut |_| Ok(())).unwrap();
+        let state = world.camera().unwrap();
+        // 1000, 4560 and 3000 become 3.90625, 17.8125 and 11.71875 map units; each axis moves its factor
+        // of the way from (3, 11, 11) and the whole-unit result is kept.
+        assert_eq!(state.render.position, [3.0, 12.0, 11.0]);
+        assert_eq!(state.current.angles, [1536, 1024, 0]);
+        assert_eq!(state.render.angles, [1792, 512, 0]);
+        let before = world.camera().unwrap().render;
+        let error = world
+            .present_camera(player, true, &mut |_| {
+                anyhow::bail!("terrain service failed")
+            })
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("terrain service failed"));
+        assert_eq!(
+            world.camera().unwrap().render,
+            before,
+            "a failed step changes nothing"
+        );
+    }
+
+    /// A pose update backed by the camera pipeline with no obstacles and no terrain.
+    #[derive(Debug)]
+    struct PoseService {
+        seen: std::cell::RefCell<Option<([i32; 3], [u16; 3])>>,
+        hits: std::cell::RefCell<CameraHitSelection>,
+        published: std::cell::RefCell<Vec<(ScriptActorId, [i32; 3])>>,
+        fail: bool,
+    }
+    impl cyrus_script::script::camera::CameraUpdateService for PoseService {
+        fn update(
+            &self,
+            state: &mut cyrus_script::script::camera::CameraState,
+            bound_position: [i32; 3],
+            bound_angles: [u16; 3],
+        ) -> anyhow::Result<()> {
+            *self.seen.borrow_mut() = Some((bound_position, bound_angles));
+            anyhow::ensure!(!self.fail, "pose service failed");
+            let update = state.prepare_pose(
+                &self.hits.borrow(),
+                &cyrus_script::script::camera::CameraUpdateInputs {
+                    bound_position,
+                    bound_angles,
+                    movement: settings().movement,
+                    body_radius: 10.0,
+                    body_clearance: 5.0,
+                    terrain_enabled: false,
+                },
+                &mut Geometry { fail: false },
+            )?;
+            *state = update.state;
+            *self.hits.borrow_mut() = update.hits;
+            *self.published.borrow_mut() = update.actor_positions.to_vec();
+            Ok(())
+        }
+        fn take_published(&self) -> Vec<(ScriptActorId, [i32; 3])> {
+            std::mem::take(&mut *self.published.borrow_mut())
+        }
+    }
+
+    fn run_with(
+        world: &mut ScriptWorld,
+        stage: ScriptStage,
+        service: Option<&dyn cyrus_script::script::camera::CameraUpdateService>,
+    ) -> anyhow::Result<()> {
+        let hud = ScriptHud::default();
+        let id = world.id(0).unwrap();
+        world.advance(
+            id,
+            stage,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                camera_update: service,
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+    }
+
+    fn location_world(
+        name: Native,
+        arguments: &[i32],
+        holding: bool,
+    ) -> (ScriptWorld, PoseService) {
+        let mut data = scripts_calling(name, arguments);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        if holding {
+            data.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] = 1;
+        }
+        let mut world = prepared(&mut data);
+        world.initialize_camera_pose(start()).unwrap();
+        let service = PoseService {
+            seen: Default::default(),
+            hits: std::cell::RefCell::new(hits()),
+            published: Default::default(),
+            fail: false,
+        };
+        (world, service)
+    }
+
+    #[test]
+    fn location_natives_run_the_pose_update_and_publish_the_camera_actor() {
+        for (name, arguments) in [
+            (Native::ShowObjLoc, vec![3, -2, 5]),
+            (Native::ShowObj, vec![3, -2, 5]),
+            (Native::ShowObjWorld, vec![3, -2, 5]),
+            (Native::ShowCyrusLoc, vec![3, -2, 5]),
+        ] {
+            let (mut world, service) = location_world(name, &arguments, false);
+            run_with(&mut world, BODY, Some(&service)).unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                1,
+                "{name}: the first invocation stays active"
+            );
+            let camera = world.camera().unwrap();
+            assert_eq!(camera.selected.index(), 2, "{name}");
+            assert_ne!(camera.current, start(), "{name}: the pose updated");
+            let actor = world.id(CAMERA).unwrap();
+            assert_eq!(
+                world.spatial(actor).unwrap().local.position,
+                camera.current.position,
+                "{name}: the camera actor carries the published pose"
+            );
+            let receiver = world.spatial(world.id(0).unwrap()).unwrap().local;
+            let expected = if name == Native::ShowCyrusLoc {
+                ([4000, 9000, -6000], [100, 1900, 20])
+            } else {
+                (receiver.position, receiver.wrapped_angles())
+            };
+            assert_eq!(
+                *service.seen.borrow(),
+                Some(expected),
+                "{name}: the target's pose"
+            );
+            run_with(&mut world, TASKS, Some(&service)).unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                0,
+                "{name}: the next invocation completes"
+            );
+            let camera = world.camera().unwrap();
+            assert_eq!(
+                (camera.scripted_active, camera.scripted_nesting),
+                (0, 0),
+                "{name}"
+            );
+        }
+    }
+
+    fn reset_world() -> (ScriptWorld, PoseService) {
+        function_world(Native::XResetCamera)
+    }
+
+    /// The scripts of [`function_world`]: its map actor calls `name` as a function.
+    fn function_scripts(name: Native) -> Scripts {
+        let mut data = scripts_calling(name, &[]);
+        data.definition.functions[1].kind = CallKind::Function;
+        let step = data
+            .actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap();
+        let Operation::Call { call } = &mut step.operation else {
+            unreachable!("the first step is the native call")
+        };
+        call.kind = CallKind::Function;
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        data
+    }
+
+    /// A world whose map actor calls the argument-free camera function `name` once.
+    fn function_world(name: Native) -> (ScriptWorld, PoseService) {
+        world_from(function_scripts(name))
+    }
+
+    fn world_from(mut data: Scripts) -> (ScriptWorld, PoseService) {
+        let mut world = prepared(&mut data);
+        world.initialize_camera_pose(start()).unwrap();
+        let service = PoseService {
+            seen: Default::default(),
+            hits: std::cell::RefCell::new(hits()),
+            published: Default::default(),
+            fail: false,
+        };
+        (world, service)
+    }
+
+    #[test]
+    fn x_reset_camera_clears_the_task_slots_of_the_player_and_camera_actors() {
+        let mut data = function_scripts(Native::XResetCamera);
+        data.definition.functions.push(Function {
+            name: Native::ShowPlayer,
+            param_count: 0,
+            kind: CallKind::Task,
+        });
+        let show_player = Operation::Call {
+            call: Call {
+                function_id: 2,
+                function: Native::ShowPlayer,
+                target: Object::Me,
+                kind: CallKind::Task,
+                arguments: vec![],
+            },
+        };
+        for (name, origin) in [("CYRUS", 100), ("CAMERA", 200)] {
+            data.actors.insert(
+                name.into(),
+                actor(
+                    vec![show_player.clone(), Operation::End { target: 0 }],
+                    origin,
+                ),
+            );
+        }
+        let (mut world, service) = world_from(data);
+        let hud = ScriptHud::default();
+        for index in [PLAYER, CAMERA] {
+            run(&mut world, index, BODY, Some(&hud)).unwrap();
+            assert_eq!(
+                world.actors()[index].runtime().unwrap().active_tasks(),
+                1,
+                "actor {index} starts a task"
+            );
+        }
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        for index in [PLAYER, CAMERA] {
+            assert_eq!(
+                world.actors()[index].runtime().unwrap().active_tasks(),
+                0,
+                "XResetCamera clears actor {index}'s tasks"
+            );
+        }
+    }
+
+    #[test]
+    fn x_reset_camera_recomputes_the_first_pose_with_record_zero_selected() {
+        let (mut world, service) = reset_world();
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.selected.index(), 0);
+        assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+        assert_eq!(
+            camera.records[0].flags.bits(),
+            0x40,
+            "record zero is reset to its flag"
+        );
+        assert_eq!(
+            camera.current, camera.previous,
+            "setup stores the first pose as both current and previous"
+        );
+        assert_ne!(camera.current, start(), "the pose was recomputed");
+        assert_eq!(
+            world
+                .spatial(world.id(CAMERA).unwrap())
+                .unwrap()
+                .local
+                .position,
+            camera.current.position,
+            "the camera actor carries the published pose"
+        );
+        assert_eq!(
+            *service.seen.borrow(),
+            Some(([4000, 9000, -6000], [100, 1900, 20])),
+            "the selected player's pose"
+        );
+        assert_eq!(world.globals().lockout(), Some(0), "the player is unlocked");
+    }
+
+    #[test]
+    fn camera_controller_runs_one_pose_update_and_publishes_the_camera_actor() {
+        let (mut world, service) = function_world(Native::CameraController);
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_ne!(camera.current, start(), "the pose updated");
+        assert_eq!(
+            camera.previous,
+            start(),
+            "an ordinary frame keeps the old pose as previous"
+        );
+        assert_eq!(
+            world
+                .spatial(world.id(CAMERA).unwrap())
+                .unwrap()
+                .local
+                .position,
+            camera.current.position,
+            "the camera actor carries the published pose"
+        );
+        assert_eq!(
+            *service.seen.borrow(),
+            Some(([4000, 9000, -6000], [100, 1900, 20])),
+            "the selected record's bound actor"
+        );
+    }
+
+    #[test]
+    fn camera_controller_without_the_update_service_changes_nothing() {
+        let (mut world, _) = function_world(Native::CameraController);
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
+    }
+
+    #[test]
+    fn x_reset_camera_without_the_update_service_changes_nothing() {
+        let (mut world, _) = reset_world();
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
+        assert_eq!(world.globals().lockout(), None);
+    }
+
+    #[test]
+    fn location_native_without_the_update_service_fails_before_changing_the_camera() {
+        let (mut world, _) = location_world(Native::ShowObjLoc, &[3, -2, 5], false);
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.selected, before.selected);
+        assert_eq!(camera.scripted_active, 0);
+        assert_eq!(camera.marks, before.marks);
+        assert_eq!(camera.current, before.current);
+    }
+
+    #[test]
+    fn failed_pose_update_leaves_the_camera_and_the_actor_untouched() {
+        let (mut world, mut service) = location_world(Native::ShowObjLoc, &[3, -2, 5], false);
+        service.fail = true;
+        let before = world.camera().unwrap().clone();
+        let actor = world.id(CAMERA).unwrap();
+        let error = run_with(&mut world, BODY, Some(&service)).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("pose service failed"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
+        assert_eq!(
+            world.spatial(actor).unwrap().local.position,
+            start().position
+        );
+    }
+
+    #[test]
+    fn show_cyrus_loc_does_nothing_while_the_player_holds_a_weapon() {
+        let (mut world, service) = location_world(Native::ShowCyrusLoc, &[3, -2, 5], true);
+        let before = world.camera().unwrap().clone();
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.scripted_active, 0);
+        assert_eq!(camera.current, before.current);
+        assert_eq!(camera.marks, before.marks);
+    }
+
+    #[test]
+    fn camera_frame_publishes_the_pose_then_cuts_and_glides_the_render_camera() {
+        use cyrus_script::script::camera::GlidePlayer;
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let player = GlidePlayer {
+            holding_weapon: false,
+            rope_attached: false,
+        };
+        let (mut hits, settings) = (hits(), settings());
+        let first = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: false },
+                player,
+                true,
+            )
+            .unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(state.current, first);
+        assert_eq!(
+            state.render.position,
+            first.position.map(|axis| (axis / 256) as f32),
+            "the snap left by setup cuts the render camera to the published pose"
+        );
+        assert!(!state.marks.snap);
+        let actor = world.id(CAMERA).unwrap();
+        assert_eq!(world.spatial(actor).unwrap().local.position, first.position);
+        // The glide factors are zero in this scene, so a gliding frame leaves the render position.
+        let second = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: false },
+                player,
+                true,
+            )
+            .unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(state.current.position, second.position);
+        assert_eq!(
+            state.render.position,
+            first.position.map(|axis| (axis / 256) as f32)
+        );
+        let error = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: true },
+                player,
+                true,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("segment service failed"));
+    }
+
+    #[test]
+    fn failed_update_changes_neither_the_session_nor_the_actor() {
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let camera = world.id(CAMERA).unwrap();
+        let error = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: true })
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("segment service failed"));
+        assert_eq!(world.camera().unwrap().current, start());
+        assert_eq!(
+            world.spatial(camera).unwrap().local.position,
+            start().position
+        );
+    }
+
+    #[test]
+    fn update_requires_the_camera_actor_pose_first_and_initialization_happens_once() {
+        let mut world = world();
+        let error = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("published camera actor pose"),
+            "{error:#}"
+        );
+        world.initialize_camera_pose(start()).unwrap();
+        assert!(world.initialize_camera_pose(start()).is_err());
+    }
+}
+
+#[test]
+fn initialized_camera_and_both_player_roles_restore_their_spatial_state() {
+    use cyrus_script::script::{ScriptActorSource, camera::CameraPose};
+    let data = scripts(&["CYRUS", "GREMLIN", "CAMERA"]);
+    let animations = Animations {
+        version: 2,
+        world: data.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id":data.content_id,"actors":[]}),
+    };
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &data,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut live = ScriptWorld::prepare(&data, 7).unwrap();
+    live.prepare_spatial().unwrap();
+    let players = live
+        .actors()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, actor)| {
+            matches!(
+                actor.source,
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+            )
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(players.len(), 2);
+    for (offset, &index) in players.iter().enumerate() {
+        live.initialize_player_spatial(
+            live.id(index).unwrap(),
+            [100 + offset as i32, -40, 256],
+            [20, 30, 40],
+        )
+        .unwrap();
+    }
+    live.initialize_camera_pose(CameraPose {
+        position: [500, -600, 700],
+        angles: [80, 90, 100],
+    })
+    .unwrap();
+    let camera = live.camera().unwrap().camera_actor.index;
+    let saved = serde_json::to_value(live.snapshot(&sources).unwrap()).unwrap();
+    let samples = BTreeMap::new();
+    let context = || WorldRestoreContext {
+        generation: 19,
+        globals: GameplayGlobals::default(),
+        samples: &samples,
+    };
+    let restored = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved.clone()).unwrap(),
+        &sources,
+        context(),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap()["spatial"],
+        saved["spatial"]
+    );
+    assert_eq!(restored.camera().unwrap().camera_actor.generation, 19);
+    for index in players.into_iter().chain([camera]) {
+        let mut corrupt = saved.clone();
+        corrupt["spatial"]["actors"][index]["parent"] = 0.into();
+        assert!(
+            ScriptWorld::from_snapshot(
+                serde_json::from_value(corrupt).unwrap(),
+                &sources,
+                context()
+            )
+            .is_err()
+        );
+    }
+}

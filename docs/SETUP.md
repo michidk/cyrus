@@ -544,7 +544,7 @@ contains local paths but no game data.
 
 | Option | Environment | Default | Meaning |
 | --- | --- | --- | --- |
-| `--log <FILTER>` | `RUST_LOG` | `info` | console filter, for example `warn` or `info,cyrus_game=debug` |
+| `--log <FILTER>` | `RUST_LOG` | `info` | console filter, for example `warn` or `info,cyrus_script=debug` |
 | `--log-file <FILTER>` | `CYRUS_LOG_FILE` | `info,cyrus=debug` | file filter; `off` disables the file |
 | `--log-dir <DIR>` | `CYRUS_LOG_DIR` | the log directory | directory of the daily files |
 

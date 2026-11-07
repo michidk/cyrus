@@ -1,6 +1,6 @@
 //! Read-only binding of exact engine heights to logical camera terrain sampling.
 use anyhow::{Result, ensure};
-use cyrus_game::script::camera::CameraTerrainHeights;
+use cyrus_script::script::camera::CameraTerrainHeights;
 
 /// Borrowed view of one settled terrain owner. The host validates source and epoch.
 /// Both arrays use original WLD row order; engine Z reverses those rows.

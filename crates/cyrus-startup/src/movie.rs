@@ -123,7 +123,7 @@ const ENDING_MOVIE: usize = 4;
 /// it and the book follows the credits.
 fn ending(
     mut commands: Commands,
-    entry: Option<Res<cyrus_game::script::EndingEntry>>,
+    entry: Option<Res<cyrus_script::script::EndingEntry>>,
     menu: Option<Res<MenuState>>,
     mut movies: MessageWriter<MovieRequest>,
     mut sounds: Option<MessageWriter<cyrus_audio::sound::SoundRequest>>,
@@ -131,7 +131,7 @@ fn ending(
     if entry.is_none() || menu.is_none() {
         return;
     }
-    commands.remove_resource::<cyrus_game::script::EndingEntry>();
+    commands.remove_resource::<cyrus_script::script::EndingEntry>();
     if let Some(sounds) = sounds.as_mut() {
         sounds.write(cyrus_audio::sound::SoundRequest::StopAll);
     }
@@ -142,7 +142,7 @@ fn ending(
 /// Plays a gameplay script's movie once the book menu exists; the world resumes when it ends.
 fn script_movie(
     mut commands: Commands,
-    entry: Option<Res<cyrus_game::script::ScriptMovieEntry>>,
+    entry: Option<Res<cyrus_script::script::ScriptMovieEntry>>,
     menu: Option<Res<MenuState>>,
     mut movies: MessageWriter<MovieRequest>,
 ) {
@@ -150,14 +150,14 @@ fn script_movie(
         return;
     };
     movies.write(MovieRequest::Script(entry.index, entry.then_load));
-    commands.remove_resource::<cyrus_game::script::ScriptMovieEntry>();
+    commands.remove_resource::<cyrus_script::script::ScriptMovieEntry>();
 }
 
 /// A script movie is over, played or not: the paused world resumes, after requesting the world load
 /// that was waiting behind it.
 fn resume_script_world(commands: &mut Commands, menu: &mut MenuState, then_load: Option<[i32; 3]>) {
     if let Some(destination) = then_load
-        && let Err(error) = cyrus_game::script::request_world(commands, destination)
+        && let Err(error) = cyrus_script::script::request_world(commands, destination)
     {
         menu.unavailable = Some(format!("{error:#}"));
     }
@@ -746,10 +746,10 @@ mod tests {
         let mut world = World::new();
         world.init_resource::<Messages<MovieRequest>>();
         world.init_resource::<Messages<SoundRequest>>();
-        world.insert_resource(cyrus_game::script::EndingEntry);
+        world.insert_resource(cyrus_script::script::EndingEntry);
         world.run_system_once(ending).unwrap();
         assert!(
-            world.contains_resource::<cyrus_game::script::EndingEntry>(),
+            world.contains_resource::<cyrus_script::script::EndingEntry>(),
             "the ending waits for the book menu"
         );
         assert!(
@@ -762,7 +762,7 @@ mod tests {
         world.init_resource::<MenuState>();
         world.run_system_once(ending).unwrap();
         world.run_system_once(ending).unwrap();
-        assert!(!world.contains_resource::<cyrus_game::script::EndingEntry>());
+        assert!(!world.contains_resource::<cyrus_script::script::EndingEntry>());
         let movies: Vec<_> = world
             .resource_mut::<Messages<MovieRequest>>()
             .drain()
@@ -804,15 +804,15 @@ mod tests {
         use bevy::ecs::system::RunSystemOnce;
         let mut world = World::new();
         world.init_resource::<Messages<MovieRequest>>();
-        world.insert_resource(cyrus_game::script::ScriptMovieEntry {
+        world.insert_resource(cyrus_script::script::ScriptMovieEntry {
             index: 7,
             then_load: Some([3, 0, 0]),
         });
         world.run_system_once(script_movie).unwrap();
-        assert!(world.contains_resource::<cyrus_game::script::ScriptMovieEntry>());
+        assert!(world.contains_resource::<cyrus_script::script::ScriptMovieEntry>());
         world.init_resource::<MenuState>();
         world.run_system_once(script_movie).unwrap();
-        assert!(!world.contains_resource::<cyrus_game::script::ScriptMovieEntry>());
+        assert!(!world.contains_resource::<cyrus_script::script::ScriptMovieEntry>());
         let requests: Vec<_> = world
             .resource_mut::<Messages<MovieRequest>>()
             .drain()

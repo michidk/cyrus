@@ -8,6 +8,7 @@ edition.workspace = true
 bevy = { workspace = true, features = ["bevy_asset", "bevy_audio", "bevy_state"] }
 cyrus-assets.workspace = true
 cyrus-game.workspace = true
+cyrus-script.workspace = true
 cyrus-world.workspace = true
 cyrus-audio.workspace = true
 cyrus-render.workspace = true

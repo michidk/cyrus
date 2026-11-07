@@ -13,11 +13,9 @@ use bevy::{
 };
 use cyrus_assets::{environment::Environment, hud::HudAsset};
 use cyrus_audio::sound::{RestoredDialogueAssets, dialogue::DialogueClip};
-use cyrus_game::{
-    preferences::Preferences,
-    script::{LogicalSessionRestoreInputs, ScriptActors},
-};
+use cyrus_game::preferences::Preferences;
 use cyrus_render::hud::HudPresentationAssets;
+use cyrus_script::script::{LogicalSessionRestoreInputs, ScriptActors};
 use std::collections::BTreeMap;
 
 /// Host-resolved installed assets. Handles may still be loading. Paths and export
@@ -216,7 +214,7 @@ impl SessionLoad {
                 .generation_high_water(),
             hud,
             preferences: crate::resource::<Preferences>(world, "session load preferences")?,
-            bios_tick: cyrus_game::clock::bios_tick(
+            bios_tick: cyrus_script::clock::bios_tick(
                 crate::resource::<Time<Real>>(world, "session load real clock")?.elapsed(),
             ),
         })?;

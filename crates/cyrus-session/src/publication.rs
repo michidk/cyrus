@@ -46,7 +46,7 @@ impl RuntimeSessionCandidate {
                 With<ScriptBinding>,
                 With<PlayingSound>,
                 With<MusicPlayer>,
-                With<cyrus_game::script::ScriptedPlayback>,
+                With<cyrus_script::script::ScriptedPlayback>,
                 With<cyrus_render::camera::ViewCamera>,
             )>>()
             .iter(world)

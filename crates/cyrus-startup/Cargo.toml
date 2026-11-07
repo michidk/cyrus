@@ -9,6 +9,7 @@ cyrus-app = { path = "../cyrus-app" }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-game.workspace = true
+cyrus-script.workspace = true
 cyrus-text.workspace = true
 cyrus-audio.workspace = true
 cyrus-media.workspace = true

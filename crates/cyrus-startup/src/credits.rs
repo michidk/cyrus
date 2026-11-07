@@ -8,7 +8,8 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::logbook::{CreditAlign, CreditLine, LogbookArtwork, ReaderStyle};
-use cyrus_game::{AppState, script::CreditsPlaying};
+use cyrus_game::AppState;
+use cyrus_script::script::CreditsPlaying;
 use cyrus_text::Font;
 
 const WIDTH: i32 = 640;
