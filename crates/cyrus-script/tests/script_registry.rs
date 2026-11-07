@@ -50148,3 +50148,6 @@ mod movement_tasks_tests;
 
 #[path = "script_registry/player_queries.rs"]
 mod player_queries_tests;
+
+#[path = "script_registry/flat_texture.rs"]
+mod flat_texture_tests;

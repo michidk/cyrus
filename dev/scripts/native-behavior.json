@@ -1589,6 +1589,8 @@
       "scope": "Installed bank/image selection and playback reset",
       "caller": "ScriptWorld::advance -> script/registry.rs -> registry/flat.rs -> actor_flat_draws / renderer",
       "tests": [
+        "crates/cyrus-script/tests/script_registry/flat_texture.rs::flat_set_texture_forms_the_identifier_from_the_bank_and_image_and_enables_the_record",
+        "crates/cyrus-script/tests/script_registry/flat_texture.rs::flat_set_texture_creates_the_record_and_fails_on_an_uninstalled_image",
         "crates/cyrus-script/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates",
         "crates/cyrus-script/src/script/registry/flat.rs::missing_banks_and_wide_images_are_contextual_errors"
       ],
@@ -1596,8 +1598,8 @@
         "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
         "https://github.com/michidk/cyrus/issues/57"
       ],
-      "limits": "Verified by inspection: reviewed native record oracle includes texture changes; no successful public ScriptWorld FlatSetTexture dispatch assertion was located. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
-      "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
+      "limits": "Verified by inspection: reviewed native record oracle includes texture changes; public ScriptWorld dispatch tests check the texture identifier formula ((bank<<7)&0xff80 | image&7), enable/pending effects and the uninstalled-image error. The record oracle runs recovered original native instructions with lookup/loader/allocator stubbed and compares handle presence, not real bitmap identity. Unknown: matched installed original/native/browser rendered placement, animation cadence, overlap and replacement branches. FlatSetTexture indices above seven remain explicitly unsupported; structural catalogue closure is not presentation acceptance.",
+      "reviewed_revision": "6f71b043477747eae4dc27d2d2270474f898e472"
     },
     {
       "native": "InKey",
@@ -4657,13 +4659,14 @@
       "scope": "Stop retained flat playback using original record-word copies",
       "caller": "GameHost::call -> flat::call -> retained FlatState",
       "tests": [
+        "crates/cyrus-script/tests/script_registry/flat_texture.rs::flat_stop_enables_the_record_and_clears_its_pending_and_animation_bytes",
         "crates/cyrus-script/src/script/registry/flat.rs::flat_natives_match_the_original_record_updates"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#flat-natives"
       ],
-      "limits": "Verified internal original-emulator oracle includes FlatStop sequences, allocation/bitmap services stubbed. Compare serialized record mapping rather than Rust field-name intuition: original word order maps frame,last_frame,counter in the implementation oracle, and copy order is preserved. No dedicated successful public named fixture or actual displayed last-frame native/browser acceptance located. Retained byte-state equality is not raster/phase/timing parity. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance.",
-      "reviewed_revision": "7b816480ad61af68ce57bb39674a2e56c89d50d1"
+      "limits": "Verified internal original-emulator oracle includes FlatStop sequences, allocation/bitmap services stubbed. Compare serialized record mapping rather than Rust field-name intuition: original word order maps frame,last_frame,counter in the implementation oracle, and copy order is preserved. No dedicated successful public named fixture or actual displayed last-frame native/browser acceptance located. Retained byte-state equality is not raster/phase/timing parity. Zero static calls in27 historical exports cannot exclude hidden unsupported bodies. Rust assertions inspected only; no new original/native/browser rendering acceptance. Public test: dispatch creates the record when absent, enables it and clears its pending byte after FlatOff.",
+      "reviewed_revision": "6f71b043477747eae4dc27d2d2270474f898e472"
     },
     {
       "native": "AttachMe",
