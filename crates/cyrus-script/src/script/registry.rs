@@ -820,6 +820,16 @@ impl ScriptWorld {
             .queued_motion = motion;
     }
 
+    /// Test hook: set a logical actor's pending and accepted directional action words.
+    #[doc(hidden)]
+    pub fn set_action_words_for_test(&mut self, id: ScriptActorId, pending: u32, accepted: u32) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .actions = ActionWords { pending, accepted };
+    }
+
     /// Test hook: set a logical actor's living state.
     #[doc(hidden)]
     pub fn set_living_state_for_test(&mut self, id: ScriptActorId, state: LivingState) {

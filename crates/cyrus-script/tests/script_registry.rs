@@ -9852,6 +9852,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     world.set_actor_surface(ids[0], Surface::UNKNOWN).unwrap();
     let y = world.spatial(ids[0]).unwrap().local.position[1];
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
+    world.set_action_words_for_test(ids[0], 0x13, 0x21);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -9865,6 +9866,11 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
         }
     );
     let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (control.actions.pending, control.actions.accepted),
+        (0, 0),
+        "an admitted landing clears both action words"
+    );
     assert_eq!(
         (
             control.living_state,
@@ -9885,6 +9891,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
     // Living state 27 refuses a second landing; the pass still ends, and nothing else changes.
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
+    world.set_action_words_for_test(ids[0], 0x13, 0x21);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -9900,6 +9907,12 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     assert_eq!(
         world.actors()[0].control_state().unwrap().falling_state,
         JumpMotion::STANDING
+    );
+    let words = world.actors()[0].control_state().unwrap().actions;
+    assert_eq!(
+        (words.pending, words.accepted),
+        (0x13, 0x21),
+        "a refused landing leaves the action words"
     );
     // A shorter fall than the installed bounce height takes the weighted response instead.
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 99 * 256);
