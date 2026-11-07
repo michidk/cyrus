@@ -195,6 +195,7 @@ module where it is defined and regenerate.
 - `src/console/markers.rs` — The user marker file of `setmarker` and `getmarker` and the host storage seam for it. The layout
 - `src/inventory_screen.rs` — Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 - `src/island_map.rs` — The island map screen: the marker position rules and the screen lifecycle.
+- `src/item_viewer.rs` — Item viewer rules: the pose, fade and exit of the modal that `ShowItem` opens, and the
 - `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
