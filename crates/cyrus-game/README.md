@@ -662,4 +662,8 @@ Verified: `start_angle.*` reads and writes the whole 32-bit creation angles Rese
 from while the flag is set: the flag reads 0 or 1 and a write sets it when its low byte is nonzero, and
 the position is whole 32-bit values. See preservation's
 [stable-position and creation-angle properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#stable-position-and-creation-angle-properties).
-The slave, `move` and `ov` families stay unsupported.
+Verified: `move.*` are the retained motion triple (whole 32-bit values); the rope release stores its
+jump-off speed in `move.vz` and queued motion 24 reads it, so one word serves both and old saves restore
+their separate rope speed into it. See preservation's
+[motion triple properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#motion-triple-properties).
+The slave and `ov` families stay unsupported.

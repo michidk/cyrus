@@ -229,6 +229,15 @@ fn the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_
     });
     let ai = older.actors()[0].control_state().unwrap().ai;
     assert_eq!([ai.var1 as i32, ai.var2 as i32, ai.length], [4, 0, 0]);
+    // Saves written when the rope release speed was kept apart restore it as the last `move` word.
+    let earlier = restore(&|saved| {
+        saved["actors"][0]["control"]["rope_speed"] = (-96).into();
+        saved["actors"][0]["control"]["motion_vector"] = serde_json::json!([1, 2, 0]);
+    });
+    assert_eq!(
+        earlier.actors()[0].control_state().unwrap().motion_vector,
+        [1, 2, -96]
+    );
 }
 
 #[test]

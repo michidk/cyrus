@@ -55,7 +55,8 @@ struct ControlSnapshot {
     collision_response_age: u8,
     overlap_contact_identifier: u16,
     rope_attached: bool,
-    #[serde(default)]
+    /// Saves written before the rope speed shared the `move` triple kept it here.
+    #[serde(default, skip_serializing)]
     rope_speed: i32,
     torch_burning: u8,
     #[serde(default)]
@@ -147,7 +148,7 @@ impl ControlSnapshot {
             collision_response_age: control.last_collide_count,
             overlap_contact_identifier: control.overlap_contact_identifier,
             rope_attached: control.rope_attached,
-            rope_speed: control.rope_speed,
+            rope_speed: 0,
             torch_burning: control.torch_burning,
             torch_saved: control.torch_saved,
             weapon_drawn: control.weapon_drawn,
@@ -206,7 +207,10 @@ impl ControlSnapshot {
             action_transition_counter: self.action_transition_counter,
             jump_window: self.jump_window,
             move_counter: self.movement_flags,
-            motion_vector: self.motion_vector,
+            motion_vector: match self.rope_speed {
+                0 => self.motion_vector,
+                speed => [self.motion_vector[0], self.motion_vector[1], speed],
+            },
             fall_origin_y: self.fall_origin_y,
             fall_timer: self.fall_timer,
             jump_selector: self.jump_selector,
@@ -223,7 +227,6 @@ impl ControlSnapshot {
             overlap_contact_identifier: self.overlap_contact_identifier,
             ground_kind: Default::default(),
             rope_attached: self.rope_attached,
-            rope_speed: self.rope_speed,
             torch_burning: self.torch_burning,
             torch_saved: self.torch_saved,
             weapon_drawn: self.weapon_drawn,

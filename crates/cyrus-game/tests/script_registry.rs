@@ -44019,7 +44019,7 @@ fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_
             (control.queued_motion.byte(), control.jump_selector),
             (24, 24)
         );
-        assert_eq!(control.rope_speed, speed);
+        assert_eq!(control.motion_vector[2], speed);
         assert_eq!(control.motion_classification, classification);
         // The ordinary wrapper clears directions without a locomotion call.
         assert_eq!(control.move_counter, 0);

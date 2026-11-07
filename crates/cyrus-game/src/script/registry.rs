@@ -427,7 +427,10 @@ pub struct ActorControlState {
     pub jump_window: u8,
     /// The DEF `move_counter` byte: a two-bit counter per [`StepDirection`](super::locomotion::StepDirection).
     pub move_counter: u8,
-    /// Retained integer motion components; obstacle interruption only clears them here.
+    /// The `move` triple: retained integer motion components. A rope release stores the speed
+    /// queued motion 24 turns into a horizontal move in the last one (the installed jump-off speed
+    /// plus the node's measured speed, negative for a backward jump); falls and obstacle
+    /// interruption clear them.
     pub motion_vector: [i32; 3],
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
@@ -451,9 +454,6 @@ pub struct ActorControlState {
     /// `PlayerOnScape` reads it.
     pub ground_kind: ground::GroundKind,
     pub rope_attached: bool,
-    /// The speed word queued motion 24 turns into a horizontal move after a rope release: the
-    /// installed jump-off speed plus the node's measured speed, negative for a backward jump.
-    pub rope_speed: i32,
     pub torch_burning: u8,
     /// The counter saved when a torch is put out, restored when it is lit again; zero starts afresh.
     pub torch_saved: u8,
@@ -5157,6 +5157,9 @@ fn control_record_property(
         Property::Dnode => ControlField::Dword(&mut control.navigation.next),
         Property::Fdnode => ControlField::Dword(&mut control.navigation.destination),
         // The stable-position record the fall and recovery code restores from.
+        Property::MoveVx => ControlField::Dword(&mut control.motion_vector[0]),
+        Property::MoveVy => ControlField::Dword(&mut control.motion_vector[1]),
+        Property::MoveVz => ControlField::Dword(&mut control.motion_vector[2]),
         Property::LastValidFlag => ControlField::Flag(&mut control.stable_position_valid),
         Property::LastValidPosVx => ControlField::Dword(&mut control.stable_local_position[0]),
         Property::LastValidPosVy => ControlField::Dword(&mut control.stable_local_position[1]),

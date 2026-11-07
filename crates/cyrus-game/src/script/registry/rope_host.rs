@@ -713,7 +713,7 @@ impl ScriptWorld {
             .as_mut()
             .context("rope detach control unavailable")?;
         control.rope_attached = false;
-        control.rope_speed = speed;
+        control.motion_vector[2] = speed;
         control.jump_selector = 24;
         self.player_rope.last_rope = Some(rope_index);
         Ok(())

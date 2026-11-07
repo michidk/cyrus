@@ -513,7 +513,7 @@ impl super::ScriptWorld {
         if control.rope_attached {
             return Ok(());
         }
-        let backward = control.rope_speed < 0;
+        let backward = control.motion_vector[2] < 0;
         control.motion_classification = if backward {
             MotionDirection::BACKWARD
         } else {
@@ -525,7 +525,10 @@ impl super::ScriptWorld {
             StepDirection::Forward
         }
         .counter_mask();
-        let distance = control.rope_speed.unsigned_abs().wrapping_mul(frame_scale) >> 8;
+        let distance = control.motion_vector[2]
+            .unsigned_abs()
+            .wrapping_mul(frame_scale)
+            >> 8;
         if suppressed || distance < 1 {
             return Ok(());
         }

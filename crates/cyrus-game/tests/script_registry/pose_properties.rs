@@ -282,3 +282,19 @@ fn last_valid_record_is_the_stable_position_the_recovery_restores() {
             .stable_position_valid
     );
 }
+
+#[test]
+fn move_properties_are_the_retained_motion_triple_the_rope_release_speed_shares() {
+    let world = pose_world(&[
+        Step3::Write(Property::MoveVx, -3),
+        Step3::Write(Property::MoveVy, 70_000),
+        Step3::Write(Property::MoveVz, i32::MIN),
+        Step3::Read(Property::MoveVx),
+        Step3::Read(Property::MoveVy),
+        Step3::Read(Property::MoveVz),
+    ]);
+    assert_eq!(locals(&world), [-3, 70_000, i32::MIN]);
+    let control = world.actors()[0].control_state().unwrap();
+    // The rope release's jump-off speed is the last component of the same triple.
+    assert_eq!(control.motion_vector, [-3, 70_000, i32::MIN]);
+}
