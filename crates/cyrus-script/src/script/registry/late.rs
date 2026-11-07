@@ -192,9 +192,7 @@ impl ScriptWorld {
                 support.actor_height(0, standing_height) + i64::from(extent) * 256
             }
         };
-        Ok(Some(
-            i32::try_from(origin + 0x600).context("transition effect height outside Q8 range")?,
-        ))
+        Ok(Some((origin + 0x600) as i32))
     }
 
     fn query_ordinary_point_support(
@@ -1011,10 +1009,8 @@ impl ScriptWorld {
                         )?;
                     }
                     let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
-                    let height = i32::try_from(
-                        support.actor_height(extent, query.scene.settings.standing_height),
-                    )
-                    .context("ordinary support origin outside Q8 range")?;
+                    let height =
+                        support.actor_height(extent, query.scene.settings.standing_height) as i32;
                     self.spatial
                         .as_mut()
                         .context("ground response spatial state unavailable")?

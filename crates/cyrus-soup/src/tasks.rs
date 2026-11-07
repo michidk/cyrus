@@ -5,16 +5,84 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// An occupied slot. Its status, pause and timer bytes live in the slot arrays of the state, which
+/// keep their values while the slot is empty, as the actor record's parallel arrays do.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Task {
     pub token: u64,
     pub source: TaskSource,
     pub operand: u32,
+    /// Saves from before the slot bytes were kept in the state arrays carried them here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<LegacySlot>,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(super) struct LegacySlot {
     pub blocking: bool,
     pub paused: bool,
     pub counter: u16,
 }
+
+/// A slot byte or word a `task_status`, `task_pause` or `task_timer` property names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskSlotField {
+    /// Nonzero while the slot blocks its thread; a multitask slot holds zero.
+    Status,
+    /// Nonzero while the slot is skipped by the task pass.
+    Pause,
+    /// The slot's invocation counter, a signed 16-bit word when read.
+    Timer,
+}
+
+/// Which slot field of which actor a property reference names, as the host resolves it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TaskSlotProperty {
+    pub slot: usize,
+    pub field: TaskSlotField,
+    /// The receiver is the running actor, whose slots only its own runtime can reach.
+    pub own: bool,
+}
+
 impl Runtime {
+    /// The slot byte or word as a script property reads it: bytes zero-extend, the timer
+    /// sign-extends. Empty slots keep what their last occupant left.
+    pub fn task_slot_field(&self, slot: usize, field: TaskSlotField) -> i32 {
+        match field {
+            TaskSlotField::Status => i32::from(self.state.task_status[slot]),
+            TaskSlotField::Pause => i32::from(self.state.task_pause[slot]),
+            TaskSlotField::Timer => i32::from(self.state.task_timer[slot] as i16),
+        }
+    }
+    /// Raw property write: the low byte or word is kept and no handler runs or token is cancelled.
+    pub fn set_task_slot_field(&mut self, slot: usize, field: TaskSlotField, value: i32) {
+        match field {
+            TaskSlotField::Status => self.state.task_status[slot] = value as u8,
+            TaskSlotField::Pause => self.state.task_pause[slot] = value as u8,
+            TaskSlotField::Timer => self.state.task_timer[slot] = value as u16,
+        }
+    }
+    /// Moves the slot bytes saves wrote into the task records into the state arrays.
+    pub(super) fn migrate_legacy_slots(&mut self) {
+        for (slot, task) in self.state.tasks.iter_mut().enumerate() {
+            if let Some(legacy) = task.as_mut().and_then(|task| task.legacy.take()) {
+                self.state.task_status[slot] = u8::from(legacy.blocking);
+                self.state.task_pause[slot] = u8::from(legacy.paused);
+                self.state.task_timer[slot] = legacy.counter;
+            }
+        }
+    }
+    pub(super) fn slot_blocks(&self, slot: usize) -> bool {
+        self.state.task_status[slot] != 0 && self.state.task_pause[slot] == 0
+    }
+    /// Occupied, unpaused slots.
+    fn live_slots(&self) -> impl Iterator<Item = (usize, &Task)> + '_ {
+        self.state
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|&(slot, _)| self.state.task_pause[slot] == 0)
+            .filter_map(|(slot, task)| Some((slot, task.as_ref()?)))
+    }
     pub fn active_tasks(&self) -> usize {
         self.state.tasks.iter().flatten().count()
     }
@@ -24,28 +92,26 @@ impl Runtime {
         self.state
             .tasks
             .iter()
-            .flatten()
-            .map(|task| {
-                (
+            .enumerate()
+            .filter_map(|(slot, task)| {
+                let task = task.as_ref()?;
+                Some((
                     task.source.instruction,
                     task.source.object_call,
-                    task.blocking,
-                    task.paused,
-                    task.counter,
-                )
+                    self.state.task_status[slot] != 0,
+                    self.state.task_pause[slot] != 0,
+                    self.state.task_timer[slot],
+                ))
             })
             .collect()
     }
     /// Ordinary native hooks are gated by every unpaused slot, including multitasks.
     pub fn has_unpaused_task(&self) -> bool {
-        self.state.tasks.iter().flatten().any(|task| !task.paused)
+        self.live_slots().next().is_some()
     }
     pub fn has_blocking_task(&self) -> bool {
-        self.state
-            .tasks
-            .iter()
-            .flatten()
-            .any(|task| task.blocking && !task.paused)
+        (0..self.state.tasks.len())
+            .any(|slot| self.state.tasks[slot].is_some() && self.slot_blocks(slot))
     }
     /// Executes existing slots in allocation order. Newly issued tasks run in a later pass.
     pub fn invoke_tasks(&mut self, host: &mut dyn Host, flags: &mut [i32]) -> Result<()> {
@@ -80,19 +146,10 @@ impl Runtime {
     pub(super) fn invocation(&self, elapsed: Option<i32>) -> Invocation {
         Invocation {
             elapsed,
-            unpaused_tasks: self
-                .state
-                .tasks
-                .iter()
-                .flatten()
-                .filter(|task| !task.paused)
-                .count(),
+            unpaused_tasks: self.live_slots().count(),
             unpaused_blocking_tasks: self
-                .state
-                .tasks
-                .iter()
-                .flatten()
-                .filter(|task| !task.paused && task.blocking)
+                .live_slots()
+                .filter(|&(slot, _)| self.state.task_status[slot] != 0)
                 .count(),
         }
     }
@@ -108,12 +165,13 @@ impl Runtime {
                 host.save_native_command(index, &mut self.state.script_return);
                 continue;
             };
-            if task.paused {
+            if self.state.task_pause[index] != 0 {
                 host.save_native_command(index, &mut self.state.script_return);
                 continue;
             }
+            let counter = self.state.task_timer[index];
             let elapsed =
-                frame_scale.map(|scale| (u32::from(task.counter).wrapping_mul(scale) >> 8) as i32);
+                frame_scale.map(|scale| (u32::from(counter).wrapping_mul(scale) >> 8) as i32);
             host.load_native_command(index, elapsed);
             let completed = (|| {
                 let call = if task.source.origin == self.origin {
@@ -132,7 +190,7 @@ impl Runtime {
                 let arguments = self.arguments(&call, flags, host, &program.strings)?;
                 let invocation = self.invocation(elapsed);
                 let result = host.poll(task.token, &arguments, invocation, flags);
-                self.state.tasks[index].as_mut().unwrap().counter = task.counter.wrapping_add(1);
+                self.state.task_timer[index] = counter.wrapping_add(1);
                 result.with_context(|| format!("native {}", call.function))
             })()
             .with_context(|| {
@@ -143,6 +201,7 @@ impl Runtime {
             })?;
             if completed {
                 self.state.tasks[index] = None;
+                self.state.task_status[index] = 0;
             } else {
                 host.save_native_command(index, &mut self.state.script_return);
             }
@@ -244,10 +303,11 @@ impl Runtime {
                     token,
                     source: source.context("task source absent")?,
                     operand: operand.context("task operand absent")?,
-                    blocking,
-                    paused: false,
-                    counter: 1,
+                    legacy: None,
                 });
+                self.state.task_status[slot] = u8::from(blocking);
+                self.state.task_pause[slot] = 0;
+                self.state.task_timer[slot] = 1;
                 Ok((Some(0), blocking))
             }
         }
@@ -264,17 +324,22 @@ impl Runtime {
             .checked_add(label)
             .and_then(|value| value.checked_add(1))
             .context("task label overflow")?;
-        for task in &mut self.state.tasks {
-            if task.as_ref().is_none_or(|task| task.operand != operand) {
+        for slot in 0..self.state.tasks.len() {
+            let Some(task) = &self.state.tasks[slot] else {
+                continue;
+            };
+            if task.operand != operand {
                 continue;
             }
             match operation {
                 Operation::TaskStop { .. } => {
-                    host.cancel(task.as_ref().unwrap().token)?;
-                    *task = None;
+                    host.cancel(task.token)?;
+                    self.state.tasks[slot] = None;
+                    self.state.task_status[slot] = 0;
+                    self.state.task_pause[slot] = 0;
                 }
-                Operation::TaskPause { .. } => task.as_mut().unwrap().paused = true,
-                Operation::TaskResume { .. } => task.as_mut().unwrap().paused = false,
+                Operation::TaskPause { .. } => self.state.task_pause[slot] = 1,
+                Operation::TaskResume { .. } => self.state.task_pause[slot] = 0,
                 _ => anyhow::bail!("invalid task control"),
             }
         }
@@ -287,11 +352,13 @@ impl Runtime {
     /// Cancels every task slot through `cancel`, for a caller clearing another actor's tasks
     /// without a host bound to that actor.
     pub fn cancel_tasks_with(&mut self, mut cancel: impl FnMut(u64) -> Result<()>) -> Result<()> {
-        for task in &mut self.state.tasks {
-            if let Some(active) = task {
+        for slot in 0..self.state.tasks.len() {
+            if let Some(active) = &self.state.tasks[slot] {
                 cancel(active.token)?;
-                *task = None;
+                self.state.tasks[slot] = None;
             }
+            self.state.task_status[slot] = 0;
+            self.state.task_pause[slot] = 0;
         }
         Ok(())
     }

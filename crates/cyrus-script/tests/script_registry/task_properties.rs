@@ -102,11 +102,12 @@ fn a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_
     let reads = locals(&untouched);
     assert_ne!(reads[0], 0, "the loaded image resource is the first word");
     assert_eq!(reads[1], 0, "no pause is pending");
-    // The progress word is the task's retained progress; writing it before the next pass moves the
-    // overlay the task draws.
+    // The second image frame is `first + progress + 1` with the progress before the pass adds its
+    // ticks, so writing the progress word as 2 puts the overlay at offset 3, where the untouched
+    // task, whose first pass left 3, draws offset 4.
     let written = gxa_world(Some(2));
     assert_eq!(locals(&written)[2], 2, "the write reads back");
-    assert_ne!(offset(&written), offset(&untouched));
+    assert_eq!(offset(&written), Some(3));
 }
 
 #[test]
@@ -178,4 +179,103 @@ fn task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command
         .unwrap();
     // Whole 32-bit words per slot; slot zero's packed word was never written.
     assert_eq!(locals(&world), [-5, 0x7fff_ffff, i32::MIN, 0x0907_1234, 0]);
+}
+
+/// Both actors run the same program: an `AnimateGXA` multitask, then reads of the `master` actor's
+/// slot zero timer and status into locals 0 and 1 and a write of its pause byte.
+fn pause_neighbour_world() -> ScriptWorld {
+    let mut scripts = random_scripts(Native::AnimateGXA, vec![], Object::Me);
+    scripts.definition.functions[1].kind = CallKind::Multitask;
+    scripts.definition.functions[1].param_count = 4;
+    scripts.definition.references = vec![
+        Property::TaskTimer0,
+        Property::TaskStatus0,
+        Property::TaskPause0,
+    ];
+    let master = Object::Named { string: 2 };
+    let slot = |reference| Place::Property {
+        object: master.clone(),
+        reference,
+    };
+    let assign = |destination, first| Operation::Assign {
+        destination,
+        formula: Formula {
+            first,
+            rest: vec![],
+        },
+    };
+    let operations = vec![
+        wait(
+            1,
+            Native::AnimateGXA,
+            CallKind::Multitask,
+            vec![Value::String { index: 1 }, int(2), int(5), int(100)],
+        ),
+        assign(Place::Local { index: 0 }, Value::Read { place: slot(0) }),
+        assign(Place::Local { index: 1 }, Value::Read { place: slot(1) }),
+        assign(slot(2), int(1)),
+        Operation::End { target: 0 },
+    ];
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.strings = vec![
+        "logic".into(),
+        "system\\stmap01.gxa".into(),
+        "master".into(),
+    ];
+    logic.program.variables = vec![0; 3];
+    logic.instance_variables = vec![vec![0; 3]; 2];
+    logic.program.steps = operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    // Actor 1 answers to `master`.
+    let mut second = logic.clone();
+    second.namespace = Some("master".into());
+    second.header_index = 1;
+    second.instances = 1;
+    second.instance_variables = vec![vec![0; 3]];
+    logic.instances = 1;
+    logic.instance_variables.truncate(1);
+    scripts.instances[1].actor = "MASTER".into();
+    scripts.actors.insert("MASTER".into(), second);
+    scripts.content_id = scripts.content_identity().unwrap();
+    ScriptWorld::prepare(&scripts, 1).unwrap()
+}
+
+#[test]
+fn another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_state() {
+    let mut world = pause_neighbour_world();
+    let inputs = ScriptInputs {
+        frame_scale: Some(256),
+        nominal_ticks: Some(1),
+        ..Default::default()
+    };
+    let (me, master) = (world.id(0).unwrap(), world.id(1).unwrap());
+    // The master runs first: its own slot is served by its running interpreter.
+    world
+        .advance(master, ScriptStage::OrdinaryMain, inputs, None, None, 100)
+        .unwrap();
+    // Then actor 0 reads the master's timer (one: allocated, not yet passed) and status (zero: a
+    // multitask) and pauses the master's slot, not its own.
+    world
+        .advance(me, ScriptStage::OrdinaryMain, inputs, None, None, 100)
+        .unwrap();
+    assert_eq!(locals(&world)[..2], [1, 0]);
+    let paused = |index: usize| world.actors()[index].runtime().unwrap().task_slots()[0].3;
+    assert!(paused(1), "the write reached the master's slot");
+    assert!(!paused(0));
+    // A paused slot is skipped by the task pass: the master's timer stays at one.
+    world
+        .advance(master, ScriptStage::Tasks, inputs, None, None, 100)
+        .unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().task_slots()[0].4, 1);
 }

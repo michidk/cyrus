@@ -11,6 +11,7 @@ pub mod persistence;
 pub mod program;
 mod routing;
 mod tasks;
+pub use tasks::{TaskSlotField, TaskSlotProperty};
 mod values;
 use crate::program::{CallKind, Object, Operation, Place, Program};
 use anyhow::{Context, Result};
@@ -267,6 +268,16 @@ pub trait Host {
         self.read_property(target, reference)
             .map(ScriptValue::Integer)
     }
+    /// Names the task slot field a property reference reads or writes, if it is one. The running
+    /// runtime serves its own slots itself; the host reaches every other actor's.
+    fn task_slot_property(
+        &mut self,
+        target: &Target,
+        reference: u16,
+    ) -> Result<Option<tasks::TaskSlotProperty>> {
+        let _ = (target, reference);
+        Ok(None)
+    }
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         anyhow::bail!("property {target:?}.{reference} unsupported")
     }
@@ -291,6 +302,13 @@ pub struct State {
     anchor: u8,
     threads: [Option<Continuation>; 2],
     tasks: [Option<tasks::Task>; 6],
+    /// The slots' `task_status`, `task_pause` and `task_timer` bytes and words.
+    #[serde(default)]
+    task_status: [u8; 6],
+    #[serde(default)]
+    task_pause: [u8; 6],
+    #[serde(default)]
+    task_timer: [u16; 6],
     failure: Option<String>,
 }
 
@@ -338,6 +356,9 @@ impl Runtime {
             anchor: 0,
             threads,
             tasks: Default::default(),
+            task_status: Default::default(),
+            task_pause: Default::default(),
+            task_timer: Default::default(),
             failure: None,
         };
         Ok(Self {
@@ -375,9 +396,13 @@ impl Runtime {
         self.state
             .tasks
             .iter()
-            .flatten()
-            .find(|task| task.source.thread == thread && task.blocking && !task.paused)
-            .map(|task| task.token)
+            .enumerate()
+            .find(|&(slot, task)| {
+                task.as_ref()
+                    .is_some_and(|task| task.source.thread == thread)
+                    && self.slot_blocks(slot)
+            })
+            .and_then(|(_, task)| task.as_ref().map(|task| task.token))
     }
     pub fn failure(&self) -> Option<&str> {
         self.state.failure.as_deref()
@@ -429,13 +454,9 @@ impl Runtime {
             .0
             .checked_add(cursor)
             .with_context(|| format!("{} entry cursor identity overflow", self.context))?;
-        if self
-            .state
-            .tasks
-            .iter()
-            .flatten()
-            .any(|task| task.blocking && !task.paused && task.operand <= cursor)
-        {
+        if self.state.tasks.iter().enumerate().any(|(slot, task)| {
+            task.as_ref().is_some_and(|task| task.operand <= cursor) && self.slot_blocks(slot)
+        }) {
             return Ok(());
         }
         self.invoke_body(Thread::Interrupt, host, flags, budget)
@@ -648,7 +669,13 @@ impl Runtime {
                 .context("global flag absent")
                 .map(ScriptValue::Integer),
             Place::Property { object, reference } => {
-                host.read_value(&self.target(object)?, *reference)
+                let target = self.target(object)?;
+                match host.task_slot_property(&target, *reference)? {
+                    Some(slot) if slot.own => Ok(ScriptValue::Integer(
+                        self.task_slot_field(slot.slot, slot.field),
+                    )),
+                    _ => host.read_value(&target, *reference),
+                }
             }
         }
     }
@@ -673,7 +700,13 @@ impl Runtime {
                     .context("global flag absent")? = value.integer()?
             }
             Place::Property { object, reference } => {
-                host.write_property(&self.target(object)?, *reference, value.integer()?)?
+                let target = self.target(object)?;
+                match host.task_slot_property(&target, *reference)? {
+                    Some(slot) if slot.own => {
+                        self.set_task_slot_field(slot.slot, slot.field, value.integer()?)
+                    }
+                    _ => host.write_property(&target, *reference, value.integer()?)?,
+                }
             }
         }
         Ok(())

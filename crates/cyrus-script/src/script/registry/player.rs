@@ -1115,6 +1115,9 @@ impl ScriptWorld {
             .context("walking definition unavailable")?
             .clone();
         let attributes = &self.actors[id.index].attributes;
+        if let Ok(shape) = self.ordinary_collision_shape(id) {
+            definition.positive_extent = shape.positive_extent;
+        }
         definition.forward_walk = attributes[Attribute::ForwardWalk];
         definition.forward_speed = attributes[Attribute::ForwardSpeed];
         definition.step_type = attributes[Attribute::StepType];
@@ -1145,7 +1148,11 @@ impl ScriptWorld {
             let pose = self.spatial(id)?.local;
             let rows = pose.matrix.0.map(Vec3::from_array);
             let rotation = Mat3::from_cols(rows[0], rows[1], rows[2]).transpose();
-            let probe = definition.forward_probe(pose.position.map(i64::from), rotation)?;
+            let probe = definition.forward_probe(
+                definition.positive_extent,
+                pose.position.map(i64::from),
+                rotation,
+            )?;
             let mut proposed = [0; 3];
             for axis in 0..3 {
                 proposed[axis] =
@@ -1260,6 +1267,10 @@ impl ScriptWorld {
             .definition
             .as_ref()
             .context("player definition unavailable")?;
+        let live_extent = self
+            .ordinary_collision_shape(tick.actor)
+            .ok()
+            .map(|shape| shape.positive_extent);
         if self.spatial.is_none() {
             self.prepare_spatial()?;
         }
@@ -1357,6 +1368,7 @@ impl ScriptWorld {
                 alternate_collision: tick.alternate_collision,
                 sidedness: tick.sidedness,
                 surface_update: tick.surface_update,
+                extent: live_extent,
             };
             if let Some(reference) = walk.move_grounded(
                 &query,

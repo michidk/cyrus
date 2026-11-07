@@ -121,7 +121,11 @@ impl GroundedWalk {
             .context("walking continuation: player definition unavailable")?;
         let mut accepted = accepted;
         if !accepted && animation.current_group() == Some(AnimationGroup::WALK) {
-            let probe = definition.forward_probe(self.position, query.rotation)?;
+            let probe = definition.forward_probe(
+                query.positive_extent(definition),
+                self.position,
+                query.rotation,
+            )?;
             if query
                 .forward_support(probe, self.position, shared.0, &mut self.surface, shared.1)?
                 .is_some()
@@ -180,7 +184,7 @@ impl GroundedWalk {
             "grounded response: nonordinary support requires separate movement state"
         );
         self.position[1] = support.actor_height(
-            definition.positive_extent[1],
+            query.positive_extent(definition)[1],
             query.scene.settings.standing_height,
         );
         self.position = super::contact::resolve_grounded_contacts(
@@ -237,7 +241,11 @@ impl GroundedWalk {
             .definition
             .as_ref()
             .context("forward walk: player definition unavailable")?;
-        let probe = definition.forward_probe(self.position, query.rotation)?;
+        let probe = definition.forward_probe(
+            query.positive_extent(definition),
+            self.position,
+            query.rotation,
+        )?;
         if query
             .forward_support(probe, self.position, shared.0, &mut self.surface, shared.1)?
             .is_none()
@@ -278,9 +286,15 @@ pub struct StaticGroundQuery<'a> {
     pub alternate_collision: bool,
     pub sidedness: bool,
     pub surface_update: SurfaceUpdate,
+    /// The actor's live positive extent, which scripts may write; `None` uses the installed one.
+    pub extent: Option<[i32; 3]>,
 }
 
 impl StaticGroundQuery<'_> {
+    fn positive_extent(&self, definition: &super::definition::PlayerDefinition) -> [i32; 3] {
+        self.extent.unwrap_or(definition.positive_extent)
+    }
+
     fn spheres(&self) -> anyhow::Result<Vec<(Vec3, f32)>> {
         let definition = self
             .scene
@@ -330,13 +344,13 @@ impl StaticGroundQuery<'_> {
             .context("ground query: player definition unavailable")?;
         let probe = GroundProbe::new(
             position,
-            definition.positive_extent[1],
+            self.positive_extent(definition)[1],
             self.scene.settings.post_collide_height,
         )?;
         let fallback = FallbackProbe::new(
             position,
             [0; 3],
-            definition.positive_extent[1],
+            self.positive_extent(definition)[1],
             history.ticks() != 0,
         )?;
         let selected = self.scene.static_collision.selected_player_support(
@@ -402,7 +416,7 @@ impl StaticGroundQuery<'_> {
         if self.collision_attribute & 2 != 0 && !self.alternate_collision && history.ticks() == 0 {
             let probe = GroundProbe::new(
                 proposed,
-                definition.positive_extent[1],
+                self.positive_extent(definition)[1],
                 self.scene.settings.post_collide_height,
             )?;
             let contacts = self.scene.static_collision.ground_contacts(
@@ -417,7 +431,7 @@ impl StaticGroundQuery<'_> {
                     let current_slope = cyrus_collision::collision_world::CurrentSlope::new(
                         current,
                         proposed,
-                        definition.positive_extent[1],
+                        self.positive_extent(definition)[1],
                         self.scene.settings.post_collide_height,
                         || self.terrain(current),
                     )?;

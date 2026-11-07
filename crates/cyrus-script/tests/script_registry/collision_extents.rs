@@ -98,33 +98,76 @@ fn write_extent(property: Property, value: i32) -> (ScriptWorld, ScriptWorld) {
     (world, restored)
 }
 
+fn player_shape(world: &ScriptWorld) -> &cyrus_script::script::OrdinaryCollisionShape {
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    world
+        .ordinary_collision_shape(world.id(index).unwrap())
+        .unwrap()
+}
+
 #[test]
 fn extent_writes_replace_the_shape_extents_and_survive_a_restore() {
-    // The fixture's extents are 12, 24, 12 on both sides.
-    for (property, negative, axis) in [
-        (Property::SizePsizeVy, false, 1),
-        (Property::SizeMsizeVx, true, 0),
-    ] {
-        let (world, restored) = write_extent(property, 77);
-        for world in [&world, &restored] {
-            let id = world
-                .id(world
-                    .actors()
-                    .iter()
-                    .position(|a| matches!(a.source, ScriptActorSource::Player))
-                    .unwrap())
-                .unwrap();
-            let shape = world.ordinary_collision_shape(id).unwrap();
-            let (written, other) = if negative {
-                (shape.negative_extent, shape.positive_extent)
-            } else {
-                (shape.positive_extent, shape.negative_extent)
-            };
-            assert_eq!(written[axis], 77, "{property}");
-            assert_eq!(other, [12, 24, 12], "the opposite side is untouched");
-            let mut expected = [12, 24, 12];
-            expected[axis] = 77;
-            assert_eq!(written, expected, "other axes are untouched");
+    // The fixture's extents are 12, 24, 12 on both sides. Writes are raw signed words.
+    for value in [77, 0, -5, i32::MIN, i32::MAX] {
+        for (property, negative, axis) in [
+            (Property::SizePsizeVy, false, 1),
+            (Property::SizeMsizeVx, true, 0),
+        ] {
+            let (world, restored) = write_extent(property, value);
+            for world in [&world, &restored] {
+                let shape = player_shape(world);
+                let (written, other) = if negative {
+                    (shape.negative_extent, shape.positive_extent)
+                } else {
+                    (shape.positive_extent, shape.negative_extent)
+                };
+                assert_eq!(other, [12, 24, 12], "{property}={value}: opposite side");
+                let mut expected = [12, 24, 12];
+                expected[axis] = value;
+                assert_eq!(written, expected, "{property}={value}");
+            }
         }
+    }
+}
+
+#[test]
+fn probes_consume_the_written_extents_with_32_bit_wrapping() {
+    use cyrus_collision::ground::GroundProbe;
+    use cyrus_script::script::ordinary_bounds_segments;
+    use cyrus_world::transform::Matrix;
+    let position = [100 * 256, 40 * 256, 200 * 256];
+    for value in [77, -5, i32::MAX] {
+        // The vertical ground probe is centered on the actor origin plus the positive Y extent.
+        let (_, restored) = write_extent(Property::SizePsizeVy, value);
+        let extent = player_shape(&restored).positive_extent[1];
+        let center = 40_i32.wrapping_add(value);
+        let probe = GroundProbe::new(position.map(i64::from), extent, 500).unwrap();
+        assert_eq!(
+            probe.endpoints(),
+            (
+                [100, center.wrapping_sub(500), 200],
+                [100, center.wrapping_add(500), 200]
+            ),
+            "ground probe, psize.y={value}"
+        );
+        // The state-fifteen bounds diagonals use the negative X extent as stored, without negation.
+        let (_, restored) = write_extent(Property::SizeMsizeVx, value);
+        let segments =
+            ordinary_bounds_segments(player_shape(&restored), Matrix::IDENTITY, [0; 3]).unwrap();
+        // The matrix goes through single precision: the largest word rounds up out of range and
+        // converts to the x87 integer indefinite.
+        let expected = if value == i32::MAX { i32::MIN } else { value };
+        assert_eq!(
+            segments[0][1][0], expected,
+            "bounds endpoint, msize.x={value}"
+        );
+        assert_eq!(
+            segments[1][0][0], expected,
+            "bounds endpoint, msize.x={value}"
+        );
     }
 }

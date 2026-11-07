@@ -307,6 +307,7 @@ fn forward_query_commits_surface_state_before_admission() {
     ] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
+            extent: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -339,6 +340,7 @@ fn support_miss_commits_history_and_clears_assigned_surface() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
+        extent: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -384,6 +386,7 @@ fn steep_forward_probe_stops_before_support_state_updates() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
+        extent: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -422,6 +425,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
     for (material, accepted) in [(Surface::SAND, true), (Surface::GLOOP, false)] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
+            extent: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -521,6 +525,7 @@ fn grounded_response_assigns_height_after_translation() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
+        extent: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -608,6 +613,7 @@ fn stationary_grounded_update_separates_remaining_wall_overlap() {
         .candidates([5000, 5000], previous, None)
         .unwrap();
     let query = StaticGroundQuery {
+        extent: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -654,6 +660,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         actors: vec![],
     };
     let query = StaticGroundQuery {
+        extent: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -760,6 +767,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
             actors: vec![],
         };
         let query = StaticGroundQuery {
+            extent: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -831,12 +839,16 @@ fn forward_probe_rotates_installed_extent_and_walk_distance_without_changing_hei
     let (definition, _) = data(serde_json::json!([]));
     let position = [100, -777, 200];
     assert_eq!(
-        definition.forward_probe(position, Mat3::IDENTITY).unwrap(),
+        definition
+            .forward_probe(definition.positive_extent, position, Mat3::IDENTITY)
+            .unwrap(),
         [100, -777, 5064]
     );
     let quarter_turn = cyrus_script::player::motion::upright_rotation(1536);
     assert_eq!(
-        definition.forward_probe(position, quarter_turn).unwrap(),
+        definition
+            .forward_probe(definition.positive_extent, position, quarter_turn)
+            .unwrap(),
         [4964, -777, 200]
     );
     let mut narrow = definition;
@@ -844,14 +856,36 @@ fn forward_probe_rotates_installed_extent_and_walk_distance_without_changing_hei
     narrow.forward_walk = 1;
     let ties = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::new(0.5 / 256.0, 1.0, 1.5 / 256.0));
     assert_eq!(
-        narrow.forward_probe(position, ties).unwrap(),
+        narrow
+            .forward_probe(narrow.positive_extent, position, ties)
+            .unwrap(),
         [100, -777, 202]
     );
     let negative_ties =
         Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::new(-0.5 / 256.0, 1.0, -1.5 / 256.0));
     assert_eq!(
-        narrow.forward_probe(position, negative_ties).unwrap(),
+        narrow
+            .forward_probe(narrow.positive_extent, position, negative_ties)
+            .unwrap(),
         [100, -777, 198]
+    );
+    // A script-written extent is a raw signed word: a negative one reaches behind the actor, and the
+    // distance wraps at 32 bits.
+    assert_eq!(
+        narrow
+            .forward_probe([0, 0, -1000], position, Mat3::IDENTITY)
+            .unwrap(),
+        [100, -777, 200 + (-1000 + 1) * 256]
+    );
+    assert_eq!(
+        narrow
+            .forward_probe([0, 0, 1 << 23], position, Mat3::IDENTITY)
+            .unwrap(),
+        [
+            100,
+            -777,
+            200 + i64::from(((1 << 23) + 1_i32).wrapping_mul(256))
+        ]
     );
 }
 

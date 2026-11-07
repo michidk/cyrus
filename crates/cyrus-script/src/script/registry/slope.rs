@@ -538,8 +538,7 @@ impl ScriptWorld {
         let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
         let standing_height = query.scene.settings.standing_height;
         if let Some(support) = self.query_ordinary_ground(id, query)? {
-            let height = i32::try_from(support.actor_height(extent, standing_height))
-                .context("ordinary slope origin outside Q8 range")?;
+            let height = support.actor_height(extent, standing_height) as i32;
             self.spatial
                 .as_mut()
                 .context("ordinary slope spatial state unavailable")?

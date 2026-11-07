@@ -178,17 +178,15 @@ impl FallbackProbe {
         positive_y_extent: i32,
         support_history_active: bool,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            positive_y_extent >= 0,
-            "fallback probe: negative positive Y extent"
-        );
         let mut center = [0; 3];
         for axis in 0..3 {
-            let mut coordinate = (position[axis] >> 8) + i64::from(center_offset[axis]);
+            // Positions are runtime words; only the extent is a script-writable raw word.
+            let mut coordinate =
+                i32::try_from(position[axis] >> 8)?.wrapping_add(center_offset[axis]);
             if axis == 1 {
-                coordinate += i64::from(positive_y_extent) - 3;
+                coordinate = coordinate.wrapping_add(positive_y_extent).wrapping_sub(3);
             }
-            center[axis] = i32::try_from(coordinate)?;
+            center[axis] = coordinate;
         }
         Ok(Self {
             center,
@@ -241,9 +239,10 @@ impl GroundProbe {
         let distance = i32::try_from(distance)?;
         let x = i32::try_from(position[0] >> 8)?;
         let z = i32::try_from(position[2] >> 8)?;
-        let center = (position[1] >> 8) + i64::from(positive_y_extent);
-        let start_y = i32::try_from(center - i64::from(distance))?;
-        let end_y = i32::try_from(center + i64::from(distance))?;
+        // The extent is a raw signed word, and the original's sums wrap at 32 bits.
+        let center = i32::try_from(position[1] >> 8)?.wrapping_add(positive_y_extent);
+        let start_y = center.wrapping_sub(distance);
+        let end_y = center.wrapping_add(distance);
         Ok(Self {
             start: [x, start_y, z],
             end: [x, end_y, z],
@@ -598,6 +597,20 @@ mod surface_class_tests {
             (161, SurfaceClass::Ceiling),
         ] {
             assert_eq!(SurfaceClass::from_normal_y(y), class, "normal Y {y}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FallbackProbe;
+
+    #[test]
+    fn fallback_probe_takes_the_extent_as_a_raw_signed_word() {
+        let position = [100 * 256, 40 * 256, 200 * 256];
+        for extent in [77, -5, i32::MAX] {
+            let probe = FallbackProbe::new(position, [0; 3], extent, false).unwrap();
+            assert_eq!(probe.center, [100, 37_i32.wrapping_add(extent), 200]);
         }
     }
 }
