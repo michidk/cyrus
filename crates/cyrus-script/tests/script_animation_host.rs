@@ -6050,6 +6050,94 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
 }
 
 #[test]
+fn the_inventory_entry_flies_from_its_cell_and_reports_whether_enter_closed_it() {
+    use bevy::prelude::*;
+    use cyrus_assets::hud::{InventoryItem, ItemHandModel};
+    use cyrus_game::{AppState, preferences::Preferences};
+    use cyrus_script::{
+        item_viewer::{ExamineScreen, InventoryCell},
+        script::ScriptHud,
+    };
+    let mut asset = hud_asset();
+    asset.inventory = [(
+        4,
+        InventoryItem {
+            count: 1,
+            total: 1,
+            player_max: 1,
+            inventory_model: ItemHandModel::Model("IHEALTH".into()),
+            inventory_extents: Some([100, 60, 40]),
+            ..Default::default()
+        },
+    )]
+    .into();
+    for confirm in [false, true] {
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut app = App::new();
+        app.insert_resource(State::new(AppState::InGame))
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(Time::<Virtual>::default())
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(hud);
+        cyrus_script::item_viewer::register(&mut app);
+        let tick = |app: &mut App, key: Option<KeyCode>| {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            if let Some(key) = key {
+                keys.press(key);
+            }
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(std::time::Duration::from_millis(60));
+            app.update();
+        };
+        {
+            let mut screen = app.world_mut().resource_mut::<ExamineScreen>();
+            screen.enabled = true;
+            screen.inventory_request = Some(InventoryCell {
+                item: 4,
+                row: 1,
+                column: 2,
+            });
+        }
+        tick(&mut app, None);
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(screen.open && screen.inventory_request.is_none());
+        assert_eq!(
+            screen.pose.unwrap().position,
+            [2.0 * 388.0 - 582.0, 378.0 - 432.0, 1490.0]
+        );
+        for _ in 0..8 {
+            tick(&mut app, None);
+        }
+        assert_eq!(
+            app.world()
+                .resource::<ExamineScreen>()
+                .pose
+                .unwrap()
+                .position,
+            [0.0, 0.0, 220.0]
+        );
+        // Enter at the close request is the view's nonzero result; Escape alone is zero.
+        tick(
+            &mut app,
+            Some(if confirm {
+                KeyCode::Enter
+            } else {
+                KeyCode::Escape
+            }),
+        );
+        for _ in 0..8 {
+            tick(&mut app, None);
+        }
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(!screen.open);
+        assert_eq!(screen.inventory_result, Some(confirm));
+    }
+}
+
+#[test]
 fn print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit() {
     let mut data = scripts(vec![
         Operation::Call {

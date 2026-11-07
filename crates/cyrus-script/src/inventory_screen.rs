@@ -93,6 +93,12 @@ impl InventoryGrid {
             .map(|item| item.0)
     }
 
+    /// The cursor item with its visible row and column, which the examine view flies from.
+    pub fn cell(&self) -> Option<(u16, i32, i32)> {
+        let item = self.selection()?;
+        Some((item, self.cursor / 4 - self.top, self.cursor % 4))
+    }
+
     /// Cells advance 105 pixels across from x = 100; a row ends past x = 519 and the next
     /// starts 102 pixels lower. Drawing stops after three visible rows.
     pub fn layout(&self) -> Layout {
@@ -183,6 +189,9 @@ pub struct InventoryScreen {
     /// Mouse buttons held at the previous update's input poll.
     #[serde(skip)]
     mouse_held: [bool; 2],
+    /// The examine view closed the screen, which leaves the selection alone.
+    #[serde(skip)]
+    skip_selection: bool,
 }
 impl InventoryScreen {
     /// Includes exit-key release, during which gameplay still must not consume input.
@@ -219,7 +228,8 @@ impl InventoryScreen {
                     if let Some(hud) = hud {
                         hud.set_inventory_candle(false);
                     }
-                    if (held(Action::Use) || enter)
+                    if !self.skip_selection
+                        && (held(Action::Use) || enter)
                         && let (Some(id), Some(hud)) = (self.grid.selection(), hud)
                         && let Err(error) = hud.select_item(id)
                     {
@@ -269,11 +279,12 @@ fn drive(
     inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<InventoryScreen>,
-    (hud, actors, logbook, console): (
+    (hud, actors, logbook, console, mut examine): (
         Option<bevy::prelude::Res<crate::script::ScriptHud>>,
         Option<bevy::prelude::Res<crate::script::ScriptActors>>,
         Option<bevy::prelude::Res<crate::logbook::LogbookScreen>>,
         Option<bevy::prelude::Res<cyrus_console::Console>>,
+        Option<bevy::prelude::ResMut<crate::item_viewer::ExamineScreen>>,
     ),
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
@@ -313,6 +324,21 @@ fn drive(
     let held = |action| inputs.pressed(action);
     let escape = keys.pressed(KeyCode::Escape);
     let enter = keys.pressed(KeyCode::Enter);
+    // The examine view owns input while it runs; a close confirmed there closes this screen
+    // without selecting.
+    let mut view_exit = false;
+    if let Some(examine) = examine.as_mut() {
+        if examine.suspended() || examine.inventory_request.is_some() {
+            return;
+        }
+        view_exit = screen.open && examine.inventory_result.take() == Some(true);
+    }
+    if view_exit {
+        screen.open = false;
+        screen.waiting_for_release = true;
+        screen.close_wait = CloseWait::default();
+        screen.skip_selection = true;
+    }
     if screen.waiting_for_release {
         if screen.poll_close(&held, escape, enter, hud.as_deref()) {
             resume(&mut screen, &mut virtual_time, &mut clock);
@@ -366,6 +392,7 @@ fn drive(
                     hud.set_inventory_candle(true);
                 }
                 screen.open = true;
+                screen.skip_selection = false;
                 screen.opening = true;
                 screen.last_tick = Some(tick);
                 screen.checkpoint = clock.as_ref().map(|clock| clock.checkpoint());
@@ -412,6 +439,15 @@ fn drive(
         });
     }
     screen.layout = screen.grid.layout();
+    // View is serviced before the ordinary exit keys, including when both are held together.
+    if held(Action::View)
+        && let Some((item, row, column)) = screen.grid.cell()
+        && let Some(examine) = examine.as_mut()
+        && examine.enabled
+    {
+        examine.inventory_request = Some(crate::item_viewer::InventoryCell { item, row, column });
+        return;
+    }
     if held(Action::Inventory) || held(Action::Use) || held(Action::Walk) || escape || enter {
         screen.open = false;
         screen.waiting_for_release = true;
@@ -674,6 +710,53 @@ mod tests {
         close_tick(&mut app, &[]);
         assert!(!app.world().resource::<InventoryScreen>().draw_admitted);
         assert!(!app.world().resource::<InventoryScreen>().suspended());
+    }
+
+    #[test]
+    fn view_requests_the_examine_view_and_a_confirmed_close_leaves_without_selecting() {
+        use crate::item_viewer::{ExamineScreen, InventoryCell};
+        use crate::player::input::{Action, Input};
+        use bevy::prelude::KeyCode::*;
+        let bindings: crate::player::input::PlayerBindings = [
+            (Action::Inventory, 23),
+            (Action::Walk, 42),
+            (Action::Use, 29),
+            (Action::View, 56),
+        ]
+        .into_iter()
+        .map(|(action, code)| (action, Input::from_binding(code).unwrap().unwrap()))
+        .collect();
+        let mut app = close_app(&close_asset(), bindings);
+        app.init_resource::<ExamineScreen>();
+        app.world_mut().resource_mut::<ExamineScreen>().enabled = true;
+        close_tick(&mut app, &[AltLeft]);
+        let request = app.world().resource::<ExamineScreen>().inventory_request;
+        assert_eq!(
+            request,
+            Some(InventoryCell {
+                item: 2,
+                row: 0,
+                column: 1
+            })
+        );
+        // The inventory leaves its input alone while the request is outstanding.
+        close_tick(&mut app, &[Escape]);
+        assert!(app.world().resource::<InventoryScreen>().open);
+        // The view returns zero: the screen stays open.
+        {
+            let mut examine = app.world_mut().resource_mut::<ExamineScreen>();
+            examine.inventory_request = None;
+            examine.inventory_result = Some(false);
+        }
+        close_tick(&mut app, &[]);
+        assert!(app.world().resource::<InventoryScreen>().open);
+        // The view returns one: the screen closes and the held Activate selects nothing.
+        app.world_mut()
+            .resource_mut::<ExamineScreen>()
+            .inventory_result = Some(true);
+        close_tick(&mut app, &[ControlLeft]);
+        close_tick(&mut app, &[]);
+        close_state(&app, Some(1), false, 0);
     }
 
     fn close_bindings() -> crate::player::input::PlayerBindings {
