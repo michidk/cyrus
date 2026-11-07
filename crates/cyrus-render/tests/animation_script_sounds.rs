@@ -59,7 +59,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             MinimalPlugins,
             AssetPlugin::default(),
             AnimationPlugin,
-            cyrus_game::script::ScriptPlugin,
+            cyrus_script::script::ScriptPlugin,
             cyrus_render::animation::AnimationRenderPlugin,
             SoundPlugin,
         ))
@@ -112,7 +112,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
                 .unwrap()
         });
         let script = scripted.then(|| {
-            cyrus_game::script::ScriptedPlayback::new(
+            cyrus_script::script::ScriptedPlayback::new(
                 source.clone(),
                 data,
                 "ACTOR",
@@ -158,7 +158,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
         }
         assert_eq!(
             app.world()
-                .get::<cyrus_game::script::ScriptedPlayback>(actor)
+                .get::<cyrus_script::script::ScriptedPlayback>(actor)
                 .is_some(),
             scripted
         );

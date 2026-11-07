@@ -39,7 +39,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         mesh::{PrimitiveTopology, VertexAttributeValues},
         prelude::*,
     };
-    use cyrus_game::script::ScriptedPlayback;
+    use cyrus_script::script::ScriptedPlayback;
     use cyrus_world::animation::AnimationPlugin;
     use cyrus_world::animation::AnimationPose;
     use cyrus_world::animation::AnimationRequest;
@@ -49,7 +49,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         MinimalPlugins,
         AssetPlugin::default(),
         AnimationPlugin,
-        cyrus_game::script::ScriptPlugin,
+        cyrus_script::script::ScriptPlugin,
         cyrus_render::animation::AnimationRenderPlugin,
     ))
     .init_asset::<Mesh>();
@@ -58,7 +58,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         .world_mut()
         .resource_mut::<Assets<Animations>>()
         .add(data);
-    let playback = cyrus_game::script::ScriptedPlayback::new(
+    let playback = cyrus_script::script::ScriptedPlayback::new(
         source.clone(),
         app.world()
             .resource::<Assets<Animations>>()

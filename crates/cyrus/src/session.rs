@@ -208,11 +208,11 @@ fn retain_selection(world: &mut World, slot: u16, description: String) -> Result
     // The save host owns the retained selection even when a diagnostic or
     // scene-started session did not install the death-book presentation.
     // The dispatcher is inert until the startup book registers its entry.
-    world.init_resource::<cyrus_game::script::DeathDispatch>();
+    world.init_resource::<cyrus_script::script::DeathDispatch>();
     world
-        .get_resource_mut::<cyrus_game::script::DeathDispatch>()
+        .get_resource_mut::<cyrus_script::script::DeathDispatch>()
         .context("native save selection: last-save dispatcher unavailable")?
-        .last_save = Some(cyrus_game::script::LastSaveSelection { slot, description });
+        .last_save = Some(cyrus_script::script::LastSaveSelection { slot, description });
     Ok(())
 }
 
@@ -638,12 +638,12 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         world.insert_resource(slots::SlotStore { root });
-        world.init_resource::<cyrus_game::script::DeathDispatch>();
+        world.init_resource::<cyrus_script::script::DeathDispatch>();
         world.resource_mut::<SessionBoundary>().capture_live()?;
         assert!(request_slots(&mut world, SlotOperation::List).is_err());
         assert!(
             world
-                .resource::<cyrus_game::script::DeathDispatch>()
+                .resource::<cyrus_script::script::DeathDispatch>()
                 .last_save
                 .is_none()
         );
@@ -656,7 +656,7 @@ mod tests {
             },
         )?;
         let retained = world
-            .resource::<cyrus_game::script::DeathDispatch>()
+            .resource::<cyrus_script::script::DeathDispatch>()
             .last_save
             .as_ref()
             .unwrap();

@@ -12,8 +12,8 @@ use cyrus_assets::menu::MenuAsset;
 pub use cyrus_assets::menu::MenuItem;
 use cyrus_assets::preferences::MenuPreferences;
 use cyrus_game::AppState;
-use cyrus_game::clock::{ClockCheckpoint, SimulationClock, bios_tick};
-use cyrus_game::player::input::{Action, Devices, Input};
+use cyrus_script::clock::{ClockCheckpoint, SimulationClock, bios_tick};
+use cyrus_script::player::input::{Action, Devices, Input};
 use cyrus_world::sound::SoundCue;
 use serde::Serialize;
 use std::{collections::BTreeMap, hash::BuildHasher};
@@ -334,7 +334,7 @@ pub(super) fn register(app: &mut App) {
 fn gamepad_menu_keys(
     state: Option<Res<State<AppState>>>,
     fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
-    bindings: Option<Res<cyrus_game::player::input::PlayerBindings>>,
+    bindings: Option<Res<cyrus_script::player::input::PlayerBindings>>,
     gamepads: Query<&Gamepad>,
     keys: Option<ResMut<ButtonInput<KeyCode>>>,
     mut held: Local<Vec<KeyCode>>,
@@ -417,7 +417,7 @@ fn begin_quit(menu: &mut MenuState, commands: &mut Commands) {
 fn reset_for_new_game(commands: &mut Commands) {
     commands.queue(|world: &mut World| {
         world
-            .resource_mut::<cyrus_game::script::ScriptActors>()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
             .begin_new_game();
         // The session initializer reinitializes the movie table (preservation engine/movies.md).
         if let Some(mut unlocks) = world.get_resource_mut::<cyrus_game::MovieUnlocks>() {
@@ -426,7 +426,7 @@ fn reset_for_new_game(commands: &mut Commands) {
         // The original stops every sound channel before its New Game initializer
         // (preservation engine/menu.md); world entry does not.
         world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
-        if let Some(hud) = world.get_resource::<cyrus_game::script::ScriptHud>() {
+        if let Some(hud) = world.get_resource::<cyrus_script::script::ScriptHud>() {
             hud.begin_new_game();
         }
     });
@@ -464,11 +464,11 @@ fn setup(
     assets: Res<AssetServer>,
     startup: Res<super::StartupPresentation>,
     (death, pause): (
-        Option<Res<cyrus_game::script::DeathBookEntry>>,
+        Option<Res<cyrus_script::script::DeathBookEntry>>,
         Option<Res<cyrus_game::PauseBookEntry>>,
     ),
-    last_game: Option<Res<cyrus_game::script::LastGameEntry>>,
-    mut dispatch: Option<ResMut<cyrus_game::script::DeathDispatch>>,
+    last_game: Option<Res<cyrus_script::script::LastGameEntry>>,
+    mut dispatch: Option<ResMut<cyrus_script::script::DeathDispatch>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     if let Some(entry) = last_game.as_deref() {
@@ -520,12 +520,12 @@ type Inputs<'w> = (
     Res<'w, ButtonInput<KeyCode>>,
     Res<'w, Time<Real>>,
     Option<Res<'w, ButtonInput<MouseButton>>>,
-    Option<Res<'w, cyrus_game::player::input::JoystickState>>,
+    Option<Res<'w, cyrus_script::player::input::JoystickState>>,
 );
 
 type MenuRuntime<'w, 's> = (
     ResMut<'w, cyrus_game::preferences::Preferences>,
-    ResMut<'w, cyrus_game::player::input::PlayerBindings>,
+    ResMut<'w, cyrus_script::player::input::PlayerBindings>,
     Commands<'w, 's>,
     ResMut<'w, NextState<AppState>>,
     ResMut<'w, super::SaveLoadHost>,
@@ -1100,8 +1100,8 @@ fn cleanup(
     clock: Option<ResMut<SimulationClock>>,
     time: Res<Time<Real>>,
     restored: Option<Res<cyrus_game::RestoredSessionEntry>>,
-    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
-    actors: Option<ResMut<cyrus_game::script::ScriptActors>>,
+    death: Option<Res<cyrus_script::script::DeathBookEntry>>,
+    actors: Option<ResMut<cyrus_script::script::ScriptActors>>,
 ) {
     if death.is_some() {
         if restored.is_none()
@@ -1110,7 +1110,7 @@ fn cleanup(
         {
             actors.report_runtime_error(format!("{error:#}"));
         }
-        commands.remove_resource::<cyrus_game::script::DeathBookEntry>();
+        commands.remove_resource::<cyrus_script::script::DeathBookEntry>();
     }
     if restored.is_none()
         && let Some(mut clock) = clock
@@ -1118,10 +1118,10 @@ fn cleanup(
     {
         clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
     }
-    commands.remove_resource::<cyrus_game::script::LastGameEntry>();
+    commands.remove_resource::<cyrus_script::script::LastGameEntry>();
     commands.remove_resource::<super::last_game::CapturedFrame>();
     commands.remove_resource::<MenuState>();
-    commands.remove_resource::<cyrus_game::PausedGameplay>();
+    commands.remove_resource::<cyrus_script::PausedGameplay>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
 }
 
@@ -1143,8 +1143,8 @@ pub(super) struct BookPausedCamera;
 fn pause_cameras(
     mut commands: Commands,
     mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
-    confirmation: Option<Res<cyrus_game::script::LastGameEntry>>,
-    death: Option<Res<cyrus_game::script::DeathBookEntry>>,
+    confirmation: Option<Res<cyrus_script::script::LastGameEntry>>,
+    death: Option<Res<cyrus_script::script::DeathBookEntry>>,
     pause: Option<Res<cyrus_game::PauseBookEntry>>,
     clock: Option<Res<SimulationClock>>,
 ) {
@@ -1168,7 +1168,7 @@ fn pause_cameras(
     if (pause.is_some() || death.is_some_and(|entry| entry.override_group == 0))
         && let Some(clock) = clock
     {
-        commands.insert_resource(cyrus_game::PausedGameplay {
+        commands.insert_resource(cyrus_script::PausedGameplay {
             clock: clock.clone(),
             active_cameras,
         });
@@ -1196,7 +1196,7 @@ fn begin_world_entry(
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
         book.new_game.world.to_string(),
     ));
-    commands.insert_resource(cyrus_game::player::placement::MarkerEntry {
+    commands.insert_resource(cyrus_script::player::placement::MarkerEntry {
         marker: book.new_game.marker as usize,
         heading: 0,
     });
@@ -1214,14 +1214,14 @@ pub(super) fn begin_world_loading(
     // replace it even when asset handles and the requested marker are unchanged.
     commands.queue(|world: &mut World| {
         let players = world
-            .query_filtered::<Entity, With<cyrus_game::player::Player>>()
+            .query_filtered::<Entity, With<cyrus_script::player::Player>>()
             .iter(world)
             .collect::<Vec<_>>();
         for player in players {
             world.despawn(player);
         }
     });
-    commands.remove_resource::<cyrus_game::PausedGameplay>();
+    commands.remove_resource::<cyrus_script::PausedGameplay>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
     commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
     commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
@@ -1438,7 +1438,7 @@ mod tests {
         .init_asset::<Font>()
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<cyrus_game::preferences::Preferences>()
-        .init_resource::<cyrus_game::player::input::PlayerBindings>()
+        .init_resource::<cyrus_script::player::input::PlayerBindings>()
         .add_message::<AppExit>()
         .add_message::<SoundCue>()
         .init_resource::<crate::SaveLoadHost>()
@@ -1455,7 +1455,7 @@ mod tests {
             menu: handle,
             ..default()
         });
-        app.insert_resource(cyrus_game::script::DeathBookEntry { override_group: 74 });
+        app.insert_resource(cyrus_script::script::DeathBookEntry { override_group: 74 });
         bevy::ecs::system::RunSystemOnce::run_system_once(app.world_mut(), setup).unwrap();
         for _ in 0..12 {
             app.update();

@@ -127,8 +127,8 @@ enum AcceptanceRequest {
 }
 
 fn sync_acceptance(
-    mut scripts: Option<ResMut<cyrus_game::script::ScriptActors>>,
-    hud: Option<Res<cyrus_game::script::ScriptHud>>,
+    mut scripts: Option<ResMut<cyrus_script::script::ScriptActors>>,
+    hud: Option<Res<cyrus_script::script::ScriptHud>>,
 ) {
     let Some(window) = web_sys::window() else {
         return;
@@ -258,8 +258,8 @@ fn observe(
     prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
     ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
-    scripts: Option<Res<cyrus_game::script::ScriptActors>>,
-    script_hud: Option<Res<cyrus_game::script::ScriptHud>>,
+    scripts: Option<Res<cyrus_script::script::ScriptActors>>,
+    script_hud: Option<Res<cyrus_script::script::ScriptHud>>,
     session: cyrus_session::SessionBoundaryInspection,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {

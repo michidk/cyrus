@@ -8,8 +8,8 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::hud::{HudAsset, HudItem};
-use cyrus_game::{
-    AppState,
+use cyrus_game::AppState;
+use cyrus_script::{
     player::{
         Player,
         data::{PlayerScene, PlayerSceneRequest},
@@ -244,7 +244,7 @@ impl HudState {
 
     /// Sets player health (clamped to 100); a change shows the candle for 25 ticks
     /// unless the timer is pinned.
-    pub fn set_health(&mut self, health: u8, hud: &cyrus_game::script::ScriptHud) {
+    pub fn set_health(&mut self, health: u8, hud: &cyrus_script::script::ScriptHud) {
         let health = health.min(MAX_HEALTH);
         if health != self.health {
             hud.request_health_feedback();
@@ -253,7 +253,7 @@ impl HudState {
     }
 
     /// Drawing or sheathing the sword shows the candle for 25 ticks.
-    pub fn set_sword_drawn(&mut self, drawn: bool, hud: &cyrus_game::script::ScriptHud) {
+    pub fn set_sword_drawn(&mut self, drawn: bool, hud: &cyrus_script::script::ScriptHud) {
         if drawn != self.sword_drawn {
             hud.reset_health_feedback();
         }
@@ -396,7 +396,7 @@ impl AssetLoader for HudLoader {
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<cyrus_game::preferences::Preferences>()
-            .init_resource::<cyrus_game::script::ScriptHud>()
+            .init_resource::<cyrus_script::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_asset_loader::<HudLoader>()
             .add_systems(OnEnter(AppState::InGame), spawn)
@@ -405,14 +405,14 @@ impl Plugin for HudPlugin {
             .add_systems(
                 Update,
                 configure_scripts
-                    .before(cyrus_game::script::OrdinaryUpdates)
+                    .before(cyrus_script::script::OrdinaryUpdates)
                     .run_if(in_state(AppState::InGame)),
             )
             .add_systems(
                 Update,
                 update
-                    .after(cyrus_game::script::OrdinaryUpdates)
-                    .after(cyrus_game::player::input::InputSample)
+                    .after(cyrus_script::script::OrdinaryUpdates)
+                    .after(cyrus_script::player::input::InputSample)
                     .run_if(in_state(AppState::InGame)),
             )
             .add_systems(
@@ -530,7 +530,7 @@ fn despawn_island_map(mut commands: Commands, overlays: Query<Entity, With<Islan
 /// the two images only when the frame changes.
 #[allow(clippy::too_many_arguments)] // Bevy supplies each independent resource and query as a parameter.
 fn island_map_draw(
-    screen: Option<Res<cyrus_game::island_map::IslandMapScreen>>,
+    screen: Option<Res<cyrus_script::island_map::IslandMapScreen>>,
     hud_handle: Option<Res<HudHandle>>,
     huds: Res<Assets<HudAsset>>,
     assets: Res<AssetServer>,
@@ -539,7 +539,7 @@ fn island_map_draw(
     mut commands: Commands,
     mut shown: Local<Option<usize>>,
 ) {
-    use cyrus_game::island_map::Phase;
+    use cyrus_script::island_map::Phase;
     let (Some(screen), Some(handle), Ok(mut visibility), Ok((overlay, children))) =
         (screen, hud_handle, overlays.single_mut(), stages.single())
     else {
@@ -588,7 +588,7 @@ fn island_map_draw(
 }
 
 fn inventory_draw(
-    screen: Option<Res<cyrus_game::inventory_screen::InventoryScreen>>,
+    screen: Option<Res<cyrus_script::inventory_screen::InventoryScreen>>,
     hud_handle: Option<Res<HudHandle>>,
     huds: Res<Assets<HudAsset>>,
     assets: Res<AssetServer>,
@@ -701,7 +701,7 @@ fn inventory_draw(
                 .map(|(_, text)| text.as_str())
                 .filter(|text| !text.is_empty() && !text.starts_with('\u{9e}'));
             let top = cell.at[1] + 92 - bottom;
-            let lines = name.map(cyrus_game::inventory_screen::name_lines);
+            let lines = name.map(cyrus_script::inventory_screen::name_lines);
             let centre = cell.at[0]
                 + if lines.is_some() {
                     i32::from(item.selected_size.unwrap_or(item.size)[0]) / 2
@@ -794,7 +794,7 @@ type MenuLine = (String, [i32; 2], [u8; 2]);
 fn menu_lines(
     hud: &HudAsset,
     start: [i32; 2],
-    menu: &cyrus_game::script::MenuState,
+    menu: &cyrus_script::script::MenuState,
 ) -> Vec<MenuLine> {
     menu.items()
         .iter()
@@ -877,17 +877,17 @@ struct CompassInputs<'w, 's> {
     player: Query<'w, 's, &'static PlayerPose, With<Player>>,
     request: Option<Res<'w, PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
-    suppressed: Option<Res<'w, cyrus_game::player::input::InputSuppressed>>,
+    suppressed: Option<Res<'w, cyrus_script::player::input::InputSuppressed>>,
     console: Option<Res<'w, cyrus_console::Console>>,
-    clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
-    logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
-    inventory: Option<Res<'w, cyrus_game::inventory_screen::InventoryScreen>>,
+    clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
+    logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
+    inventory: Option<Res<'w, cyrus_script::inventory_screen::InventoryScreen>>,
 }
 
 fn configure_scripts(
     handle: Option<Res<HudHandle>>,
     data: Res<Assets<HudAsset>>,
-    hud: Res<cyrus_game::script::ScriptHud>,
+    hud: Res<cyrus_script::script::ScriptHud>,
     preferences: Res<cyrus_game::preferences::Preferences>,
 ) {
     if let Some(asset) = handle.as_ref().and_then(|handle| data.get(&handle.0)) {
@@ -897,7 +897,7 @@ fn configure_scripts(
 
 #[allow(clippy::too_many_arguments)] // One Bevy system owning the overlay's input, state and nodes.
 fn update(
-    script_hud: Res<cyrus_game::script::ScriptHud>,
+    script_hud: Res<cyrus_script::script::ScriptHud>,
     preferences_store: Res<cyrus_game::preferences::Preferences>,
     mut commands: Commands,
     assets: Res<AssetServer>,
@@ -905,7 +905,7 @@ fn update(
     data: Res<Assets<HudAsset>>,
     (state, toggles): (
         Option<ResMut<HudState>>,
-        Option<ResMut<cyrus_game::player::input::PlayerToggles>>,
+        Option<ResMut<cyrus_script::player::input::PlayerToggles>>,
     ),
     viewport: Query<Entity, With<HudViewport>>,
     mut sprites: Query<(&HudSprite, &mut ImageNode, &mut Node, &mut Visibility)>,
@@ -918,7 +918,7 @@ fn update(
     mut images: ResMut<Assets<Image>>,
     (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
     compass: CompassInputs,
-    controls: cyrus_game::player::input::Inputs,
+    controls: cyrus_script::player::input::Inputs,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -937,7 +937,7 @@ fn update(
             state.walk_mode = toggles.walk_mode;
             state.auto_defend = toggles.auto_defend;
         } else {
-            commands.insert_resource(cyrus_game::player::input::PlayerToggles {
+            commands.insert_resource(cyrus_script::player::input::PlayerToggles {
                 walk_mode: state.walk_mode,
                 auto_defend: state.auto_defend,
             });
@@ -1159,7 +1159,7 @@ fn update(
     );
 
     // Select the overlay path before cycling; timer zero crossings keep their entry path.
-    use cyrus_game::player::input::Action;
+    use cyrus_script::player::input::Action;
     let cycling = controls.pressed(Action::NextItem) || controls.pressed(Action::PreviousItem);
     let fallback_overlay = if state.player_type == 1 {
         ActivationOverlay::Hidden
@@ -1271,15 +1271,15 @@ fn update(
         // Readiness rejects after consuming use, even when it hides the item overlay.
         || (!item_path && activation.is_none_or(|inputs| inputs.item_system_ready))
     {
-        cyrus_game::script::CompassUse::Blocked
+        cyrus_script::script::CompassUse::Blocked
     } else if state.selected == Some(0)
         && owns_compass
         && state.player_type != 1
         && compass_eligible
     {
-        cyrus_game::script::CompassUse::Accepted
+        cyrus_script::script::CompassUse::Accepted
     } else {
-        cyrus_game::script::CompassUse::Rejected
+        cyrus_script::script::CompassUse::Rejected
     };
     state.compass_on = script_hud.compass_input(controls.pressed(Action::Use), attempt);
 
@@ -1411,7 +1411,7 @@ fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
 mod tests {
     use super::*;
     use cyrus_assets::surface::Surface;
-    use cyrus_game::player::input::{Action, Input, PlayerBindings};
+    use cyrus_script::player::input::{Action, Input, PlayerBindings};
     use cyrus_soup::{AnimationGroup, Native};
     use std::collections::BTreeMap;
 
@@ -1503,7 +1503,7 @@ mod tests {
     #[test]
     fn show_timer_and_logbook_follow_their_triggers() {
         let mut state = HudState::new(&asset(0), None, HudPresentationAssets::default());
-        let script_hud = cyrus_game::script::ScriptHud::default();
+        let script_hud = cyrus_script::script::ScriptHud::default();
         state.set_health(80, &script_hud);
         assert_eq!(script_hud.health_feedback_ticks(), 25);
         script_hud.advance_health_feedback(true, 0, 0, 0);
@@ -1576,7 +1576,7 @@ mod tests {
         hud.text_alpha = [255, 199];
         hud.player_text_alpha = [200, 150];
         hud.used_text_alpha = [128, 100];
-        let mut menu = cyrus_game::script::MenuState::default();
+        let mut menu = cyrus_script::script::MenuState::default();
         for (text, flag) in [("first", 0), ("second", 0), ("third", 1)] {
             menu.add(300, text, 0, flag, 0, "second");
         }
@@ -1657,7 +1657,9 @@ mod tests {
 
     fn prepare_script(app: &mut App, requests: &[(Native, &[i32])]) {
         use cyrus_assets::script::*;
-        use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
+        use cyrus_script::script::{
+            ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread,
+        };
         use cyrus_soup::program::*;
         let player = Actor {
             header_index: 0,
@@ -1835,13 +1837,13 @@ mod tests {
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let state = ActivationActor {
-            state: cyrus_game::script::LivingState::ORDINARY,
+            state: cyrus_script::script::LivingState::ORDINARY,
             on_rope: false,
             water_state: Surface::UNKNOWN,
             torch_burning: 0,
             weapon_assigned: false,
             weapon_drawn: false,
-            animation: Some(cyrus_game::script::ActivationAnimation {
+            animation: Some(cyrus_script::script::ActivationAnimation {
                 group: Some(AnimationGroup::PANIC),
             }),
         };
@@ -1863,7 +1865,9 @@ mod tests {
                 ScriptStage::Body(Thread::Main),
                 ScriptInputs {
                     activation: Some(&inputs),
-                    hud: app.world().get_resource::<cyrus_game::script::ScriptHud>(),
+                    hud: app
+                        .world()
+                        .get_resource::<cyrus_script::script::ScriptHud>(),
                     ..Default::default()
                 },
                 None,
@@ -1898,7 +1902,7 @@ mod tests {
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
             .init_asset::<HudAsset>()
-            .init_resource::<cyrus_game::script::ScriptHud>()
+            .init_resource::<cyrus_script::script::ScriptHud>()
             .insert_resource(cyrus_game::preferences::Preferences::new(Store))
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
@@ -1980,7 +1984,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
-            .init_resource::<cyrus_game::script::ScriptHud>()
+            .init_resource::<cyrus_script::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
@@ -2024,23 +2028,23 @@ mod tests {
         ));
         // One ordinary update first consumes the world's pending candle-show request.
         app.update();
-        app.init_resource::<cyrus_game::inventory_screen::InventoryScreen>();
-        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
+        app.init_resource::<cyrus_script::inventory_screen::InventoryScreen>();
+        app.init_resource::<cyrus_script::logbook::LogbookScreen>();
         app.world_mut()
-            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .resource_mut::<cyrus_script::logbook::LogbookScreen>()
             .inventory_open = true;
         app.world_mut()
-            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
             .draw_admitted = true;
         // Closing may already have cleared the logical timer in PreUpdate.
         app.world()
-            .resource::<cyrus_game::script::ScriptHud>()
+            .resource::<cyrus_script::script::ScriptHud>()
             .set_inventory_candle(false);
         app.update();
         let candle = app.world().resource::<HudState>().candle;
         assert!(app.world().resource::<HudState>().candle_visible);
         app.world_mut()
-            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
             .draw_admitted = false;
         for _ in 0..3 {
             app.update();
@@ -2049,13 +2053,13 @@ mod tests {
             assert!(state.candle_visible);
             assert_eq!(
                 app.world()
-                    .resource::<cyrus_game::script::ScriptHud>()
+                    .resource::<cyrus_script::script::ScriptHud>()
                     .health_feedback_ticks(),
                 0
             );
         }
         app.world_mut()
-            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .resource_mut::<cyrus_script::logbook::LogbookScreen>()
             .inventory_open = false;
         app.update();
         assert!(!app.world().resource::<HudState>().candle_visible);
@@ -2067,13 +2071,13 @@ mod tests {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::ZERO,
         ));
-        app.init_resource::<cyrus_game::inventory_screen::InventoryScreen>();
-        app.init_resource::<cyrus_game::logbook::LogbookScreen>();
+        app.init_resource::<cyrus_script::inventory_screen::InventoryScreen>();
+        app.init_resource::<cyrus_script::logbook::LogbookScreen>();
         app.world_mut()
-            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .resource_mut::<cyrus_script::logbook::LogbookScreen>()
             .inventory_open = true;
         app.world()
-            .resource::<cyrus_game::script::ScriptHud>()
+            .resource::<cyrus_script::script::ScriptHud>()
             .set_inventory_candle(true);
         {
             let mut state = app.world_mut().resource_mut::<HudState>();
@@ -2087,7 +2091,7 @@ mod tests {
             [(true, 0, 1), (false, 0, 1), (true, 1, 2), (true, 0, 3)]
         {
             app.world_mut()
-                .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+                .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
                 .draw_admitted = admitted;
             app.world_mut().resource_mut::<HudState>().lockout = lockout;
             app.update();
@@ -2114,7 +2118,7 @@ mod tests {
             }
         }
         app.world_mut()
-            .resource_mut::<cyrus_game::logbook::LogbookScreen>()
+            .resource_mut::<cyrus_script::logbook::LogbookScreen>()
             .inventory_open = false;
         app.update();
         assert_eq!(
@@ -2124,7 +2128,7 @@ mod tests {
         );
         assert_eq!(app.world().resource::<HudState>().elapsed, 0.004);
         app.world_mut()
-            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
             .draw_admitted = false;
         app.world_mut().remove_resource::<ScriptActors>();
         app.world_mut().remove_resource::<ActivationInputs>();
@@ -2167,7 +2171,7 @@ mod tests {
             std::time::Duration::ZERO,
         ));
         let mut clock =
-            cyrus_game::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+            cyrus_script::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
                 normal_frame_rate: 12,
                 min_frame_rate: 6,
                 max_frame_rate: 300,
@@ -2186,7 +2190,7 @@ mod tests {
         let state = app.world().resource::<HudState>();
         assert_eq!(
             app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
+                .resource::<cyrus_script::script::ScriptHud>()
                 .health_feedback_ticks(),
             24
         );
@@ -2195,7 +2199,7 @@ mod tests {
         let state = app.world().resource::<HudState>();
         assert_eq!(
             app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
+                .resource::<cyrus_script::script::ScriptHud>()
                 .health_feedback_ticks(),
             24,
             "an old clock step is not replayed"
@@ -2214,7 +2218,7 @@ mod tests {
         assert_eq!(state.candle, candle);
         assert_eq!(
             app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
+                .resource::<cyrus_script::script::ScriptHud>()
                 .health_feedback_ticks(),
             24
         );
@@ -2223,7 +2227,7 @@ mod tests {
 
     #[test]
     fn gameplay_toggles_survive_hud_recreation_and_drive_its_projection() {
-        use cyrus_game::player::input::PlayerToggles;
+        use cyrus_script::player::input::PlayerToggles;
         let mut app = compass_app();
         assert!(!app.world().resource::<PlayerToggles>().walk_mode);
         app.world_mut()
@@ -2267,7 +2271,7 @@ mod tests {
         assert_eq!((state.heading, state.compass_frame), (1024, Some(16)));
         assert_eq!(
             app.world()
-                .resource::<cyrus_game::script::ScriptHud>()
+                .resource::<cyrus_script::script::ScriptHud>()
                 .inspect()["compass_on"],
             true
         );
@@ -2324,7 +2328,7 @@ mod tests {
             hud.inventory.get_mut(&0).unwrap().player_max = 1;
             hud.selected = Some(1);
         }
-        app.insert_resource(cyrus_game::script::ScriptHud::default());
+        app.insert_resource(cyrus_script::script::ScriptHud::default());
         app.update();
         app.world_mut().remove_resource::<ActivationInputs>();
         use_key(&mut app, true);
@@ -2406,14 +2410,14 @@ mod tests {
         );
         use_key(&mut app, false);
         app.world()
-            .resource::<cyrus_game::script::ScriptHud>()
+            .resource::<cyrus_script::script::ScriptHud>()
             .select_item(1)
             .unwrap();
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
         use_key(&mut app, false);
         app.world()
-            .resource::<cyrus_game::script::ScriptHud>()
+            .resource::<cyrus_script::script::ScriptHud>()
             .select_item(0)
             .unwrap();
         // Re-exported initial metadata cannot replace live ownership.
@@ -2461,11 +2465,11 @@ mod tests {
         app.world_mut()
             .resource_mut::<cyrus_console::Console>()
             .open = false;
-        app.insert_resource(cyrus_game::player::input::InputSuppressed(true));
+        app.insert_resource(cyrus_script::player::input::InputSuppressed(true));
         app.update();
         assert!(!app.world().resource::<HudState>().compass_on);
         app.world_mut()
-            .resource_mut::<cyrus_game::player::input::InputSuppressed>()
+            .resource_mut::<cyrus_script::player::input::InputSuppressed>()
             .0 = false;
         app.world_mut().resource_mut::<ActivationInputs>().lockout = 1;
         app.update();
@@ -2476,7 +2480,7 @@ mod tests {
             .actors
             .get_mut(&1)
             .unwrap()
-            .state = cyrus_game::script::LivingState::TURNING_TO_HIGH_LEDGE;
+            .state = cyrus_script::script::LivingState::TURNING_TO_HIGH_LEDGE;
         app.update();
         assert!(!app.world().resource::<HudState>().compass_on);
         app.world_mut()
@@ -2484,7 +2488,7 @@ mod tests {
             .actors
             .get_mut(&1)
             .unwrap()
-            .state = cyrus_game::script::LivingState::ORDINARY;
+            .state = cyrus_script::script::LivingState::ORDINARY;
         app.update();
         assert!(
             app.world().resource::<HudState>().compass_on,
@@ -2507,15 +2511,15 @@ mod tests {
                     }
                     5 => {
                         inputs.actors.get_mut(&1).unwrap().state =
-                            cyrus_game::script::LivingState::LIGHTING_TORCH
+                            cyrus_script::script::LivingState::LIGHTING_TORCH
                     }
                     6 => {
                         inputs.actors.get_mut(&1).unwrap().state =
-                            cyrus_game::script::LivingState::DOUSING_TORCH
+                            cyrus_script::script::LivingState::DOUSING_TORCH
                     }
                     7 | 8 => {
                         inputs.actors.get_mut(&1).unwrap().animation =
-                            Some(cyrus_game::script::ActivationAnimation {
+                            Some(cyrus_script::script::ActivationAnimation {
                                 group: Some(if gate == 7 {
                                     AnimationGroup::LIGHT_TORCH
                                 } else {
@@ -2560,7 +2564,7 @@ mod tests {
             .unwrap()
             .labels
             .insert("#opn".into(), "Installed prompt".into());
-        app.insert_resource(cyrus_game::script::ScriptHud::default());
+        app.insert_resource(cyrus_script::script::ScriptHud::default());
         {
             let mut actors = app.world_mut().resource_mut::<ScriptActors>();
             actors.begin_new_game();
@@ -2593,9 +2597,9 @@ mod tests {
                 logical
                     .advance(
                         logical.id(0).unwrap(),
-                        cyrus_game::script::ScriptStage::Body(cyrus_game::script::Thread::Main),
-                        cyrus_game::script::ScriptInputs {
-                            hud: world.get_resource::<cyrus_game::script::ScriptHud>(),
+                        cyrus_script::script::ScriptStage::Body(cyrus_script::script::Thread::Main),
+                        cyrus_script::script::ScriptInputs {
+                            hud: world.get_resource::<cyrus_script::script::ScriptHud>(),
                             activation_use_held: Some(false),
                             shell_execution: Some(false),
                             nominal_ticks: Some(0),
@@ -2620,7 +2624,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
-            .init_resource::<cyrus_game::script::ScriptHud>()
+            .init_resource::<cyrus_script::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
@@ -2707,7 +2711,7 @@ mod tests {
             let player = inputs.actors.get_mut(&player_index).unwrap();
             player.weapon_assigned = true;
             player.weapon_drawn = true;
-            player.animation = Some(cyrus_game::script::ActivationAnimation { group: None });
+            player.animation = Some(cyrus_script::script::ActivationAnimation { group: None });
         }
         app.update();
         assert_eq!(app.world().resource::<HudState>().selected, Some(2));
@@ -2737,7 +2741,7 @@ mod tests {
         };
         let prepared = HudState::new(&asset, None, frames);
         let mut live = prepared.clone();
-        live.set_health(47, &cyrus_game::script::ScriptHud::default());
+        live.set_health(47, &cyrus_script::script::ScriptHud::default());
         live.logbook_entry();
         for _ in 0..9 {
             live.advance_frame();
@@ -2820,7 +2824,7 @@ mod tests {
         }];
         let handle = app.world_mut().resource_mut::<Assets<HudAsset>>().add(hud);
         app.insert_resource(HudHandle(handle));
-        let mut screen = cyrus_game::inventory_screen::InventoryScreen::default();
+        let mut screen = cyrus_script::inventory_screen::InventoryScreen::default();
         screen.open = true;
         screen.grid.open(vec![(4, 53)], Some(4));
         screen.layout = screen.grid.layout();
@@ -2855,7 +2859,7 @@ mod tests {
             Color::srgba(10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0, 180.0 / 255.0)
         );
         app.world_mut()
-            .resource_mut::<cyrus_game::inventory_screen::InventoryScreen>()
+            .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
             .open = false;
         app.update();
         assert_eq!(

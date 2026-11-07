@@ -44,16 +44,16 @@ pub fn dialogue_cache() -> DialogueCache<DialogueEntry> { DialogueCache::default
 pub use cyrus_collision::collision_world::StaticCollision;
 pub use cyrus_media::{Movie, MovieStream, Packets};
 pub use cyrus_world::{animation::AnimationPlugin, lifecycle::WorldPlugin};
-pub use cyrus_game::GamePlugin;
+pub use cyrus_script::GamePlugin;
 pub use cyrus_console::{ConsoleApp, ConsolePlugin};
 pub use cyrus_soup::Runtime;' \
-    cyrus-assets cyrus-media cyrus-world cyrus-collision cyrus-game cyrus-console cyrus-soup
+    cyrus-assets cyrus-media cyrus-world cyrus-collision cyrus-game cyrus-script cyrus-console cyrus-soup
 
-check_consumer app '^cyrus-(game|world|collision|audio|render|startup|debug|viewer|control|mcp|web) ' \
+check_consumer app '^cyrus-(game|script|world|collision|audio|render|startup|debug|viewer|control|mcp|web) ' \
     'pub use cyrus_app::{EguiPlugin, launch::InstallArgs, loading::LoadingOverlayPlugin};' cyrus-app
 
 check_consumer render '^cyrus-(audio|startup|app|debug) ' \
     'pub use cyrus_render::WorldRenderPlugin;' cyrus-render
 
-check_consumer paths '^(bevy(_[^ ]+)?|cyrus-(app|assets|audio|collision|console|control|debug|game|media|mcp|render|script|session|startup|text|viewer|web|world)) ' \
+check_consumer paths '^(bevy(_[^ ]+)?|cyrus-(app|assets|audio|collision|console|control|debug|game|media|mcp|render|script|session|soup|startup|text|viewer|web|world)) ' \
     'pub use cyrus_config::{cache_dir, config_dir, log_dir, read, write};' cyrus-config

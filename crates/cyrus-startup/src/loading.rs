@@ -27,7 +27,7 @@ struct WorldEntry<'w, 's> {
     sound_settings: Option<Res<'w, cyrus_audio::sound::SoundSettings>>,
     spawner: Res<'w, WorldInstanceSpawner>,
     instances: Query<'w, 's, Option<&'static WorldInstance>, With<WorldAssetRoot>>,
-    clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
+    clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
     fades: Query<'w, 's, &'static super::fade::Fade>,
 }
 
@@ -75,10 +75,10 @@ fn begin_requested_world(
     };
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.0.clone()));
     commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
-    commands.insert_resource(cyrus_game::player::placement::MarkerEntry::default());
+    commands.insert_resource(cyrus_script::player::placement::MarkerEntry::default());
     commands.remove_resource::<super::WorldLoadRequest>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
-    commands.remove_resource::<cyrus_game::PausedGameplay>();
+    commands.remove_resource::<cyrus_script::PausedGameplay>();
     super::menu::begin_world_loading(
         &mut commands,
         &mut images,
@@ -228,7 +228,9 @@ fn poll(
                     prepared.animations.clone().untyped(),
                     prepared.scripts.clone().untyped(),
                     assets
-                        .load::<cyrus_game::player::data::PlayerScene>(prepared.player_path.clone())
+                        .load::<cyrus_script::player::data::PlayerScene>(
+                            prepared.player_path.clone(),
+                        )
                         .untyped(),
                     assets
                         .load::<cyrus_assets::environment::Environment>(
@@ -406,7 +408,7 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn world_entry_recreates_player(from_book: bool) {
-        use cyrus_game::player::{Player, PlayerPlugin};
+        use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (debug world loading)");
             return;
@@ -437,7 +439,7 @@ mod tests {
         .init_resource::<cyrus_game::fidelity::Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
-        .init_resource::<cyrus_game::player::input::PlayerBindings>()
+        .init_resource::<cyrus_script::player::input::PlayerBindings>()
         .add_plugins(PlayerPlugin)
         .add_systems(Update, begin_requested_world)
         .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
@@ -461,7 +463,7 @@ mod tests {
             app.insert_state(AppState::Menu);
             app.insert_resource(cyrus_game::PauseBookEntry { page: 0 });
         }
-        app.insert_resource(cyrus_game::player::placement::MarkerEntry {
+        app.insert_resource(cyrus_script::player::placement::MarkerEntry {
             marker: 9,
             heading: 512,
         });
@@ -480,7 +482,7 @@ mod tests {
         );
         assert_eq!(
             *app.world()
-                .resource::<cyrus_game::player::placement::MarkerEntry>(),
+                .resource::<cyrus_script::player::placement::MarkerEntry>(),
             default()
         );
         app.update();

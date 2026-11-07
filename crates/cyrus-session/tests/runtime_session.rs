@@ -10,6 +10,10 @@ use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::*};
 use cyrus_audio::sound::{Panned, RestoredDialogueAssets, SoundPlugin, dialogue::DialogueClip};
 use cyrus_game::{
+    preferences::{PreferenceKey, PreferenceStore, Preferences},
+    random::EngineRandom,
+};
+use cyrus_script::{
     clock::SimulationClock,
     player::{
         Player,
@@ -18,8 +22,6 @@ use cyrus_game::{
         placement::{MarkerEntry, PlayerEntrySupport, PlayerPose},
         runtime::PlayerRuntime,
     },
-    preferences::{PreferenceKey, PreferenceStore, Preferences},
-    random::EngineRandom,
     script::{
         LogicalSessionRestoreInputs, ScriptActors, ScriptBinding, ScriptHud, ScriptWorld,
         WorldSnapshotSources,
@@ -478,7 +480,7 @@ fn exercise_runtime_session(
             },
             cyrus_world::sound::SoundSurface(Surface::WOOD),
             ScriptBinding {
-                actor: cyrus_game::script::ScriptActorId {
+                actor: cyrus_script::script::ScriptActorId {
                     generation: player_actor.generation,
                     index: 0,
                 },
@@ -581,7 +583,7 @@ fn exercise_runtime_session(
     }});
     let explicit = app
         .world_mut()
-        .spawn(cyrus_game::script::ScriptedPlayback::new(
+        .spawn(cyrus_script::script::ScriptedPlayback::new(
             animation_handle.clone(),
             &explicit_data,
             "ACTOR",
@@ -901,7 +903,7 @@ fn exercise_runtime_session(
         .normal_frame_rate -= 1;
     candidate.validate_publication(app.world())?;
 
-    let mut reader = cyrus_game::logbook::LogbookScreen::default();
+    let mut reader = cyrus_script::logbook::LogbookScreen::default();
     reader.waiting_for_release = true;
     app.insert_resource(reader);
     assert!(
@@ -913,7 +915,7 @@ fn exercise_runtime_session(
     );
     assert!(RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset).is_err());
     app.world_mut()
-        .remove_resource::<cyrus_game::logbook::LogbookScreen>();
+        .remove_resource::<cyrus_script::logbook::LogbookScreen>();
     app.add_plugins(cyrus_session::SessionBoundaryPlugin);
     let capture_sources = |world: &World| {
         cyrus_session::SessionWorldAssets::for_capture(
@@ -1391,8 +1393,8 @@ fn exercise_runtime_session(
         .add_message::<cyrus_world::animation::AnimationTick>()
         .add_plugins((
             cyrus_world::lifecycle::WorldPlugin,
-            cyrus_game::player::PlayerPlugin,
-            cyrus_game::script::ScriptPlugin,
+            cyrus_script::player::PlayerPlugin,
+            cyrus_script::script::ScriptPlugin,
         ));
     // Late plugin registration replaces asset stores; retain the fixture's handles and sources.
     let server = app.world().resource::<AssetServer>();

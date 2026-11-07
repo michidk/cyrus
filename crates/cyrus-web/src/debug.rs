@@ -58,7 +58,7 @@ fn update_web_world(
             prepared.animations.clone().untyped(),
             prepared.scripts.clone().untyped(),
             assets
-                .load::<cyrus_game::player::data::PlayerScene>(prepared.player_path.clone())
+                .load::<cyrus_script::player::data::PlayerScene>(prepared.player_path.clone())
                 .untyped(),
             assets
                 .load::<bevy::gltf::Gltf>(prepared.scene_path.clone())
@@ -212,7 +212,7 @@ mod tests {
         .insert_state(cyrus_game::AppState::InGame)
         .init_asset::<cyrus_assets::animation::Animations>()
         .init_asset::<cyrus_assets::script::Scripts>()
-        .init_asset::<cyrus_game::player::data::PlayerScene>()
+        .init_asset::<cyrus_script::player::data::PlayerScene>()
         .init_asset::<bevy::gltf::Gltf>()
         .init_asset::<cyrus_assets::environment::Environment>()
         .insert_resource(cyrus_game::random::EngineRandom::from_state(42))

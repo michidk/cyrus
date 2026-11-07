@@ -79,7 +79,9 @@ impl Plugin for SoundPlugin {
             .init_resource::<Speech>()
             .init_resource::<Channels>()
             .init_resource::<script::RuntimeDialogue>()
-            .insert_resource(cyrus_game::script::OrdinarySoundExecutor(execute_ordinary))
+            .insert_resource(cyrus_script::script::OrdinarySoundExecutor(
+                execute_ordinary,
+            ))
             .add_systems(Update, play_audio.in_set(PlayCues));
         #[cfg(target_arch = "wasm32")]
         app.init_resource::<PendingSounds>();
@@ -658,7 +660,7 @@ fn positional_q8(
     ];
     let difference = std::array::from_fn(|axis| position[axis].wrapping_sub(camera_q8[axis]));
     let length =
-        cyrus_game::script::rounded_distance(difference).map_err(|error| error.to_string())?;
+        cyrus_script::script::rounded_distance(difference).map_err(|error| error.to_string())?;
     let volume = distance_volume_q8(distance, i64::from(length), volume_offset)?;
     let forward = listener.0.forward();
     let yaw = heading(

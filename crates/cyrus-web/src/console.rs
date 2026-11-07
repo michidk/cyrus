@@ -1,7 +1,7 @@
 //! Browser console preferences retain CPF bytes in local storage; logs download as text.
 use anyhow::Context;
 use cyrus_console::{Console, Preferences, Store};
-use cyrus_game::console::markers::{MarkerStorage, MarkerStore};
+use cyrus_script::console::markers::{MarkerStorage, MarkerStore};
 
 struct LocalConsole {
     installed: Result<Option<Vec<u8>>, String>,

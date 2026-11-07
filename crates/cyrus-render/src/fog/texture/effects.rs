@@ -8,7 +8,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::effects::Effects;
-use cyrus_game::script::EnvironmentalEffect;
+use cyrus_script::script::EnvironmentalEffect;
 use std::collections::BTreeMap;
 
 pub(super) struct PreparedEffects {

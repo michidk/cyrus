@@ -1,7 +1,7 @@
 //! Equipped weapon models, placed from the retained logical attachment pose.
 use crate::{player_model::model_source, script_transform::scene_transform_at};
 use bevy::{asset::AssetPath, prelude::*};
-use cyrus_game::script::{Pose, ScriptActors, ScriptBinding};
+use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 use cyrus_world::{animation::AnimationPose, lifecycle::PreparedWorld};
 
 /// Draws the hand or hilt model the script world retained for each bound actor.
@@ -10,7 +10,7 @@ impl Plugin for WeaponModelPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            bind.after(cyrus_game::script::OrdinaryUpdates)
+            bind.after(cyrus_script::script::OrdinaryUpdates)
                 .after(cyrus_world::animation::AnimationSystems),
         );
     }

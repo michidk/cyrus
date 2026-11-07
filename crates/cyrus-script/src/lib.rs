@@ -1,0 +1,138 @@
+//! Game scripting host, player controller, simulation clock and in-game screens, built on the portable SOUP runtime.
+pub mod clock;
+pub mod console;
+pub mod inventory_screen;
+pub mod island_map;
+pub mod logbook;
+pub mod player;
+pub mod script;
+use bevy::prelude::*;
+use cyrus_game::{
+    AppState, MovieUnlocks, PauseBookEntry, RestoredSessionEntry, cheats, fidelity, preferences,
+    random,
+};
+use log::info;
+
+/// Gameplay continuation retained while an eligible book menu owns presentation.
+/// Startup and terminal death menus must not create this admission token.
+#[derive(Resource)]
+pub struct PausedGameplay {
+    pub clock: clock::SimulationClock,
+    pub active_cameras: Vec<Entity>,
+}
+
+pub struct GamePlugin;
+impl Plugin for GamePlugin {
+    fn build(&self, app: &mut App) {
+        logbook::register(app);
+        inventory_screen::register(app);
+        island_map::register(app);
+        app.init_resource::<preferences::Preferences>()
+            .init_resource::<MovieUnlocks>()
+            .init_resource::<random::EngineRandom>()
+            .init_resource::<cheats::Cheats>()
+            .init_resource::<cheats::CheatTransfer>()
+            .init_state::<AppState>()
+            .init_resource::<fidelity::Fidelity>()
+            .add_plugins((
+                player::PlayerPlugin,
+                script::ScriptPlugin,
+                console::GameConsolePlugin,
+            ))
+            .add_systems(Update, log_state_changes)
+            .add_systems(
+                Update,
+                request_pause_book.run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Last,
+                clear_restored_entry.run_if(in_state(AppState::InGame)),
+            );
+    }
+}
+
+/// Gameplay book shortcuts in sampling order: Save, Load, Display, Sound, Controls.
+const BOOK_SHORTCUTS: [(KeyCode, u8); 5] = [
+    (KeyCode::F2, 1),
+    (KeyCode::F3, 2),
+    (KeyCode::F4, 5),
+    (KeyCode::F5, 6),
+    (KeyCode::F6, 7),
+];
+
+/// With `final_version` set, Escape is processed after its release (preservation
+/// engine/menu.md); the original without it ignores Escape in a world.
+fn request_pause_book(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut armed: Local<bool>,
+    logbook: Option<Res<logbook::LogbookScreen>>,
+    console: Option<Res<cyrus_console::Console>>,
+    actors: Option<Res<script::ScriptActors>>,
+    mut next: ResMut<NextState<AppState>>,
+    mut commands: Commands,
+) {
+    let held_elsewhere = !actors.is_some_and(|actors| actors.final_version())
+        || logbook.is_some_and(|screen| screen.suspended())
+        || console.is_some_and(|console| console.open || console.blocked)
+        || matches!(*next, NextState::Pending(_));
+    // Escape outranks the shortcuts (preservation engine/menu.md).
+    let page = if escape_opens_book(&keys, &mut armed, held_elsewhere) {
+        Some(0)
+    } else {
+        BOOK_SHORTCUTS
+            .into_iter()
+            .find(|(key, _)| !held_elsewhere && keys.just_pressed(*key))
+            .map(|(_, page)| page)
+    };
+    if let Some(page) = page {
+        commands.insert_resource(PauseBookEntry { page });
+        next.set(AppState::Menu);
+    }
+}
+
+/// The press must have started while no gate held the keyboard, so the release that closes a
+/// screen or the console does not also open the book.
+fn escape_opens_book(keys: &ButtonInput<KeyCode>, armed: &mut bool, held_elsewhere: bool) -> bool {
+    if keys.just_pressed(KeyCode::Escape) {
+        *armed = !held_elsewhere;
+    }
+    keys.just_released(KeyCode::Escape) && std::mem::take(armed) && !held_elsewhere
+}
+
+fn clear_restored_entry(mut commands: Commands) {
+    commands.remove_resource::<RestoredSessionEntry>();
+}
+
+fn log_state_changes(mut transitions: MessageReader<StateTransitionEvent<AppState>>) {
+    for transition in transitions.read() {
+        info!("state: {:?} -> {:?}", transition.exited, transition.entered);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tap(keys: &mut ButtonInput<KeyCode>, armed: &mut bool, held_during_press: bool) -> bool {
+        keys.press(KeyCode::Escape);
+        let early = escape_opens_book(keys, armed, held_during_press);
+        keys.clear();
+        keys.release(KeyCode::Escape);
+        let opened = escape_opens_book(keys, armed, false);
+        keys.clear();
+        assert!(!early);
+        opened
+    }
+
+    #[test]
+    fn escape_release_opens_the_book_from_gameplay() {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        assert!(tap(&mut keys, &mut false, false));
+    }
+
+    #[test]
+    fn escape_that_closes_a_screen_does_not_open_the_book() {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        assert!(!tap(&mut keys, &mut false, true));
+    }
+}

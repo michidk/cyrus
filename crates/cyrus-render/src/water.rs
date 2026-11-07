@@ -112,8 +112,8 @@ fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
 /// The loaded world's player scene, whose terrain receives the live vertex heights.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct PlayerTerrain<'w> {
-    request: Option<Res<'w, cyrus_game::player::data::PlayerSceneRequest>>,
-    scenes: Option<Res<'w, Assets<cyrus_game::player::data::PlayerScene>>>,
+    request: Option<Res<'w, cyrus_script::player::data::PlayerSceneRequest>>,
+    scenes: Option<Res<'w, Assets<cyrus_script::player::data::PlayerScene>>>,
 }
 
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
@@ -569,7 +569,7 @@ mod tests {
                 .resource::<WaterPlayback>()
                 .camera_terrain(source, environment)
                 .unwrap();
-            cyrus_game::script::camera::sample_terrain([20 * 256, 20 * 256], &view)
+            cyrus_script::script::camera::sample_terrain([20 * 256, 20 * 256], &view)
                 .unwrap()
                 .0
         };

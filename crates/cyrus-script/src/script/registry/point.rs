@@ -1,0 +1,1062 @@
+//! Point navigation retains walking, direct visibility, held-node routes and command transitions.
+//!
+//! Destinations and tolerances use Q8 local coordinates. The point command owns
+//! its retained phase/history and pending registration; movement owns collision,
+//! sounds and animation effects. Completion releases nodes and publishes the
+//! native return byte without registering another pending update.
+//!
+//! Destination search uses the current enabled map without filtering reservations.
+//! Route claims preserve reservation order. Direct phases share live visibility,
+//! facing and walking services. Explicitly unsupported: a held route without a selected map
+//! outside phase zero and the shared held-target exclusion switch (always off in play).
+//! Supported phases do not imply complete combat traversal.
+use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use crate::script::AiType;
+use crate::script::CombatFlags;
+use crate::script::JumpMotion;
+use crate::script::MotionDirection;
+use crate::script::PointPhase;
+use crate::script::locomotion::StepDirection;
+use anyhow::{Context, Result};
+use cyrus_soup::{AnimationGroup, Attribute};
+use cyrus_world::heading::wrap;
+
+impl ScriptWorld {
+    /// Walk toward a local Q8 horizontal destination with a Q8 arrival tolerance.
+    /// Preservation's coordinate-walking rule selects WalkForward at `attr_node_run`
+    /// zero and MoveForward otherwise. An overshoot restores playback, displayed
+    /// frame, packed movement counters and local position before snapping X/Z.
+    /// Movement direction, collision responses and sound effects remain owned by
+    /// movement. The enclosing point wrapper owns deferred map registration.
+    pub fn walk_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            let reads_query_position = self.actors[index].attributes[Attribute::Slave] != 0
+                || self.spatial(id)?.linked_position.is_some();
+            let position = self.spatial(id)?.local.position;
+            let move_counter = self.actors[index]
+                .control
+                .as_ref()
+                .context("coordinate walking control unavailable")?
+                .move_counter;
+            if !self.point_destination_arrived(index, destination, tolerance, inputs)? {
+                let animation = self.actors[index]
+                    .animation
+                    .as_ref()
+                    .context("coordinate walking animation unavailable")?;
+                let checkpoint = animation.playback.checkpoint()?;
+                let frame = animation.frame;
+                let movement = if self.actors[index].attributes[Attribute::NodeRun] == 0 {
+                    super::spacing::OrdinaryMovement::WalkForward
+                } else {
+                    super::spacing::OrdinaryMovement::Forward
+                };
+                self.move_ordinary(
+                    id,
+                    movement,
+                    1,
+                    0,
+                    inputs,
+                    sounds
+                        .as_mut()
+                        .context("coordinate walking requires synchronous sounds")?,
+                )?;
+                let origin = if reads_query_position {
+                    self.query_position(id)?
+                } else {
+                    self.spatial(id)?.local.position
+                };
+                let bearing = super::super::spatial::query_bearing(
+                    destination[0].wrapping_sub(origin[0]),
+                    destination[2].wrapping_sub(origin[2]),
+                );
+                let heading = self.spatial(id)?.local.angles[1];
+                let difference = wrap(heading.wrapping_sub(i32::from(bearing)));
+                if !(256..=1792).contains(&difference) {
+                    return Ok(1);
+                }
+                self.globals.locomotion_called &= !StepDirection::Forward.called_flag();
+                let actor = &mut self.actors[index];
+                actor
+                    .control
+                    .as_mut()
+                    .expect("admitted coordinate walking control")
+                    .move_counter = move_counter;
+                let animation = actor
+                    .animation
+                    .as_mut()
+                    .expect("admitted coordinate walking animation");
+                animation.playback.restore_checkpoint(&checkpoint)?;
+                animation.frame = frame;
+            }
+            self.spatial
+                .as_mut()
+                .expect("admitted coordinate walking spatial state")
+                .actor_mut(index)?
+                .local
+                .position = [destination[0], position[1], destination[2]];
+            self.admit_point_default(id, inputs, sounds)?;
+            Ok(0)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} coordinate walking to {destination:?}",
+                self.world, id.index
+            )
+        })
+    }
+
+    /// Invoke the ordinary point wrapper with a Q8 destination and arrival tolerance.
+    /// Map validation precedes shared pause consumption. A consumed pause returns one
+    /// even when it reaches zero. Immediate arrival and falling/queued motion use live
+    /// actor owners. Phases one and 27 support held-node arrival and facing,
+    /// including `attr_node_idle` delay admission. Phase nine retains countdown and idle
+    /// requests on the session random stream. Phase two walks and claims held nodes;
+    /// phase eight selects routes and phases 11/21/22 continue direct walking.
+    /// Initialization, jump routes and hit reactions remain unavailable. Requests require
+    /// nominal ticks and a synchronous sound sink; random is required only on
+    /// admitted draw paths.
+    pub fn move_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            self.actors[index]
+                .control
+                .as_ref()
+                .context("point control unavailable")?
+                .point_command
+                .load(&mut self.globals.native_command);
+            let result =
+                self.move_point_wrapper(id, destination, tolerance, inputs, random, sounds)?;
+            let shared = &mut self.globals.native_command;
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted point control")
+                .point_command
+                .save(shared);
+            Ok(result)
+        })();
+        result.with_context(|| format!("world {} actor {} point movement", self.world, id.index))
+    }
+
+    /// The point wrapper over whatever point state the shared native command holds: combat loads
+    /// the actor's retained copy around it, and a script task runs it on its own slot's state.
+    pub(super) fn move_point_wrapper(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        let result = self.move_point_core(id, destination, tolerance, inputs, random, sounds)?;
+        let frame_scale = inputs
+            .frame_scale
+            .context("point wrapper requires frame_scale")?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("point spatial state unavailable")?
+            .actor_mut(index)?;
+        super::super::navigation::limit_point_displacement(spatial, frame_scale)?;
+        Ok(result)
+    }
+
+    /// The navigation core: map validation, the shared pause, then the entry. The wrapper adds the
+    /// displacement bound after it.
+    fn move_point_core(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        self.validate_walk_navigation(id)?;
+        if self.globals.native_command.pause_ticks != 0 {
+            let ticks = inputs
+                .nominal_ticks
+                .context("point pause requires nominal_ticks")?;
+            self.globals.native_command.pause_ticks = self
+                .globals
+                .native_command
+                .pause_ticks
+                .saturating_sub(ticks);
+            return Ok(1);
+        }
+        self.move_point_entry(id, destination, tolerance, inputs, random, sounds)
+    }
+
+    /// `Wander` with walk-node maps loaded. An unset final destination clears the actor's point
+    /// state, draws a candidate and takes the nearest node of any map (its map becoming the
+    /// actor's) as the final destination. A set destination ends when the actor is within
+    /// arrival range of its node or when the point core finishes; otherwise the core walks the
+    /// actor toward the node on the actor's retained point state. The displacement bound and its
+    /// measured result follow, as for the empty-map form.
+    #[allow(clippy::too_many_arguments)] // Explicit call arguments, inputs and the shared random and sound sinks.
+    pub(super) fn wander_through_maps(
+        &mut self,
+        id: ScriptActorId,
+        home: [i32; 3],
+        radius: i32,
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        self.validate_walk_navigation(id)?;
+        self.actors[index].attributes[Attribute::NodeInUse] = 1;
+        fn control(world: &mut ScriptWorld, index: usize) -> &mut super::ActorControlState {
+            world.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted point control")
+        }
+        if control(self, index).navigation.destination == -1 {
+            control(self, index).point_command = super::super::PointCommandState {
+                value: 0,
+                word: 0,
+                phase: PointPhase::START,
+                counter: 0,
+            };
+            let candidate = super::super::navigation::wander_candidate(
+                home,
+                radius,
+                self.spatial
+                    .as_ref()
+                    .context("Wander spatial state not prepared")?
+                    .actor(index)?,
+                random,
+            )?;
+            let found = self
+                .walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .nearest(candidate);
+            let navigation = &mut control(self, index).navigation;
+            navigation.map = found.map(|(map, _)| map);
+            navigation.destination = found.map_or(-1, |(_, node)| node as i32);
+        }
+        let navigation = control(self, index).navigation;
+        if navigation.destination != -1 {
+            let destination = match navigation.map {
+                Some(map) => Some(
+                    self.walk_nodes
+                        .as_ref()
+                        .context("walk-node navigation not prepared")?
+                        .position(map, navigation.destination)?,
+                ),
+                None => None,
+            };
+            let finished = match destination {
+                None => true,
+                Some(node) => {
+                    if self.point_destination_arrived(index, node, tolerance, inputs)? {
+                        true
+                    } else {
+                        control(self, index)
+                            .point_command
+                            .load(&mut self.globals.native_command);
+                        let result = self.move_point_core(
+                            id,
+                            node,
+                            tolerance,
+                            inputs,
+                            Some(random),
+                            sounds,
+                        )?;
+                        if result != 0 {
+                            let shared = self.globals.native_command;
+                            control(self, index).point_command.save(&shared);
+                        }
+                        result == 0
+                    }
+                }
+            };
+            if finished {
+                control(self, index).navigation.destination = -1;
+            }
+        }
+        let frame_scale = inputs.frame_scale.context("Wander requires frame_scale")?;
+        super::super::navigation::limit_point_displacement(
+            self.spatial
+                .as_mut()
+                .context("Wander spatial state not prepared")?
+                .actor_mut(index)?,
+            frame_scale,
+        )
+    }
+
+    fn move_point_entry(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        mut random: Option<&mut cyrus_game::random::EngineRandom>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = id.index;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted point control");
+        // Hit reaction: a body response mark from another actor (contact identifier other than
+        // one) outside phase 27 draws one raw value; its low two bits pick a retarget of the
+        // previous next node (phase 27), a pause of 36 ticks, or nothing.
+        if control
+            .last_collide
+            .contains(crate::script::CollisionFlags::MANAGED_COLLISION)
+            && self.globals.native_command.point_phase != PointPhase::DETOUR
+            && control.overlap_contact_identifier != 1
+        {
+            let draw = random
+                .as_deref_mut()
+                .context("point hit reaction requires the shared engine random stream")?
+                .draw()
+                & 3;
+            if draw == 1 {
+                let navigation = &mut self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted point control")
+                    .navigation;
+                navigation.next = navigation.previous_next;
+                self.globals.native_command.point_phase = PointPhase::DETOUR;
+            } else if draw == 2 {
+                self.globals.native_command.pause_ticks = 0x24;
+                return Ok(1);
+            }
+        }
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted point control");
+        let shared = &mut self.globals.native_command;
+        shared.point_counter = if control
+            .last_collide
+            .contains(crate::script::CollisionFlags::CHECK_FORWARD_FAIL)
+            && control.navigation.next != -1
+            && control.navigation.map.is_some()
+        {
+            shared.point_counter.wrapping_add(1)
+        } else {
+            0
+        };
+        if shared.point_counter > 8 {
+            shared.point_phase = PointPhase::BACK_OFF;
+        }
+        anyhow::ensure!(
+            !self.globals.walk_route.target_exclusion,
+            "point held-target exclusion admission unsupported"
+        );
+        // Motion direction 15 runs a ledge update that only the selected player has; any other
+        // actor takes the falling and queued-motion branch unchanged.
+        let ledge_direction = control.motion_direction == MotionDirection::LEDGE;
+        if ledge_direction {
+            self.step_point_ledge(
+                id,
+                inputs,
+                super::direct_point::PointLedgeAction::Advance,
+                sounds.as_mut().map(|sink| {
+                    &mut **sink
+                        as &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>
+                }),
+            )?;
+        }
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .expect("admitted point control");
+        let shared = &mut self.globals.native_command;
+        if control.falling_state != JumpMotion::NONE
+            || control.queued_motion != JumpMotion::NONE
+            || ledge_direction
+        {
+            shared.point_phase = if control.navigation.next != -1 {
+                PointPhase::FACE_NEXT_NODE
+            } else {
+                PointPhase::START
+            };
+            let actor = &mut self.actors[index];
+            actor.attributes[Attribute::Collide] = 13;
+            actor
+                .control
+                .as_mut()
+                .expect("admitted point control")
+                .ai_type = AiType::POINT_NAVIGATION;
+            return Ok(1);
+        }
+        let phase = shared.point_phase;
+        if matches!(phase, PointPhase::DIRECT_WALK | PointPhase::DIRECT_TURN)
+            || !self.point_destination_arrived(index, destination, tolerance, inputs)?
+        {
+            return self.move_point_held_node(id, destination, tolerance, inputs, random, sounds);
+        }
+        let position = &mut self
+            .spatial
+            .as_mut()
+            .expect("admitted point spatial state")
+            .actor_mut(index)?
+            .local
+            .position;
+        position[0] = destination[0];
+        position[2] = destination[2];
+        self.admit_point_default(id, inputs, sounds)?;
+        self.globals.native_command_return = 0;
+        self.release_held_walk_nodes(id)?;
+        let actor = &mut self.actors[index];
+        let control = actor.control.as_mut().expect("admitted point control");
+        if control.ai_type == AiType::POINT_NAVIGATION {
+            control.ai_type = AiType::NONE;
+        }
+        actor.attributes[Attribute::Collide] = 13;
+        Ok(0)
+    }
+
+    pub(super) fn point_destination_arrived(
+        &self,
+        index: usize,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<bool> {
+        let position = self
+            .spatial
+            .as_ref()
+            .context("point spatial state unavailable")?
+            .actor(index)?
+            .local
+            .position;
+        let speed = self.ordinary_group_speed(index);
+        let speed = if speed != 0 {
+            speed
+        } else {
+            [
+                Attribute::ForwardSpeed,
+                Attribute::FightForwardWalk,
+                Attribute::FightForwardSpeed,
+                Attribute::ForwardWalk,
+                Attribute::BackwardSpeed,
+                Attribute::BackwardWalk,
+                Attribute::SideSpeed,
+            ]
+            .into_iter()
+            .map(|attribute| self.actors[index].attributes[attribute])
+            .filter(|&value| value != 0)
+            .min()
+            .unwrap_or(8)
+        };
+        let scale = inputs
+            .frame_scale
+            .context("point arrival requires frame_scale")?;
+        let distance = super::super::spatial::rounded_distance([
+            position[0].wrapping_sub(destination[0]),
+            0,
+            position[2].wrapping_sub(destination[2]),
+        ])?;
+        let threshold = i32::from(speed)
+            .wrapping_add(2)
+            .wrapping_mul(256)
+            .wrapping_mul(scale as i32)
+            >> 8;
+        Ok(distance.wrapping_sub(tolerance) <= threshold)
+    }
+
+    pub(super) fn admit_point_default(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<()> {
+        let index = id.index;
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
+        let actor = &mut self.actors[index];
+        if self.updates.animation_system
+            && !actor
+                .control
+                .as_ref()
+                .expect("admitted control")
+                .object_update_excluded
+            && let Some(animation) = actor.animation.as_mut()
+            && animation.playback.current_group() != Some(animation.playback.default_group())
+        {
+            let ticks = inputs
+                .nominal_ticks
+                .context("point default animation requires nominal_ticks")?;
+            let sounds = sounds.context("point default animation requires synchronous sounds")?;
+            let surface = actor.surface;
+            let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let group = animation.playback.default_group();
+            let frame =
+                animation
+                    .playback
+                    .force_request_with_sounds(group, 0, ticks, &mut |sound| {
+                        if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                            return event_context.dispatch(
+                                flags,
+                                event_camera.as_mut(),
+                                event_effects,
+                            );
+                        }
+                        sounds(
+                            id,
+                            super::super::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    })?;
+            animation.frame = frame.or(animation.frame);
+        }
+        Ok(())
+    }
+
+    pub(super) fn advance_point_delay(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<()> {
+        let ticks = inputs
+            .nominal_ticks
+            .context("point delay requires nominal_ticks")?;
+        let command = &mut self.globals.native_command;
+        let word = command.point_word;
+        command.point_word = if (i32::from(word as i16) as u32) < ticks {
+            0
+        } else {
+            word.wrapping_sub(ticks as u16)
+        };
+        if command.point_word == 0 {
+            command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
+            return Ok(());
+        }
+        let (_, holding_weapon) = self.spacing_weapon(id, inputs)?;
+        if holding_weapon {
+            self.globals.native_command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
+            return Ok(());
+        }
+        let animation = self.actors[id.index]
+            .animation
+            .as_ref()
+            .context("point delay animation unavailable")?;
+        let current = animation
+            .playback
+            .current_group()
+            .context("point delay current animation group unavailable")?;
+        if current == animation.playback.default_group() {
+            let random = random.context("point delay requires shared engine random stream")?;
+            if random.draw() & 31 == 31 {
+                let group = loop {
+                    let choice = random.draw() & 3;
+                    if choice < 3 {
+                        break [
+                            AnimationGroup::IDLE1,
+                            AnimationGroup::IDLE2,
+                            AnimationGroup::IDLE3,
+                        ][choice as usize];
+                    }
+                };
+                self.request_ordinary_group(
+                    id,
+                    group,
+                    false,
+                    ticks,
+                    sounds.context("point delay requires synchronous sounds")?,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn move_point_held_node(
+        &mut self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = id.index;
+        let actor = &mut self.actors[index];
+        let control = actor.control.as_ref().expect("admitted point control");
+        let navigation = control.navigation;
+        // Phase zero selects its own map during route initialization.
+        anyhow::ensure!(
+            navigation.map.is_some()
+                || self.globals.native_command.point_phase == PointPhase::START,
+            "ordinary combat routed point navigation unsupported: map selection"
+        );
+        actor.attributes[Attribute::Collide] = 12;
+        let transition = control
+            .last_collide
+            .contains(crate::script::CollisionFlags::ROLLBACK);
+        let (age, stable) = (control.last_collide_count, control.stable_local_position);
+        // A blocked-step or body response mark drops the route: held nodes are released and
+        // routing restarts from phase zero. A transition mark releases them too; a fresh one
+        // returns the actor to its stable position, an older one selects phase 24.
+        let restart = control.last_collide.intersects(
+            crate::script::CollisionFlags::HIT_WALL
+                | crate::script::CollisionFlags::CHECK_FORWARD_FAIL
+                | crate::script::CollisionFlags::CHECK_RUN_FORWARD_FAIL
+                | crate::script::CollisionFlags::VALIDATE_FORWARD_FAILED,
+        );
+        if transition {
+            self.release_held_walk_nodes(id)?;
+            if age < 16 {
+                self.spatial
+                    .as_mut()
+                    .context("point route spatial state unavailable")?
+                    .actor_mut(index)?
+                    .local
+                    .position = stable;
+            } else if !matches!(
+                self.globals.native_command.point_phase,
+                PointPhase::BACK_OFF | PointPhase::BACK_OFF_SETTLE
+            ) {
+                self.globals.native_command.point_phase = PointPhase::BACK_OFF;
+            }
+        } else if restart {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = PointPhase::START;
+        }
+        let phase = self.globals.native_command.point_phase;
+        anyhow::ensure!(
+            matches!(
+                phase,
+                PointPhase::START
+                    | PointPhase::FACE_NEXT_NODE
+                    | PointPhase::WALK_TO_NEXT_NODE
+                    | PointPhase::MONITOR_ROUTE
+                    | PointPhase::IDLE_PAUSE
+                    | PointPhase::DIRECT_WALK
+                    | PointPhase::LEAP_LINK
+                    | PointPhase::DIRECT_ARRIVE
+                    | PointPhase::DIRECT_TURN
+                    | PointPhase::BACK_OFF
+                    | PointPhase::BACK_OFF_SETTLE
+                    | PointPhase::DETOUR
+            ),
+            "ordinary combat routed point navigation unsupported: phase {phase}"
+        );
+        if phase == PointPhase::START {
+            self.initialize_point_route(id)?;
+        } else if phase == PointPhase::MONITOR_ROUTE {
+            if let Some(result) = self.advance_point_route(id, point, inputs)? {
+                return Ok(result);
+            }
+        } else if matches!(
+            phase,
+            PointPhase::DIRECT_WALK | PointPhase::DIRECT_ARRIVE | PointPhase::DIRECT_TURN
+        ) {
+            if let Some(result) = self.advance_point_direct(id, point, tolerance, inputs, sounds)? {
+                return Ok(result);
+            }
+        } else if phase == PointPhase::IDLE_PAUSE {
+            self.advance_point_delay(id, inputs, random, sounds)?;
+        } else if phase == PointPhase::BACK_OFF {
+            // The back-off after a blocked route: one step backward, then wait for the default
+            // animation group.
+            self.release_held_walk_nodes(id)?;
+            let movement = if self.actors[index].attributes[Attribute::NodeRun] == 0 {
+                super::spacing::OrdinaryMovement::WalkBackward
+            } else {
+                super::spacing::OrdinaryMovement::Backward
+            };
+            self.move_ordinary(
+                id,
+                movement,
+                1,
+                0,
+                inputs,
+                sounds
+                    .as_mut()
+                    .context("point back-off requires synchronous sounds")?,
+            )?;
+            self.globals.native_command.point_phase = PointPhase::BACK_OFF_SETTLE;
+        } else if phase == PointPhase::BACK_OFF_SETTLE {
+            let playback = &self.actors[index]
+                .animation
+                .as_ref()
+                .context("point back-off animation unavailable")?
+                .playback;
+            if playback.current_group() == Some(playback.default_group()) {
+                self.globals.native_command.point_phase = PointPhase::START;
+            }
+        } else if navigation.next == -1 {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = PointPhase::START;
+        } else {
+            let destination = self
+                .walk_nodes
+                .as_ref()
+                .context("walk-node navigation not prepared")?
+                .position(navigation.map.expect("admitted point map"), navigation.next)?;
+            if phase == PointPhase::WALK_TO_NEXT_NODE {
+                let exited = self.actors[index]
+                    .animation
+                    .as_ref()
+                    .context("point walking animation unavailable")?
+                    .playback
+                    .exit_reached();
+                if !exited {
+                    let facing = self.point_facing_inputs(id, inputs)?;
+                    self.face_held_node(
+                        id,
+                        destination,
+                        facing,
+                        sounds
+                            .as_mut()
+                            .context("point facing requires synchronous sounds")?,
+                    )?;
+                }
+                if self.walk_ordinary_point(
+                    id,
+                    destination,
+                    0,
+                    inputs,
+                    sounds.as_mut().map(|sink| {
+                        sink as &mut dyn FnMut(
+                            ScriptActorId,
+                            super::super::ScriptSound,
+                        ) -> Result<()>
+                    }),
+                )? == 0
+                {
+                    self.admit_point_default(id, inputs, sounds)?;
+                    if self.point_destination_arrived(index, destination, 0, inputs)? {
+                        self.assign_walk_node(
+                            id,
+                            navigation.next,
+                            super::super::WalkNodeSlot::Current,
+                        )?;
+                        self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
+                    } else {
+                        self.globals.native_command.point_phase = PointPhase::START;
+                    }
+                }
+            } else if phase == PointPhase::LEAP_LINK {
+                // A flagged link is crossed by a leap: claim the node on arrival, otherwise turn
+                // to it and start the leap once facing.
+                if self.point_destination_arrived(index, destination, tolerance, inputs)? {
+                    self.assign_walk_node(
+                        id,
+                        navigation.next,
+                        super::super::WalkNodeSlot::Current,
+                    )?;
+                    self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
+                } else {
+                    let facing_inputs = self.point_facing_inputs(id, inputs)?;
+                    let sounds = sounds
+                        .as_mut()
+                        .context("point facing requires synchronous sounds")?;
+                    let facing = self.face_held_node(id, destination, facing_inputs, sounds)?;
+                    if facing == 0 {
+                        let ticks = inputs
+                            .nominal_ticks
+                            .context("point leap requires nominal_ticks")?;
+                        let selected = self
+                            .selected_player_index()
+                            .map(|selected| self.id(selected));
+                        self.begin_point_leap(id, selected.transpose()?, ticks, sounds)?;
+                    }
+                }
+            } else {
+                let scale = inputs
+                    .frame_scale
+                    .context("point node arrival requires frame_scale")?;
+                let threshold = (i32::from(self.ordinary_group_speed(index)) + 1)
+                    .wrapping_mul(256)
+                    .wrapping_mul(scale as i32)
+                    >> 8;
+                if self.snap_ordinary_horizontal(index, destination, threshold)? {
+                    self.admit_point_default(id, inputs, sounds)?;
+                    self.assign_walk_node(
+                        id,
+                        navigation.next,
+                        super::super::WalkNodeSlot::Current,
+                    )?;
+                    self.globals.native_command.point_phase = PointPhase::MONITOR_ROUTE;
+                } else {
+                    let facing_inputs = self.point_facing_inputs(id, inputs)?;
+                    let facing = self.face_held_node(
+                        id,
+                        destination,
+                        facing_inputs,
+                        sounds.context("point facing requires synchronous sounds")?,
+                    )?;
+                    if facing == 0 {
+                        self.globals.native_command.point_phase = PointPhase::WALK_TO_NEXT_NODE;
+                        let delay = self.actors[index].attributes[Attribute::NodeIdle];
+                        if delay != 0 {
+                            let random = random
+                                .context("point facing requires shared engine random stream")?;
+                            if random.rnd(i32::from(delay))? == 0 {
+                                self.globals.native_command.point_phase = PointPhase::IDLE_PAUSE;
+                                self.globals.native_command.point_word =
+                                    ((random.draw() & 127) + 16) as u16;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("admitted point control")
+            .ai_type = AiType::POINT_NAVIGATION;
+        self.map_updates.register(index)?;
+        Ok(1)
+    }
+
+    /// Phase zero preserves playback while releasing held nodes and searching for a free node.
+    /// A hit makes it the next node and selects phase one; a miss leaves no map.
+    /// Preservation's point route initialization calls the animation-stop operation, a no-op.
+    fn initialize_point_route(&mut self, id: ScriptActorId) -> Result<()> {
+        self.release_held_walk_nodes(id)?;
+        self.release_held_walk_nodes(id)?;
+        let found = self.nearest_free_walk_node(id)?;
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("admitted point control")
+            .navigation
+            .map = found.map(|(map, _)| map);
+        if let Some((_, node)) = found {
+            // The claim result never changes the initialization result.
+            self.assign_walk_node(id, node as i32, super::super::WalkNodeSlot::Next)?;
+            self.globals.native_command.point_phase = PointPhase::FACE_NEXT_NODE;
+        }
+        Ok(())
+    }
+
+    pub(super) fn complete_point(&mut self, id: ScriptActorId, result: u8) -> Result<i32> {
+        self.globals.native_command_return = result;
+        self.release_held_walk_nodes(id)?;
+        let actor = &mut self.actors[id.index];
+        let control = actor.control.as_mut().expect("admitted point control");
+        if control.ai_type == AiType::POINT_NAVIGATION {
+            control.ai_type = AiType::NONE;
+        }
+        actor.attributes[Attribute::Collide] = 13;
+        Ok(0)
+    }
+
+    fn point_visibility(
+        &self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        inputs: ScriptInputs<'_>,
+    ) -> Result<bool> {
+        let geometry = inputs
+            .locomotion_geometry
+            .context("point visibility geometry unavailable")?;
+        self.point_direct_visible(
+            id,
+            geometry
+                .environment
+                .selected_player
+                .context("point visibility selected player unavailable")?,
+            point,
+            super::obstacle::OrdinaryObstacleQuery {
+                scene: geometry.ground.scene,
+                animations: geometry.ground.animations,
+                prepared: geometry.ground.prepared,
+                vertical_offset: 0,
+                respond: false,
+            },
+        )
+    }
+
+    // None continues through the common pending tail; Some completes the wrapper.
+    fn advance_point_route(
+        &mut self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        inputs: ScriptInputs<'_>,
+    ) -> Result<Option<i32>> {
+        let navigation = self.actors[id.index]
+            .control
+            .as_ref()
+            .expect("admitted point control")
+            .navigation;
+        if navigation.current == -1 {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = PointPhase::START;
+            return Ok(None);
+        }
+        let Some(destination) = self.nearest_current_walk_node(id, point)? else {
+            return self.complete_point(id, 2).map(Some);
+        };
+        let destination = destination as i32;
+        if destination == navigation.current {
+            self.release_held_walk_nodes(id)?;
+            if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
+                self.globals.native_command.point_phase = PointPhase::DIRECT_ARRIVE;
+            } else if self.point_visibility(id, point, inputs)? {
+                self.globals.native_command.point_phase = PointPhase::DIRECT_TURN;
+            } else {
+                return self.complete_point(id, 4).map(Some);
+            }
+        } else {
+            let next = self.next_walk_node(id, destination, None)?;
+            if next == -1 {
+                return self.complete_point(id, 3).map(Some);
+            }
+            if !self.assign_walk_node(id, next, super::super::WalkNodeSlot::Next)? {
+                return self.complete_point(id, 7).map(Some);
+            }
+            self.globals.native_command.point_phase = if self.globals.walk_route.link_flags[0] == 0
+            {
+                PointPhase::FACE_NEXT_NODE
+            } else {
+                PointPhase::LEAP_LINK
+            };
+        }
+        Ok(None)
+    }
+
+    fn advance_point_direct(
+        &mut self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<Option<i32>> {
+        let phase = self.globals.native_command.point_phase;
+        if phase == PointPhase::DIRECT_ARRIVE {
+            self.admit_point_default(id, inputs, sounds)?;
+            return self.complete_point(id, 0).map(Some);
+        }
+        self.release_held_walk_nodes(id)?;
+        if self.actors[id.index].attributes[Attribute::NodeIgnoreInSight] != 0 {
+            self.globals.native_command.point_phase = PointPhase::DIRECT_ARRIVE;
+            return Ok(None);
+        }
+        if phase == PointPhase::DIRECT_TURN {
+            let facing = self.point_facing_inputs(id, inputs)?;
+            if self.face_ordinary_point(
+                id,
+                point,
+                facing,
+                sounds.context("point facing requires synchronous sounds")?,
+            )? == 0
+            {
+                self.globals.native_command.point_phase = PointPhase::DIRECT_WALK;
+            }
+            return Ok(None);
+        }
+        if !self.point_visibility(id, point, inputs)? {
+            self.globals.native_command.point_phase = PointPhase::START;
+            return Ok(None);
+        }
+        self.actors[id.index].attributes[Attribute::Collide] = 13;
+        if self.actors[id.index]
+            .control
+            .as_ref()
+            .expect("admitted point control")
+            .sliding_state
+            != 0
+        {
+            self.globals.native_command.point_phase = PointPhase::START;
+        }
+        if self.walk_ordinary_point(
+            id,
+            point,
+            tolerance,
+            inputs,
+            sounds.as_mut().map(|sink| {
+                sink as &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>
+            }),
+        )? == 0
+        {
+            return self.complete_point(id, 0).map(Some);
+        }
+        if !self.actors[id.index]
+            .animation
+            .as_ref()
+            .context("point walking animation unavailable")?
+            .playback
+            .exit_reached()
+        {
+            let facing = self.point_facing_inputs(id, inputs)?;
+            self.face_ordinary_point(
+                id,
+                point,
+                facing,
+                sounds.context("point facing requires synchronous sounds")?,
+            )?;
+        }
+        self.map_updates.register(id.index)?;
+        if !self.point_visibility(id, point, inputs)? {
+            self.globals.native_command.point_phase = PointPhase::START;
+        }
+        Ok(None)
+    }
+
+    /// Face an admitted held-node destination without the coordinate-facing arrival snap.
+    fn face_held_node(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        inputs: super::slope::OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let origin = self.spatial(id)?.local.position;
+        let heading = super::super::spatial::query_bearing(
+            destination[0].wrapping_sub(origin[0]),
+            destination[2].wrapping_sub(origin[2]),
+        );
+        self.face_ordinary_angle(id, heading, inputs, sounds)
+    }
+
+    pub(super) fn point_facing_inputs(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<super::slope::OrdinarySlopeInputs> {
+        let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
+        Ok(super::slope::OrdinarySlopeInputs {
+            selected_player,
+            holding_weapon,
+            combat_active: self.actors[id.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
+            frame_scale: inputs
+                .frame_scale
+                .context("point facing requires frame_scale")?,
+            ticks: inputs
+                .nominal_ticks
+                .context("point facing requires nominal_ticks")?,
+        })
+    }
+}

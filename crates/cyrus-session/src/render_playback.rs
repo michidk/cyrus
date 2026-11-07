@@ -40,7 +40,7 @@ impl RenderPlaybackSnapshot {
         actor_roots: Vec<Entity>,
     ) -> Result<Self> {
         let root = world
-            .try_query_filtered::<Entity, With<cyrus_game::script::ScriptScene>>()
+            .try_query_filtered::<Entity, With<cyrus_script::script::ScriptScene>>()
             .context("session scene bindings absent")?
             .single(world)
             .context("session texture source requires one active scene root")?;

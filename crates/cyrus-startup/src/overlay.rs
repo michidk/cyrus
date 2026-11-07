@@ -1,6 +1,7 @@
 //! Installed GXA images that a running `ViewGXA` or `AnimateGXA` task draws over the world frame.
 use bevy::prelude::*;
-use cyrus_game::{AppState, script::ScriptActors};
+use cyrus_game::AppState;
+use cyrus_script::script::ScriptActors;
 
 #[derive(Component)]
 struct Panel;
@@ -85,7 +86,7 @@ fn placement(width: u32, height: u32) -> (f32, f32, f32, f32) {
 }
 
 /// The cache paths of the two slots the script world asks for; an unsupported image is `None`.
-fn wanted(overlay: &cyrus_game::script::GxaOverlay) -> [Option<Option<String>>; 2] {
+fn wanted(overlay: &cyrus_script::script::GxaOverlay) -> [Option<Option<String>>; 2] {
     let first = cyrus_assets::overlay::cache_path(&overlay.name, overlay.frame);
     let second = overlay.second_offset.map(|offset| {
         cyrus_assets::overlay::second_slot_cache_path(&overlay.name, overlay.frame, offset)

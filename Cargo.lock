@@ -2737,6 +2737,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-script",
  "cyrus-session",
  "cyrus-soup",
  "cyrus-startup",
@@ -2809,6 +2810,7 @@ dependencies = [
  "cyrus-collision",
  "cyrus-config",
  "cyrus-game",
+ "cyrus-script",
  "cyrus-soup",
  "cyrus-world",
  "hound",
@@ -2866,6 +2868,7 @@ dependencies = [
  "cyrus-console",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-script",
 ]
 
 [[package]]
@@ -2874,18 +2877,11 @@ version = "0.8.0"
 dependencies = [
  "anyhow",
  "bevy",
- "blake3",
  "cyrus-assets",
  "cyrus-collision",
- "cyrus-console",
- "cyrus-soup",
  "cyrus-world",
- "log",
- "redguard-preservation",
- "rustc_apfloat",
  "serde",
  "serde_json",
- "toml",
 ]
 
 [[package]]
@@ -2923,11 +2919,33 @@ dependencies = [
  "cyrus-collision",
  "cyrus-console",
  "cyrus-game",
+ "cyrus-script",
  "cyrus-soup",
  "cyrus-text",
  "cyrus-world",
  "gltf",
  "redguard-preservation",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "cyrus-script"
+version = "0.8.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "blake3",
+ "cyrus-assets",
+ "cyrus-collision",
+ "cyrus-console",
+ "cyrus-game",
+ "cyrus-soup",
+ "cyrus-world",
+ "log",
+ "redguard-preservation",
+ "rustc_apfloat",
  "serde",
  "serde_json",
  "toml",
@@ -2944,6 +2962,7 @@ dependencies = [
  "cyrus-audio",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-script",
  "cyrus-soup",
  "cyrus-world",
  "redguard-preservation",
@@ -2972,6 +2991,7 @@ dependencies = [
  "cyrus-config",
  "cyrus-game",
  "cyrus-media",
+ "cyrus-script",
  "cyrus-text",
  "cyrus-world",
  "image",
@@ -3023,6 +3043,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-script",
  "cyrus-session",
  "cyrus-startup",
  "cyrus-world",

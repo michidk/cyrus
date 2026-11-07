@@ -20,7 +20,7 @@ use cyrus_audio::{
     sound::{Effect, Panned, PlayingSound, SoundEffects, SoundPlugin},
 };
 use cyrus_collision::ground::SupportHistory;
-use cyrus_game::player::{
+use cyrus_script::player::{
     data::PlayerScene,
     grounded::{self, ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
     motion::upright_rotation,
@@ -179,7 +179,7 @@ fn main() -> Result<()> {
         let actor = app
             .world_mut()
             .spawn((
-                cyrus_game::player::Player,
+                cyrus_script::player::Player,
                 GlobalTransform::from_translation(Vec3::Z),
                 SoundSurface(case.initial_surface),
             ))
@@ -673,7 +673,7 @@ mod tests {
                 joystick: None,
             },
             definition: Some(
-                cyrus_game::player::definition::PlayerDefinition::from_metadata(&data.metadata)
+                cyrus_script::player::definition::PlayerDefinition::from_metadata(&data.metadata)
                     .unwrap(),
             ),
             terrain: Some(
@@ -724,7 +724,7 @@ mod tests {
         let actor = app
             .world_mut()
             .spawn((
-                cyrus_game::player::Player,
+                cyrus_script::player::Player,
                 GlobalTransform::default(),
                 SoundSurface(Surface::UNKNOWN),
             ))
@@ -787,7 +787,7 @@ mod tests {
         ]);
         data = serde_json::from_value(primed_data).unwrap();
         scene.definition = Some(
-            cyrus_game::player::definition::PlayerDefinition::from_metadata(&data.metadata)
+            cyrus_script::player::definition::PlayerDefinition::from_metadata(&data.metadata)
                 .unwrap(),
         );
         case.entry_ticks = 1;

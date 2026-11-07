@@ -17,7 +17,8 @@ use bevy::{
     prelude::*,
 };
 use cyrus_assets::environment::Environment;
-use cyrus_game::{clock::bios_tick, fidelity::Fidelity, script::ScriptBinding};
+use cyrus_game::fidelity::Fidelity;
+use cyrus_script::{clock::bios_tick, script::ScriptBinding};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -173,9 +174,11 @@ pub(super) fn register(app: &mut App) {
                 .after(crate::script_transform::apply)
                 .after(crate::animation::apply_poses)
                 .before(bevy::asset::AssetEventSystems)
-                .run_if(|logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
-                    !logbook.is_some_and(|screen| screen.suspended())
-                }),
+                .run_if(
+                    |logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>| {
+                        !logbook.is_some_and(|screen| screen.suspended())
+                    },
+                ),
         );
 }
 

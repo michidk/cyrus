@@ -1,7 +1,7 @@
 //! Public identity contracts for host-prepared audio replacements.
 use bevy::prelude::World;
 use cyrus_audio::persistence::AudioRestoreBindings;
-use cyrus_game::script::ScriptActorId;
+use cyrus_script::script::ScriptActorId;
 
 fn actor(generation: u64, index: usize) -> ScriptActorId {
     ScriptActorId { generation, index }

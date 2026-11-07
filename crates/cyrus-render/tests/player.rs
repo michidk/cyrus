@@ -2,12 +2,12 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_game::AppState;
 use cyrus_game::fidelity::Fidelity;
-use cyrus_game::player::Player;
-use cyrus_game::player::PlayerPlugin;
-use cyrus_game::player::input::PlayerBindings;
-use cyrus_game::player::input::PlayerInput;
 use cyrus_render::camera::FlycamSettings;
 use cyrus_render::camera::ViewCamera;
+use cyrus_script::player::Player;
+use cyrus_script::player::PlayerPlugin;
+use cyrus_script::player::input::PlayerBindings;
+use cyrus_script::player::input::PlayerInput;
 
 #[test]
 fn flycam_moves_only_the_camera_and_returns_to_the_player() {
@@ -22,7 +22,7 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
         .add_plugins((PlayerPlugin, cyrus_render::camera::CameraPlugin));
     // The game camera drive is on by default and needs a script world; without one the view camera
     // would keep the flown pose. This test covers the player-transform camera it replaces.
-    app.insert_resource(cyrus_game::script::CameraDrive { enabled: false });
+    app.insert_resource(cyrus_script::script::CameraDrive { enabled: false });
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);

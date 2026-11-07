@@ -7,11 +7,8 @@ use super::{EffectDraw, EffectDrawView, SceneMaterial, TextureAnimations};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use bevy::{camera::visibility::NoFrustumCulling, prelude::*};
 use cyrus_assets::environment::Environment;
-use cyrus_game::{
-    AppState,
-    fidelity::Fidelity,
-    script::{EnvironmentalEffect, ScriptActors},
-};
+use cyrus_game::{AppState, fidelity::Fidelity};
+use cyrus_script::script::{EnvironmentalEffect, ScriptActors};
 use cyrus_world::lifecycle::PreparedWorld;
 
 #[derive(Component)]
@@ -41,11 +38,11 @@ struct Slot {
 struct LiveEffects {
     owner: Option<(AssetId<Environment>, u32, u64)>,
     repaint: bool,
-    pending: Option<Vec<(usize, cyrus_game::script::EnvironmentalEffect)>>,
+    pending: Option<Vec<(usize, cyrus_script::script::EnvironmentalEffect)>>,
     slots: Vec<Slot>,
     /// Presentation slots for actor flat records, grown on demand and ordered after the pool.
     flat_slots: Vec<Slot>,
-    pending_flats: Option<Vec<cyrus_game::script::ActorFlatDraw>>,
+    pending_flats: Option<Vec<cyrus_script::script::ActorFlatDraw>>,
     flat_packets: Vec<(Vec3, super::EffectDraw)>,
     /// Flat textures already reported as missing from the prepared images.
     reported_flats: std::collections::BTreeSet<u16>,
@@ -56,13 +53,13 @@ pub(super) fn register(app: &mut App) {
     app.init_resource::<LiveEffects>()
         .add_systems(
             Update,
-            bind.in_set(cyrus_game::script::SceneSubmission)
+            bind.in_set(cyrus_script::script::SceneSubmission)
                 .after(super::texture::TextureSystems::Bind),
         )
         .add_systems(
             Update,
             capture
-                .in_set(cyrus_game::script::SceneSubmission)
+                .in_set(cyrus_script::script::SceneSubmission)
                 .after(bind),
         )
         .add_systems(
@@ -213,11 +210,11 @@ fn bind(
 fn capture(
     timing: (
         Res<Time<Real>>,
-        Option<Res<cyrus_game::script::WorldClockSample>>,
+        Option<Res<cyrus_script::script::WorldClockSample>>,
         Option<Res<crate::presentation_clock::PresentationClock>>,
     ),
     state: Option<Res<State<AppState>>>,
-    logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>,
+    logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
     request: Res<EnvironmentRequest>,
     console: Option<Res<cyrus_console::Console>>,
     cameras: Query<(), With<ViewCamera>>,
@@ -296,7 +293,7 @@ fn draw(
         Option<Res<crate::presentation_clock::PresentationClock>>,
     ),
     state: Option<Res<State<AppState>>>,
-    logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>,
+    logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     fidelity: Res<Fidelity>,
@@ -353,7 +350,7 @@ fn draw(
         let projection = projection.get_clip_from_view();
         let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
         if let Some(effects) = live.pending.take() {
-            let now = cyrus_game::clock::bios_tick(elapsed);
+            let now = cyrus_script::clock::bios_tick(elapsed);
             let mut retained = Vec::new();
             for (index, effect) in effects {
                 let position = exported_position(effect.position);
@@ -383,7 +380,7 @@ fn draw(
         }
         live.repaint |= std::mem::take(&mut textures.effects_repaint);
         if let Some(flats) = live.pending_flats.take() {
-            let now = cyrus_game::clock::bios_tick(elapsed);
+            let now = cyrus_script::clock::bios_tick(elapsed);
             let mut packets = Vec::new();
             for flat in flats {
                 let texture = flat.descriptor as u16;
@@ -588,7 +585,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     fn installed_binding_scenario(resolved_world: bool) -> anyhow::Result<()> {
         use cyrus_assets::{install::GameInstall, native::Files, script::Scripts};
-        use cyrus_game::script::ScriptWorld;
+        use cyrus_script::script::ScriptWorld;
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -795,14 +792,14 @@ mod tests {
             )?,
             before
         );
-        use cyrus_game::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
+        use cyrus_script::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
         let mut frame = CameraFrameState::default();
         frame.published = Some(PublishedCamera {
-            pose: cyrus_game::script::camera::CameraPose {
+            pose: cyrus_script::script::camera::CameraPose {
                 position: [5120 * 256, 0, 10000 * 256],
                 angles: [0; 3],
             },
-            render: cyrus_game::script::camera::RenderPose {
+            render: cyrus_script::script::camera::RenderPose {
                 position: [5119.0, 0.0, 10000.0],
                 angles: [0; 3],
             },
@@ -952,8 +949,8 @@ mod tests {
             .init_resource::<Fidelity>()
             .init_resource::<super::super::RenderDistance>()
             .add_plugins((
-                cyrus_game::player::PlayerPlugin,
-                cyrus_game::script::ScriptPlugin,
+                cyrus_script::player::PlayerPlugin,
+                cyrus_script::script::ScriptPlugin,
             ));
         register(&mut app);
         app.update();

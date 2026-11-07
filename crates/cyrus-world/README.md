@@ -74,7 +74,7 @@ original walking cues and automatic runtime scheduling remain unverified. The
 define this boundary.
 
 SOUP execution belongs to `cyrus-soup`; game-owned hosts and explicit scripted
-playback belong to `cyrus-game::script`. `cyrus-world` supplies animation and
+playback belong to `cyrus-script::script`. `cyrus-world` supplies animation and
 sound services without depending on either executor or gameplay handlers.
 `PreparedWorld` also retains the independently exported `.scripts` asset.
 

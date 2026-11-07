@@ -1,7 +1,7 @@
 //! Explicit host-prepared identity bindings shared by restored audio owners.
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::Entity;
-use cyrus_game::script::ScriptActorId;
+use cyrus_script::script::ScriptActorId;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Complete supplied actor and presentation bindings for off-live audio reconstruction.

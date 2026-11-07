@@ -26,6 +26,7 @@ cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default", "webgl2"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
+cyrus-script.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"] }

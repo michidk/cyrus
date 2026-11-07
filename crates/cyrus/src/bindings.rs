@@ -1,6 +1,6 @@
 //! Host initialization of saved and installed player bindings.
 use bevy::prelude::*;
-use cyrus_game::player::input::PlayerBindings;
+use cyrus_script::player::input::PlayerBindings;
 pub(crate) fn load(
     preferences: Res<cyrus_game::preferences::Preferences>,
     mut commands: Commands,
@@ -32,11 +32,8 @@ pub(crate) fn load(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyrus_game::{
-        AppState,
-        fidelity::Fidelity,
-        player::{PlayerPlugin, input::PlayerInput},
-    };
+    use cyrus_game::{AppState, fidelity::Fidelity};
+    use cyrus_script::player::{PlayerPlugin, input::PlayerInput};
     struct Missing;
     impl cyrus_game::preferences::PreferenceStore for Missing {
         fn load(

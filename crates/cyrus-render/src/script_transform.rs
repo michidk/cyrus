@@ -1,6 +1,6 @@
 //! Bound script actors retain their original affine matrices through scene presentation.
 use bevy::{camera::visibility::VisibilitySystems, math::Affine3A, prelude::*};
-use cyrus_game::script::{Pose, ScriptActors, ScriptBinding};
+use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 
 /// Applies explicit script poses after ordinary scene transform propagation.
 pub struct ScriptTransformPlugin;
@@ -8,7 +8,7 @@ impl Plugin for ScriptTransformPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            visibility.after(cyrus_game::script::OrdinaryUpdates),
+            visibility.after(cyrus_script::script::OrdinaryUpdates),
         );
         app.add_systems(
             PostUpdate,
