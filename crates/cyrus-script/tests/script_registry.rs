@@ -22501,13 +22501,15 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     );
     assert_eq!(health(&[(Native::AdjustHealth, &[300, 0])]).unwrap(), 255);
     assert_eq!(health(&[(Native::AdjustHealth, &[-5, 0])]).unwrap(), 0);
+    // A nonpositive result of the death-owning variants first asks whether the receiver holds a
+    // weapon, which this inventory-less world cannot answer.
     for calls in [
         &[(Native::AdjustHealth, &[-5, 1][..])][..],
         &[(Native::SetHealth, &[0][..])][..],
     ] {
         let error = health(calls).unwrap_err();
         assert!(
-            format!("{error:#}").contains("death sequence unavailable"),
+            format!("{error:#}").contains("inventory owner unavailable"),
             "{error:#}"
         );
     }

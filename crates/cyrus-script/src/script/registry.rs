@@ -5395,6 +5395,39 @@ fn task_slot_name(name: Property) -> Option<(usize, cyrus_soup::TaskSlotField)> 
 }
 
 impl GameHost<'_, '_, '_, '_> {
+    /// The nonplayer health services `ZapObject`, `ZapObjectNoKill`, `SetHealth` and `AdjustHealth`
+    /// share, after their receiver gates: the health byte takes the wrapped sum clamped to 0..255
+    /// and, for the death-owning variant, a result at or below zero ends the receiver with the
+    /// recovered death dispatch.
+    fn adjust_nonplayer_health(
+        &mut self,
+        function: Native,
+        amount: i32,
+        kills: bool,
+    ) -> Result<()> {
+        let attributes = &mut self.registry.actors[self.index].attributes;
+        let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
+        attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
+        if kills && sum <= 0 {
+            let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .with_context(|| format!("{function}: death nominal ticks unavailable"))?;
+            let id = self.registry.id(self.index)?;
+            let sounds = &mut self.sounds;
+            self.registry
+                .dispatch_zap_object_death(id, holding, ticks, &mut |actor, sound| {
+                    sounds
+                        .as_deref_mut()
+                        .context("health death sound executor unavailable")?(
+                        actor, sound
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
     /// `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill`: health adjustments over
     /// the selected-player services `AdjustHealth` also uses. The player natives take the selected
     /// player whatever their receiver; the object natives gate on the receiver first and use the
@@ -5425,30 +5458,7 @@ impl GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::CompleteWithoutValue);
             }
             if !receiver_is_player {
-                let attributes = &mut self.registry.actors[self.index].attributes;
-                let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
-                attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
-                if kills && sum <= 0 {
-                    let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
-                    let ticks = self
-                        .inputs
-                        .nominal_ticks
-                        .with_context(|| format!("{function}: death nominal ticks unavailable"))?;
-                    let id = self.registry.id(self.index)?;
-                    let sounds = &mut self.sounds;
-                    self.registry.dispatch_zap_object_death(
-                        id,
-                        holding,
-                        ticks,
-                        &mut |actor, sound| {
-                            sounds
-                                .as_deref_mut()
-                                .context("zap death sound executor unavailable")?(
-                                actor, sound
-                            )
-                        },
-                    )?;
-                }
+                self.adjust_nonplayer_health(function, amount, kills)?;
                 return Ok(CallResult::CompleteWithoutValue);
             }
         }
@@ -7775,20 +7785,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 )?;
                 return Ok(CallResult::Complete(0));
             }
-            let attributes = &mut self.registry.actors[self.index].attributes;
             let value = arguments[0].integer()?;
+            let health = i32::from(self.registry.actors[self.index].attributes[Attribute::Health]);
             let delta = if set {
-                value.wrapping_sub(i32::from(attributes[Attribute::Health]))
+                value.wrapping_sub(health)
             } else {
                 value
             };
-            let health = i32::from(attributes[Attribute::Health]).wrapping_add(delta);
-            let damage = set || arguments[1].integer()? == 1;
-            anyhow::ensure!(
-                health > 0 || !damage,
-                "{function}: death sequence unavailable"
-            );
-            attributes[Attribute::Health] = health.clamp(0, 255) as u8;
+            let kills = set || arguments[1].integer()? == 1;
+            self.adjust_nonplayer_health(function, delta, kills)?;
             return Ok(CallResult::Complete(0));
         }
         // PlayerMoved compares the selected player's position with its snapshot taken at the

@@ -245,18 +245,32 @@ fn killed_world(
     combat: bool,
     current: AnimationGroup,
 ) -> (ScriptWorld, anyhow::Result<()>) {
+    killed_world_with(Native::ZapObject, &[-50], holding, combat, current)
+}
+
+/// As [`killed_world`] with any native that ends the receiver through the same service.
+fn killed_world_with(
+    function: Native,
+    arguments: &[i32],
+    holding: bool,
+    combat: bool,
+    current: AnimationGroup,
+) -> (ScriptWorld, anyhow::Result<()>) {
     let mut scripts = wait_cache(vec![
         wait(
             1,
-            Native::ZapObject,
+            function,
             CallKind::Function,
-            vec![Value::Integer { value: -50 }],
+            arguments
+                .iter()
+                .map(|&value| Value::Integer { value })
+                .collect(),
         ),
         Operation::End { target: 0 },
     ]);
     scripts.definition.functions[1] = Function {
-        name: Native::ZapObject,
-        param_count: 1,
+        name: function,
+        param_count: arguments.len() as u8,
         kind: CallKind::Function,
     };
     let logic = scripts.actors.get_mut("LOGIC").unwrap();
@@ -343,4 +357,46 @@ fn a_zapped_armed_nonplayer_without_a_combat_record_faults() {
     let (_, result) = killed_world(true, false, AnimationGroup::IDLE_LEDGE);
     let error = format!("{:#}", result.unwrap_err());
     assert!(error.contains("combat record unavailable"), "{error}");
+}
+
+#[test]
+fn set_and_adjust_health_end_a_nonplayer_through_the_same_death_dispatch() {
+    use cyrus_script::script::AiType;
+    for (function, arguments) in [
+        (Native::SetHealth, &[0][..]),
+        (Native::AdjustHealth, &[-50, 1][..]),
+    ] {
+        let (world, result) = killed_world_with(
+            function,
+            arguments,
+            false,
+            false,
+            AnimationGroup::IDLE_LEDGE,
+        );
+        result.unwrap();
+        assert_eq!(health(&world), 0, "{function}");
+        assert_eq!(current_group(&world), 134, "{function}");
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().ai_type,
+            AiType::DEAD
+        );
+    }
+    // Any other mode is the additive service: the byte clears and nothing dies.
+    let (world, result) = killed_world_with(
+        Native::AdjustHealth,
+        &[-50, 0],
+        false,
+        false,
+        AnimationGroup::IDLE_LEDGE,
+    );
+    result.unwrap();
+    assert_eq!(health(&world), 0);
+    assert_ne!(
+        world.inspect(0, 1)["actors"][0]["animation"]["current_group"].as_i64(),
+        Some(134)
+    );
+    assert_ne!(
+        world.actors()[0].control_state().unwrap().ai_type,
+        AiType::DEAD
+    );
 }

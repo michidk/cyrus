@@ -169,13 +169,14 @@
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/registry.rs -> crates/cyrus-script/src/script/registry/health.rs",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::selected_native_health_routes_addition_and_retains_early_feedback",
-        "crates/cyrus-script/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable"
+        "crates/cyrus-script/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::set_and_adjust_health_end_a_nonplayer_through_the_same_death_dispatch"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/commit/b0db4d4e3378eb16375194aed034688bb66be59a",
         "https://github.com/michidk/cyrus/issues/31#issuecomment-6518880324"
       ],
-      "limits": "Verified: published public-routing regression/original wrapper oracle covers selected addition and retained feedback. The native quick-health observation is related shared health behavior, not direct AdjustHealth acceptance. Unknown: all death modes/environmental effects, rendered/audio browser and restart parity."
+      "limits": "Verified: published public-routing regression/original wrapper oracle covers selected addition and retained feedback. The native quick-health observation is related shared health behavior, not direct AdjustHealth acceptance. Verified: the nonselected branch is the shared nonplayer adjustment (byte clamp, recovered death dispatch for the death-owning variants). Unknown: selected-player death modes/environmental effects, rendered/audio browser and restart parity."
     },
     {
       "native": "setHealth",
@@ -184,13 +185,14 @@
       "scope": "Absolute health write with generic admission and death-service ownership",
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/registry.rs -> crates/cyrus-script/src/script/registry/health.rs",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable"
+        "crates/cyrus-script/tests/script_registry.rs::set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::set_and_adjust_health_end_a_nonplayer_through_the_same_death_dispatch"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/31",
         "https://github.com/michidk/cyrus/issues/31#issuecomment-6518880324"
       ],
-      "limits": "Verified by source inspection: public script cases cover absolute value, attribute120 inhibition and missing death/weapon owners. Those contextual missing-input errors are deliberate service guards, not proof the entire behavior is missing. Unknown: direct installed original/native/browser absolute health and fatal-mode continuation."
+      "limits": "Verified by source inspection: public script cases cover absolute value, attribute120 inhibition and missing death/weapon owners. Those contextual missing-input errors are deliberate service guards, not proof the entire behavior is missing. Unknown: direct installed original/native/browser absolute health and fatal-mode continuation. Verified: the nonselected branch is the shared nonplayer adjustment (byte clamp, recovered death dispatch for the death-owning variants)."
     },
     {
       "native": "health",
@@ -3150,22 +3152,16 @@
       "owner": 5,
       "reviewed_revision": "ae97ec3bcedbc0a08168b76821cc120a78a31cd0",
       "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",
-        "https://github.com/michidk/redguard-preservation/pull/229"
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#testtask",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
       "native": "TestTask",
       "status": "partial",
-      "owner": 5,
       "scope": "One-argument task that follows the selected player with the node walk and never completes",
       "caller": "ScriptWorld::advance -> Runtime task call/poll -> Task::TestTask -> PointHost::follow_positions / move_to(Node)",
       "tests": [
         "crates/cyrus-script/src/script/tasks/persistence/tests.rs::test_task_follows_the_player_past_131072_and_never_completes",
         "crates/cyrus-script/tests/script_registry/effects.rs::test_task_through_the_scheduler_keeps_its_slot_while_the_player_is_near"
-      ],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#testtask",
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
       "limits": "Verified: independent installed task declaration/native/full handler; argument unused, wrapping coordinate differences sent to shared distance service, signed result greater than 131072 requests receiver movement to selected-player query position with final argument zero. Handler returns one independently of movement result. 3024 original handler contexts and eight effective instruction mutations pass. Position resolution, distance and movement services are controlled boundaries; helper arithmetic, collision/navigation effects and null-actor admission not accepted. Inferred: return one retains the slot under the separately published existing-task contract. Unknown: VM operand decoding, actual scheduler integration and natural original/native/browser behavior. Named implementation remains missing; no family behavior inferred."
     },
