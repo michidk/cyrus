@@ -123,6 +123,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
+- `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
+
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
 
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
