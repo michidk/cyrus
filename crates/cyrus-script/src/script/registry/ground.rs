@@ -25,6 +25,9 @@ pub struct OrdinaryGroundQuery<'a> {
 pub struct OrdinaryCollisionShape {
     pub positive_extent: [i32; 3],
     pub negative_extent: [i32; 3],
+    /// The bounds record's center offset (`size.pos`): added unrotated to the primary body query's
+    /// origin and to the selected player's fallback support sphere. Sphere construction ignores it.
+    pub center_offset: [i32; 3],
     pub body: Vec<BodySphere>,
     pub additional: Option<BodySphere>,
 }
@@ -41,17 +44,13 @@ fn mpsz_bounds(
     data: &cyrus_assets::animation::Animations,
     index: usize,
     scale: i32,
-) -> Result<ActorBounds> {
+) -> Result<(ActorBounds, [i32; 3])> {
     let value = data.metadata["mpsz_entries"]
         .as_array()
         .and_then(|entries| entries.get(index))
         .with_context(|| format!("ordinary collision MPSZ record {index} absent"))?;
     let record: MpszBounds = serde_json::from_value(value.clone())
         .with_context(|| format!("ordinary collision invalid MPSZ record {index}"))?;
-    ensure!(
-        record.center_offset == [0; 3],
-        "ordinary collision shifted MPSZ center unsupported"
-    );
     for axis in 0..3 {
         ensure!(
             i64::from(record.pos_extent[axis]) + i64::from(record.neg_extent[axis])
@@ -59,7 +58,10 @@ fn mpsz_bounds(
             "ordinary collision MPSZ record {index} axis {axis}: inconsistent total"
         );
     }
-    ActorBounds::new(record.pos_extent, record.neg_extent, scale)
+    Ok((
+        ActorBounds::new(record.pos_extent, record.neg_extent, scale)?,
+        record.center_offset,
+    ))
 }
 
 impl ScriptWorld {
@@ -132,7 +134,7 @@ impl ScriptWorld {
                 i16::try_from(scale)
                     .context("ordinary collision RAEX radius scale outside signed word")?,
             );
-            let bounds = if authored {
+            let (bounds, center_offset) = if authored {
                 let primary = usize::try_from(primary)
                     .context("ordinary collision primary bounds index negative")?;
                 mpsz_bounds(data, primary, scale)?
@@ -141,11 +143,14 @@ impl ScriptWorld {
                     .collision
                     .sphere_object_scale
                     .context("ordinary collision sphere_object_scale absent; re-export world")?;
-                scene
-                    .actor_collision
-                    .as_ref()
-                    .context("ordinary collision live geometry absent; re-export world")?
-                    .initial_bounds(index, system_scale, scale)?
+                (
+                    scene
+                        .actor_collision
+                        .as_ref()
+                        .context("ordinary collision live geometry absent; re-export world")?
+                        .initial_bounds(index, system_scale, scale)?,
+                    [0; 3],
+                )
             };
             let positive_extent = bounds.positive_extent();
             let negative_extent = bounds.negative_extent();
@@ -156,6 +161,7 @@ impl ScriptWorld {
             OrdinaryCollisionShape {
                 positive_extent,
                 negative_extent,
+                center_offset,
                 body: spheres.body,
                 additional: Some(spheres.additional),
             }
@@ -167,6 +173,7 @@ impl ScriptWorld {
             OrdinaryCollisionShape {
                 positive_extent: [12; 3],
                 negative_extent: [12; 3],
+                center_offset: [0; 3],
                 body: vec![BodySphere {
                     center: [0; 3],
                     radius: 12,
@@ -230,7 +237,7 @@ impl ScriptWorld {
             i16::try_from(scale).context("contact RAEX radius scale outside signed word")?,
         );
         let body = mpsz_bounds(data, alternate, scale)
-            .and_then(|bounds| bounds.body_spheres(post_collide_height))
+            .and_then(|(bounds, _)| bounds.body_spheres(post_collide_height))
             .with_context(|| {
                 format!(
                     "world {} instance {index} actor {} contact mpsz_bounds_1 {alternate}",
@@ -399,7 +406,7 @@ impl ScriptWorld {
             if selected.is_none() {
                 let fallback = cyrus_collision::ground::FallbackProbe::new(
                     position.map(i64::from),
-                    [0; 3],
+                    self.ordinary_collision_shape(id)?.center_offset,
                     positive_y_extent,
                     history.ticks() != 0,
                 )?;

@@ -40,11 +40,79 @@ impl EnvironmentalEffect {
     pub const REDUCED_SCALE: u32 = 0x10000;
 }
 
+impl EffectsSnapshot {
+    /// The saved active type-two records, in slot order.
+    pub(super) fn light_effects(&self) -> impl Iterator<Item = &LightEffect> {
+        self.lights.iter().flatten().filter(|light| light.active)
+    }
+}
+
+/// One modulated parameter of a type-two light effect: its starting value, the current value
+/// the scene reads, and the amplitude, period and phase that retime the next random value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LightChannel {
+    pub start: i32,
+    pub current: i32,
+    pub amplitude: i32,
+    pub period: i32,
+    pub phase: i32,
+}
+
+impl LightChannel {
+    fn new(value: i32, amplitude: i32) -> Self {
+        Self {
+            start: value,
+            current: value,
+            amplitude,
+            period: 1,
+            phase: 0,
+        }
+    }
+
+    /// One update: a zero amplitude leaves the channel alone; otherwise the phase adds the ticks
+    /// and, once it reaches the period, restarts and draws `start + Rnd(amplitude) - amplitude/2`.
+    fn modulate(
+        &mut self,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+    ) -> Result<()> {
+        if self.amplitude <= 0 {
+            return Ok(());
+        }
+        self.phase = self.phase.wrapping_add(ticks as i32);
+        if self.phase >= self.period {
+            self.phase = 0;
+            self.current = self
+                .start
+                .wrapping_add(random.rnd(self.amplitude)?)
+                .wrapping_sub(self.amplitude >> 1);
+        }
+        Ok(())
+    }
+}
+
+/// One retained type-two (light) effect record. A released record keeps its fields, including the
+/// position `AddLightEffect` never writes, for the next allocation of the slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LightEffect {
+    /// The record's XYZ, which `AddLightEffect` does not set: zero in a fresh pool.
+    pub position: [i32; 3],
+    /// Signed ticks left; the record ends at or below zero.
+    pub lifetime: i32,
+    pub active: bool,
+    /// The channel whose low word is the light radius; the light submits only while it is positive.
+    pub radius: LightChannel,
+    /// The second channel, modulated before the radius channel; scene submission ignores it.
+    pub secondary: LightChannel,
+}
+
 /// Slot continuation only; metadata and capacity come from the exact installed source.
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct EffectsSnapshot {
     source: String,
     slots: Vec<Option<EffectSnapshot>>,
+    #[serde(default)]
+    lights: Vec<Option<LightEffect>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct EffectSnapshot {
@@ -74,6 +142,8 @@ pub struct EnvironmentalEffects {
     disabled: bool,
     images: BTreeMap<u16, (u32, i32)>,
     slots: Vec<Option<EnvironmentalEffect>>,
+    /// Type-two records; they share the pool's capacity with the type-one slots.
+    lights: Vec<Option<LightEffect>>,
 }
 impl EnvironmentalEffects {
     fn prepare(source: &Effects) -> Result<Self> {
@@ -103,6 +173,7 @@ impl EnvironmentalEffects {
                 })
                 .collect::<Result<_>>()?,
             slots,
+            lights: Vec::new(),
         })
     }
     fn identity(source: &Effects) -> Result<String> {
@@ -130,6 +201,7 @@ impl EnvironmentalEffects {
                     })
                 })
                 .collect(),
+            lights: self.lights.clone(),
         })
     }
     pub(super) fn from_snapshot(saved: EffectsSnapshot, source: &Effects) -> Result<Self> {
@@ -141,6 +213,27 @@ impl EnvironmentalEffects {
         ensure!(
             saved.slots.len() == pool.slots.len(),
             "saved environmental effect slot count differs"
+        );
+        ensure!(
+            saved.lights.len() <= pool.slots.len(),
+            "saved light effect slot count exceeds the pool"
+        );
+        pool.lights = saved.lights;
+        ensure!(
+            pool.slots
+                .iter()
+                .flatten()
+                .filter(|effect| effect.active)
+                .count()
+                + pool
+                    .lights
+                    .iter()
+                    .flatten()
+                    .filter(|light| light.active)
+                    .count()
+                <= pool.slots.len()
+                || pool.slots.is_empty(),
+            "saved effects exceed the pool capacity"
         );
         for (index, saved) in saved.slots.into_iter().enumerate() {
             let Some(saved) = saved else { continue };
@@ -219,6 +312,78 @@ impl EnvironmentalEffects {
             active: true,
         });
         Ok(())
+    }
+    /// `AddLightEffect`: allocate a type-two record in the first free light slot while the pool
+    /// has a free record. The record's position is not written (a reused slot keeps its old one);
+    /// `d` and `f` start the two channels, `e` and `g` are their amplitudes and `h` the lifetime.
+    /// Returns the record's one-based slot, zero when the pool is disabled or full.
+    fn add_light(&mut self, [d, e, f, g, h]: [i32; 5]) -> Result<i32> {
+        if self.disabled {
+            return Ok(0);
+        }
+        ensure!(
+            e >= 0 && g >= 0,
+            "AddLightEffect: a negative modulation amplitude has no recovered behavior"
+        );
+        let active = self
+            .slots
+            .iter()
+            .flatten()
+            .filter(|effect| effect.active)
+            .count()
+            + self
+                .lights
+                .iter()
+                .flatten()
+                .filter(|light| light.active)
+                .count();
+        if active >= self.slots.len() {
+            return Ok(0);
+        }
+        self.lights.resize(self.slots.len(), None);
+        let Some(slot) = self
+            .lights
+            .iter()
+            .position(|light| light.is_none_or(|light| !light.active))
+        else {
+            return Ok(0);
+        };
+        let position = self.lights[slot].map_or([0; 3], |light| light.position);
+        self.lights[slot] = Some(LightEffect {
+            position,
+            lifetime: h,
+            active: true,
+            radius: LightChannel::new(d, e),
+            secondary: LightChannel::new(f, g),
+        });
+        Ok(slot as i32 + 1)
+    }
+    /// Lifetime then modulation of the type-two records: a record at or below zero ends before
+    /// either channel advances; the `f`/`g` channel advances before the `d`/`e` channel.
+    fn advance_lights(
+        &mut self,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+    ) -> Result<()> {
+        for light in self
+            .lights
+            .iter_mut()
+            .flatten()
+            .filter(|light| light.active)
+        {
+            light.lifetime = light.lifetime.wrapping_sub(ticks as i32);
+            if light.lifetime <= 0 {
+                light.active = false;
+                continue;
+            }
+            light.secondary.modulate(ticks, random)?;
+            light.radius.modulate(ticks, random)?;
+        }
+        Ok(())
+    }
+    /// Active type-two records in slot order.
+    pub fn light_effects(&self) -> impl Iterator<Item = &LightEffect> {
+        self.lights.iter().flatten().filter(|light| light.active)
     }
     fn prepare_draw(&mut self, ticks: u32) {
         self.prepare_draws(ticks, 1);
@@ -484,6 +649,27 @@ impl ScriptWorld {
             context.dispatch(event.flags, self.camera.as_mut(), &mut self.effects)?;
         }
         Ok(())
+    }
+    /// `AddLightEffect(a, b, c, d, e, f, g, h)`: the first three arguments and the receiver do
+    /// not affect the record. Returns its one-based slot, zero when the pool cannot allocate.
+    pub(super) fn add_light_effect(&mut self, arguments: [i32; 8]) -> Result<i32> {
+        let [_, _, _, d, e, f, g, h] = arguments;
+        self.effects
+            .as_mut()
+            .context("light effect spawning unavailable")?
+            .add_light([d, e, f, g, h])
+    }
+    /// World-loop stage for the type-two records, run beside the lifetime stage with the shared
+    /// random generator their modulation draws from.
+    pub fn advance_light_effects(
+        &mut self,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+    ) -> Result<()> {
+        match &mut self.effects {
+            Some(effects) => effects.advance_lights(ticks, random),
+            None => Ok(()),
+        }
     }
     /// World-loop lifetime stage after object/code-object updates. The scene already
     /// retained its effect submissions; expiry does not retract those packets.

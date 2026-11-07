@@ -729,6 +729,7 @@ impl ScriptWorld {
         self.globals.end_item_use_attempt();
         self.run_quick_keys(inputs, random, sounds)?;
         self.advance_environment_effects(ticks);
+        self.advance_light_effects(ticks, random)?;
         Ok(())
     }
 }

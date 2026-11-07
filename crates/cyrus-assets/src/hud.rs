@@ -124,10 +124,22 @@ pub struct InventoryItem {
     /// ITEM.INI `drop_use_item_list`: one unit of each is dropped when the item is used.
     #[serde(default)]
     pub drop_use_items: Vec<u16>,
-    /// ITEM.INI `hand_object_file`: the uppercase model stem the hand and hilt item display
-    /// natives place; absent for an item without a hand model.
+    /// ITEM.INI `hand_object_file`: the model the hand and hilt item display natives place.
     #[serde(default)]
-    pub hand_model: Option<String>,
+    pub hand_model: ItemHandModel,
+}
+
+/// An item's hand model as exported. Exports written before the model was recorded read as
+/// `Unexported`, so a valid installed model is never mistaken for an item without one.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub enum ItemHandModel {
+    /// The export predates this record; the cache must be exported again.
+    #[default]
+    Unexported,
+    /// ITEM.INI names no `hand_object_file` for the item.
+    Absent,
+    /// The uppercase model stem ITEM.INI names.
+    Model(String),
 }
 
 /// ITEM.INI item `type` code (preservation item-ini.md). `UseItem` draws the sword for a weapon,

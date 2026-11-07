@@ -285,7 +285,9 @@ pub(crate) fn prepare(
                 hand_model: item
                     .hand_object_file
                     .as_deref()
-                    .map(crate::animation::model_key),
+                    .map_or(crate::hud::ItemHandModel::Absent, |path| {
+                        crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
+                    }),
             },
         );
         if item.hide.unwrap_or(false) {

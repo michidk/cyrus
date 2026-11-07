@@ -6,7 +6,16 @@ use cyrus_script::script::{
 
 /// The selected player runs one property write on its first ordinary update; returns the world
 /// with the write applied, plus what restoring a snapshot of it gives.
-fn write_extent(property: Property, value: i32) -> (ScriptWorld, ScriptWorld) {
+fn write_extent(
+    property: Property,
+    value: i32,
+) -> (
+    ScriptWorld,
+    ScriptWorld,
+    cyrus_script::player::data::PlayerScene,
+    cyrus_assets::animation::Animations,
+    Scripts,
+) {
     let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
         let reference = u16::try_from(scripts.definition.references.len()).unwrap();
         scripts.definition.references.push(property);
@@ -95,7 +104,7 @@ fn write_extent(property: Property, value: i32) -> (ScriptWorld, ScriptWorld) {
         },
     )
     .unwrap();
-    (world, restored)
+    (world, restored, scene, data, scripts)
 }
 
 fn player_shape(world: &ScriptWorld) -> &cyrus_script::script::OrdinaryCollisionShape {
@@ -117,7 +126,7 @@ fn extent_writes_replace_the_shape_extents_and_survive_a_restore() {
             (Property::SizePsizeVy, false, 1),
             (Property::SizeMsizeVx, true, 0),
         ] {
-            let (world, restored) = write_extent(property, value);
+            let (world, restored, ..) = write_extent(property, value);
             for world in [&world, &restored] {
                 let shape = player_shape(world);
                 let (written, other) = if negative {
@@ -142,7 +151,7 @@ fn probes_consume_the_written_extents_with_32_bit_wrapping() {
     let position = [100 * 256, 40 * 256, 200 * 256];
     for value in [77, -5, i32::MAX] {
         // The vertical ground probe is centered on the actor origin plus the positive Y extent.
-        let (_, restored) = write_extent(Property::SizePsizeVy, value);
+        let (_, restored, ..) = write_extent(Property::SizePsizeVy, value);
         let extent = player_shape(&restored).positive_extent[1];
         let center = 40_i32.wrapping_add(value);
         let probe = GroundProbe::new(position.map(i64::from), extent, 500).unwrap();
@@ -155,19 +164,139 @@ fn probes_consume_the_written_extents_with_32_bit_wrapping() {
             "ground probe, psize.y={value}"
         );
         // The state-fifteen bounds diagonals use the negative X extent as stored, without negation.
-        let (_, restored) = write_extent(Property::SizeMsizeVx, value);
+        let (_, restored, ..) = write_extent(Property::SizeMsizeVx, value);
+        // The matrix goes through single precision: the largest word rounds up out of range, which
+        // the transform rejects with its contextual error.
+        if value == i32::MAX {
+            let error = ordinary_bounds_segments(player_shape(&restored), Matrix::IDENTITY, [0; 3])
+                .unwrap_err();
+            assert!(
+                format!("{error:#}").contains("cannot convert to i32"),
+                "{error:#}"
+            );
+            continue;
+        }
         let segments =
             ordinary_bounds_segments(player_shape(&restored), Matrix::IDENTITY, [0; 3]).unwrap();
-        // The matrix goes through single precision: the largest word rounds up out of range and
-        // converts to the x87 integer indefinite.
-        let expected = if value == i32::MAX { i32::MIN } else { value };
-        assert_eq!(
-            segments[0][1][0], expected,
-            "bounds endpoint, msize.x={value}"
-        );
-        assert_eq!(
-            segments[1][0][0], expected,
-            "bounds endpoint, msize.x={value}"
-        );
+        assert_eq!(segments[0][1][0], value, "bounds endpoint, msize.x={value}");
+        assert_eq!(segments[1][0][0], value, "bounds endpoint, msize.x={value}");
     }
+}
+
+/// A box whose near face lies 30 map units in front of the player at (522, 542).
+fn add_wall(scene: &mut cyrus_script::player::data::PlayerScene) {
+    use cyrus_assets::collision::{
+        CollisionGeometry, CollisionModel, CollisionSubobject, StaticPlacement,
+    };
+    use cyrus_collision::collision_world::StaticCollision;
+    scene.collision.placements.push(StaticPlacement {
+        id: 300,
+        model: "WALL".into(),
+        position: [512, 0, 512],
+        rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+    });
+    scene.collision.models.insert(
+        "WALL".into(),
+        CollisionModel {
+            flags: 0,
+            geometry: CollisionGeometry {
+                version: Some(*b"v5.0"),
+                radius: 300.,
+                vertices: vec![
+                    [-100., -200., 60.],
+                    [100., -200., 60.],
+                    [100., 200., 60.],
+                    [-100., 200., 60.],
+                    [-100., -200., 160.],
+                    [100., -200., 160.],
+                    [100., 200., 160.],
+                    [-100., 200., 160.],
+                ],
+                normals: vec![
+                    [0., 0., -1.],
+                    [0., -1., 0.],
+                    [0., 0., 1.],
+                    [0., 1., 0.],
+                    [-1., 0., 0.],
+                    [1., 0., 0.],
+                ],
+                faces: vec![
+                    vec![0, 3, 2, 1],
+                    vec![0, 1, 5, 4],
+                    vec![4, 5, 6, 7],
+                    vec![3, 7, 6, 2],
+                    vec![0, 4, 7, 3],
+                    vec![1, 2, 6, 5],
+                ],
+                textures: Some(vec![None; 6]),
+                subobjects: vec![CollisionSubobject {
+                    center: [0., 0., 100.],
+                    radius: 300.,
+                    extents: Some([200.; 3]),
+                    faces: (0..6).collect(),
+                }],
+            },
+        },
+    );
+    scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+}
+
+/// Primary body contacts of the selected player at (522, 542) against a box whose near face lies
+/// 30 map units in front of it, after the script wrote `size.pos.vz = center_z`.
+fn body_contacts_with_center(center_z: i32) -> (usize, usize) {
+    use cyrus_script::script::OrdinaryBodyQuery;
+    let (world, restored, mut scene, data, _) = write_extent(Property::SizePosVz, center_z);
+    add_wall(&mut scene);
+    let count = |mut world: ScriptWorld| {
+        let index = world
+            .actors()
+            .iter()
+            .position(|a| matches!(a.source, ScriptActorSource::Player))
+            .unwrap();
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        world
+            .place_selected_player([522 * 256, -1536, 542 * 256], 0)
+            .unwrap();
+        world.refresh_model_presentations(&data, &[player]).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])
+            .unwrap();
+        world
+            .query_ordinary_body(
+                player,
+                OrdinaryBodyQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                    excluded_candidate_type: None,
+                    terrain: None,
+                },
+            )
+            .unwrap()
+            .len()
+    };
+    (count(world), count(restored))
+}
+
+#[test]
+fn center_offset_moves_the_primary_body_query_origin() {
+    let (centered, centered_restored) = body_contacts_with_center(0);
+    let (forward, forward_restored) = body_contacts_with_center(30);
+    let (back, _) = body_contacts_with_center(-30);
+    assert_eq!(
+        centered, 0,
+        "the wall is out of reach of the unshifted body"
+    );
+    assert!(
+        forward > 0,
+        "a +30 center offset puts the body on the wall face"
+    );
+    assert_eq!(back, 0, "a -30 center offset moves it away");
+    assert_eq!(
+        (centered_restored, forward_restored),
+        (centered, forward),
+        "restore"
+    );
 }

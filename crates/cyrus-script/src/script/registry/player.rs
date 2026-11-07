@@ -2,7 +2,7 @@
 use super::ScriptWorld;
 use crate::player::{
     data::PlayerScene,
-    grounded::{self, ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery},
+    grounded::{self, ForwardWalk, GroundedUpdate, GroundedWalk, LiveBounds, StaticGroundQuery},
     placement::PlayerPose,
     runtime::GroundedTick,
     turn,
@@ -1237,9 +1237,12 @@ impl ScriptWorld {
             .collect::<Vec<_>>();
         let position = proposed.map(i64::from);
         let ground = GroundProbe::new(position, shape.positive_extent[1], query.distance)?;
+        let body_position: [i64; 3] = std::array::from_fn(|axis| {
+            position[axis] + (i64::from(shape.center_offset[axis]) << 8)
+        });
         let fallback = FallbackProbe::new(
             position,
-            [0; 3],
+            shape.center_offset,
             shape.positive_extent[1],
             history.ticks() != 0,
         )?;
@@ -1281,7 +1284,7 @@ impl ScriptWorld {
             &self.ordinary_collision_poses(query.prepared)?,
             RuntimeForwardQuery {
                 body: BodyProbe {
-                    position,
+                    position: body_position,
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,
@@ -1532,7 +1535,10 @@ impl ScriptWorld {
         let live_extent = self
             .ordinary_collision_shape(tick.actor)
             .ok()
-            .map(|shape| shape.positive_extent);
+            .map(|shape| LiveBounds {
+                positive_extent: shape.positive_extent,
+                center_offset: shape.center_offset,
+            });
         if self.spatial.is_none() {
             self.prepare_spatial()?;
         }
@@ -1630,7 +1636,7 @@ impl ScriptWorld {
                 alternate_collision: tick.alternate_collision,
                 sidedness: tick.sidedness,
                 surface_update: tick.surface_update,
-                extent: live_extent,
+                bounds: live_extent,
             };
             if let Some(reference) = walk.move_grounded(
                 &query,
