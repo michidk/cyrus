@@ -7178,19 +7178,21 @@
       "property": "anim.current",
       "status": "partial",
       "owner": 11,
-      "scope": "Signed16 current animation group read without advancing playback",
+      "scope": "Signed16 current animation group: reads without advancing playback; a write switches the command table and type flags the next advance interprets",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::current_animation_property_reads_signed_group_without_advancing_playback",
         "crates/cyrus-script/tests/script_registry.rs::current_animation_property_without_an_association_returns_zero",
-        "crates/cyrus-script/tests/script_registry.rs::animation_and_torch_properties_reject_unprepared_owners_and_animation_writes"
+        "crates/cyrus-script/tests/script_registry.rs::animation_and_torch_properties_reject_unprepared_owners_and_unanimated_writes",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::writing_anim_current_switches_the_commands_a_later_step_reads",
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::writing_the_current_group_switches_the_commands_in_use_without_touching_the_cursor"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/11"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures read0 without association,-1 before current group,7 and signed32768-as-32768, across Me/Player/Named and assert unchanged animation inspection. Writes are unsupported. Unknown: installed original/native/browser exact script reads around request/completion/restore; visible playback does not isolate property semantics. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "limits": "Verified by source/assertion inspection; Public fixtures read0 without association,-1 before current group,7 and signed32768-as-32768, across Me/Player/Named and assert unchanged animation inspection. A write of a group keeps the cursor, countdowns and markers; -1 leaves no current group; a group without a table, or a write while none is current, stops with an explicit error where the original dereferences an empty slot or keeps stale bytes. Unknown: installed original/native/browser exact script reads around request/completion/restore; visible playback does not isolate property semantics. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
       "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
     },
     {

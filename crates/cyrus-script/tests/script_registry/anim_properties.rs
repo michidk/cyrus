@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 18] = [
+const REFERENCES: [Property; 19] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -27,6 +27,7 @@ const REFERENCES: [Property; 18] = [
     Property::AnimAngleVx,
     Property::AnimAngleVy,
     Property::AnimAngleVz,
+    Property::AnimCurrent,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -511,4 +512,52 @@ fn the_repeat_byte_and_the_retained_translation_and_rotation_words_are_record_fi
     run_body(&mut fixture).unwrap();
     // The byte keeps eight bits, the words are signed sixteen-bit values.
     assert_eq!(fixture.locals()[..3], [5, -300, -0x8000]);
+}
+
+#[test]
+fn writing_anim_current_switches_the_commands_a_later_step_reads() {
+    // Group 9 holds one frame and its end; group 7 four frames. With the countdown expired the
+    // step moves the kept cursor to command 1, which is group 9's end but group 7's second frame.
+    let mut ops = vec![
+        write(Property::AnimCurrent, 9),
+        write(Property::AnimSpeedCount, 0),
+        assign(
+            Place::Local { index: 0 },
+            Value::Read {
+                place: me(Property::AnimCurrent),
+            },
+        ),
+        Operation::End { target: 0 },
+    ];
+    let mut fixture = Fixture::new(std::mem::take(&mut ops));
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 9, "the written word reads back");
+    fixture.animate(1);
+    assert_eq!(
+        fixture.frame(),
+        None,
+        "group 9's end, not group 7's frame 11"
+    );
+    // A group without commands stops the script with an explicit error.
+    let mut fixture = Fixture::new(vec![
+        write(Property::AnimCurrent, 40),
+        Operation::End { target: 0 },
+    ]);
+    let caller = fixture.world.id(0).unwrap();
+    let error = fixture
+        .world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("absent group"), "{error:#}");
 }

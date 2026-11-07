@@ -689,8 +689,11 @@ progress byte completes `WaitAnimFrame`) and is saved with the animation. See pr
 [animation record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties).
 `anim.rep_count` (the repeat byte of the ConditionalDelay/LoopControl commands) and the `anim.pos`/`anim.angle` words
 (the translation/rotation commands' retained words, cleared at the next cursor step) read and write like the others.
+Writing `anim.current` switches the command table and type flags the next advance interprets and keeps
+the cursor, countdowns and markers; -1 leaves no current group, and a group without a table or a write
+while none is current stops with an explicit error.
 `anim.sound_handle`, `anim.max_group`, `anim.last_angle` and `anim.address`
-stay unsupported; writing `anim.current` too.
+stay unsupported.
 
 
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player

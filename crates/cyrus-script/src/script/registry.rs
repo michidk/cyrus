@@ -5956,6 +5956,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .set_record_field(field, value)
                 .with_context(|| format!("property {name}"));
         }
+        if name == Property::AnimCurrent {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .animation
+                .as_mut()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?
+                .playback
+                .set_current_group(value)
+                .with_context(|| format!("property {name}"));
+        }
         if name == Property::PanicGroup {
             let index = self.property_receiver(target)?;
             let actor = &mut self.registry.actors[index];

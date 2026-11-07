@@ -174,3 +174,42 @@ fn change_group_to_a_missing_group_or_frame_fails_playback_stickily() {
         assert!(actor.advance(1).is_err());
     }
 }
+
+#[test]
+fn writing_the_current_group_switches_the_commands_in_use_without_touching_the_cursor() {
+    let data: Animations = serde_json::from_value(json!({
+        "version": 2, "world": 17, "sections": {},
+        "metadata": {"actors": [{"script_name": "ACTOR", "animation_groups": [
+            {"group_index": 7, "anim_type": 0, "anim_id": 1, "commands": [
+                {"opcode":0,"frame_reference":0}, {"opcode":0,"frame_reference":1},
+                {"opcode":0,"frame_reference":2}, {"opcode":1}]},
+            {"group_index": 9, "anim_type": 0, "anim_id": 5, "commands": [
+                {"opcode":0,"frame_reference":10}, {"opcode":0,"frame_reference":11},
+                {"opcode":0,"frame_reference":12}, {"opcode":1}]},
+        ]}]},
+        "models": {}, "unsupported": {}
+    }))
+    .unwrap();
+    let (mut actor, first) = started(&data);
+    assert_eq!(first, Some(0));
+    actor.set_current_group(9).unwrap();
+    // The word changed, the cursor and the reload byte did not.
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(9)));
+    assert_eq!(actor.record_field(Frame).unwrap(), 0);
+    assert_eq!(actor.record_field(Speed).unwrap(), 1);
+    // The next step reads group 9's table at the kept cursor.
+    assert_eq!(actor.advance(1).unwrap(), Some(11));
+    assert_eq!(actor.record_field(Frame).unwrap(), 1);
+    // A group without a table stops with an explicit error and changes nothing.
+    let error = actor.set_current_group(40).unwrap_err();
+    assert!(format!("{error:#}").contains("absent group"), "{error:#}");
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(9)));
+    // -1 leaves no current group.
+    actor.set_current_group(-1).unwrap();
+    assert_eq!(actor.current_group(), None);
+    let error = actor.set_current_group(7).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("while none is current"),
+        "{error:#}"
+    );
+}

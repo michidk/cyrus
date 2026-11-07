@@ -21432,9 +21432,9 @@ fn current_animation_property_without_an_association_returns_zero() {
 }
 
 #[test]
-fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
+fn animation_and_torch_properties_reject_unprepared_owners_and_unanimated_writes() {
     for (name, write, separate, expected) in [
-        (Property::AnimCurrent, true, false, "write unsupported"),
+        (Property::AnimCurrent, true, false, "has no animation"),
         (
             Property::TorchTimer,
             false,

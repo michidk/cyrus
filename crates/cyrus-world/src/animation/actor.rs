@@ -541,6 +541,30 @@ impl ActorAnimation {
         Ok(())
     }
 
+    /// Writes the record's current-group word (`anim.current`). A group makes that group's command
+    /// table and type flags the ones interpreted next while the cursor, countdowns, loop, repeat and
+    /// markers stay; the word -1 leaves no current group, so the next advance selects any pending
+    /// request. A group without a command table, or any group while none is current (the record's
+    /// other bytes are then stale), stops with an explicit error where the original would dereference
+    /// an empty table slot at its next advance.
+    pub fn set_current_group(&mut self, value: i32) -> anyhow::Result<()> {
+        self.check_failure()?;
+        if value as i16 == -1 {
+            self.current = None;
+            return Ok(());
+        }
+        let group = AnimationGroup::from_index(value as u16);
+        let (current, sequence) = self.current.as_mut().with_context(|| {
+            format!(
+                "{}: writing the current group {group} while none is current is unsupported",
+                self.context
+            )
+        })?;
+        sequence.switch_tables(group)?;
+        *current = group;
+        Ok(())
+    }
+
     /// A group's frame countdown byte, the one a selected request adds its modifier to.
     fn group_speed(&self, group: AnimationGroup) -> anyhow::Result<u8> {
         let metadata = self

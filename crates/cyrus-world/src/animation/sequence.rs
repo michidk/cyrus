@@ -571,6 +571,33 @@ impl FrameSequence {
         }
     }
 
+    /// The command table and type flags of `target`, read from the actor's group tables.
+    fn replacement_tables(&self, target: AnimationGroup, origin: &str) -> anyhow::Result<Self> {
+        let metadata = self
+            .alternates
+            .as_ref()
+            .and_then(|groups| groups.get(&target))
+            .with_context(|| format!("{origin} to absent group {target}"))?;
+        Self::from_group(self.context.clone(), metadata, 0, 0)
+    }
+
+    /// Takes the replacement's command table, type flags and group; every other byte stays.
+    fn adopt_tables(&mut self, replacement: Self) {
+        self.commands = replacement.commands;
+        self.type_one = replacement.type_one;
+        self.type_two = replacement.type_two;
+        self.group = replacement.group;
+    }
+
+    /// Makes `target` the group whose commands are interpreted, keeping the cursor, countdowns,
+    /// loop, repeat and markers, as a write of the record's current-group word does.
+    pub(super) fn switch_tables(&mut self, target: AnimationGroup) -> anyhow::Result<()> {
+        let replacement =
+            self.replacement_tables(target, &format!("{}: current group write", self.context))?;
+        self.adopt_tables(replacement);
+        Ok(())
+    }
+
     pub(super) fn command_count(&self) -> usize {
         self.commands.len()
     }
@@ -820,27 +847,17 @@ impl FrameSequence {
                 }
                 Command::ChangeGroup(group, frame) => {
                     let target = AnimationGroup::from_index(group as u16);
-                    let metadata = self
-                        .alternates
-                        .as_ref()
-                        .and_then(|groups| groups.get(&target))
-                        .with_context(|| {
-                            format!(
-                                "{} command {}: group change to absent group {target}",
-                                self.context, self.command
-                            )
-                        })?;
-                    let replacement = Self::from_group(self.context.clone(), metadata, 0, 0)?;
+                    let replacement = self.replacement_tables(
+                        target,
+                        &format!("{} command {}: group change", self.context, self.command),
+                    )?;
                     anyhow::ensure!(
                         (frame as usize) < replacement.commands.len(),
                         "{} command {}: group change to frame {frame} outside group {target}",
                         self.context,
                         self.command
                     );
-                    self.commands = replacement.commands;
-                    self.type_one = replacement.type_one;
-                    self.type_two = replacement.type_two;
-                    self.group = replacement.group;
+                    self.adopt_tables(replacement);
                     self.command = frame as i16;
                     self.switched = Some(target);
                 }
