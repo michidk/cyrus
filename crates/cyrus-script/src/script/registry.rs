@@ -5194,20 +5194,23 @@ fn control_record_property(
     })
 }
 
-/// The bounds-record extent a `size.psize.v*` or `size.msize.v*` property names: whether it is the
-/// negative extent, and the axis.
-fn collision_extent_property(name: Property) -> Option<(bool, usize)> {
-    use Property::{SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePsizeVx, SizePsizeVy, SizePsizeVz};
-    [SizePsizeVx, SizePsizeVy, SizePsizeVz]
-        .iter()
-        .position(|&n| n == name)
-        .map(|axis| (false, axis))
-        .or_else(|| {
-            [SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]
-                .iter()
-                .position(|&n| n == name)
-                .map(|axis| (true, axis))
-        })
+/// The bounds-record triple a `size.psize`, `size.msize` or `size.pos` property names, and the axis.
+enum CollisionField {
+    Positive(usize),
+    Negative(usize),
+    Center(usize),
+}
+
+fn collision_extent_property(name: Property) -> Option<CollisionField> {
+    use Property::{
+        SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePosVx, SizePosVy, SizePosVz, SizePsizeVx,
+        SizePsizeVy, SizePsizeVz,
+    };
+    let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
+    find([SizePsizeVx, SizePsizeVy, SizePsizeVz])
+        .map(CollisionField::Positive)
+        .or_else(|| find([SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]).map(CollisionField::Negative))
+        .or_else(|| find([SizePosVx, SizePosVy, SizePosVz]).map(CollisionField::Center))
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5236,6 +5239,26 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
             find([LastSlaveAngleVx, LastSlaveAngleVy, LastSlaveAngleVz])
                 .map(PoseProperty::LastSlaveAngle)
         })
+}
+
+/// The animation record field an `anim.*` property names. The other record fields have no
+/// recovered owner or contract and stay unsupported.
+fn playback_field(name: Property) -> Option<cyrus_world::animation::PlaybackField> {
+    use cyrus_world::animation::PlaybackField;
+    Some(match name {
+        Property::AnimNext => PlaybackField::Next,
+        Property::AnimNextSpeed => PlaybackField::NextSpeed,
+        Property::AnimFrame => PlaybackField::Frame,
+        Property::AnimSpeed => PlaybackField::Speed,
+        Property::AnimSpeedCount => PlaybackField::SpeedCount,
+        Property::AnimStopFlag => PlaybackField::StopFlag,
+        Property::AnimHaltFlag => PlaybackField::HaltFlag,
+        Property::AnimHoldFlag => PlaybackField::HoldFlag,
+        Property::AnimLoopCount => PlaybackField::LoopCount,
+        Property::AnimRewindFlag => PlaybackField::RewindFlag,
+        Property::AnimRealFrame => PlaybackField::RealFrame,
+        _ => return None,
+    })
 }
 
 /// The task slot and retained word a `task_variable*` property names.
@@ -5437,6 +5460,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     }),
             ));
         }
+        if let Some(field) = playback_field(name) {
+            let index = self.property_receiver(target)?;
+            // An actor without an animation association reads zero, as `anim.current` does.
+            return self.registry.actors[index]
+                .animation
+                .as_ref()
+                .map_or(Ok(0), |animation| animation.playback.record_field(field))
+                .with_context(|| format!("property {name}"));
+        }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
@@ -5608,7 +5640,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         }
-        if let Some((negative, axis)) = collision_extent_property(name) {
+        if let Some(field) = collision_extent_property(name) {
             let index = self.property_receiver(target)?;
             let shape = self.registry.actors[index]
                 .collision
@@ -5616,10 +5648,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| {
                     format!("property {target:?}.{name}: collision shape not prepared")
                 })?;
-            return Ok(if negative {
-                shape.negative_extent[axis]
-            } else {
-                shape.positive_extent[axis]
+            return Ok(match field {
+                CollisionField::Positive(axis) => shape.positive_extent[axis],
+                CollisionField::Negative(axis) => shape.negative_extent[axis],
+                CollisionField::Center(axis) => shape.center_offset[axis],
             });
         }
         let pose = pose_property(name)
@@ -5675,6 +5707,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name}: collision metadata unavailable"))?;
             *flags = value as u8;
             return Ok(());
+        }
+        if let Some(field) = playback_field(name) {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .animation
+                .as_mut()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?
+                .playback
+                .set_record_field(field, value)
+                .with_context(|| format!("property {name}"));
         }
         if name == Property::PanicGroup {
             let index = self.property_receiver(target)?;
@@ -5810,7 +5852,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
-        if let Some((negative, axis)) = collision_extent_property(name) {
+        if let Some(field) = collision_extent_property(name) {
             let index = self.property_receiver(target)?;
             let shape = self.registry.actors[index]
                 .collision
@@ -5818,10 +5860,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| {
                     format!("property {target:?}.{name}: collision shape not prepared")
                 })?;
-            if negative {
-                shape.negative_extent[axis] = value;
-            } else {
-                shape.positive_extent[axis] = value;
+            match field {
+                CollisionField::Positive(axis) => shape.positive_extent[axis] = value,
+                CollisionField::Negative(axis) => shape.negative_extent[axis] = value,
+                CollisionField::Center(axis) => shape.center_offset[axis] = value,
             }
             return Ok(());
         }
@@ -6387,9 +6429,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let model = hud
                 .item_hand_model(item)?
                 .with_context(|| format!("{function}: item {item} is not in the item list"))?;
-            // An item without a hand model returns zero without allocating a record.
-            let Some(model) = model else {
-                return Ok(CallResult::Complete(0));
+            use cyrus_assets::hud::ItemHandModel;
+            let model = match model {
+                // An item without a hand model returns zero without allocating a record.
+                ItemHandModel::Absent => return Ok(CallResult::Complete(0)),
+                ItemHandModel::Model(model) => model,
+                ItemHandModel::Unexported => anyhow::bail!(
+                    "{function}: item {item}'s hand model is not in this HUD export; export the \
+                     installed assets again"
+                ),
             };
             let data = self
                 .inputs

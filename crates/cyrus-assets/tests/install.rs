@@ -692,6 +692,19 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert_eq!(data["inventory"]["0"]["weapon"], false);
     assert_eq!(data["inventory"]["1"]["weapon"], true);
     assert_eq!(data["inventory"]["45"]["weapon"], false);
+    // Every installed item records its hand model (no export reads as unexported); weapons name one.
+    for (id, item) in data["inventory"].as_object().unwrap() {
+        assert_ne!(item["hand_model"], "Unexported", "item {id}");
+        if item["weapon"] == true {
+            assert!(
+                item["hand_model"]["Model"]
+                    .as_str()
+                    .is_some_and(|m| !m.is_empty()),
+                "weapon item {id}: {}",
+                item["hand_model"]
+            );
+        }
+    }
     assert!(
         data["items"]
             .as_array()

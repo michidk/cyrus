@@ -307,7 +307,7 @@ fn forward_query_commits_surface_state_before_admission() {
     ] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
-            extent: None,
+            bounds: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -340,7 +340,7 @@ fn support_miss_commits_history_and_clears_assigned_surface() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
-        extent: None,
+        bounds: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -386,7 +386,7 @@ fn steep_forward_probe_stops_before_support_state_updates() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
-        extent: None,
+        bounds: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -425,7 +425,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
     for (material, accepted) in [(Surface::SAND, true), (Surface::GLOOP, false)] {
         let scene = ground_scene(material);
         let query = StaticGroundQuery {
-            extent: None,
+            bounds: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -525,7 +525,7 @@ fn grounded_response_assigns_height_after_translation() {
         actors: vec![],
     };
     let query = StaticGroundQuery {
-        extent: None,
+        bounds: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -613,7 +613,7 @@ fn stationary_grounded_update_separates_remaining_wall_overlap() {
         .candidates([5000, 5000], previous, None)
         .unwrap();
     let query = StaticGroundQuery {
-        extent: None,
+        bounds: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -660,7 +660,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         actors: vec![],
     };
     let query = StaticGroundQuery {
-        extent: None,
+        bounds: None,
         scene: &scene,
         candidates: &candidates,
         rotation: Mat3::IDENTITY,
@@ -767,7 +767,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
             actors: vec![],
         };
         let query = StaticGroundQuery {
-            extent: None,
+            bounds: None,
             scene: &scene,
             candidates: &candidates,
             rotation: Mat3::IDENTITY,
@@ -1206,4 +1206,94 @@ fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
     .unwrap();
     scripts.content_id = scripts.content_identity().unwrap();
     scripts
+}
+
+#[test]
+fn forward_query_tests_the_body_from_the_written_center_offset() {
+    use bevy::math::Mat3;
+    use cyrus_script::player::grounded::{LiveBounds, StaticGroundQuery, SurfaceUpdate};
+    let mut scene = ground_scene(Surface::SAND);
+    scene.collision.placements.push(StaticPlacement {
+        id: 0,
+        model: "WALL".into(),
+        position: [512, 0, 512],
+        rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+    });
+    scene.collision.models.insert(
+        "WALL".into(),
+        CollisionModel {
+            flags: 0,
+            geometry: CollisionGeometry {
+                version: Some(*b"v5.0"),
+                radius: 300.,
+                vertices: vec![
+                    [-100., -200., 60.],
+                    [100., -200., 60.],
+                    [100., 200., 60.],
+                    [-100., 200., 60.],
+                    [-100., -200., 160.],
+                    [100., -200., 160.],
+                    [100., 200., 160.],
+                    [-100., 200., 160.],
+                ],
+                normals: vec![
+                    [0., 0., -1.],
+                    [0., -1., 0.],
+                    [0., 0., 1.],
+                    [0., 1., 0.],
+                    [-1., 0., 0.],
+                    [1., 0., 0.],
+                ],
+                faces: vec![
+                    vec![0, 3, 2, 1],
+                    vec![0, 1, 5, 4],
+                    vec![4, 5, 6, 7],
+                    vec![3, 7, 6, 2],
+                    vec![0, 4, 7, 3],
+                    vec![1, 2, 6, 5],
+                ],
+                textures: Some(vec![None; 6]),
+                subobjects: vec![CollisionSubobject {
+                    center: [0., 0., 100.],
+                    radius: 300.,
+                    extents: Some([200.; 3]),
+                    faces: (0..6).collect(),
+                }],
+            },
+        },
+    );
+    scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+    let candidates = StaticCandidates {
+        faces: vec![0],
+        actors: vec![],
+    };
+    let definition = scene.definition.as_ref().unwrap();
+    let position = [512 * 256, -64 * 256, 512 * 256];
+    let accepted = |center_z: i32| {
+        let query = StaticGroundQuery {
+            bounds: Some(LiveBounds {
+                positive_extent: definition.positive_extent,
+                center_offset: [0, 0, center_z],
+            }),
+            scene: &scene,
+            candidates: &candidates,
+            rotation: Mat3::IDENTITY,
+            collision_attribute: 6,
+            alternate_collision: false,
+            sidedness: true,
+            surface_update: SurfaceUpdate::Assign,
+        };
+        let mut history = SupportHistory::new(0, 0);
+        let (mut surface, mut veto) = (Surface::GLOOP, 1);
+        query
+            .forward_support(position, position, &mut history, &mut surface, &mut veto)
+            .unwrap()
+            .is_some()
+    };
+    assert!(accepted(0), "the unshifted body is clear of the wall");
+    assert!(
+        !accepted(60),
+        "a +60 center offset puts the body on the wall face"
+    );
+    assert!(accepted(-60), "a -60 center offset moves it away");
 }

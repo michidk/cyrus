@@ -535,10 +535,12 @@ impl ScriptHud {
         Ok(state.inventory.is_some())
     }
 
-    /// The hand model of installed item `id` for the display natives. The outer `None` is the
-    /// original's no match: the item system is off or the list does not hold the id; the inner
-    /// `None` is an item with no hand model.
-    pub(super) fn item_hand_model(&self, id: u32) -> Result<Option<Option<String>>> {
+    /// The hand model of installed item `id` for the display natives. `None` is the original's
+    /// no match: the item system is off or the list does not hold the id.
+    pub(super) fn item_hand_model(
+        &self,
+        id: u32,
+    ) -> Result<Option<cyrus_assets::hud::ItemHandModel>> {
         let state = self.0.lock().expect("script HUD lock poisoned");
         if let Some(error) = &state.inventory_error {
             anyhow::bail!("inventory initialization: {error}");
@@ -547,7 +549,7 @@ impl ScriptHud {
             .inventory
             .as_ref()
             .and_then(|items| items.hand_model(id))
-            .map(|model| model.map(str::to_owned)))
+            .cloned())
     }
 
     /// Whether the installed item list defines `id` as a weapon; quantity is not tested.

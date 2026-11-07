@@ -220,11 +220,9 @@ impl Inventory {
         Ok(())
     }
 
-    /// The installed item list's hand model for `id`: the outer `None` is no match (an absent
-    /// item), the inner `None` an item without a hand model.
-    pub(super) fn hand_model(&self, id: u32) -> Option<Option<&str>> {
-        let item = self.definitions.get(&u16::try_from(id).ok()?)?;
-        Some(item.hand_model.as_deref())
+    /// The installed item list's hand model for `id`; `None` is no match (an absent item).
+    pub(super) fn hand_model(&self, id: u32) -> Option<&cyrus_assets::hud::ItemHandModel> {
+        Some(&self.definitions.get(&u16::try_from(id).ok()?)?.hand_model)
     }
 
     pub(super) fn defined_weapon(&self, id: u8) -> bool {
