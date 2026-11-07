@@ -181,8 +181,8 @@ impl FallbackProbe {
         let mut center = [0; 3];
         for axis in 0..3 {
             // Positions are runtime words; only the extent is a script-writable raw word.
-            let mut coordinate = i32::try_from(position[axis] >> 8)?
-                .wrapping_add(center_offset[axis]);
+            let mut coordinate =
+                i32::try_from(position[axis] >> 8)?.wrapping_add(center_offset[axis]);
             if axis == 1 {
                 coordinate = coordinate.wrapping_add(positive_y_extent).wrapping_sub(3);
             }
