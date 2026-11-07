@@ -318,7 +318,7 @@ fn forward_query_commits_surface_state_before_admission() {
         let mut history = SupportHistory::new(0, 0);
         let (mut surface, mut veto) = (Surface::GLOOP, 1);
         let support = query
-            .forward_support(position, &mut history, &mut surface, &mut veto)
+            .forward_support(position, position, &mut history, &mut surface, &mut veto)
             .unwrap();
         assert_eq!(support.is_some(), accepted);
         assert_eq!((surface, veto), (expected_surface, expected_veto));
@@ -392,11 +392,12 @@ fn steep_forward_probe_stops_before_support_state_updates() {
         sidedness: true,
         surface_update: SurfaceUpdate::Assign,
     };
-    let mut history = SupportHistory::new(3, 4);
+    let mut history = SupportHistory::new(0, 4);
     let (mut surface, mut veto) = (Surface::GLOOP, 1);
     assert!(
         query
             .forward_support(
+                [512 * 256, (800 - 62) * 256, 512 * 256],
                 [512 * 256, (800 - 62) * 256, 512 * 256],
                 &mut history,
                 &mut surface,
@@ -405,7 +406,7 @@ fn steep_forward_probe_stops_before_support_state_updates() {
             .unwrap()
             .is_none()
     );
-    assert_eq!((history.ticks(), surface, veto), (3, Surface::GLOOP, 1));
+    assert_eq!((history.ticks(), surface, veto), (0, Surface::GLOOP, 1));
 }
 
 #[test]

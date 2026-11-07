@@ -19,6 +19,48 @@ use cyrus_assets::collision::StaticPlacement;
 use cyrus_assets::surface::Surface;
 use std::collections::BTreeMap;
 
+/// The current-position slope probe of a forward query. The original runs it only when the
+/// proposed position selected no slope surface, and skips it when the current and proposed X/Z
+/// (eight fractional bits) are equal; callers pass `None` for the skipped case.
+pub struct CurrentSlope {
+    pub probe: GroundProbe,
+    pub terrain: Option<GroundSupport>,
+}
+
+impl CurrentSlope {
+    /// The probe for `current`, or `None` when its X/Z equal the proposed position's.
+    pub fn new(
+        current: [i64; 3],
+        proposed: [i64; 3],
+        positive_y_extent: i32,
+        distance: u32,
+        terrain: impl FnOnce() -> anyhow::Result<Option<GroundSupport>>,
+    ) -> anyhow::Result<Option<Self>> {
+        if current[0] == proposed[0] && current[2] == proposed[2] {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            probe: GroundProbe::new(current, positive_y_extent, distance)?,
+            terrain: terrain()?,
+        }))
+    }
+}
+
+/// An enabled forward slope check, with the current-position probe it falls back to.
+#[derive(Clone, Copy)]
+pub struct SlopeCheck<'a>(pub Option<&'a CurrentSlope>);
+
+/// The slope check's outcome when the proposed position selected no surface: a surface at the
+/// current position leaves the original's result undefined (it classifies an uninitialized
+/// normal), so it stays an explicit error; no surface at either position allows the step.
+fn require_no_current_surface(surface: Option<GroundSupport>) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        surface.is_none(),
+        "forward slope check: the proposed position has no surface but the current position does; the original result is undefined"
+    );
+    Ok(())
+}
+
 /// Caller-admitted forward geometry. Body and ground probes share the proposed
 /// position; history and surface side effects remain with the game owner.
 pub struct RuntimeForwardQuery<'a> {
@@ -26,7 +68,7 @@ pub struct RuntimeForwardQuery<'a> {
     pub ground: &'a GroundProbe,
     pub terrain: Option<GroundSupport>,
     pub fallback: &'a FallbackProbe,
-    pub check_slope: bool,
+    pub check_slope: Option<SlopeCheck<'a>>,
     pub excluded_candidate_type: Option<u8>,
 }
 
@@ -553,17 +595,26 @@ impl StaticCollision {
         candidates: &StaticCandidates,
         probe: &GroundProbe,
         terrain: Option<GroundSupport>,
-        check_slope: bool,
+        check_slope: Option<SlopeCheck<'_>>,
         fallback: Option<&FallbackProbe>,
         sidedness: bool,
     ) -> anyhow::Result<Option<SelectedSupport>> {
         let contacts = self.ground_contacts(candidates, probe, sidedness)?;
-        if check_slope {
-            let surface = probe
-                .slope_surface(terrain, &contacts)
-                .context("forward probe: missing proposed slope surface; fallback unsupported")?;
-            if surface.classification() == SurfaceClass::Steep {
-                return Ok(None);
+        if let Some(SlopeCheck(current_slope)) = check_slope {
+            match probe.slope_surface(terrain, &contacts) {
+                Some(surface) if surface.classification() == SurfaceClass::Steep => {
+                    return Ok(None);
+                }
+                Some(_) => {}
+                None => {
+                    if let Some(current) = current_slope {
+                        let contacts =
+                            self.ground_contacts(candidates, &current.probe, sidedness)?;
+                        require_no_current_surface(
+                            current.probe.slope_surface(current.terrain, &contacts),
+                        )?;
+                    }
+                }
             }
         }
         if let Some(support) = probe.select(terrain, &contacts) {
@@ -650,13 +701,27 @@ impl StaticCollision {
             sidedness,
             query.excluded_candidate_type,
         )?;
-        if query.check_slope {
-            let slope = query
-                .ground
-                .slope_surface(query.terrain, &contacts)
-                .context("runtime forward query: missing slope surface; fallback unsupported")?;
-            if slope.classification() == SurfaceClass::Steep {
-                return Ok(RuntimeForwardSupport::Blocked);
+        if let Some(SlopeCheck(current_slope)) = query.check_slope {
+            match query.ground.slope_surface(query.terrain, &contacts) {
+                Some(slope) if slope.classification() == SurfaceClass::Steep => {
+                    return Ok(RuntimeForwardSupport::Blocked);
+                }
+                Some(_) => {}
+                None => {
+                    if let Some(current) = current_slope {
+                        let contacts = self.runtime_ground_contacts(
+                            candidates,
+                            actors,
+                            poses,
+                            &current.probe,
+                            sidedness,
+                            query.excluded_candidate_type,
+                        )?;
+                        require_no_current_surface(
+                            current.probe.slope_surface(current.terrain, &contacts),
+                        )?;
+                    }
+                }
             }
         }
         if let Some(support) = query.ground.select(query.terrain, &contacts) {
@@ -735,7 +800,7 @@ impl StaticCollision {
         history: &mut super::ground::SupportHistory,
     ) -> anyhow::Result<Option<SelectedSupport>> {
         let selected =
-            self.forward_support(candidates, probe, terrain, false, Some(fallback), sidedness)?;
+            self.forward_support(candidates, probe, terrain, None, Some(fallback), sidedness)?;
         let metadata = selected
             .as_ref()
             .map(|support| self.support_metadata(support.source()))

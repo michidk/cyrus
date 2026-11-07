@@ -991,6 +991,24 @@ impl ScriptWorld {
                     .context("player forward query: terrain edge/water owner unavailable")
             })
             .transpose()?;
+        let current_slope = cyrus_collision::collision_world::CurrentSlope::new(
+            self.spatial(id)?.local.position.map(i64::from),
+            position,
+            shape.positive_extent[1],
+            query.distance,
+            || {
+                query
+                    .scene
+                    .terrain
+                    .as_ref()
+                    .map(|terrain| {
+                        terrain
+                            .sample(self.spatial(id)?.local.position.map(i64::from))
+                            .context("player forward query: terrain edge/water owner unavailable")
+                    })
+                    .transpose()
+            },
+        )?;
         let result = query.scene.static_collision.runtime_forward_support(
             &query.prepared.candidates,
             query
@@ -1009,7 +1027,11 @@ impl ScriptWorld {
                 ground: &ground,
                 terrain,
                 fallback: &fallback,
-                check_slope: collision & 2 != 0 && !alternate_collision,
+                // The steep-surface check is bypassed while the support-history counter runs.
+                check_slope: (collision & 2 != 0 && !alternate_collision && history.ticks() == 0)
+                    .then_some(cyrus_collision::collision_world::SlopeCheck(
+                        current_slope.as_ref(),
+                    )),
                 excluded_candidate_type: None,
             },
         )?;

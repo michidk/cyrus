@@ -36157,6 +36157,43 @@ fn a_blocking_ramp_ends_the_lineup_with_return_state_six_without_moving_the_play
 }
 
 #[test]
+fn a_lineup_step_off_the_supporting_ground_is_blocked_and_abandoned() {
+    // The fixture's ground is a small triangle under the map actor. A destination past its apex
+    // leads the walk off the ground: the slope check finds no surface at either position (and is
+    // bypassed while the support-history counter runs), so the support query decides, finds
+    // none and blocks the step. The player stops at the last supported position and the plain
+    // mover abandons once the production wrapper has aged the response, with return state six.
+    let (_, mut world, data, scene, index) =
+        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024, false, 3, 6144);
+    let player = world.id(index).unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let start = world.spatial(player).unwrap().local.position;
+    let mut rounds = 0;
+    while world.actors()[index].runtime().unwrap().active_tasks() != 0 || rounds == 0 {
+        scheduler_round_for(
+            &mut world,
+            &data,
+            &scene,
+            (rounds, true, true),
+            Some(0),
+            cyrus_game::script::ScriptStage::OrdinaryMain,
+        )
+        .unwrap_or_else(|error| panic!("round {rounds}: {error:#}"));
+        rounds += 1;
+        assert!(rounds < 100, "the blocked task must be abandoned");
+    }
+    let end = world.spatial(player).unwrap().local.position;
+    assert!(
+        end[2] > start[2] && end[2] < start[2] + 6144,
+        "the player stopped short of the destination: {start:?} to {end:?}"
+    );
+    assert_eq!(
+        serde_json::to_value(world.globals()).unwrap()["native_command_return"],
+        6
+    );
+}
+
+#[test]
 fn object_pickup_lineup_abandons_on_a_stale_collision_response_without_moving() {
     assert_stale_response_abandons(Native::ObjectPickupLineUp);
 }

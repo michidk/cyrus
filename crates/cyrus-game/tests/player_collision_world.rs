@@ -226,6 +226,7 @@ fn startup_settling_retains_distinct_terrain_and_model_rank_scales() {
 
 #[test]
 fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
+    use cyrus_collision::collision_world::SlopeCheck;
     use cyrus_collision::ground::GroundSupport;
     use cyrus_collision::ground::ModelSupport;
     let probe = GroundProbe::new([0; 3], 0, 50).unwrap();
@@ -272,23 +273,71 @@ fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
     let candidates = world.candidates([5000, 5000], [0; 3], None).unwrap();
     assert!(
         world
-            .forward_support(&candidates, &probe, Some(steep), true, None, false)
+            .forward_support(
+                &candidates,
+                &probe,
+                Some(steep),
+                Some(SlopeCheck(None)),
+                None,
+                false
+            )
             .unwrap()
             .is_none()
     );
     assert!(
         world
-            .forward_support(&candidates, &probe, Some(steep), false, None, false)
+            .forward_support(&candidates, &probe, Some(steep), None, None, false)
             .unwrap()
             .is_some()
     );
+    let fallback = cyrus_collision::ground::FallbackProbe::new([0; 3], [0; 3], 0, false).unwrap();
+    // No surface at the proposed position: with none at the current position either (or the
+    // current probe skipped) the slope check allows the step; a current surface with no proposed
+    // one is the original's undefined case and stays an explicit error.
     assert!(
         world
-            .forward_support(&candidates, &probe, None, true, None, false)
+            .forward_support(
+                &candidates,
+                &probe,
+                None,
+                Some(SlopeCheck(None)),
+                Some(&fallback),
+                false
+            )
+            .unwrap()
+            .is_none()
+    );
+    let current = |terrain| cyrus_collision::collision_world::CurrentSlope {
+        probe: GroundProbe::new([256; 3], 0, 50).unwrap(),
+        terrain,
+    };
+    assert!(
+        world
+            .forward_support(
+                &candidates,
+                &probe,
+                None,
+                Some(SlopeCheck(Some(&current(None)))),
+                Some(&fallback),
+                false
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        world
+            .forward_support(
+                &candidates,
+                &probe,
+                None,
+                Some(SlopeCheck(Some(&current(Some(flat))))),
+                Some(&fallback),
+                false
+            )
             .is_err()
     );
     let selected = world
-        .forward_support(&candidates, &probe, Some(steep), false, None, false)
+        .forward_support(&candidates, &probe, Some(steep), None, None, false)
         .unwrap()
         .unwrap();
     assert!(!cyrus_game::player::support::allows_forward(
@@ -332,7 +381,7 @@ fn fallback_keeps_first_non_side_contact_and_fractional_actor_height() {
     );
     let fallback = FallbackProbe::new(position, [0; 3], 0, false).unwrap();
     let support = world
-        .forward_support(&candidates, &primary, None, false, Some(&fallback), false)
+        .forward_support(&candidates, &primary, None, None, Some(&fallback), false)
         .unwrap()
         .unwrap();
     assert_eq!(support.source(), SupportSource::Model { model: 1, face: 0 });

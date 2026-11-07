@@ -123,7 +123,7 @@ impl GroundedWalk {
         if !accepted && animation.current_group() == Some(AnimationGroup::WALK) {
             let probe = definition.forward_probe(self.position, query.rotation)?;
             if query
-                .forward_support(probe, shared.0, &mut self.surface, shared.1)?
+                .forward_support(probe, self.position, shared.0, &mut self.surface, shared.1)?
                 .is_some()
             {
                 // Continuation must preserve the pending default, without another request.
@@ -239,7 +239,7 @@ impl GroundedWalk {
             .context("forward walk: player definition unavailable")?;
         let probe = definition.forward_probe(self.position, query.rotation)?;
         if query
-            .forward_support(probe, shared.0, &mut self.surface, shared.1)?
+            .forward_support(probe, self.position, shared.0, &mut self.surface, shared.1)?
             .is_none()
         {
             return Ok(None);
@@ -378,6 +378,7 @@ impl StaticGroundQuery<'_> {
     pub fn forward_support(
         &self,
         proposed: [i64; 3],
+        current: [i64; 3],
         history: &mut SupportHistory,
         surface: &mut Surface,
         surface_veto: &mut i32,
@@ -397,7 +398,8 @@ impl StaticGroundQuery<'_> {
         )? {
             return Ok(None);
         }
-        if self.collision_attribute & 2 != 0 && !self.alternate_collision {
+        // The steep-surface check is bypassed while the shared support-history counter runs.
+        if self.collision_attribute & 2 != 0 && !self.alternate_collision && history.ticks() == 0 {
             let probe = GroundProbe::new(
                 proposed,
                 definition.positive_extent[1],
@@ -408,11 +410,32 @@ impl StaticGroundQuery<'_> {
                 &probe,
                 self.sidedness,
             )?;
-            let slope = probe
-                .slope_surface(self.terrain(proposed)?, &contacts)
-                .context("forward query: missing slope surface; fallback unsupported")?;
-            if slope.classification() == SurfaceClass::Steep {
-                return Ok(None);
+            match probe.slope_surface(self.terrain(proposed)?, &contacts) {
+                Some(slope) if slope.classification() == SurfaceClass::Steep => return Ok(None),
+                Some(_) => {}
+                None => {
+                    let current_slope = cyrus_collision::collision_world::CurrentSlope::new(
+                        current,
+                        proposed,
+                        definition.positive_extent[1],
+                        self.scene.settings.post_collide_height,
+                        || self.terrain(current),
+                    )?;
+                    if let Some(current_slope) = current_slope {
+                        let contacts = self.scene.static_collision.ground_contacts(
+                            self.candidates,
+                            &current_slope.probe,
+                            self.sidedness,
+                        )?;
+                        anyhow::ensure!(
+                            current_slope
+                                .probe
+                                .slope_surface(current_slope.terrain, &contacts)
+                                .is_none(),
+                            "forward query: the proposed position has no slope surface but the current position does; the original result is undefined"
+                        );
+                    }
+                }
             }
         }
         let selected = self.support(proposed, history, surface, surface_veto)?;

@@ -697,7 +697,8 @@ fn runtime_forward_probe_orders_body_primary_and_fallback() {
                     ground: &ground,
                     terrain: None,
                     fallback: &fallback,
-                    check_slope: slope,
+                    check_slope: slope
+                        .then_some(cyrus_collision::collision_world::SlopeCheck(None)),
                     excluded_candidate_type: None,
                 },
             )
