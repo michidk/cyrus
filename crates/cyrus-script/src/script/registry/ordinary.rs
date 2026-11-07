@@ -1607,6 +1607,9 @@ pub fn run_ordinary(
                 animation_system: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.animation_system().ok()),
+                animation_running: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.animation_running().ok()),
                 ground_bypass: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.ground_bypass().ok()),

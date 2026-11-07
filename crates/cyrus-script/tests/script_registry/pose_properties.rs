@@ -695,3 +695,41 @@ fn the_task_cheat_state_switches_the_ordinary_script_stage_off() {
         assert_eq!(locals(&world), [expected], "{task_system:?}");
     }
 }
+
+#[test]
+fn the_animation_state_two_runs_the_system_without_the_movement_natives_group_wait() {
+    // `animation_system` is the value-one state and `animation_running` the nonzero state: the
+    // movement natives wait on their group only for one, the rest of the system runs for any
+    // nonzero value.
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    let id = world.id(0).unwrap();
+    for (strict, running, waits) in [
+        (None, None, true),
+        (Some(false), Some(true), false),
+        (Some(true), Some(true), true),
+        (Some(false), Some(false), false),
+        (Some(true), None, true),
+        (None, Some(true), true),
+    ] {
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    animation_system: strict,
+                    animation_running: running,
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.animation_waits_for_test(),
+            waits,
+            "{strict:?} {running:?}"
+        );
+    }
+}

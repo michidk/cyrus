@@ -177,15 +177,24 @@ impl Cheats {
         Ok(self.state()?.value("task").context("missing task state")? == 1)
     }
 
-    /// The `animation` state as the animation system's enable: the value 1. The original's other
-    /// checks accept any nonzero value, a split that is not modelled, so a value of 2 or more
-    /// disables the system here.
+    /// The `animation` state tested for exactly one, as the movement natives' wait on their
+    /// requested group does. The animation system's other checks use [`Self::animation_running`].
     pub fn animation_system(&self) -> Result<bool> {
         Ok(self
             .state()?
             .value("animation")
             .context("missing animation state")?
             == 1)
+    }
+
+    /// The `animation` state tested for nonzero, as the animation requests, advancement and timing
+    /// checks do: the value 2 runs the system but not the movement natives' wait.
+    pub fn animation_running(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
+            != 0)
     }
 
     /// The ordinary animated-player draw is suppressed while the `animation` state is zero; it does
@@ -340,6 +349,11 @@ mod system_switch_tests {
             cheats.execute("animation", Some(value)).unwrap();
             assert_eq!(cheats.task_system().unwrap(), on, "task {value}");
             assert_eq!(cheats.animation_system().unwrap(), on, "animation {value}");
+            assert_eq!(
+                cheats.animation_running().unwrap(),
+                value != 0,
+                "animation {value}"
+            );
         }
     }
 }

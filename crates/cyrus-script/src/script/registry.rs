@@ -256,9 +256,12 @@ pub struct ScriptInputs<'a> {
     /// Shared `task` state: whether the task scheduling system runs. Absence keeps the installed
     /// `SYSTEM.INI` switch.
     pub task_system: Option<bool>,
-    /// Shared `animation` state: whether the animation system runs. Absence keeps the installed
-    /// `SYSTEM.INI` switch.
+    /// Shared `animation` state tested for the value one: the movement natives wait for their
+    /// requested group. Absence keeps the installed `SYSTEM.INI` switch.
     pub animation_system: Option<bool>,
+    /// Shared `animation` state tested for nonzero: whether the animation system runs. Absence
+    /// follows `animation_system`.
+    pub animation_running: Option<bool>,
     /// Shared yeahbaby state: the selected player's ground-support probe is bypassed while a
     /// vertical debug key is held or the Home toggle is set. Absence is the cheat being off.
     pub ground_bypass: Option<bool>,
@@ -692,6 +695,9 @@ pub struct ScriptWorld {
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     updates: cyrus_assets::script::UpdateSettings,
+    /// The `animation` state's value-one test, which the movement natives' wait on the requested
+    /// group uses; `None` follows `updates.animation_system` (the nonzero test).
+    animation_strict: Option<bool>,
     player_distance_override: bool,
     actors: Vec<ScriptActor>,
     /// Installed script definitions a shell can be started from after preparation.
@@ -1579,6 +1585,7 @@ impl ScriptWorld {
         Ok(Self {
             map_updates: Default::default(),
             updates: scripts.updates,
+            animation_strict: None,
             player_distance_override: scripts.player_distance_override,
             world: scripts.world,
             content_id: scripts.content_id.clone(),
@@ -2960,9 +2967,27 @@ impl ScriptWorld {
         if let Some(task) = inputs.task_system {
             self.updates.task_system = task;
         }
-        if let Some(animation) = inputs.animation_system {
-            self.updates.animation_system = animation;
+        // `animation_system` is the value-one state and `animation_running` the nonzero state;
+        // a host supplying only one gives both the same answer.
+        if let Some(running) = inputs.animation_running.or(inputs.animation_system) {
+            self.updates.animation_system = running;
         }
+        if let Some(strict) = inputs.animation_system {
+            self.animation_strict = Some(strict);
+        }
+    }
+
+    /// Test hook: [`Self::animation_waits`].
+    #[doc(hidden)]
+    pub fn animation_waits_for_test(&self) -> bool {
+        self.animation_waits()
+    }
+
+    /// Whether the movement natives wait for their requested group to become current: the
+    /// original tests the `animation` state for exactly one there, but for nonzero elsewhere.
+    fn animation_waits(&self) -> bool {
+        self.animation_strict
+            .unwrap_or(self.updates.animation_system)
     }
 
     pub fn advance(
@@ -3885,6 +3910,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
+        let animation_waits = self.registry.animation_waits();
         let actor_events = effects::ActorEventContext::capture(self.registry, id);
         let player_events =
             player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
@@ -4047,7 +4073,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             locomotion: Some(super::tasks::LocomotionCall {
                 state: locomotion_state,
                 admission: locomotion_admission,
-                animation_system: self.animation_system,
+                animation_system: animation_waits,
                 motion: actor
                     .control
                     .as_mut()
@@ -9529,6 +9555,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
+        let animation_waits = self.registry.animation_waits();
         let actor_events = effects::ActorEventContext::capture(self.registry, id);
         let player_events =
             player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
@@ -9697,7 +9724,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
                     admission: locomotion_admission,
-                    animation_system: self.animation_system,
+                    animation_system: animation_waits,
                     motion: actor
                         .control
                         .as_mut()
@@ -9983,6 +10010,7 @@ mod fighting_tests {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            animation_strict: None,
             ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),

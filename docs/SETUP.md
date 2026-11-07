@@ -729,8 +729,8 @@ already seeds: each is on only for the value exactly 1, and the ordinary update 
 so the existing gates respond to a console toggle (with `task` off the ordinary main stage and the hook gates
 run no scripts; with `animation` off the animation requests, advancement and the timing checks that read the
 switch stop). `moonraker` (any nonzero value) takes the selected player out of the late collision stage's forward obstacle probes and actor overlap pass; other actors still collide. (The original also keeps the overlap-enable bit of the player's control record in step with the slot; cyrus gates the stage itself.) While `animation` is exactly zero the selected player's body is not drawn; other values leave it
-drawn. **Not modelled:** the value 2 of `animation`, which the original honours at only some of its checks
-(here it disables the system). `yeahbaby`
+drawn. The `animation` value 2 runs the animation system (requests, advancement, timing) but skips the movement
+natives' wait for their requested group, which only the value 1 keeps, as the original's checks split. `yeahbaby`
 integrates its ground bypass and debug navigation handler. The bypass is on for a nonzero state or in developer mode (`[debug] final_version=0`,
 where missing key state leaves it inactive): while Page Up or Page Down is held, or the Home toggle (flipped once
 per Home press while it is on, and kept while it is off) is set, the selected player's probe clears the living
