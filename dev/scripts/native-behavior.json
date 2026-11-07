@@ -1500,16 +1500,17 @@
       "native": "AddFlatEffect",
       "status": "partial",
       "owner": 57,
-      "scope": "Script-created environmental flat effect, descriptor, native speed and spread boundary",
+      "scope": "Script-created environmental flat effect, descriptor, native speed and spread placement",
       "caller": "ScriptWorld::advance -> script/registry.rs -> spawn_environment_effect_with_speed -> environmental effect renderer",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::add_flat_effect_retains_native_speed_and_rejects_nonzero_spread"
+        "crates/cyrus-script/tests/script_registry.rs::add_flat_effect_retains_native_speed_and_scatters_by_the_spread"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/49#issuecomment-6372243103",
-        "https://github.com/michidk/cyrus/issues/57"
+        "https://github.com/michidk/cyrus/issues/57",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#addflateffect"
       ],
-      "limits": "Verified by inspection: public-stage synthetic effect fixture checks one spawned effect, speed-dependent frame progression, descriptor variants and explicit nonzero-spread rejection. Unknown: matched installed original/native/browser imagery, lifetime and ordering for the authored caller. A retained effect and frame count do not prove rendered parity; nonzero spread remains unsupported.",
+      "limits": "Verified in the original (native and placement routine decompiled): zero spread lowers the point by half the image height; a nonzero spread adds one shared-random draw per axis (x, y, z; bound spread>>7, minus spread>>8) and lowers nothing; spreads below 128 give a bound the original never leaves and stop with an explicit error here. Public-stage tests check speed-dependent frames, descriptor variants and the exact scattered positions from the engine random sequence. Unknown: matched installed original/native/browser imagery, lifetime and ordering for an authored caller (no installed script calls it); a retained effect does not prove rendered parity.",
       "reviewed_revision": "4fa2c4a382a74d83b70917ae45851534a4e14fed"
     },
     {

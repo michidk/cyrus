@@ -39987,7 +39987,7 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
 }
 
 #[test]
-fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
+fn add_flat_effect_retains_native_speed_and_scatters_by_the_spread() {
     use cyrus_assets::effects::{EffectImage, Effects};
     let mut effects = Effects {
         ambient_brightness: Some(128),
@@ -40007,7 +40007,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
         )]),
     };
     effects.images.insert(0, effects.images[&0x2380].clone());
-    let spawn = |spread: i32, speed: i32, descriptor: i32| {
+    let spawn = |spread: i32, speed: i32, descriptor: i32, seed: Option<u32>| {
         let mut world = {
             let mut scripts = random_scripts(Native::Rnd, vec![], Object::Me);
             scripts.definition.functions.push(Function {
@@ -40043,6 +40043,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
         };
         world.prepare_environment_effects(&effects).unwrap();
         let id = world.id(0).unwrap();
+        let mut random = seed.map(cyrus_game::random::EngineRandom::from_state);
         world
             .advance(
                 id,
@@ -40053,7 +40054,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                     ..Default::default()
                 },
                 None,
-                None,
+                random.as_mut(),
                 100,
             )
             .map(|()| world.actors()[0].failure().map(str::to_owned))
@@ -40061,6 +40062,12 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                 let count = world
                     .environmental_effects()
                     .map_or(0, |effects| effects.active().count());
+                let position = world
+                    .environmental_effects()
+                    .unwrap()
+                    .active()
+                    .next()
+                    .map(|(_, effect)| effect.position);
                 world.advance_environment_effects(1);
                 let frame = world
                     .environmental_effects()
@@ -40068,23 +40075,40 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                     .active()
                     .next()
                     .map(|(_, effect)| effect.frame);
-                (failure, count, frame)
+                (failure, count, frame, position)
             })
     };
     for speed in [1, 2] {
-        let (failure, count, frame) = spawn(0, speed, 0x2380).unwrap();
+        let (failure, count, frame, _) = spawn(0, speed, 0x2380, None).unwrap();
         assert!(failure.is_none(), "{failure:?}");
         assert_eq!(count, 1);
         assert_eq!(frame, Some(speed));
     }
     for descriptor in [0, 0x20000] {
-        let (failure, count, frame) = spawn(0, 3, descriptor).unwrap();
+        let (failure, count, frame, _) = spawn(0, 3, descriptor, None).unwrap();
         assert!(failure.is_none(), "{failure:?}");
         assert_eq!(count, 1);
         assert_eq!(frame, Some(0));
     }
-    let error = spawn(5, 1, 0x2380).unwrap_err();
-    assert!(format!("{error:#}").contains("nonzero spread unsupported"));
+    // A nonzero spread adds `rnd(spread >> 7) - (spread >> 8)` per axis in x, y, z order to the
+    // point's whole map units and no longer lowers the point by half the image height.
+    let (_, _, _, unspread) = spawn(0, 1, 0x2380, None).unwrap();
+    assert_eq!(unspread.unwrap()[0], 10);
+    let mut expected = cyrus_game::random::EngineRandom::from_state(7);
+    let draws = [(); 3].map(|_| expected.rnd(8).unwrap());
+    let (failure, count, _, scattered) = spawn(0x400, 1, 0x2380, Some(7)).unwrap();
+    assert!(failure.is_none(), "{failure:?}");
+    assert_eq!(count, 1);
+    assert_eq!(
+        scattered.unwrap(),
+        [10 + draws[0] - 4, 20 + draws[1] - 4, 30 + draws[2] - 4]
+    );
+    // Without the shared random stream the spread stops the script; a spread below 128 gives a
+    // bound the original's reduction never leaves.
+    let error = spawn(0x400, 1, 0x2380, None).unwrap_err();
+    assert!(format!("{error:#}").contains("random stream unavailable"));
+    let error = spawn(5, 1, 0x2380, Some(7)).unwrap_err();
+    assert!(format!("{error:#}").contains("nonpositive random bound"));
 }
 
 /// A living receiver with a combat record, running `DragonBreath` once with the given combat flags.
