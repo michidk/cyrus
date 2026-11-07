@@ -77,10 +77,6 @@ pub(super) struct ModelState {
     pub matrix: Option<[[f32; 3]; 3]>,
     pub current: Option<ModelPresentation>,
     pub weapon: Option<super::super::attachment::EquippedWeapon>,
-    /// The retained attachment point and angles a display native wrote for an actor without an
-    /// equipped weapon; with one, the display native overwrites the weapon geometry's words
-    /// instead. Recomputed by the next display call, so never saved.
-    pub retained_attachment: Option<([i32; 3], [u16; 3])>,
 }
 
 impl Default for ModelState {
@@ -97,7 +93,6 @@ impl Default for ModelState {
             matrix: None,
             current: None,
             weapon: None,
-            retained_attachment: None,
         }
     }
 }
@@ -1204,24 +1199,34 @@ impl ScriptWorld {
             geometry,
             endpoints,
         };
+        self.store_hand_words(id, &weapon.geometry)?;
         self.actors[id.index].model.weapon = Some(weapon);
         Ok(())
     }
 
-    /// The actor's retained attachment point (Q8) and angles: the equipped weapon's words, which
-    /// a display native overwrites, else the ones a display native stored.
-    pub fn retained_attachment(&self, id: ScriptActorId) -> Result<Option<([i32; 3], [u16; 3])>> {
-        let model = &self.actors[self.resolve(id)?].model;
-        Ok(model
-            .weapon
+    /// The actor's `hand_pos` and `hand_angle` words: the retained attachment point (Q8) and
+    /// angles the equipped-weapon placements and the display natives store, and scripts may
+    /// rewrite.
+    pub fn retained_attachment(&self, id: ScriptActorId) -> Result<Option<([i32; 3], [i32; 3])>> {
+        Ok(self.actors[self.resolve(id)?]
+            .control
             .as_ref()
-            .map(|weapon| {
-                (
-                    weapon.geometry.retained_point,
-                    weapon.geometry.retained_angles,
-                )
-            })
-            .or(model.retained_attachment))
+            .map(|control| (control.hand_point, control.hand_angles)))
+    }
+
+    /// Store the retained attachment words a hand or hilt helper writes into the actor.
+    fn store_hand_words(
+        &mut self,
+        id: ScriptActorId,
+        geometry: &super::super::attachment::WeaponAttachment,
+    ) -> Result<()> {
+        let control = self.actors[id.index]
+            .control
+            .as_mut()
+            .context("attachment words need the actor's control record")?;
+        control.hand_point = geometry.retained_point;
+        control.hand_angles = geometry.retained_angles.map(i32::from);
+        Ok(())
     }
 
     /// The frame transient models placed by the hand and hilt display natives since the latest
@@ -1293,18 +1298,7 @@ impl ScriptWorld {
             pose.wrapped_angles()[2],
             !hilt,
         )?;
-        // The helper stores the same retained words the equipped-weapon owner keeps.
-        let model_state = &mut self.actors[id.index].model;
-        match model_state.weapon.as_mut() {
-            Some(weapon) => {
-                weapon.geometry.retained_point = geometry.retained_point;
-                weapon.geometry.retained_angles = geometry.retained_angles;
-            }
-            None => {
-                model_state.retained_attachment =
-                    Some((geometry.retained_point, geometry.retained_angles));
-            }
-        }
+        self.store_hand_words(id, &geometry)?;
         self.display_attachments.push(DisplayAttachment {
             actor: id,
             model,
@@ -1676,7 +1670,6 @@ impl ModelState {
                 })
                 .transpose()?,
             current,
-            retained_attachment: None,
         })
     }
 }

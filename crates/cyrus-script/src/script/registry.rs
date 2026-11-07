@@ -435,6 +435,12 @@ pub struct ActorControlState {
     /// The `ov` vector: the held ledge point in Q8. The ledge entry stores the selected record's point
     /// here and its heading in the second word of `move`; the ledge states read both back.
     pub ledge_point: [i32; 3],
+    /// The `hand_pos` triple: the retained attachment point in Q8 that the hand and hilt model
+    /// helpers (the Display natives and the equipped-weapon placements) store.
+    pub hand_point: [i32; 3],
+    /// The `hand_angle` triple: the placed model's pitch, heading and roll, stored by the same
+    /// helpers. Plain dwords: a script write is not masked.
+    pub hand_angles: [i32; 3],
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
@@ -5174,12 +5180,34 @@ fn control_record_property(
         Property::OvVx => ControlField::Dword(&mut control.ledge_point[0]),
         Property::OvVy => ControlField::Dword(&mut control.ledge_point[1]),
         Property::OvVz => ControlField::Dword(&mut control.ledge_point[2]),
+        Property::HandPosVx => ControlField::Dword(&mut control.hand_point[0]),
+        Property::HandPosVy => ControlField::Dword(&mut control.hand_point[1]),
+        Property::HandPosVz => ControlField::Dword(&mut control.hand_point[2]),
+        Property::HandAngleVx => ControlField::Dword(&mut control.hand_angles[0]),
+        Property::HandAngleVy => ControlField::Dword(&mut control.hand_angles[1]),
+        Property::HandAngleVz => ControlField::Dword(&mut control.hand_angles[2]),
         Property::LastValidFlag => ControlField::Flag(&mut control.stable_position_valid),
         Property::LastValidPosVx => ControlField::Dword(&mut control.stable_local_position[0]),
         Property::LastValidPosVy => ControlField::Dword(&mut control.stable_local_position[1]),
         Property::LastValidPosVz => ControlField::Dword(&mut control.stable_local_position[2]),
         _ => return None,
     })
+}
+
+/// The bounds-record extent a `size.psize.v*` or `size.msize.v*` property names: whether it is the
+/// negative extent, and the axis.
+fn collision_extent_property(name: Property) -> Option<(bool, usize)> {
+    use Property::{SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePsizeVx, SizePsizeVy, SizePsizeVz};
+    [SizePsizeVx, SizePsizeVy, SizePsizeVz]
+        .iter()
+        .position(|&n| n == name)
+        .map(|axis| (false, axis))
+        .or_else(|| {
+            [SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]
+                .iter()
+                .position(|&n| n == name)
+                .map(|axis| (true, axis))
+        })
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5208,6 +5236,64 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
             find([LastSlaveAngleVx, LastSlaveAngleVy, LastSlaveAngleVz])
                 .map(PoseProperty::LastSlaveAngle)
         })
+}
+
+/// The task slot and retained word a `task_variable*` property names.
+fn task_word(name: Property) -> Option<(usize, super::tasks::TaskWord)> {
+    use super::tasks::TaskWord;
+    use Property::*;
+    let families = [
+        (
+            TaskWord::Continuation,
+            [
+                TaskVariable0,
+                TaskVariable1,
+                TaskVariable2,
+                TaskVariable3,
+                TaskVariable4,
+                TaskVariable5,
+            ],
+        ),
+        (
+            TaskWord::PauseTicks,
+            [
+                TaskVariable2_0,
+                TaskVariable2_1,
+                TaskVariable2_2,
+                TaskVariable2_3,
+                TaskVariable2_4,
+                TaskVariable2_5,
+            ],
+        ),
+        (
+            TaskWord::ContinuationDirection,
+            [
+                TaskVariable3_0,
+                TaskVariable3_1,
+                TaskVariable3_2,
+                TaskVariable3_3,
+                TaskVariable3_4,
+                TaskVariable3_5,
+            ],
+        ),
+        (
+            TaskWord::PointCommand,
+            [
+                TaskVariable4_0,
+                TaskVariable4_1,
+                TaskVariable4_2,
+                TaskVariable4_3,
+                TaskVariable4_4,
+                TaskVariable4_5,
+            ],
+        ),
+    ];
+    families.into_iter().find_map(|(word, names)| {
+        names
+            .iter()
+            .position(|&candidate| candidate == name)
+            .map(|slot| (slot, word))
+    })
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -5441,6 +5527,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 actor.broadcast_index
             }));
         }
+        if let Some((slot, word)) = task_word(name) {
+            let index = self.property_receiver(target)?;
+            return Ok(self.registry.actors[index].native_commands[slot].word(word) as i32);
+        }
         if control_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5454,6 +5544,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     ControlField::Flag(flag) => i32::from(*flag),
                 },
             );
+        }
+        if let Some((negative, axis)) = collision_extent_property(name) {
+            let index = self.property_receiver(target)?;
+            let shape = self.registry.actors[index]
+                .collision
+                .as_ref()
+                .with_context(|| {
+                    format!("property {target:?}.{name}: collision shape not prepared")
+                })?;
+            return Ok(if negative {
+                shape.negative_extent[axis]
+            } else {
+                shape.positive_extent[axis]
+            });
         }
         let pose = pose_property(name)
             .with_context(|| format!("property {target:?}.{name} unsupported"))?;
@@ -5599,6 +5703,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
+        if let Some((slot, word)) = task_word(name) {
+            let index = self.property_receiver(target)?;
+            self.registry.actors[index].native_commands[slot].set_word(word, value as u32);
+            return Ok(());
+        }
         if control_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5624,6 +5733,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
             match scabbard {
                 Some(word) => control.scabbard_override[word] = Some(value as i16),
                 None => control.hidden = value as u8 != 0,
+            }
+            return Ok(());
+        }
+        if let Some((negative, axis)) = collision_extent_property(name) {
+            // The saved shape holds nonnegative extents, so a negative write is refused rather
+            // than stored as a record the actor could not be restored from.
+            anyhow::ensure!(
+                value >= 0,
+                "property {target:?}.{name}: extent {value} is negative"
+            );
+            let index = self.property_receiver(target)?;
+            let shape = self.registry.actors[index]
+                .collision
+                .as_mut()
+                .with_context(|| {
+                    format!("property {target:?}.{name}: collision shape not prepared")
+                })?;
+            if negative {
+                shape.negative_extent[axis] = value;
+            } else {
+                shape.positive_extent[axis] = value;
             }
             return Ok(());
         }
