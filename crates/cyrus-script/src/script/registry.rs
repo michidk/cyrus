@@ -253,6 +253,12 @@ pub struct ScriptInputs<'a> {
     /// Shared drno state: the ordinary main stage is skipped for every actor except the selected
     /// player and the camera actor. Absence is the cheat being off.
     pub actor_update_skipped: Option<bool>,
+    /// Shared `task` state: whether the task scheduling system runs. Absence keeps the installed
+    /// `SYSTEM.INI` switch.
+    pub task_system: Option<bool>,
+    /// Shared `animation` state: whether the animation system runs. Absence keeps the installed
+    /// `SYSTEM.INI` switch.
+    pub animation_system: Option<bool>,
     /// Shared yeahbaby state: the selected player's ground-support probe is bypassed while a
     /// vertical debug key is held or the Home toggle is set. Absence is the cheat being off.
     pub ground_bypass: Option<bool>,
@@ -2908,6 +2914,17 @@ impl ScriptWorld {
     /// Random functions require the caller's shared engine stream; they never seed actor state.
     /// Standalone ordinary stages skip killed records, including retained world records.
     /// Explicit body and routed calls keep their own invocation semantics.
+    /// The live `task` and `animation` cheat states replace the installed `SYSTEM.INI` switches the
+    /// update gates read; absent inputs leave the installed values.
+    pub(super) fn apply_system_switches(&mut self, inputs: &ScriptInputs<'_>) {
+        if let Some(task) = inputs.task_system {
+            self.updates.task_system = task;
+        }
+        if let Some(animation) = inputs.animation_system {
+            self.updates.animation_system = animation;
+        }
+    }
+
     pub fn advance(
         &mut self,
         id: ScriptActorId,
@@ -2917,6 +2934,7 @@ impl ScriptWorld {
         random: Option<&mut cyrus_game::random::EngineRandom>,
         budget: usize,
     ) -> Result<()> {
+        self.apply_system_switches(&inputs);
         let index = self.resolve(id)?;
         // Killed map records survive revisits, but never re-enter ordinary script stages.
         if matches!(stage, ScriptStage::OrdinaryMain | ScriptStage::OrdinaryHook)

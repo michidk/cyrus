@@ -609,3 +609,54 @@ fn id_is_the_runtime_identifier_my_id_returns_and_cannot_be_overwritten() {
         "{error:#}"
     );
 }
+
+#[test]
+fn the_task_cheat_state_switches_the_ordinary_script_stage_off() {
+    // A counter the script bumps each ordinary update: with the task system off (the `task`
+    // cheat not equal to one) the stage runs no script, with it on or unspecified it does.
+    let mut scripts = cache();
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.variables = vec![0];
+    logic.instance_variables = vec![vec![0]; 2];
+    logic.program.steps = [
+        Operation::Increment {
+            destination: Place::Local { index: 0 },
+            delta: 1,
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    for (task_system, expected) in [(Some(false), 0), (None, 1), (Some(true), 1)] {
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    task_system,
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(locals(&world), [expected], "{task_system:?}");
+    }
+}

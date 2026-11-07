@@ -151,6 +151,7 @@ impl ScriptWorld {
             scripts: inputs,
             scene,
         } = inputs;
+        self.apply_system_switches(&inputs);
         let inputs = ScriptInputs {
             animations: Some(super::AnimationData(data)),
             ..inputs
@@ -1611,6 +1612,10 @@ pub fn run_ordinary(
                 actor_update_skipped: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.actor_update_skipped().ok()),
+                task_system: cheats.as_ref().and_then(|cheats| cheats.task_system().ok()),
+                animation_system: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.animation_system().ok()),
                 ground_bypass: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.ground_bypass().ok()),

@@ -21,6 +21,8 @@ pub enum CheatEffect {
     TorchRetention,
     ActorUpdateSkip,
     MagicCarpet,
+    TaskSystem,
+    AnimationSystem,
     Unsupported,
 }
 
@@ -121,6 +123,8 @@ impl Cheats {
             "goldfinger" => CheatEffect::TorchRetention,
             "drno" => CheatEffect::ActorUpdateSkip,
             "magiccarpet" => CheatEffect::MagicCarpet,
+            "task" => CheatEffect::TaskSystem,
+            "animation" => CheatEffect::AnimationSystem,
             _ => CheatEffect::Unsupported,
         }
     }
@@ -151,6 +155,22 @@ impl Cheats {
             .state()?
             .value("magiccarpet")
             .context("missing magiccarpet state")?
+            == 1)
+    }
+
+    /// The `task` state: the task scheduling system runs only for the value 1.
+    pub fn task_system(&self) -> Result<bool> {
+        Ok(self.state()?.value("task").context("missing task state")? == 1)
+    }
+
+    /// The `animation` state as the animation system's enable: the value 1. The original's other
+    /// checks accept any nonzero value, a split that is not modelled, so a value of 2 or more
+    /// disables the system here.
+    pub fn animation_system(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
             == 1)
     }
 
@@ -265,4 +285,36 @@ pub struct CheatTransfer {
 pub enum CheatFileAction {
     Import,
     Export,
+}
+
+#[cfg(test)]
+mod system_switch_tests {
+    use super::*;
+
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> Result<CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &CheatFile) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn task_and_animation_are_on_only_for_the_value_one() {
+        let mut cheats = Cheats::new(Memory);
+        for name in ["task", "animation"] {
+            assert!(matches!(
+                Cheats::effect(name),
+                CheatEffect::TaskSystem | CheatEffect::AnimationSystem
+            ));
+        }
+        for (value, on) in [(0, false), (1, true), (2, false), (7, false)] {
+            cheats.execute("task", Some(value)).unwrap();
+            cheats.execute("animation", Some(value)).unwrap();
+            assert_eq!(cheats.task_system().unwrap(), on, "task {value}");
+            assert_eq!(cheats.animation_system().unwrap(), on, "animation {value}");
+        }
+    }
 }
