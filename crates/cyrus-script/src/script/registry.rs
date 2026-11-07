@@ -5357,6 +5357,85 @@ fn task_slot_name(name: Property) -> Option<(usize, cyrus_soup::TaskSlotField)> 
     })
 }
 
+impl GameHost<'_, '_, '_, '_> {
+    /// `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill`: health adjustments over
+    /// the selected-player services `AdjustHealth` also uses. The player natives take the selected
+    /// player whatever their receiver; the object natives gate on the receiver first and use the
+    /// player services only for a selected receiver, adjusting any other receiver's health byte
+    /// directly. The original's pointer-valued results are not reproduced, so none is returned.
+    fn zap(&mut self, function: Native, arguments: &[Argument]) -> Result<CallResult> {
+        let [amount] = arguments else {
+            anyhow::bail!("{function} requires one argument");
+        };
+        let amount = amount.integer()?;
+        let player = self.selected_player();
+        let kills = matches!(function, Native::ZapObject | Native::ZapPlayer);
+        let objects = matches!(function, Native::ZapObject | Native::ZapObjectNoKill);
+        let receiver_is_player = player.is_some_and(|player| player.index == self.index);
+        if objects {
+            let attributes = &self.registry.actors[self.index].attributes;
+            if attributes[Attribute::Invulnerable] != 0 {
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+            if attributes[Attribute::Npc] != 0
+                && !self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0
+                && self.registry.actors[self.index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_none_or(|combat| !combat.flags.contains(CombatFlags::STANCE))
+            {
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+            if !receiver_is_player {
+                let attributes = &mut self.registry.actors[self.index].attributes;
+                let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
+                attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
+                anyhow::ensure!(!kills || sum > 0, "{function}: death sequence unavailable");
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+        }
+        let player = player.with_context(|| format!("{function}: selected player unavailable"))?;
+        let id = self.registry.id(player.index)?;
+        // The player service takes the native's receiver as the damage source; ZapObject's
+        // selected-receiver branch passes none.
+        let source = if function == Native::ZapPlayer {
+            let receiver = self.registry.id(self.index)?;
+            Some(super::activation::NativeSource::Actor {
+                generation: receiver.generation,
+                index: receiver.index,
+            })
+        } else {
+            None
+        };
+        let sounds = &mut self.sounds;
+        let mut play = |actor, sound| {
+            sounds
+                .as_deref_mut()
+                .context("selected health sound executor unavailable")?(actor, sound)
+        };
+        if kills {
+            self.registry.apply_selected_death_health(
+                id,
+                amount,
+                source,
+                self.inputs,
+                self.random.as_deref_mut(),
+                &mut play,
+            )?;
+        } else {
+            self.registry.apply_selected_additive_health(
+                id,
+                amount,
+                self.inputs,
+                self.random.as_deref_mut(),
+                &mut play,
+            )?;
+        }
+        Ok(CallResult::CompleteWithoutValue)
+    }
+}
+
 impl Host for GameHost<'_, '_, '_, '_> {
     fn task_slot_property(
         &mut self,
@@ -7557,6 +7636,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 sheathing
             };
             return Ok(CallResult::Complete(i32::from(result)));
+        }
+        if [
+            Native::ZapObject,
+            Native::ZapObjectNoKill,
+            Native::ZapPlayer,
+            Native::ZapPlayerNoKill,
+        ]
+        .contains(&function)
+        {
+            return self.zap(function, arguments);
         }
         if function == Native::SetHealth || function == Native::AdjustHealth {
             let set = function == Native::SetHealth;

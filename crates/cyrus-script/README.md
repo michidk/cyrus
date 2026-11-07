@@ -689,3 +689,11 @@ progress byte completes `WaitAnimFrame`) and is saved with the animation. See pr
 [animation record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties).
 `anim.rep_count`, `anim.sound_handle`, `anim.max_group`, the `anim.pos`/`anim.angle` words and `anim.address`
 stay unsupported; writing `anim.current` too.
+
+
+Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player
+additive and death-owning services `AdjustHealth` uses (`ZapPlayer` names its receiver as the damage source, the
+object natives gate on attributes 120 and 97 first) and clamp a non-selected receiver's health byte to 0..255; a
+non-selected receiver killed by `ZapObject` stops at the non-player death sequence, which stays unavailable. See
+preservation's [Zap natives](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#zap-natives-and-the-selected-player-health-services).
+They return no value (the original's results are pointer residuals), so consuming one is an explicit error.

@@ -50105,3 +50105,6 @@ mod task_properties_tests;
 
 #[path = "script_registry/anim_properties.rs"]
 mod anim_properties_tests;
+
+#[path = "script_registry/zap_health.rs"]
+mod zap_health_tests;

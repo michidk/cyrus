@@ -6276,63 +6276,72 @@
     },
     {
       "native": "ZapObject",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named zap dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
-        "https://github.com/michidk/redguard-preservation/blob/ceda570/docs/engine/SOUP.md"
+      "scope": "Health adjustment over the selected-player additive/death-owning services or the receiver health byte",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GameHost::zap -> registry/health.rs services",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::a_receivers_health_byte_takes_the_wrapped_sum_clamped_to_a_byte",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::the_player_natives_heal_through_the_additive_and_death_owning_services",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::a_fatal_player_zap_names_the_receiver_as_the_damage_source_only_for_zap_player"
       ],
-      "limits": "Verified: installed function1/exact binding/full original handler independently mapped. Original holding/sheathing/model/weapon instructions execute. Constructed instruction witness checks exclusion/weapon gates, nonplayer signed wrapping byte saturation, exact path-specific residual returns, and exact selected-player adjustment/animation-condition/receiver-state query entries. Full mapped memory/nonstack writes/canary; preserved registers and balanced stack on returns. No arbitrary dependency return. Unknown: boundary query/service effects/return/continuation, later animation/finalization effects, natural state producers/pointer lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/runtime NOT RUN.",
-      "reviewed_revision": "2a64efa9f5f1162028699977a9e990755c8011bd"
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6710516549"
+      ],
+      "limits": "Verified in the original: the handlers wrap the same selected-player services AdjustHealth calls (additive for the NoKill pair, death-owning for ZapPlayer and ZapObject); object gates are attribute 120 then attribute 97 with the weapon/stance test; a non-selected receiver's health byte takes health+amount clamped to 0..255; ZapPlayer's damage source is its receiver (absent when it is the player), ZapObject's selected branch has none. The handlers' pointer-valued results are not reproduced: the natives return no value and consuming one is an explicit error. A non-selected receiver driven to zero by ZapObject writes the byte and then reports the non-player death sequence as unavailable, as AdjustHealth does. The shared HUD threshold word the services touch is not modelled. Natural authored gameplay parity remains Unknown (no installed script calls these natives).",
+      "reviewed_revision": "31746604afa4f5752edb14c9525d16e3955e8a84"
     },
     {
       "native": "ZapObjectNoKill",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named zap dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
-        "https://github.com/michidk/redguard-preservation/blob/ceb0434/docs/engine/SOUP.md"
+      "scope": "Health adjustment over the selected-player additive/death-owning services or the receiver health byte",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GameHost::zap -> registry/health.rs services",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::a_receivers_health_byte_takes_the_wrapped_sum_clamped_to_a_byte",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::invulnerable_receivers_are_left_alone_and_npcs_need_the_weapon_owner",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::the_player_natives_heal_through_the_additive_and_death_owning_services"
       ],
-      "limits": "Verified: installed function1/exact binding/full original handler. Original holding/sheathing/model/weapon instructions execute. Constructed instruction witness checks gated no-write returns, nonplayer signed wrapping addition with byte saturation, exact path-specific residual return, and selected-player adjustment-service entry with zero mode/original argument. Full mapped memory/nonstack writes/stack/preserved registers checked on returns; no normalized boolean result. Unknown: selected-player service effects/return/continuation, natural state producers/pointer lifecycle/full joint domain/VM/production parity. Named production handler remains missing; existing health services do not establish it. Rust/runtime NOT RUN.",
-      "reviewed_revision": "4ade169b3da67c5a528a793ceed834e702d13723"
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6710516549"
+      ],
+      "limits": "Verified in the original: the handlers wrap the same selected-player services AdjustHealth calls (additive for the NoKill pair, death-owning for ZapPlayer and ZapObject); object gates are attribute 120 then attribute 97 with the weapon/stance test; a non-selected receiver's health byte takes health+amount clamped to 0..255; ZapPlayer's damage source is its receiver (absent when it is the player), ZapObject's selected branch has none. The handlers' pointer-valued results are not reproduced: the natives return no value and consuming one is an explicit error. A non-selected receiver driven to zero by ZapObject writes the byte and then reports the non-player death sequence as unavailable, as AdjustHealth does. The shared HUD threshold word the services touch is not modelled. Natural authored gameplay parity remains Unknown (no installed script calls these natives).",
+      "reviewed_revision": "31746604afa4f5752edb14c9525d16e3955e8a84"
     },
     {
       "native": "ZapPlayer",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named zap dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
-        "https://github.com/michidk/redguard-preservation/blob/b6bd6a9/docs/engine/SOUP.md"
+      "scope": "Health adjustment over the selected-player additive/death-owning services or the receiver health byte",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GameHost::zap -> registry/health.rs services",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::the_player_natives_heal_through_the_additive_and_death_owning_services",
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::a_fatal_player_zap_names_the_receiver_as_the_damage_source_only_for_zap_player"
       ],
-      "limits": "Verified: independently resolved installed function1/exact native binding/full original handler. Original instruction cases check selected-player byte read before global gate, byte return on bypass, signed threshold update, negative-argument service entry before byte/result writes, signed wrapping ceiling/zero branches for nonnegative arguments, exact result publication/return and retained-state clears or mode6 request under zero-result override. Full mapped memory/nonstack write order/canary; exact return/preserved registers/stack on returns. Unknown: boundary service effects/returns/continuation, later receiver metadata/animation/finalization behavior, natural producers/pointer lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/runtime NOT RUN.",
-      "reviewed_revision": "aebd72fbb43279a825537a624bf4947b7f55e238"
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6710516549"
+      ],
+      "limits": "Verified in the original: the handlers wrap the same selected-player services AdjustHealth calls (additive for the NoKill pair, death-owning for ZapPlayer and ZapObject); object gates are attribute 120 then attribute 97 with the weapon/stance test; a non-selected receiver's health byte takes health+amount clamped to 0..255; ZapPlayer's damage source is its receiver (absent when it is the player), ZapObject's selected branch has none. The handlers' pointer-valued results are not reproduced: the natives return no value and consuming one is an explicit error. A non-selected receiver driven to zero by ZapObject writes the byte and then reports the non-player death sequence as unavailable, as AdjustHealth does. The shared HUD threshold word the services touch is not modelled. Natural authored gameplay parity remains Unknown (no installed script calls these natives).",
+      "reviewed_revision": "31746604afa4f5752edb14c9525d16e3955e8a84"
     },
     {
       "native": "ZapPlayerNoKill",
-      "status": "missing",
+      "status": "partial",
       "owner": 5,
-      "scope": "Direct named zap dispatch",
-      "caller": "ScriptWorld::advance -> GameHost/delegates -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6603133614",
-        "https://github.com/michidk/redguard-preservation/blob/7ea3b3d/docs/engine/SOUP.md"
+      "scope": "Health adjustment over the selected-player additive/death-owning services or the receiver health byte",
+      "caller": "ScriptWorld::advance -> GameHost::call -> GameHost::zap -> registry/health.rs services",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/zap_health.rs::the_player_natives_heal_through_the_additive_and_death_owning_services"
       ],
-      "limits": "Verified: installed function1/exact native binding/full original handler independently resolved. Original instruction cases check receiver-independent selected-player byte adjustment, global bypass, signed threshold update, wrapping sum/signed ceiling before zero clamp, exact full local result publication/return for nonnegative arguments, and exact first negative-argument service entry with player/mode2. Full mapped memory/nonstack write order/canary; preserved registers/stack on returns. Unknown: negative-argument service effects/return/continuation and later service effects, natural global producers/pointer lifecycle/full joint domain/VM/production parity. Named production support remains missing. Rust/runtime NOT RUN.",
-      "reviewed_revision": "49676e7747117ccfc32cfde77d4b75ec15f66a74"
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6710516549"
+      ],
+      "limits": "Verified in the original: the handlers wrap the same selected-player services AdjustHealth calls (additive for the NoKill pair, death-owning for ZapPlayer and ZapObject); object gates are attribute 120 then attribute 97 with the weapon/stance test; a non-selected receiver's health byte takes health+amount clamped to 0..255; ZapPlayer's damage source is its receiver (absent when it is the player), ZapObject's selected branch has none. The handlers' pointer-valued results are not reproduced: the natives return no value and consuming one is an explicit error. A non-selected receiver driven to zero by ZapObject writes the byte and then reports the non-player death sequence as unavailable, as AdjustHealth does. The shared HUD threshold word the services touch is not modelled. Natural authored gameplay parity remains Unknown (no installed script calls these natives).",
+      "reviewed_revision": "31746604afa4f5752edb14c9525d16e3955e8a84"
     },
     {
       "native": "Rnd",
