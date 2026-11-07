@@ -1404,6 +1404,20 @@ impl LogicalSessionSnapshot {
                 lights.push(rendered);
             }
         }
+        // The saved type-two effect records submit through the colour the last object light left.
+        let rgb = lights.last().map_or([0; 3], |light| light.rgb);
+        lights.extend(
+            current
+                .effects
+                .iter()
+                .flat_map(|effects| effects.light_effects())
+                .filter(|light| light.radius.current > 0)
+                .map(|light| cyrus_assets::environment::LocalLight {
+                    position: light.position,
+                    radius: light.radius.current as i16,
+                    rgb,
+                }),
+        );
         Ok(lights)
     }
 

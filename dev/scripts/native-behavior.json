@@ -4400,16 +4400,19 @@
     },
     {
       "native": "AddLightEffect",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/261"
+      "scope": "Eight-argument function allocating a type-two light effect record in the shared effect pool, modulated by the world loop and submitted as a local light",
+      "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::add_light_effect; update_ordinary -> advance_light_effects; ScriptWorld::object_lights -> render fog lighting",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/effects.rs::add_light_effect_runs_a_type_two_record_through_lifetime_modulation_and_submission",
+        "crates/cyrus-script/tests/script_registry/effects.rs::add_light_effect_shares_the_pool_capacity_and_keeps_snapshots"
       ],
-      "limits": "Verified independent installed8-argument declaration/exact native/full186-byte handler/158-byte allocator. Receiver/args1..3 unused. Enabled system requests type2; signed free_count>0 scans first zero-tag record; decrement count/preserve next link/set type2. Null/exhausted return0; success record pointer. Only4-byte zero-fill request before link restoration, not whole-record reset. Args4/6 duplicated,8/7/5 stored, two control words1/two companions0; other bytes retained.3024 original contexts/21 effective semantic controls; full mapped memory/write order/domain/calls/return/register/20-byte cleanup/canary checked. Only fill service controlled exact destination/value0/count4; independent original library byte-count inspection, no library/debug-wrapper execution. Four receiver tokens/3 enable values/6 signed counts/7 finite lists/3 argument octuples/2 patterns. Malformed/cycles/count producers/lifetime/release/record consumers/render meanings/exhaustive domains/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#addlighteffect",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified independent installed8-argument declaration/exact native/full186-byte handler/158-byte allocator. Receiver/args1..3 unused. Enabled system requests type2; signed free_count>0 scans first zero-tag record; decrement count/preserve next link/set type2. Null/exhausted return0; success record pointer. Only4-byte zero-fill request before link restoration, not whole-record reset. Args4/6 duplicated,8/7/5 stored, two control words1/two companions0; other bytes retained.3024 original contexts/21 effective semantic controls; full mapped memory/write order/domain/calls/return/register/20-byte cleanup/canary checked. Only fill service controlled exact destination/value0/count4; independent original library byte-count inspection, no library/debug-wrapper execution. Four receiver tokens/3 enable values/6 signed counts/7 finite lists/3 argument octuples/2 patterns. Malformed/cycles/count producers/lifetime/release/record consumers/render meanings/exhaustive domains/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run. Implementation (current): Verified per the published contract: the first three arguments and the receiver do not place the record (a fresh record sits at the pool origin; a reused slot keeps its previous position), the call returns the one-based record or zero for a disabled or full pool (type-one and type-two records share the capacity), lifetime from h ends a record before its channels advance, the f/g channel advances before d/e, each triggered channel draws start + Rnd(amplitude) - amplitude/2 from the shared generator, a record submits only while its d-channel is positive, with the colour left by the last object light. Routed tests run the native, the lifetime and modulation stages with the shared generator, submission through object_lights (the renderer's fog lighting consumer) and snapshot restore. Unknown: a negative amplitude (the original's Rnd behaviour is not recovered) is an explicit error; the record's position is not set by any installed path so it renders at the pool origin until a recovered writer exists; no installed script calls it; no original/native/browser comparison.",
       "reviewed_revision": "a2fe7d4ef330199857aaa3a2ce80eef048da78ce"
     },
     {
