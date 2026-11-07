@@ -582,6 +582,11 @@ enum Task {
         counter: u32,
         look: Option<super::camera::LookState>,
     },
+    /// `lookCyrus`: `lookObj` with the selected player as the target.
+    LookCyrus {
+        counter: u32,
+        look: Option<super::camera::LookState>,
+    },
     /// `showObjRot`, which the original leaves empty.
     ObjectRotation,
     Movement {
@@ -747,6 +752,7 @@ impl Task {
         spatial: &mut Option<SpatialCall<'_>>,
         mut services: NativeServices<'_>,
     ) -> Result<bool> {
+        let is_cyrus = matches!(self, Self::LookCyrus { .. });
         let ambient = services.ambient;
         let turning = matches!(self, Self::ControlAnimation { .. });
         Ok(match self {
@@ -1087,17 +1093,23 @@ impl Task {
                     )?
                 }
             }
-            Self::Look { counter, look } => {
+            Self::Look { counter, look } | Self::LookCyrus { counter, look } => {
+                let name = if is_cyrus { "lookCyrus" } else { "lookObj" };
                 let [duration] = arguments else {
-                    anyhow::bail!("lookObj requires one argument");
+                    anyhow::bail!("{name} requires one argument");
                 };
                 let elapsed = invocation
                     .elapsed
-                    .context("lookObj requires elapsed input")?;
+                    .with_context(|| format!("{name} requires elapsed input"))?;
                 let camera = services
                     .camera
-                    .context("lookObj camera session unavailable")?;
-                let target = camera.receiver.map_err(anyhow::Error::msg)?;
+                    .with_context(|| format!("{name} camera session unavailable"))?;
+                let target = if is_cyrus {
+                    camera.selected_player
+                } else {
+                    camera.receiver
+                }
+                .map_err(anyhow::Error::msg)?;
                 let (bound_position, bound_angles) = target.pose.map_err(anyhow::Error::msg)?;
                 !camera.state.look_at(
                     &super::camera::LookInputs {
@@ -3112,6 +3124,12 @@ impl NativeTasks {
                 counter: 0,
                 look: None,
             }
+        } else if function == Native::LookCyrus {
+            anyhow::ensure!(kind == CallKind::Task, "lookCyrus requires task encoding");
+            Task::LookCyrus {
+                counter: 0,
+                look: None,
+            }
         } else if function == Native::ShowObjRot {
             anyhow::ensure!(kind == CallKind::Task, "showObjRot requires task encoding");
             Task::ObjectRotation
@@ -3518,6 +3536,7 @@ impl NativeTasks {
                     | Task::ObjectPan { .. }
                     | Task::ShowLocation { .. }
                     | Task::Look { .. }
+                    | Task::LookCyrus { .. }
             )
         )
     }
@@ -3527,6 +3546,7 @@ impl NativeTasks {
         function == Native::ShowPlayer
             || function == Native::ShowPlayerPan
             || function == Native::LookObj
+            || function == Native::LookCyrus
             || super::camera::ObjectPanCommand::named(function).is_some()
             || super::camera::LocationCommand::named(function).is_some()
     }

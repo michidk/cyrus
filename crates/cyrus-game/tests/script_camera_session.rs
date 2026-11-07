@@ -858,6 +858,34 @@ fn look_task_fixes_the_orientation_until_it_finishes() {
 }
 
 #[test]
+fn look_cyrus_turns_the_camera_toward_the_selected_player_instead_of_the_receiver() {
+    let mut data = scripts_calling(Native::LookCyrus, &[3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0x02,
+        "orientation fixed"
+    );
+    assert_eq!(camera.records[2].actor, world.id(PLAYER).unwrap());
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the look must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.records[2].flags.bits() & 0x02,
+        0,
+        "orientation released"
+    );
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+}
+
+#[test]
 fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() {
     let mut data = scripts_calling(Native::ShowCyrusPan, &[3, -2, 5, 3]);
     let mut world = prepared(&mut data);

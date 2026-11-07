@@ -259,6 +259,7 @@ impl Task {
             Self::ObjectPan { command, .. } => (command.native(), 4, None),
             Self::ShowLocation { command, .. } => (command.native(), 3, None),
             Self::Look { .. } => (Native::LookObj, 1, Some(CallKind::Task)),
+            Self::LookCyrus { .. } => (Native::LookCyrus, 1, Some(CallKind::Task)),
             Self::ObjectRotation => (Native::ShowObjRot, 4, Some(CallKind::Task)),
             Self::Ambient { .. } => (Native::AmbientSound, 3, Some(CallKind::Multitask)),
             Self::AmbientRtx { .. } => (Native::AmbientRtx, 3, Some(CallKind::Multitask)),

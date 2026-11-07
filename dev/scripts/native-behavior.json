@@ -5260,18 +5260,18 @@
     },
     {
       "native": "lookCyrus",
-      "status": "missing",
+      "status": "partial",
       "owner": 35,
-      "scope": "Direct named AI/spatial-view/camera dispatch",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost/delegated task services -> unsupported fallback",
-      "tests": [],
+      "scope": "One-argument task running lookObj's handler with the selected player as the camera target",
+      "caller": "ScriptWorld::advance -> Runtime task call -> GameHost::native_task_call -> Task::LookCyrus -> camera.rs::CameraState::look_at",
+      "tests": [
+        "crates/cyrus-game/tests/script_camera_session.rs::look_cyrus_turns_the_camera_toward_the_selected_player_instead_of_the_receiver"
+      ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6602860444",
-        "https://github.com/michidk/redguard-preservation/blob/0a4a873/docs/engine/SOUP.md"
+        "https://github.com/michidk/cyrus/issues/35#issuecomment-6373518255"
       ],
-      "limits": "Verified: independently resolved installed task1/exact native binding/full46-byte wrapper and full638-byte helper; exact helper identity equals native lookObj binding. Original instruction cases verify selected-player/frame forwarding independent of receiver, retained target/frame and first formatter request with camera label/destination. Full mapped memory/nonstack writes/canary; selected target pointers intentionally unmapped before boundary. No fabricated formatter result or helper return. Unknown: formatter effects/return, helper continuation/task result/camera behavior, target lifecycle/full joint domain/VM/production parity. Named production support remains missing; closed camera issue shipped-call acceptance does not establish this unused native. Rust/runtime NOT RUN.",
+      "limits": "Verified: independently resolved installed task1/exact native binding/full46-byte wrapper and full638-byte helper; exact helper identity equals native lookObj binding. Original instruction cases verify selected-player/frame forwarding independent of receiver, retained target/frame and first formatter request with camera label/destination. Full mapped memory/nonstack writes/canary; selected target pointers intentionally unmapped before boundary. No fabricated formatter result or helper return. Unknown: formatter effects/return, helper continuation/task result/camera behavior, target lifecycle/full joint domain/VM/production parity. Named production support remains missing; closed camera issue shipped-call acceptance does not establish this unused native. Rust/runtime NOT RUN. Implementation (current): Verified per preservation (wrapper forwards the shared selected-player pointer and the frames argument to lookObj's handler, ignoring its receiver, result unchanged): the task is lookObj's with the selected player as the target actor, reusing the showCyrus* target. Routed test: the camera record names the selected player, orientation is fixed for the duration and released with the task. Unknown: no installed script calls it; no original/native/browser comparison.",
       "reviewed_revision": "c8a60b99cc58fc76309b89afdcfea6dc98f11ba1"
     },
     {
