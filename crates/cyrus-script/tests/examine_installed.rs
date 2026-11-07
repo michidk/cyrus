@@ -28,7 +28,7 @@ fn every_installed_item_with_an_inventory_model_opens_the_view() {
         let extents = item
             .extents
             .unwrap_or_else(|| panic!("item {id} model {model}"));
-        ItemViewer::open(extents, [0, 0], 0.75).unwrap();
+        ItemViewer::open(extents, [0, 0], 0.75);
         let lines: Vec<_> =
             DescriptionLines::new(i32::from(id), item.description.as_deref(), 0).collect();
         match id {

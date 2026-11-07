@@ -51,21 +51,48 @@ pub struct ItemViewer {
     exiting: bool,
     released: bool,
     exit_angles: [i32; 3],
+    /// Offset from the resting position at fade factor one, as it enters.
+    entry_offset: [f32; 3],
+    /// The place the view flies back to when it closes.
+    exit_target: [f32; 3],
     exit_offset: [f32; 3],
 }
 
 impl ItemViewer {
-    /// `extents` are the model's x, y and z bounding extents; `aspect` is screen height over
-    /// width. Only the form every installed script uses is supported: both request words zero.
-    pub fn open(extents: [i32; 3], words: [i32; 2], aspect: f32) -> Result<Self> {
-        ensure!(
-            words == [0, 0],
-            "item viewer: request words {words:?} are not the scripted form (0, 0)"
-        );
+    /// The scripted entry (`ShowItem`). `extents` are the model's x, y and z bounding extents,
+    /// `aspect` is screen height over width. The model flies in from `(first, second, 1490)`
+    /// and flies back to `(second, first, 1490)`: the original's exit swaps the two words.
+    pub fn open(extents: [i32; 3], words: [i32; 2], aspect: f32) -> Self {
+        let [first, second] = words.map(|word| word as f32);
+        Self::new(
+            extents,
+            aspect,
+            [first, second, ENTRY_DEPTH],
+            [second, first, ENTRY_DEPTH],
+        )
+    }
+
+    /// The inventory screen's entry: the model flies in from the cursor cell at visible `row` and
+    /// `column` and flies back to it.
+    pub fn open_inventory(extents: [i32; 3], row: i32, column: i32, aspect: f32) -> Self {
+        let cell = [
+            (column * 0x184 - 0x246) as f32,
+            (row * 0x17a - 0x1b0) as f32,
+        ];
+        let start = extents[2] as f32 + 180.0;
+        Self::new(
+            extents,
+            aspect,
+            [cell[0], cell[1], ENTRY_DEPTH - start],
+            [cell[0], cell[1], ENTRY_DEPTH],
+        )
+    }
+
+    fn new(extents: [i32; 3], aspect: f32, entry_offset: [f32; 3], exit_target: [f32; 3]) -> Self {
         let largest = extents.into_iter().max().unwrap_or(0);
         let depth_min = extents[2] as f32;
         let start = depth_min + 180.0;
-        Ok(Self {
+        Self {
             largest,
             depth_min,
             depth_max: (8 * largest) as f32 + start,
@@ -77,8 +104,10 @@ impl ItemViewer {
             exiting: false,
             released: false,
             exit_angles: [0; 3],
+            entry_offset,
+            exit_target,
             exit_offset: [0.0; 3],
-        })
+        }
     }
 
     fn scale(&self) -> f32 {
@@ -150,7 +179,11 @@ impl ItemViewer {
         self.exit_angles = self
             .angles
             .map(|angle| i32::from(angle) - if angle > 0x400 { 0x800 } else { 0 });
-        self.exit_offset = [-self.pan[0], -self.pan[1], ENTRY_DEPTH - self.depth];
+        self.exit_offset = [
+            self.exit_target[0] - self.pan[0],
+            self.exit_target[1] - self.pan[1],
+            self.exit_target[2] - self.depth,
+        ];
         self.fade = (f64::from(self.fade) + FADE_STEP) as f32;
         self.interpolate_angles();
     }
@@ -165,7 +198,7 @@ impl ItemViewer {
         let offset = if self.exiting {
             self.exit_offset
         } else {
-            [0.0, 0.0, ENTRY_DEPTH]
+            self.entry_offset
         };
         ViewerPose {
             turn: self.angles[0],
@@ -494,8 +527,7 @@ fn open(
             request.item
         )
     })?;
-    let viewer = ItemViewer::open(extents, request.words, ASPECT)
-        .with_context(|| format!("item {}", request.item))?;
+    let viewer = ItemViewer::open(extents, request.words, ASPECT);
     let potion = usize::try_from((request.item - 20) / 2)
         .ok()
         .and_then(|index| globals.potion(index))
@@ -555,7 +587,7 @@ mod tests {
     };
 
     fn viewer() -> ItemViewer {
-        ItemViewer::open([100, 60, 40], [0, 0], 0.75).unwrap()
+        ItemViewer::open([100, 60, 40], [0, 0], 0.75)
     }
 
     fn settle(viewer: &mut ItemViewer) {
@@ -565,9 +597,27 @@ mod tests {
     }
 
     #[test]
-    fn only_the_scripted_request_form_opens() {
-        assert!(ItemViewer::open([1, 1, 1], [1, 0], 0.75).is_err());
-        assert!(ItemViewer::open([1, 1, 1], [0, 2], 0.75).is_err());
+    fn request_words_offset_the_entry_and_swap_on_the_way_out() {
+        let mut viewer = ItemViewer::open([100, 60, 40], [30, 70], 0.75);
+        assert_eq!(viewer.pose().position, [30.0, 70.0, 220.0 + 1490.0]);
+        settle(&mut viewer);
+        viewer.update(ViewerInput { exit: true, ..HELD });
+        // At the first exit step the model is a fifth of the way from rest to the swapped
+        // target `(70, 30, 1490)`.
+        let position = viewer.pose().position;
+        assert!((position[0] - 70.0 * 0.15).abs() < 1e-3, "{position:?}");
+        assert!((position[1] - 30.0 * 0.15).abs() < 1e-3);
+        assert!((position[2] - (220.0 + (1490.0 - 220.0) * 0.15)).abs() < 1e-2);
+    }
+
+    #[test]
+    fn the_inventory_entry_flies_from_the_cursor_cell_and_back_to_it() {
+        let mut viewer = ItemViewer::open_inventory([100, 60, 40], 1, 2, 0.75);
+        let cell = [2.0 * 388.0 - 582.0, 1.0 * 378.0 - 432.0];
+        let start = viewer.pose().position;
+        assert_eq!(start, [cell[0], cell[1], 1490.0]);
+        settle(&mut viewer);
+        assert_eq!(viewer.pose().position, [0.0, 0.0, 220.0]);
     }
 
     #[test]
