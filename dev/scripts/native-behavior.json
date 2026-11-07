@@ -3155,15 +3155,23 @@
         "https://github.com/michidk/redguard-preservation/pull/229"
       ],
       "native": "TestTask",
-      "status": "missing",
-      "scope": "Original one-argument task handler requests and noncompletion return; named implementation missing",
-      "caller": "ScriptWorld::advance -> Runtime host call -> GameHost::call/native_task_call -> unsupported fallback",
-      "tests": [],
+      "status": "partial",
+      "owner": 5,
+      "scope": "One-argument task that follows the selected player with the node walk and never completes",
+      "caller": "ScriptWorld::advance -> Runtime task call/poll -> Task::TestTask -> PointHost::follow_positions / move_to(Node)",
+      "tests": [
+        "crates/cyrus-script/src/script/tasks/persistence/tests.rs::test_task_follows_the_player_past_131072_and_never_completes",
+        "crates/cyrus-script/tests/script_registry/effects.rs::test_task_through_the_scheduler_keeps_its_slot_while_the_player_is_near"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#testtask",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
       "limits": "Verified: independent installed task declaration/native/full handler; argument unused, wrapping coordinate differences sent to shared distance service, signed result greater than 131072 requests receiver movement to selected-player query position with final argument zero. Handler returns one independently of movement result. 3024 original handler contexts and eight effective instruction mutations pass. Position resolution, distance and movement services are controlled boundaries; helper arithmetic, collision/navigation effects and null-actor admission not accepted. Inferred: return one retains the slot under the separately published existing-task contract. Unknown: VM operand decoding, actual scheduler integration and natural original/native/browser behavior. Named implementation remains missing; no family behavior inferred."
     },
     {
       "owner": 5,
-      "reviewed_revision": "65b35c4b3913ccecd02359ff7a3f952235b78c49",
+      "reviewed_revision": "65b35c4b3913ccecd02359ff7a3f952235b78c49 Implementation (current): Verified (handler disassembled through the native table; the movement request is the MoveNodePosition wrapper, whose diagnostic names it): every poll compares the receiver-player integer distance with 131072 (strictly greater requests movement toward the player's position with tolerance zero, the request's result ignored) and reports one, so the slot is retained. Tests: the recording point host for the distance boundary, the node-walk request operands and the never-completing result, and the production scheduler for the near case. Unknown: the far case through live node-walk geometry is covered only by the shared MoveNodePosition tests; no installed script calls it; no original/native/browser comparison.",
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6602401964",

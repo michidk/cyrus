@@ -2645,6 +2645,7 @@ struct RecordingPointHost {
     result: i32,
     breaths: u32,
     breathing: bool,
+    follow: ([i32; 3], [i32; 3]),
 }
 impl PointHost for RecordingPointHost {
     fn player_tilt(&mut self, _: i32, _: i32, _: i32, _: bool) -> Result<()> {
@@ -2673,6 +2674,9 @@ impl PointHost for RecordingPointHost {
     fn face(&mut self, target: FaceTarget) -> Result<i32> {
         self.faces.push(target);
         Ok(self.result)
+    }
+    fn follow_positions(&mut self) -> Result<([i32; 3], [i32; 3])> {
+        Ok(self.follow)
     }
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
         self.offsets.push(offset);
@@ -2782,6 +2786,62 @@ fn point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zer
                 .is_err()
         );
     }
+}
+
+#[test]
+fn test_task_follows_the_player_past_131072_and_never_completes() {
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let argument = [Argument::Integer(99)];
+    // Horizontal distance 131072 is not farther; 131073 is, and the walk request carries the
+    // player's position with tolerance zero, whatever it returns.
+    for (offset, moves) in [(131_072, 0), (131_073, 1)] {
+        for result in [0, 1] {
+            let mut host = RecordingPointHost {
+                result,
+                follow: ([offset, 7, 0], [0, 0, 0]),
+                ..Default::default()
+            };
+            let mut task = Task::FollowPlayer;
+            for _ in 0..2 {
+                let completed = task
+                    .complete(
+                        &argument,
+                        invocation,
+                        &mut None,
+                        &mut None,
+                        NativeServices {
+                            point: Some(&mut host),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                assert!(!completed, "TestTask reports one every poll");
+            }
+            assert_eq!(host.moves.len(), 2 * moves, "offset {offset}");
+            assert!(
+                host.moves
+                    .iter()
+                    .all(|step| *step == (PointWrapper::Node, MoveTarget::Position([0; 3]), 0))
+            );
+        }
+    }
+    let error = Task::FollowPlayer
+        .complete(
+            &[],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices {
+                point: Some(&mut RecordingPointHost::default()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("one argument"));
 }
 
 #[test]

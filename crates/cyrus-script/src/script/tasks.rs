@@ -282,6 +282,9 @@ pub(super) trait PointHost {
 
     /// One `projectileAI` update: true while the receiver keeps flying.
     fn projectile(&mut self) -> Result<bool>;
+
+    /// The receiver's and the selected player's query positions, for `TestTask`.
+    fn follow_positions(&mut self) -> Result<([i32; 3], [i32; 3])>;
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -707,6 +710,8 @@ enum Task {
     MoveLocation,
     /// `GotoLocation(location)`: arrival snap or retained AI location/selector refresh.
     GotoLocation,
+    /// `TestTask(value)` (named for what it does): follows the selected player with the node walk; never completes.
+    FollowPlayer,
     /// `MovePosition(x, y, z, tolerance)`: the direct point wrapper toward a Q8 position.
     MovePosition,
     /// `MoveNodeMarker(marker, tolerance)`: the point wrapper toward a marker.
@@ -1407,6 +1412,22 @@ impl Task {
                     .point
                     .context("Move point tasks require the receiver's point-walking owner")?;
                 host.move_to(wrapper, target, tolerance)? == 0
+            }
+            Self::FollowPlayer => {
+                anyhow::ensure!(arguments.len() == 1, "TestTask requires one argument");
+                let host = services
+                    .point
+                    .context("TestTask requires the receiver's point-walking owner")?;
+                let (own, target) = host.follow_positions()?;
+                let distance = super::spatial::rounded_distance(std::array::from_fn(|axis| {
+                    own[axis].wrapping_sub(target[axis])
+                }))?;
+                // Equality does not request movement; the request's result is ignored.
+                if distance > 131_072 {
+                    host.move_to(PointWrapper::Node, MoveTarget::Position(target), 0)?;
+                }
+                // The handler reports one every poll, so the slot is never released.
+                false
             }
             Self::PlayerOffset => {
                 let [x, y, z] = arguments else {
@@ -3315,6 +3336,8 @@ impl NativeTasks {
             Task::GotoLocation
         } else if function == Native::MoveLocation {
             Task::MoveLocation
+        } else if function == Native::TestTask {
+            Task::FollowPlayer
         } else if function == Native::MovePosition {
             Task::MovePosition
         } else if function == Native::MoveNodeMarker {
@@ -3529,6 +3552,7 @@ impl NativeTasks {
             Native::MoveLocation,
             Native::GotoLocation,
             Native::MovePosition,
+            Native::TestTask,
             Native::MoveNodeMarker,
             Native::MoveNodeLocation,
             Native::MoveNodePosition,
@@ -3553,6 +3577,7 @@ impl NativeTasks {
                     | Task::MoveLocation
                     | Task::GotoLocation
                     | Task::MovePosition
+                    | Task::FollowPlayer
                     | Task::MoveNodeMarker
                     | Task::MoveNodeLocation
                     | Task::MoveNodePosition

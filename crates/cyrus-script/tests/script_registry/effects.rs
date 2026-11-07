@@ -1350,3 +1350,51 @@ fn an_eight_character_shell_name_depends_on_its_next_link() {
         [2]
     );
 }
+
+#[test]
+fn test_task_through_the_scheduler_keeps_its_slot_while_the_player_is_near() {
+    let (_, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::TestTask,
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(
+                        id,
+                        Native::TestTask,
+                        CallKind::Task,
+                        vec![Value::Integer { value: 0 }],
+                    ),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let before = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    for round in 0..4 {
+        scheduler_round_with(&mut world, &data, &scene, round, false, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        // Within 131072 of the player the task asks for no movement and is never released.
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    }
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.position,
+        before
+    );
+}

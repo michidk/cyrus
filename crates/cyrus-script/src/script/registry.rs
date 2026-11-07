@@ -8720,6 +8720,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Native::MoveMarker,
                 Native::MoveLocation,
                 Native::MovePosition,
+                Native::TestTask,
                 Native::MoveNodeMarker,
                 Native::MoveNodeLocation,
                 Native::MoveNodePosition,

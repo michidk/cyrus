@@ -61,6 +61,20 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
         Ok(i32::from(control.ai.var1 != -1))
     }
 
+    fn follow_positions(&mut self) -> Result<([i32; 3], [i32; 3])> {
+        let receiver = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let player = self
+            .selected_player()
+            .context("TestTask: selected player unavailable")?;
+        Ok((
+            self.registry.query_position(receiver)?,
+            self.registry.query_position(player)?,
+        ))
+    }
+
     fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
         self.registry
             .offset_selected_player(self.index, offset, true)
