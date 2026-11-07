@@ -581,3 +581,17 @@ fn a_script_that_marks_itself_dead_is_skipped_by_later_ordinary_updates() {
     assert_eq!(locals(&world), [1]);
     assert!(world.actors()[0].control_state().unwrap().killed);
 }
+
+#[test]
+fn invisible_is_a_draw_only_flag_the_script_keeps_running_under() {
+    let world = pose_world(&[
+        Step3::Read(Property::Invisible),
+        Step3::Write(Property::Invisible, 0x103),
+        Step3::Read(Property::Invisible),
+        Step3::Write(Property::Dead, 0),
+    ]);
+    assert_eq!(locals(&world), [0, 1]);
+    // It is saved with the actor and, unlike `dead`, does not stop script updates.
+    assert!(world.actors()[0].control_state().unwrap().invisible);
+    assert!(!world.actors()[0].control_state().unwrap().killed);
+}

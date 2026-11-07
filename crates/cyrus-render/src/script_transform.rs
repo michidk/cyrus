@@ -58,7 +58,7 @@ fn visibility(
                 .entity(entity)
                 .insert(AppliedScriptVisibility(*visibility));
         }
-        let next = if control.hidden {
+        let next = if control.hidden || control.invisible {
             Visibility::Hidden
         } else {
             Visibility::Inherited

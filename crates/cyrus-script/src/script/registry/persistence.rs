@@ -73,6 +73,8 @@ struct ControlSnapshot {
     object_update_excluded: bool,
     hidden: bool,
     #[serde(default)]
+    invisible: bool,
+    #[serde(default)]
     scabbard_override: [Option<i16>; 2],
     #[serde(default)]
     killed: bool,
@@ -165,6 +167,7 @@ impl ControlSnapshot {
             held_item: control.held_item,
             object_update_excluded: control.object_update_excluded,
             hidden: control.hidden,
+            invisible: control.invisible,
             scabbard_override: control.scabbard_override,
             killed: control.killed,
             creator: control.creator,
@@ -246,6 +249,7 @@ impl ControlSnapshot {
             held_item: self.held_item,
             object_update_excluded: self.object_update_excluded,
             hidden: self.hidden,
+            invisible: self.invisible,
             scabbard_override: self.scabbard_override,
             killed: self.killed,
             creator,

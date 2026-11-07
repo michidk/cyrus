@@ -472,6 +472,8 @@ pub struct ActorControlState {
     pub object_update_excluded: bool,
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
+    /// The `invisible` byte: the body is not drawn while scripts, animation and collision go on.
+    pub invisible: bool,
     /// The signed RAEX `scabbard0`/`scabbard1` words a script rewrote through `scabbard[0]` and
     /// `scabbard[1]`; None keeps the installed value the loader copied into the actor.
     pub scabbard_override: [Option<i16>; 2],
@@ -5214,6 +5216,7 @@ fn control_record_property(
         // KillMe's finished marker and the weapon-drawn byte of the equipped-weapon routines.
         Property::Dead => ControlField::Flag(&mut control.killed),
         Property::WeaponDrawn => ControlField::Flag(&mut control.weapon_drawn),
+        Property::Invisible => ControlField::Flag(&mut control.invisible),
         Property::MoveVx => ControlField::Dword(&mut control.motion_vector[0]),
         Property::MoveVy => ControlField::Dword(&mut control.motion_vector[1]),
         Property::MoveVz => ControlField::Dword(&mut control.motion_vector[2]),

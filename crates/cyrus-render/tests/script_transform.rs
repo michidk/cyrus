@@ -9,9 +9,11 @@ use serde_json::json;
 #[test]
 fn script_visibility_and_stored_position_follow_binding_lifetime() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
-    for (function, expected) in [
-        ("HideMe", Visibility::Hidden),
-        ("ShowMe", Visibility::Inherited),
+    // The third case shows the actor but marks its `invisible` byte, which hides only the body.
+    for (function, expected, invisible) in [
+        ("HideMe", Visibility::Hidden, false),
+        ("ShowMe", Visibility::Inherited, false),
+        ("ShowMe", Visibility::Hidden, true),
     ] {
         let mut scripts: Scripts = serde_json::from_value(json!({
             "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
@@ -87,6 +89,7 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
                 json!([40.0_f32.to_bits(), 900.0_f32.to_bits(), 80.0_f32.to_bits()]);
             saved["actors"][0]["model"]["position"] =
                 saved["actors"][0]["model"]["current"]["position"].clone();
+            saved["actors"][0]["control"]["invisible"] = invisible.into();
             world = ScriptWorld::from_snapshot(
                 serde_json::from_value(saved).unwrap(),
                 &sources,
