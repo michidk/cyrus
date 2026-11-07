@@ -35624,18 +35624,26 @@ fn scheduler_round_with(
     player_tasks: bool,
     ordinary: bool,
 ) -> anyhow::Result<()> {
-    scheduler_round_for(world, data, scene, round, player_tasks, ordinary, Some(0))
+    scheduler_round_for(
+        world,
+        data,
+        scene,
+        (round, player_tasks, ordinary),
+        Some(0),
+        cyrus_game::script::ScriptStage::Tasks,
+    )
 }
 
 /// One scheduler round whose caller is the given actor (`None`: only the player's tasks run).
+/// `player_stage` is the stage the selected player's own update runs: `Tasks` polls its tasks only,
+/// `OrdinaryMain` is the production wrapper that also ages its collision response.
 fn scheduler_round_for(
     world: &mut ScriptWorld,
     data: &cyrus_assets::animation::Animations,
     scene: &cyrus_game::player::data::PlayerScene,
-    round: usize,
-    player_tasks: bool,
-    ordinary: bool,
+    (round, player_tasks, ordinary): (usize, bool, bool),
     caller: Option<usize>,
+    player_stage: cyrus_game::script::ScriptStage,
 ) -> anyhow::Result<()> {
     use cyrus_game::script::{
         LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
@@ -35715,7 +35723,7 @@ fn scheduler_round_for(
     if player_tasks {
         world.advance(
             player,
-            ScriptStage::Tasks,
+            player_stage,
             inputs,
             Some(&mut |_, _| Ok(())),
             Some(&mut random),
@@ -35824,6 +35832,7 @@ fn lineup_receiver_fixture(
     angle: i32,
     caller_kills_itself: bool,
     forward_walk: u8,
+    offset_z: i32,
 ) -> (
     Scripts,
     ScriptWorld,
@@ -35857,7 +35866,7 @@ fn lineup_receiver_fixture(
                     target: Object::Player,
                     // The unrotated offsets name the point 2048 units along +Z of the caller,
                     // ground the fixture covers (as for PlayerFaceTalk).
-                    arguments: [angle, 0, 2048]
+                    arguments: [angle, 0, offset_z]
                         .map(|value| Value::Integer { value })
                         .to_vec(),
                 },
@@ -35896,7 +35905,7 @@ fn object_pickup_lineup_arrives_completes_and_the_caller_continues() {
     // and the default animation completes the task in the player's own slot; the caller continued
     // at once.
     let (_, mut world, data, scene, index) =
-        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024, false, 3);
+        lineup_receiver_fixture(Native::ObjectPickupLineUp, 1024, false, 3, 2048);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35930,7 +35939,8 @@ fn line_up_walks_the_receiver_to_the_retained_source_frame_and_the_caller_contin
     // LineUp is the close mover on the receiver: it turns to the final heading, steps toward the
     // rotated offset point of the source actor retained on the first invocation and completes
     // with the default animation, while the caller continued at once.
-    let (_, mut world, data, scene, index) = lineup_receiver_fixture(Native::LineUp, 0, false, 3);
+    let (_, mut world, data, scene, index) =
+        lineup_receiver_fixture(Native::LineUp, 0, false, 3, 2048);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35960,7 +35970,7 @@ fn object_parallel_lineup_arrives_completes_and_the_caller_continues() {
     // The plain mover on the receiver toward the caller's frame: angle 1024 puts the final
     // heading on the player's own, so it steps (no path test) and finishes at caller X/Z + offsets.
     let (_, mut world, data, scene, index) =
-        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024, false, 3);
+        lineup_receiver_fixture(Native::ObjectParallelLineUp, 1024, false, 3, 2048);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let mut finished = false;
@@ -35996,7 +36006,8 @@ fn a_departed_source_ends_the_receivers_lineup_with_an_explicit_error() {
         (Native::ObjectParallelLineUp, 1024),
         (Native::ObjectLineUp, 0),
     ] {
-        let (_, mut world, data, scene, index) = lineup_receiver_fixture(native, angle, true, 3);
+        let (_, mut world, data, scene, index) =
+            lineup_receiver_fixture(native, angle, true, 3, 2048);
         let player = world.id(index).unwrap();
         world.begin_player_movement_update(player, 0).unwrap();
         let map = world.id(0).unwrap();
@@ -36006,10 +36017,9 @@ fn a_departed_source_ends_the_receivers_lineup_with_an_explicit_error() {
             &mut world,
             &data,
             &scene,
-            0,
-            false,
-            false,
+            (0, false, false),
             Some(caller.index),
+            cyrus_game::script::ScriptStage::Tasks,
         )
         .unwrap();
         assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 1);
@@ -36018,10 +36028,17 @@ fn a_departed_source_ends_the_receivers_lineup_with_an_explicit_error() {
             "the killed created caller is removed in its own update"
         );
         let tasks = world.actors()[index].runtime().unwrap().active_tasks();
-        let error = scheduler_round_for(&mut world, &data, &scene, 4, true, false, None)
-            .expect_err(&format!(
-                "{native:?}: the departed source must end the task with an error (tasks {tasks})"
-            ));
+        let error = scheduler_round_for(
+            &mut world,
+            &data,
+            &scene,
+            (4, true, false),
+            None,
+            cyrus_game::script::ScriptStage::Tasks,
+        )
+        .expect_err(&format!(
+            "{native:?}: the departed source must end the task with an error (tasks {tasks})"
+        ));
         assert!(
             format!("{error:#}").contains("retired created receiver"),
             "{native:?}: {error:#}"
@@ -36030,6 +36047,111 @@ fn a_departed_source_ends_the_receivers_lineup_with_an_explicit_error() {
         assert!(
             failure.contains("retired created receiver"),
             "{native:?}: the player's runtime records the failure: {failure}"
+        );
+    }
+}
+
+/// Put a steep static ramp ahead of the lineup fixture's +Z walk, at the player's ground height
+/// and covering Z 32 to 40 around X 10 in map units (the player stands at Z 30). The static
+/// window never admits the map's first cell, so the placement sits in cell (1, 1) and its faces
+/// reach back to the player's area with a bounds radius that admits it.
+fn add_lineup_ramp(scene: &mut cyrus_game::player::data::PlayerScene, rise: f32) {
+    use cyrus_assets::collision::{
+        CollisionGeometry, CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement,
+    };
+    use cyrus_collision::collision_world::StaticCollision;
+    const ONE: i32 = 268435456;
+    let ramp = CollisionModel {
+        flags: 0,
+        geometry: CollisionGeometry {
+            version: Some(*b"v5.0"),
+            radius: 1000.0,
+            vertices: vec![
+                [-610.0, rise, -488.0],
+                [-410.0, rise, -488.0],
+                [-410.0, rise, -480.0],
+                [-610.0, rise, -480.0],
+            ],
+            // Normal Y of -100/256 classifies as steep ground.
+            normals: vec![[0.0, -0.39, 0.92]],
+            faces: vec![vec![0, 1, 2, 3]],
+            textures: Some(vec![None]),
+            subobjects: vec![CollisionSubobject {
+                center: [-510.0, rise, -484.0],
+                radius: 1000.0,
+                extents: Some([1.0; 3]),
+                faces: vec![0],
+            }],
+        },
+    };
+    scene.collision = CollisionScene {
+        sphere_object_scale: Some(256),
+        placements: vec![StaticPlacement {
+            id: 1,
+            model: "RAMP".into(),
+            position: [520, -6, 520],
+            rotation: [ONE, 0, 0, 0, ONE, 0, 0, 0, ONE],
+        }],
+        models: BTreeMap::from([("RAMP".into(), ramp)]),
+        ..Default::default()
+    };
+    scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+}
+
+#[test]
+fn a_blocking_ramp_ends_the_lineup_with_return_state_six_without_moving_the_player() {
+    // The steep ramp blocks the production forward step support query, so the player does not
+    // move and the blocked-response marker is set. The plain mover keeps its step (the
+    // destination stays straight ahead): nothing snaps the player and, once the production player
+    // wrapper has aged the marker past eight updates, it abandons with return state six. The close
+    // mover (`LineUp`) treats the mark as its fallback at once and abandons with state six on the
+    // next poll. Neither moves the player onto the destination.
+    // LineUp rotates its offsets by the source heading plus the angle, so the half-turn angle with
+    // a negated offset puts the destination ahead of the player as for the parallel mover.
+    for (native, angle, offset_z) in [
+        (Native::ObjectParallelLineUp, 1024, 2048),
+        (Native::LineUp, 1024, -2048),
+    ] {
+        let (_, mut world, data, mut scene, index) =
+            lineup_receiver_fixture(native, angle, false, 3, offset_z);
+        add_lineup_ramp(&mut scene, 0.0);
+        let player = world.id(index).unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let start = world.spatial(player).unwrap().local.position;
+        let mut rounds = 0;
+        while world.actors()[index].runtime().unwrap().active_tasks() != 0 || rounds == 0 {
+            scheduler_round_for(
+                &mut world,
+                &data,
+                &scene,
+                (rounds, true, true),
+                Some(0),
+                cyrus_game::script::ScriptStage::OrdinaryMain,
+            )
+            .unwrap_or_else(|error| panic!("{native:?} round {rounds}: {error:#}"));
+            rounds += 1;
+            assert!(
+                rounds < 400,
+                "{native:?}: the blocked task must be abandoned"
+            );
+            if native == Native::ObjectParallelLineUp {
+                assert_eq!(
+                    world.spatial(player).unwrap().local.position,
+                    start,
+                    "{native:?}: the blocked player does not move"
+                );
+            }
+        }
+        if native == Native::ObjectParallelLineUp {
+            assert!(
+                rounds > 8,
+                "{native:?}: abandoned only after the response aged ({rounds})"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(world.globals()).unwrap()["native_command_return"],
+            6,
+            "{native:?}: the abandon leaves return state six"
         );
     }
 }
@@ -36046,7 +36168,8 @@ fn object_parallel_lineup_abandons_on_a_stale_collision_response_without_moving(
 
 fn assert_stale_response_abandons(native: Native) {
     use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
-    let (scripts, mut world, data, scene, index) = lineup_receiver_fixture(native, 1024, false, 3);
+    let (scripts, mut world, data, scene, index) =
+        lineup_receiver_fixture(native, 1024, false, 3, 2048);
     let player = world.id(index).unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let start = world.spatial(player).unwrap().local.position;
