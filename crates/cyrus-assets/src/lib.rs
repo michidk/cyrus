@@ -478,6 +478,7 @@ pub mod effects;
 pub mod environment;
 #[cfg(feature = "parsers")]
 pub mod environment_export;
+pub mod examine;
 pub mod hud;
 #[cfg(feature = "parsers")]
 pub mod hud_export;

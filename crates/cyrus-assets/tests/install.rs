@@ -652,6 +652,20 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let data: serde_json::Value =
         serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
     assert_eq!(data["candle_mode"], 2);
+    let examine: cyrus_assets::examine::ExamineArtwork =
+        serde_json::from_slice(&std::fs::read(hud.join("examine.models")).unwrap()).unwrap();
+    examine.validate().unwrap();
+    for (id, item) in data["inventory"].as_object().unwrap() {
+        if let Some(model) = item["inventory_model"]["Model"].as_str() {
+            assert!(
+                examine
+                    .models
+                    .get(model)
+                    .is_some_and(|m| !m.faces.is_empty()),
+                "item {id}: examine model {model}"
+            );
+        }
+    }
     assert_eq!(data["candle"], serde_json::json!([12, 8]));
     assert_eq!(data["pickup"], serde_json::json!([12, 386]));
     assert_eq!(data["selected"], 1);
