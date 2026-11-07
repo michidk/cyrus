@@ -168,7 +168,9 @@ pub(crate) fn apply(
             .copied()
             .unwrap_or_default();
         let global = if let Some(pose) = pose {
-            commands.entity(entity).insert(AppliedScriptTransform);
+            if applied.is_none() {
+                commands.entity(entity).insert(AppliedScriptTransform);
+            }
             parent * GlobalTransform::from(Mat4::from(pose))
         } else {
             commands.entity(entity).remove::<AppliedScriptTransform>();
@@ -176,8 +178,10 @@ pub(crate) fn apply(
         };
         let mut pending = vec![(entity, global)];
         while let Some((entity, global)) = pending.pop() {
+            // An unchanged pose must not mark its subtree changed: visibility, bounds,
+            // extraction and camera clipping redo their work for changed transforms.
             if let Ok(mut target) = globals.get_mut(entity) {
-                *target = global;
+                target.set_if_neq(global);
             }
             let Ok((_, Some(children), _)) = hierarchy.get(entity) else {
                 continue;
