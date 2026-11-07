@@ -119,8 +119,7 @@ impl ScriptWorld {
     /// Face a target from local Q8 X/Z, following preservation's combat-maintenance
     /// facing rule. Arrival snaps X/Z and registers a deferred map update without
     /// changing Y or heading. Otherwise return the signed pre-turn difference,
-    /// or zero when the ordinary turn snaps. Selected-player camera feedback
-    /// requires its own owner and is rejected before writes.
+    /// or zero when the ordinary turn snaps. A selected player's turn also rebuilds its matrix.
     pub fn face_ordinary_target(
         &mut self,
         id: ScriptActorId,
@@ -131,10 +130,6 @@ impl ScriptWorld {
         let result = (|| -> Result<_> {
             self.resolve(id)?;
             self.resolve(target)?;
-            ensure!(
-                inputs.selected_player != Some(id),
-                "selected-player facing camera unavailable"
-            );
             let destination = self.spatial(target)?.local.position;
             self.face_ordinary_point(id, destination, inputs, sounds)
         })();
@@ -148,7 +143,6 @@ impl ScriptWorld {
 
     /// Face a retained local Q8 point, snapping only X/Z on horizontal arrival.
     /// Y is ignored. Uses the same speed, turn and registration owners as target facing.
-    /// Selected-player camera feedback remains unavailable.
     pub fn face_ordinary_point(
         &mut self,
         id: ScriptActorId,
@@ -157,17 +151,10 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<i32> {
         self.resolve(id)?;
-        ensure!(
-            inputs.selected_player != Some(id),
-            "world {} instance {} point {destination:?} facing: selected-player facing camera unavailable",
-            self.world,
-            id.index
-        );
         self.turn_ordinary_point(id, destination, inputs, sounds)
     }
 
-    /// The point-facing step without the facing tasks' selected-player guard: `TurnToPos` has no
-    /// camera feedback, and a selected player's turn rebuilds its matrix after the snap or step.
+    /// The point-facing step: a selected player's turn rebuilds its matrix after the step.
     pub(super) fn turn_ordinary_point(
         &mut self,
         id: ScriptActorId,
@@ -202,8 +189,7 @@ impl ScriptWorld {
     }
 
     /// One ordinary turn step toward a heading, without an arrival snap. Returns the signed
-    /// pre-turn difference, or zero when the turn snaps onto the heading. Selected-player camera
-    /// feedback remains unavailable.
+    /// pre-turn difference, or zero when the turn snaps onto the heading.
     pub fn face_ordinary_angle(
         &mut self,
         id: ScriptActorId,
@@ -212,10 +198,6 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<i32> {
         self.resolve(id)?;
-        ensure!(
-            inputs.selected_player != Some(id),
-            "selected-player facing camera unavailable"
-        );
         self.turn_ordinary_angle(id, heading, inputs, sounds)
     }
 

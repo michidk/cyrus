@@ -25324,7 +25324,7 @@ fn ordinary_facing_returns_pre_turn_angle_and_uses_independent_weapon_rate_and_g
 }
 
 #[test]
-fn ordinary_facing_handles_absent_animation_wrapping_scale_and_selected_player_rejection() {
+fn ordinary_facing_handles_absent_animation_wrapping_scale_and_the_selected_player() {
     use cyrus_script::script::OrdinarySlopeInputs;
     let (mut world, id, target) = facing_world(1424, [2, -3, 0], None);
     assert_eq!(
@@ -25345,24 +25345,29 @@ fn ordinary_facing_handles_absent_animation_wrapping_scale_and_selected_player_r
         112
     );
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 1440);
-    let before = world.spatial(id).unwrap().local;
-    let error = world
-        .face_ordinary_target(
-            id,
-            target,
-            OrdinarySlopeInputs {
-                selected_player: Some(id),
-                holding_weapon: false,
-                combat_active: false,
-                frame_scale: 256,
-                ticks: 0,
-            },
-            &mut |_, _| Ok(()),
-        )
-        .unwrap_err();
-    assert!(format!("{error:#}").contains("selected-player facing camera unavailable"));
-    assert_eq!(world.spatial(id).unwrap().local.position, before.position);
-    assert_eq!(world.spatial(id).unwrap().local.angles, before.angles);
+    // The selected player takes the same turn: the original's facing wrappers share one helper,
+    // whose only selected-player step rebuilds the matrix and copies the angles to history.
+    let (mut world, selected, target) = facing_world(1424, [2, -3, 0], None);
+    assert_eq!(
+        world
+            .face_ordinary_target(
+                selected,
+                target,
+                OrdinarySlopeInputs {
+                    selected_player: Some(selected),
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 0,
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap(),
+        112
+    );
+    let turned = world.spatial(selected).unwrap().local;
+    assert_eq!(turned.angles[1], 1440);
+    assert_eq!(world.spatial(selected).unwrap().angle_history[1], 1440);
     let (mut world, id, target) = facing_world(400, [0, -3, 0], None);
     assert_eq!(
         world
