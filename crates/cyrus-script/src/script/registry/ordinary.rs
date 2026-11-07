@@ -884,6 +884,8 @@ pub struct OrdinaryContext<'w, 's> {
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
     look: Option<ResMut<'w, crate::player::input::ModernLook>>,
+    claimed: Option<Res<'w, crate::player::input::LocomotionClaimed>>,
+    probes: Option<Res<'w, crate::player::input::CollisionProbes>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
@@ -1316,6 +1318,8 @@ pub fn run_ordinary(
         entry,
         input,
         mut look,
+        claimed,
+        probes,
         quick,
         script_keys,
         toggles,
@@ -1505,12 +1509,14 @@ pub fn run_ordinary(
     // Modern movement reads the held directions or the left stick relative to the drawn
     // camera's heading.
     let stick = look.as_deref().and_then(|look| look.stick);
-    let modern = match (modes, input.as_deref()) {
+    let driven = look.as_deref().is_some_and(|look| look.driven);
+    let camera_relative = modes.is_some_and(|(controller, _)| controller == Mode::Modern || driven);
+    let modern = match (camera_relative, input.as_deref()) {
         // A topic menu reads forward and back as up and down, not as movement.
-        (Some((Mode::Modern, _)), Some(held)) if world.globals.menu_state() != 0 => {
+        (true, Some(held)) if world.globals.menu_state() != 0 => {
             Some((held.menu_directions(stick), None))
         }
-        (Some((Mode::Modern, _)), Some(held)) => Some(
+        (true, Some(held)) => Some(
             held.camera_relative(
                 camera_frame
                     .as_deref()
@@ -1529,6 +1535,8 @@ pub fn run_ordinary(
         ),
         _ => None,
     };
+    let claim = claimed.as_deref().and_then(|claimed| claimed.0);
+    world.set_player_tuning(claim.map_or_else(Default::default, |claim| claim.tuning));
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)
@@ -1543,12 +1551,16 @@ pub fn run_ordinary(
                     walk_mode: false,
                     auto_defend: toggles.auto_defend,
                     steer: *steer,
+                    claim,
+                    probes: probes.as_deref(),
                 },
                 None => super::player::PlayerControllerInput {
                     held,
                     walk_mode: toggles.walk_mode,
                     auto_defend: toggles.auto_defend,
                     steer: None,
+                    claim,
+                    probes: probes.as_deref(),
                 },
             })
     } else {

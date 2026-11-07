@@ -345,7 +345,13 @@ impl super::ScriptWorld {
         if control.rope_attached {
             return Ok(());
         }
-        let divisor = i32::from(actor.attributes[Attribute::JumpTime]);
+        let mut divisor = i32::from(actor.attributes[Attribute::JumpTime]);
+        if self.selected_player_index() == Some(index) {
+            // A faster jump divides the time attribute; a zero stays zero and fails below.
+            divisor = (divisor as f32 / self.player_tuning.jump_speed.max(0.01))
+                .round()
+                .clamp(f32::from(divisor != 0), i32::MAX as f32) as i32;
+        }
         anyhow::ensure!(
             divisor != 0,
             "world {} instance {index}: jump displacement needs attr_jump_time",

@@ -1,0 +1,147 @@
+/// The cyrus mod API: one resource per hook. Mods query the component of the
+/// same name (it lives on a single host entity) and wrap it with the resource.
+/// Query `water`, `camera`, `movement`, `collision` and `natives` with `QueryFor::Mut` and `input`, `settings`
+/// and `player` with `QueryFor::Ref`;
+/// wasvy rejects method calls through the other mutability. Method names are
+/// single words because wasvy looks host methods up by their WIT name verbatim.
+package cyrus:mods@0.1.0;
+
+interface components {
+  use wasvy:ecs/app@0.0.11.{component};
+
+  /// Wave heights in place of the original table wave.
+  /// Heights must answer the current generation and be written every frame;
+  /// when a mod stops writing, water returns to the original wave.
+  /// wasvy:type-path=cyrus_mods::api::Water
+  resource water {
+    constructor(component: component);
+    /// Changes whenever the published positions change.
+    generation: func() -> u32;
+    /// Base positions of animated water vertices as x, y, z triples, in scene units.
+    positions: func() -> list<f32>;
+    /// The world's wave parameters: amplitude, speed, frequency (WLD units).
+    parameters: func() -> list<f32>;
+    /// Presentation clock in seconds.
+    seconds: func() -> f32;
+    /// One vertical offset per position, in scene units, for `generation`.
+    answer: func(generation: u32, heights: list<f32>);
+  }
+
+  /// The view camera. A mod that takes it over each frame suppresses player input.
+  /// wasvy:type-path=cyrus_mods::api::Camera
+  resource camera {
+    constructor(component: component);
+    /// Current view pose: x, y, z, then rotation quaternion x, y, z, w.
+    pose: func() -> list<f32>;
+    /// Drive the camera this frame with a pose in the same layout as `pose`.
+    drive: func(pose: list<f32>);
+  }
+
+  /// The player's movement. While a mod steers every frame, the player moves relative to the
+  /// camera and the original movement keys keep only their other actions; when it stops,
+  /// the original controls return.
+  /// wasvy:type-path=cyrus_mods::api::Movement
+  resource movement {
+    constructor(component: component);
+    /// Steer toward `x` (right) and `y` (forward) relative to the camera. Zero stands still.
+    /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame. Set `wasd` when
+    /// the mod reads W, A, S and D, so the game's own actions on those keys stay quiet.
+    steer: func(x: f32, y: f32, jump: bool, wasd: bool);
+    /// Take over the player's ground locomotion for this frame: the original bindings read as
+    /// released and the original turn, walk, run and jump selection do not run. Face `heading`
+    /// (engine units, 2048 to a turn) and move along it `speed` map units per nominal update
+    /// (see `player.speed`), walking or running; zero speed stands. `jump` starts the original
+    /// jump. The engine still resolves ground, slopes and collision, and keeps death, dialogue
+    /// and combat; it keeps control while the player is airborne or a script moves it. A claim
+    /// lasts one frame, so call it every frame; when a mod stops, the original controls return.
+    claim: func(heading: u32, speed: f32, run: bool, jump: bool);
+    /// Scale the player's jump while it is claimed: `jump-height` times the jump height (and the
+    /// descent of a fall, up to the attribute's byte limit) and `jump-speed` times the forward
+    /// speed of a walking or running jump, whose distance cap stays. Only a player on the ground
+    /// takes a change, so a jump in flight keeps its values. Call it each frame with `claim`; 1
+    /// and 1 are the original.
+    tune: func(jump-height: f32, jump-speed: f32);
+  }
+
+  /// Script natives (SOUP commands) mod authors can watch. `watch` a native by its installed
+  /// `SOUP386.DEF` name (case-insensitive) every frame you want its calls; a frame later `count`,
+  /// `function`, `actor` and `arguments` report each call made while it was watched, oldest first:
+  /// the function name, the script name of the actor that called it and its integer arguments
+  /// (actor and string arguments are left out). Only the call that starts a task is reported,
+  /// not its later continuation. A call is observed, never changed. At most 4096 calls are kept
+  /// per frame.
+  /// wasvy:type-path=cyrus_mods::api::Natives
+  resource natives {
+    constructor(component: component);
+    watch: func(function: string);
+    count: func() -> u32;
+    function: func(index: u32) -> string;
+    actor: func(index: u32) -> string;
+    arguments: func(index: u32) -> list<s32>;
+  }
+
+  /// Collision questions for a mod that owns the player's movement. A probe is a segment in map
+  /// units and the original axes (like `player.position`). While a mod claims locomotion the
+  /// engine answers the probes queued the frame before against the static model faces it has
+  /// gathered near the player and against the terrain surface, and reports where each segment
+  /// first meets one. Geometry beyond that neighbourhood is not seen. Queue the same probes
+  /// every frame; an answer arrives two frames after its `cast`, in the order cast.
+  /// wasvy:type-path=cyrus_mods::api::Collision
+  resource collision {
+    constructor(component: component);
+    cast: func(sx: f32, sy: f32, sz: f32, ex: f32, ey: f32, ez: f32);
+    /// Probe number `index` of the last answered batch: the contact point x, y, z then its
+    /// unit normal x, y, z; empty when the segment hit nothing or nothing was answered.
+    hit: func(index: u32) -> list<f32>;
+  }
+
+  /// The selected player's state (empty before a world has one).
+  /// wasvy:type-path=cyrus_mods::api::Player
+  resource player {
+    constructor(component: component);
+    /// x, y, z in map units, original axes.
+    position: func() -> list<f32>;
+    /// Facing, in engine units (2048 to a turn).
+    heading: func() -> u32;
+    /// The direction the camera looks, in the same units as `heading`: the heading a
+    /// player facing forward through the screen has.
+    view: func() -> u32;
+    /// A jump or fall is in progress.
+    airborne: func() -> bool;
+    /// A weapon is drawn or the combat stance is on: claimed walking and running then use the
+    /// fight animations, and `speed` the fight speeds.
+    armed: func() -> bool;
+    /// The player's walking or running speed, in map units per nominal update.
+    speed: func(run: bool) -> f32;
+  }
+
+  /// The player's values for the `[[setting]]` entries in mod.toml. `id` is the mod's folder
+  /// name and `key` the setting's key; a name that is not declared reads false, 0 or "".
+  /// wasvy:type-path=cyrus_mods::api::Settings
+  resource settings {
+    constructor(component: component);
+    flag: func(id: string, key: string) -> bool;
+    number: func(id: string, key: string) -> f32;
+    choice: func(id: string, key: string) -> string;
+  }
+
+  /// Keyboard and mouse this frame; `tapped` means pressed this frame. Keys use Bevy `KeyCode` names such as
+  /// "KeyW", "Space", "ShiftLeft" or "F3".
+  /// wasvy:type-path=cyrus_mods::api::Input
+  resource input {
+    constructor(component: component);
+    /// Whether the player holds an action under the game's own key bindings (KEYS.INI):
+    /// "forward", "back", "left", "right", "walk" (the walk/run modifier) or "jump".
+    held: func(action: string) -> bool;
+    pressed: func(key: string) -> bool;
+    tapped: func(key: string) -> bool;
+    /// Mouse motion since the last frame in pixels: x, y.
+    mouse: func() -> list<f32>;
+    /// Seconds since the last frame.
+    delta: func() -> f32;
+  }
+}
+
+world host {
+  import components;
+}

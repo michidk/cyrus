@@ -552,6 +552,8 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
     use cyrus_console::{Source, submit};
     use cyrus_script::script::{ScriptActors, ScriptWorld, Thread};
     use cyrus_soup::program::*;
+    // Bevy's prelude adds a `Function` trait when reflect functions are enabled.
+    use cyrus_soup::program::Function;
     use cyrus_world::lifecycle::PreparedWorld;
 
     let mut app = console_app();

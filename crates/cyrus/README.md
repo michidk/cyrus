@@ -74,7 +74,6 @@ Shared browser/CLI options use exactly the same names:
 | `--new-game` | `?new-game=true` | Start a new game from the open book (implies `--skip-startup`) |
 | `--movie 2` | `?movie=2` | Play that Movies-page cinematic (zero-based MENU.INI index) from the open book |
 | `--skip-movies` | `?skip-movies=true` | New Game enters its world without the introduction movie |
-| `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |
 

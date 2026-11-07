@@ -29,7 +29,7 @@ install() {
         curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain none
     fi
     rustup show active-toolchain >/dev/null # installs rust-toolchain.toml's channel and components
-    rustup target add wasm32-unknown-unknown
+    rustup target add wasm32-unknown-unknown wasm32-wasip2 # browser build, native mods
     wb_version="$(awk '/^name = "wasm-bindgen"$/ { getline; sub(/version = /, ""); gsub(/"/, ""); print }' Cargo.lock)"
     if ! wasm-bindgen --version 2>/dev/null | grep -q " $wb_version$"; then
         cargo install wasm-bindgen-cli --version "$wb_version" --locked

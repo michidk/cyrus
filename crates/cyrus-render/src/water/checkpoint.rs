@@ -3,7 +3,6 @@ use super::WaterPlayback;
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::{Assets, Entity, Handle, Mesh, Mesh3d, Vec3, Visibility, World};
 use cyrus_assets::environment::Environment;
-use cyrus_game::fidelity::Mode;
 use serde::{Deserialize, Serialize};
 
 /// Opaque terrain history. Runtime entities and asset handles are supplied anew.
@@ -16,7 +15,7 @@ pub struct TerrainPlaybackSnapshot {
     base: [u8; 32],
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,
-    mode: Mode,
+    overridden: bool,
     grid: Vec<[f32; 3]>,
     engine_heights: Vec<f32>,
     normals: Vec<[f32; 3]>,
@@ -118,7 +117,7 @@ impl WaterPlayback {
             base: digest(&self.base)?,
             tick: self.tick,
             window: self.window,
-            mode: self.mode,
+            overridden: self.overridden,
             grid: self.grid.clone(),
             engine_heights: self.engine_heights.clone(),
             normals: self.normals.clone(),
@@ -166,7 +165,7 @@ impl WaterPlayback {
         prepared.terrain = ordered;
         prepared.tick = snapshot.tick;
         prepared.window = snapshot.window;
-        prepared.mode = snapshot.mode;
+        prepared.overridden = snapshot.overridden;
         prepared.grid = snapshot.grid;
         prepared.engine_heights = snapshot.engine_heights;
         prepared.normals = snapshot.normals;
@@ -392,7 +391,7 @@ fn validate(
             saved.engine_heights[i].to_bits() == expected.to_bits(),
             "terrain grid vertex {i}: retained engine height differs from saved phase/source"
         );
-        if saved.mode == Mode::Faithful {
+        if !saved.overridden {
             let rendered = water
                 .filter(|w| w.animated_vertices[i] && saved.window.unwrap().contains(i))
                 .map_or(base, |w| {
@@ -413,7 +412,7 @@ fn validate(
             .filter(|water| water.animated_vertices[i] && saved.window.unwrap().contains(i))
             .map_or(0.0, |water| water.parameters[0].abs() * 1.5 / 20.0);
         ensure!(
-            saved.mode == Mode::Faithful
+            !saved.overridden
                 || (position[1] >= base[1] - amplitude && position[1] <= base[1] + amplitude),
             "terrain grid vertex {i}: height outside authored wave range"
         );
@@ -463,7 +462,7 @@ mod tests {
     use bevy::{asset::RenderAssetUsages, mesh::PrimitiveTopology};
     use std::time::Duration;
 
-    fn fixture(mode: Mode, projected: bool) -> (App, Entity, Entity) {
+    fn fixture(projected: bool) -> (App, Entity, Entity) {
         let mut app = App::new();
         app.world_mut().spawn_empty();
         let mut camera = Camera::default();
@@ -517,10 +516,7 @@ mod tests {
         });
         app.insert_resource(environments)
             .insert_resource(EnvironmentRequest(env))
-            .insert_resource(Fidelity {
-                water: mode,
-                ..Default::default()
-            })
+            .init_resource::<Fidelity>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<WaterPlayback>()
             .init_resource::<Time<Real>>()
@@ -572,8 +568,8 @@ mod tests {
         (app, camera, entity)
     }
 
-    fn fresh_fixture(mode: Mode, projected: bool) -> (App, Entity, Entity) {
-        let (mut app, camera, old_entity) = fixture(mode, projected);
+    fn fresh_fixture(projected: bool) -> (App, Entity, Entity) {
+        let (mut app, camera, old_entity) = fixture(projected);
         let original = app.world().resource::<WaterPlayback>().terrain[0]
             .original
             .clone();
@@ -616,48 +612,44 @@ mod tests {
     #[test]
     fn camera_reads_engine_height_without_inverse_mesh_scaling() -> Result<()> {
         use cyrus_script::script::camera::CameraTerrainHeights;
-        for mode in [Mode::Faithful, Mode::Modern] {
-            let (mut app, _, _) = fixture(mode, false);
-            let source = app.world().resource::<EnvironmentRequest>().0.clone();
-            {
-                let mut environments = app.world_mut().resource_mut::<Assets<Environment>>();
-                let mut environment = environments.get_mut(&source).unwrap();
-                environment
-                    .terrain_heights
-                    .as_mut()
-                    .unwrap()
-                    .heights
-                    .fill(-680.0);
-                environment.water.as_mut().unwrap().parameters = [24.0, 28.0, 5.0];
-            }
-            app.world_mut().resource_mut::<WaterPlayback>().invalidate();
-            app.world_mut()
-                .resource_mut::<Time<Real>>()
-                .advance_by(Duration::from_millis(171));
-            app.update();
-            let owner = app.world().resource::<WaterPlayback>();
-            let view = owner.camera_terrain(source.id(), environment(&app))?;
-            assert_eq!(view.map_height([2, 2])?, -680.0);
-            let sampled = view.retained_height([2, 2])?;
-            assert_ne!(sampled, -680.0);
-            assert_eq!(camera_sample(&app).0, sampled);
-            assert!(view.map_height([-1, 2]).is_err());
-            assert!(
-                owner
-                    .camera_terrain(Handle::<Environment>::default().id(), environment(&app))
-                    .is_err()
-            );
-            if mode == Mode::Faithful {
-                assert_eq!(owner.grid[10][1], -sampled / 20.0);
-                assert_ne!(
-                    owner.grid[10][1] * -20.0,
-                    sampled,
-                    "inverse mesh scaling loses a bit needed by the camera source"
-                );
-            }
-            let saved = snapshot(&app);
-            assert_eq!(saved.engine_heights[10], sampled);
+        let (mut app, _, _) = fixture(false);
+        let source = app.world().resource::<EnvironmentRequest>().0.clone();
+        {
+            let mut environments = app.world_mut().resource_mut::<Assets<Environment>>();
+            let mut environment = environments.get_mut(&source).unwrap();
+            environment
+                .terrain_heights
+                .as_mut()
+                .unwrap()
+                .heights
+                .fill(-680.0);
+            environment.water.as_mut().unwrap().parameters = [24.0, 28.0, 5.0];
         }
+        app.world_mut().resource_mut::<WaterPlayback>().invalidate();
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(171));
+        app.update();
+        let owner = app.world().resource::<WaterPlayback>();
+        let view = owner.camera_terrain(source.id(), environment(&app))?;
+        assert_eq!(view.map_height([2, 2])?, -680.0);
+        let sampled = view.retained_height([2, 2])?;
+        assert_ne!(sampled, -680.0);
+        assert_eq!(camera_sample(&app).0, sampled);
+        assert!(view.map_height([-1, 2]).is_err());
+        assert!(
+            owner
+                .camera_terrain(Handle::<Environment>::default().id(), environment(&app))
+                .is_err()
+        );
+        assert_eq!(owner.grid[10][1], -sampled / 20.0);
+        assert_ne!(
+            owner.grid[10][1] * -20.0,
+            sampled,
+            "inverse mesh scaling loses a bit needed by the camera source"
+        );
+        let saved = snapshot(&app);
+        assert_eq!(saved.engine_heights[10], sampled);
         Ok(())
     }
 
@@ -712,7 +704,7 @@ mod tests {
 
     #[test]
     fn ordinary_terrain_binding_excludes_staged_scene_descendants() {
-        let (mut app, _, _) = fixture(Mode::Faithful, false);
+        let (mut app, _, _) = fixture(false);
         let live_mesh = app.world().resource::<WaterPlayback>().terrain[0]
             .original
             .clone();
@@ -741,9 +733,10 @@ mod tests {
 
     #[test]
     fn terrain_continues_after_rebinding_with_rebased_time_and_camera_changes() -> Result<()> {
-        for mode in [Mode::Faithful, Mode::Modern] {
+        // Mod-supplied heights live in the mod, so only the original wave continues here.
+        {
             for projected in [false, true] {
-                let (mut live, camera, _) = fixture(mode, projected);
+                let (mut live, camera, _) = fixture(projected);
                 for _ in 0..3 {
                     live.world_mut()
                         .resource_mut::<Time<Real>>()
@@ -751,7 +744,7 @@ mod tests {
                     live.update();
                 }
                 let saved = snapshot(&live);
-                if mode == Mode::Faithful {
+                {
                     assert!(!saved.dirty_normals[15]);
                     assert_eq!(saved.normals[15], [0.0, 1.0, 0.0]);
                     assert_ne!(
@@ -764,7 +757,7 @@ mod tests {
                     None,
                     live.world().resource(),
                 );
-                let (mut fresh, fresh_camera, entity) = fresh_fixture(mode, projected);
+                let (mut fresh, fresh_camera, entity) = fresh_fixture(projected);
                 let prepared = fresh
                     .world_mut()
                     .remove_resource::<WaterPlayback>()
@@ -828,7 +821,7 @@ mod tests {
 
     #[test]
     fn malformed_terrain_candidates_leave_live_state_and_meshes_untouched() -> Result<()> {
-        let (live, _, _) = fixture(Mode::Faithful, true);
+        let (live, _, _) = fixture(true);
         let saved = serde_json::to_value(snapshot(&live))?;
         let live_meshes = mesh_state(&live);
         let mut invalid = Vec::new();
@@ -873,7 +866,7 @@ mod tests {
             invalid.push(case);
         }
         for case in invalid {
-            let (mut fresh, _, entity) = fixture(Mode::Faithful, true);
+            let (mut fresh, _, entity) = fixture(true);
             let prepared = fresh
                 .world_mut()
                 .remove_resource::<WaterPlayback>()
@@ -895,9 +888,9 @@ mod tests {
     }
     #[test]
     fn terrain_free_environment_and_foreign_bindings_are_explicit() -> Result<()> {
-        let (live, _, _) = fixture(Mode::Faithful, true);
+        let (live, _, _) = fixture(true);
         let saved = snapshot(&live);
-        let (mut fresh, _, _) = fixture(Mode::Faithful, true);
+        let (mut fresh, _, _) = fixture(true);
         let prepared = fresh
             .world_mut()
             .remove_resource::<WaterPlayback>()
@@ -912,7 +905,7 @@ mod tests {
             )
             .is_err()
         );
-        let (mut fresh, _, entity) = fixture(Mode::Faithful, true);
+        let (mut fresh, _, entity) = fixture(true);
         let prepared = fresh
             .world_mut()
             .remove_resource::<WaterPlayback>()

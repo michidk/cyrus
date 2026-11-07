@@ -10,7 +10,7 @@ use std::{
     collections::BTreeMap,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, OnceLock},
 };
 
 pub mod geometry;
@@ -19,11 +19,26 @@ pub struct Files {
     manifest: Manifest,
     paths: BTreeMap<String, PathBuf>,
 }
+
+static OVERLAYS: OnceLock<Vec<PathBuf>> = OnceLock::new();
+
+/// Sets the folders whose files replace or add to the install's for the rest of the process,
+/// before the first scan. A path in an earlier folder wins over the same path in a later one;
+/// paths are matched to the install's ignoring case. The install itself is never written.
+/// Returns whether the folders were taken: they are fixed by the first call.
+pub fn set_overlays(folders: Vec<PathBuf>) -> bool {
+    OVERLAYS.set(folders).is_ok()
+}
+
 impl Files {
     pub fn open(install: &GameInstall) -> Result<Self> {
         Self::scan(install, true)
     }
     pub(crate) fn scan(install: &GameInstall, fingerprint: bool) -> Result<Self> {
+        let overlays = OVERLAYS.get().map_or(&[][..], Vec::as_slice);
+        Self::scan_with(install, fingerprint, overlays)
+    }
+    fn scan_with(install: &GameInstall, fingerprint: bool, overlays: &[PathBuf]) -> Result<Self> {
         let mut paths = BTreeMap::new();
         for item in walkdir::WalkDir::new(&install.root).follow_links(false) {
             let item = item?;
@@ -65,6 +80,31 @@ impl Files {
                 })
             {
                 paths.insert("splash/3DfxSpl2.dll".into(), path);
+            }
+        }
+        let by_lowercase: BTreeMap<String, String> = paths
+            .keys()
+            .map(|key| (key.to_lowercase(), key.clone()))
+            .collect();
+        let mut overlaid = std::collections::BTreeSet::new();
+        for folder in overlays {
+            for item in walkdir::WalkDir::new(folder).follow_links(false) {
+                let item = item.with_context(|| folder.display().to_string())?;
+                if !item.file_type().is_file() {
+                    continue;
+                }
+                let relative = item
+                    .path()
+                    .strip_prefix(folder)?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let key = by_lowercase
+                    .get(&relative.to_lowercase())
+                    .cloned()
+                    .unwrap_or(relative);
+                if overlaid.insert(key.clone()) {
+                    paths.insert(key, item.into_path());
+                }
             }
         }
         let mut files = Vec::new();
@@ -228,6 +268,7 @@ pub fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{Category, Source, runtime::entry};
 
     #[test]
@@ -261,5 +302,35 @@ mod tests {
         let c = entry("fxart/A.ROB", 0, Category::Models, Source::Model(1), "TREE");
         assert_ne!(a.id, b.id);
         assert_ne!(a.id, c.id);
+    }
+
+    fn write(root: &Path, relative: &str, bytes: &[u8]) {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn overlay_files_replace_match_ignoring_case_add_and_prefer_the_first_folder() {
+        let dir = std::env::temp_dir().join(format!("cyrus-overlay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (install, first, second) = (dir.join("install"), dir.join("first"), dir.join("second"));
+        write(&install, "fxart/Tex.3DC", b"original");
+        write(&install, "maps/KEEP.RGM", b"kept");
+        write(&first, "FXART/tex.3dc", b"first");
+        write(&first, "sound/new.wav", b"added");
+        write(&second, "fxart/Tex.3DC", b"second");
+        let install = GameInstall { root: install };
+        let files = Files::scan_with(&install, true, &[first, second]).unwrap();
+        let read = |path: &str| {
+            files
+                .read_range(path, 0, files.manifest.find(path).unwrap().bytes as usize)
+                .unwrap()
+        };
+        assert_eq!(read("fxart/Tex.3DC"), b"first");
+        assert_eq!(read("maps/KEEP.RGM"), b"kept");
+        assert_eq!(read("sound/new.wav"), b"added");
+        assert_eq!(files.manifest.files.len(), 3);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

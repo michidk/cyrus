@@ -137,6 +137,94 @@ fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
 }
 
 #[test]
+fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
+    use cyrus_script::player::input::{ModernLook, MovementWish, Wish};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
+        .add_plugins(PlayerPlugin);
+    app.update();
+    let look = |app: &App| {
+        let look = app.world().resource::<ModernLook>();
+        (look.driven, look.stick)
+    };
+    assert_eq!(
+        look(&app),
+        (false, None),
+        "no mod answers: original controls"
+    );
+    let wish = Wish {
+        direction: Vec2::new(0.0, 0.5),
+        jump: true,
+        wasd: false,
+    };
+    app.insert_resource(MovementWish(Some(wish)));
+    app.update();
+    assert_eq!(look(&app), (true, Some(wish.direction)));
+    let input = app.world().resource::<PlayerInput>();
+    assert!(input.jump && input.walk);
+    // Standing still still hands control to the mod, without a stick.
+    app.insert_resource(MovementWish(Some(Wish {
+        direction: Vec2::ZERO,
+        jump: false,
+        wasd: false,
+    })));
+    app.update();
+    assert_eq!(look(&app), (true, None));
+    app.insert_resource(MovementWish(None));
+    app.update();
+    assert_eq!(
+        look(&app),
+        (false, None),
+        "a mod that stops answering hands control back"
+    );
+}
+
+#[test]
+fn a_locomotion_claim_releases_the_movement_bindings_and_menus_take_it_back() {
+    use cyrus_script::player::input::{Gait, InputSuppressed, LocomotionClaim, LocomotionClaimed};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
+        .add_plugins(PlayerPlugin);
+    // The default bindings: arrows move, Space jumps.
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowUp);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Space);
+    app.update();
+    let input = app.world().resource::<PlayerInput>();
+    assert!(input.forward && input.jump, "unclaimed: original bindings");
+    let claim = LocomotionClaim {
+        heading: 100,
+        speed: 5.0,
+        gait: Gait::Walk,
+        jump: false,
+        tuning: Default::default(),
+    };
+    app.insert_resource(LocomotionClaimed(Some(claim)));
+    app.update();
+    let input = app.world().resource::<PlayerInput>();
+    assert!(
+        !input.forward && !input.jump,
+        "claimed: movement bindings read released"
+    );
+    assert_eq!(app.world().resource::<LocomotionClaimed>().0, Some(claim));
+    // A menu, the console or loading takes the player back from the mod.
+    app.insert_resource(InputSuppressed(true));
+    app.update();
+    assert_eq!(app.world().resource::<LocomotionClaimed>().0, None);
+}
+
+#[test]
 fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))

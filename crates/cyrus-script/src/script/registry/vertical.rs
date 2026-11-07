@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use anyhow::{Context, Result};
-use cyrus_soup::{AnimationGroup, Attribute};
+use cyrus_soup::AnimationGroup;
 
 /// Factor and clock inputs follow preservation's vertical motion rules;
 /// the caller supplies the entry for the current timer and the entry after an
@@ -239,8 +239,7 @@ impl ScriptWorld {
             queued: control.queued_motion,
             falling: control.falling_state,
         };
-        let after =
-            ordinary_queued_vertical(before, actor.attributes[Attribute::JumpHeight], input);
+        let after = ordinary_queued_vertical(before, self.jump_height_of(index), input);
         let force = !input.model_controls_vertical
             && input.advanced_factor > 255
             && before.queued.arms_raised()
@@ -334,7 +333,7 @@ impl ScriptWorld {
                 queued: control.queued_motion,
                 falling: control.falling_state,
             },
-            self.actors[index].attributes[Attribute::JumpHeight],
+            self.jump_height_of(index),
             input,
         );
         self.spatial

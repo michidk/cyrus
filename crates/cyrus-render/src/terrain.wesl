@@ -11,6 +11,7 @@ import package::scene_shading::{fog, scene_color_at_fog_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
+import package::water_surface::{water_uv_offset, water_color};
 import bevy_pbr::render::pbr_bindings::base_color_texture;
 
 struct TerrainVertex {
@@ -116,11 +117,8 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     surface.color = vec4(1.0);
 @if(VERTEX_OUTPUT_INSTANCE_INDEX)
     surface.instance_index = in.instance_index;
-    let water_weight = fog.water.x * clamp(in.water, 0.0, 1.0);
-    let position = in.world_position.xz;
-    let ripple = vec2(sin(dot(position, vec2(1.3, 0.7)) - globals.time * 1.7),
-                      sin(dot(position, vec2(-0.6, 2.1)) - globals.time * 2.3));
-    surface.uv += ripple * (0.006 * water_weight);
+    let water_weight = clamp(in.water, 0.0, 1.0);
+    surface.uv += water_uv_offset(in.world_position.xyz, globals.time, water_weight);
     var input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
     // Terrain lighting modulates encoded texture RGB before scene fog.
@@ -134,12 +132,8 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
 }
     var color = srgb_to_linear(encoded);
     if water_weight > 0.0 {
-        let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
-        let to_camera = normalize(view.world_position - in.world_position.xyz);
-        let sheen = pow(1.0 - clamp(dot(normal, to_camera), 0.0, 1.0), 5.0);
-        let reflected_sky = blend_fog(vec3(0.0), fog.color.rgb, 255.0);
-        let rippled = color * (1.0 + 0.035 * (ripple.x + ripple.y) * water_weight);
-        color = mix(rippled, reflected_sky, sheen * 0.12 * water_weight);
+        let sky = blend_fog(vec3(0.0), fog.color.rgb, 255.0);
+        color = water_color(color, in.world_position.xyz, input.N, view.world_position, sky, globals.time, water_weight);
     }
     var out: FragmentOutput;
     out.color = vec4(scene_color_at_fog_position(color, depth, in.position.xy, fog_position), base.a);

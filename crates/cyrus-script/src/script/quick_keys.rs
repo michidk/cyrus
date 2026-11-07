@@ -133,6 +133,7 @@ pub(super) fn sample(
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
+    wish: Option<Res<crate::player::input::MovementWish>>,
     mut quick: ResMut<QuickKeys>,
     mut script_keys: ResMut<ScriptKeys>,
 ) {
@@ -167,10 +168,11 @@ pub(super) fn sample(
         insert: keys.pressed(KeyCode::Insert),
     };
     use crate::player::input::{Action, Input, MODERN_MOVEMENT};
-    // Modern movement owns W, A, S and D, so an installed quick sword key among them (S by
-    // default) does not also draw the sword.
-    let sword_moves = fidelity
+    // Modern movement, or a mod steering with them, owns W, A, S and D, so an installed quick
+    // sword key among them (S by default) does not also draw the sword.
+    let sword_moves = (fidelity
         .is_some_and(|fidelity| fidelity.player_controller == cyrus_game::fidelity::Mode::Modern)
+        || wish.is_some_and(|wish| wish.0.is_some_and(|wish| wish.wasd)))
         && inputs
             .bindings()
             .keyboard(Action::QuickSword)

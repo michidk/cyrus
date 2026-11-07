@@ -144,7 +144,7 @@ impl ScriptWorld {
             environment.item_system_ready,
             environment.shell_execution,
         );
-        let jump_height = actor.attributes[Attribute::JumpHeight];
+        let jump_height = self.jump_height_of(id.index);
         let static_model = actor.animation.is_none();
         self.spatial
             .as_mut()

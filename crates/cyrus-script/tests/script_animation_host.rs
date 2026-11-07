@@ -2658,6 +2658,8 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
                 walk_mode: false,
                 auto_defend: false,
                 steer: None,
+                claim: None,
+                probes: None,
             }),
             ..Default::default()
         };

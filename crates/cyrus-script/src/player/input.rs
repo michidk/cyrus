@@ -92,6 +92,121 @@ pub struct ModernLook {
     pub turn: f32,
     /// The left stick beyond the dead zone (x right, y forward), for Modern movement.
     pub stick: Option<Vec2>,
+    /// A mod's [`MovementWish`] is steering, so movement reads camera-relative whatever the
+    /// controller mode.
+    pub driven: bool,
+}
+
+/// Movement a mod asks for this frame, replacing the original keys. `None` leaves movement
+/// to the original controls (or Modern, when selected), so no mod active means no change.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct MovementWish(pub Option<Wish>);
+
+/// How fast a claimed player moves: the walk or the run animation and motion class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gait {
+    Walk,
+    Run,
+}
+
+/// A mod's ownership of the selected player's ground locomotion for one update. While it is
+/// claimed the movement bindings read as released and the original turn, walk, run, sidestep and
+/// jump selection do not run; the controller still handles death, dialogue, combat and idle, and
+/// the engine's ground, slope and collision stages still resolve the displacement. A claim
+/// does not apply while the player is airborne, sliding, hanging or under script control.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LocomotionClaim {
+    /// Heading to face, in 1/2048 turns as engine headings count.
+    pub heading: u16,
+    /// Distance to travel along the heading per nominal update, in map units like the actor's
+    /// speed attributes. Zero or less stands still.
+    pub speed: f32,
+    pub gait: Gait,
+    /// Starts the original jump entry for the current gait.
+    pub jump: bool,
+    pub tuning: PlayerTuning,
+}
+
+/// Scales of the player's jump, applied while a mod claims locomotion. They take effect only
+/// while the player is on the ground, so a jump in flight keeps the values it started with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlayerTuning {
+    /// Times `attr_jump_height`, the height of a jump and the descent of a fall, clamped to the
+    /// attribute's byte range.
+    pub jump_height: f32,
+    /// Times the forward speed of a walking or running jump; its distance cap is unchanged.
+    pub jump_speed: f32,
+}
+
+impl Default for PlayerTuning {
+    fn default() -> Self {
+        Self {
+            jump_height: 1.0,
+            jump_speed: 1.0,
+        }
+    }
+}
+
+/// A segment a mod asks the collision about, in map units and the original axes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Probe {
+    pub start: [f32; 3],
+    pub end: [f32; 3],
+}
+
+/// Where a probe first met the world: static model faces the engine has gathered near the
+/// player, or the terrain surface. Points are map units; the normal has unit length.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProbeHit {
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
+}
+
+/// Probes a mod asked for and the answers the controller gave. The controller answers every
+/// request on each update that a mod claims locomotion, in request order; a miss is `None`.
+#[derive(Resource, Default, Debug)]
+pub struct CollisionProbes {
+    pub requests: Vec<Probe>,
+    // Interior mutability: the controller only holds the resource by shared reference.
+    answers: std::sync::Mutex<Option<Vec<Option<ProbeHit>>>>,
+}
+
+impl CollisionProbes {
+    /// The answers the controller has stored since the last call.
+    pub fn take_answers(&mut self) -> Option<Vec<Option<ProbeHit>>> {
+        self.answers.get_mut().expect("probe answers lock").take()
+    }
+
+    /// Answer the current requests with `probe`, the first error ending the batch.
+    pub fn answer<E>(
+        &self,
+        mut probe: impl FnMut(Probe) -> Result<Option<ProbeHit>, E>,
+    ) -> Result<(), E> {
+        let answers = self
+            .requests
+            .iter()
+            .map(|request| probe(*request))
+            .collect::<Result<Vec<_>, E>>()?;
+        *self.answers.lock().expect("probe answers lock") = Some(answers);
+        Ok(())
+    }
+}
+
+/// The claim a mod made for the next update; the game consumes it and hands control back as
+/// soon as a mod stops claiming.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct LocomotionClaimed(pub Option<LocomotionClaim>);
+
+/// A mod's movement request, read like a tilted left stick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Wish {
+    /// Direction relative to the camera (x right, y forward). Zero asks for no movement.
+    /// Below [`RUN_TILT`] the player walks, from it the player runs.
+    pub direction: Vec2,
+    pub jump: bool,
+    /// The mod reads W, A, S and D for this, so an installed quick action on one of them (the
+    /// sword's S by default) stays quiet.
+    pub wasd: bool,
 }
 
 const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
@@ -660,6 +775,8 @@ pub(super) fn sample(
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
     mut look: ResMut<ModernLook>,
+    wish: Res<MovementWish>,
+    mut claimed: ResMut<LocomotionClaimed>,
 ) {
     if suppressed.0
         || pending_world.is_some()
@@ -669,6 +786,8 @@ pub(super) fn sample(
         *input = PlayerInput::default();
         dialogue_skip.0 = false;
         *look = ModernLook::default();
+        // Menus, the console and loading take the player back from a mod.
+        claimed.0 = None;
         return;
     }
     // The installed dead zone; an install without a joystick reads no stick, as Faithful does.
@@ -703,6 +822,29 @@ pub(super) fn sample(
             MODERN_MOVEMENT.map(|key| keys.pressed(key));
         input.jump |= keys.pressed(KeyCode::Space);
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    }
+    if claimed.0.is_some() {
+        // The mod owns locomotion: the original movement bindings read as released.
+        let input = &mut *input;
+        for held in [
+            &mut input.forward,
+            &mut input.backward,
+            &mut input.left,
+            &mut input.right,
+            &mut input.jump,
+            &mut input.walk,
+        ] {
+            *held = false;
+        }
+    }
+    look.driven = claimed.0.is_none() && wish.0.is_some();
+    if let Some(wish) = wish.0.filter(|_| claimed.0.is_none()) {
+        input.jump |= wish.jump;
+        if wish.direction != Vec2::ZERO {
+            look.stick = Some(wish.direction);
+            // The stick's tilt chooses walking or running.
+            input.walk = true;
+        }
     }
 }
 

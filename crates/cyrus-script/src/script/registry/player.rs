@@ -46,6 +46,54 @@ pub struct PlayerControllerInput<'a> {
     /// Modern controls: the heading the held direction steers toward, in place of the held
     /// left and right turn. Faithful samples carry `None`.
     pub steer: Option<u16>,
+    /// A mod's ownership of ground locomotion this update; `None` leaves it to the original.
+    pub claim: Option<crate::player::input::LocomotionClaim>,
+    /// Collision probes a mod asked for; answered while a claim is active.
+    pub probes: Option<&'a crate::player::input::CollisionProbes>,
+}
+
+/// The selected player's state, for mods that own its locomotion.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocomotionStatus {
+    /// Position in Q8 map units (eight fractional bits), original axes.
+    pub position: [i32; 3],
+    /// Heading in 1/2048 turns.
+    pub heading: u16,
+    /// A jump or fall is in progress.
+    pub airborne: bool,
+    /// `attr_forward_walk` and `attr_forward_speed`: map units per nominal update.
+    pub walk_speed: u8,
+    pub run_speed: u8,
+    /// A weapon is drawn or the combat stance is on, so claimed walking and running use the
+    /// fight groups and these fight speeds (`attr_fight_forward_walk`, `attr_fight_forward_speed`).
+    pub armed: bool,
+    pub fight_walk_speed: u8,
+    pub fight_run_speed: u8,
+}
+
+impl ScriptWorld {
+    /// The selected player's state, or `None` before one exists.
+    pub fn locomotion_status(&self) -> Option<LocomotionStatus> {
+        let id = self.selected_player()?;
+        let actor = &self.actors[id.index];
+        let control = actor.control.as_ref()?;
+        let local = &self.spatial(id).ok()?.local;
+        Some(LocomotionStatus {
+            position: local.position,
+            heading: local.wrapped_angles()[1],
+            airborne: control.queued_motion != JumpMotion::NONE
+                || control.falling_state != JumpMotion::NONE,
+            walk_speed: actor.attributes[Attribute::ForwardWalk],
+            run_speed: actor.attributes[Attribute::ForwardSpeed],
+            armed: control.weapon_drawn
+                || control
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
+            fight_walk_speed: actor.attributes[Attribute::FightForwardWalk],
+            fight_run_speed: actor.attributes[Attribute::FightForwardSpeed],
+        })
+    }
 }
 
 impl ScriptWorld {
@@ -270,6 +318,34 @@ impl ScriptWorld {
                 group,
                 Some(AnimationGroup::SHEATH_SWORD | AnimationGroup::DRAW_SWORD)
             ) {
+                return Ok(());
+            }
+            if let (Some(_), Some(probes)) = (input.claim, input.probes) {
+                probes.answer(|probe| world.probe_player_segment(id, query, probe))?;
+            }
+            if let Some(claim) = input.claim {
+                // A mod owns ground locomotion: nothing of the original turn, walk, run or
+                // sidestep selection runs. Airborne and sliding stay with the engine.
+                if airborne {
+                    // Air control: a jump's forward displacement follows the actor's heading, so
+                    // the claimed heading steers it. A mod keeps the jump straight by claiming
+                    // the heading the player already has.
+                    world.face_claimed_heading(id, claim)?;
+                }
+                if !airborne && !sliding {
+                    world.run_claimed_locomotion(id, claim, armed, timing, sounds)?;
+                    if claim.jump {
+                        let jump = crate::player::input::PlayerInput {
+                            jump: true,
+                            ..Default::default()
+                        };
+                        world.jump_key_arbitration(id, &jump, query, inputs, timing, sounds)?;
+                    }
+                }
+                if holding {
+                    world
+                        .run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
+                }
                 return Ok(());
             }
             world.turn_player(id, input.held, holding, timing, sounds)?;
@@ -749,6 +825,192 @@ impl ScriptWorld {
             spatial.local.angles[2] = i32::from(roll);
             spatial.refresh_transform()?;
         }
+        Ok(())
+    }
+
+    /// The first contact of a segment with the static faces the engine gathered near the player
+    /// or with the terrain surface, nearest the start. Points and the segment are in map units.
+    /// Geometry outside the gathered neighbourhood is not seen.
+    pub fn probe_player_segment(
+        &self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        probe: crate::player::input::Probe,
+    ) -> Result<Option<crate::player::input::ProbeHit>> {
+        use crate::player::input::ProbeHit;
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+        ensure!(
+            probe.start.iter().chain(&probe.end).all(|v| v.is_finite()),
+            "collision probe: non-finite segment"
+        );
+        let round = |p: [f32; 3]| p.map(|v| v.round().clamp(-1.0e9, 1.0e9) as i32);
+        let (start, end) = (round(probe.start), round(probe.end));
+        let distance = |p: [f32; 3]| {
+            (0..3)
+                .map(|axis| f64::from(p[axis] - start[axis] as f32).powi(2))
+                .sum::<f64>()
+        };
+        let poses = self.ordinary_collision_poses(query.prepared)?;
+        let models = query
+            .scene
+            .actor_collision
+            .as_ref()
+            .context("collision probe live geometry unavailable")?;
+        let mut best: Option<(f64, ProbeHit)> = None;
+        for (_, contact) in query.scene.static_collision.runtime_segment_contacts(
+            &query.prepared.candidates,
+            models,
+            &poses,
+            start,
+            end,
+            query.sidedness,
+            None,
+        )? {
+            let contact = contact.integer()?;
+            let point = contact.point.map(|v| v as f32);
+            let length = contact
+                .normal
+                .iter()
+                .map(|&v| f64::from(v).powi(2))
+                .sum::<f64>()
+                .sqrt()
+                .max(1.0);
+            let hit = ProbeHit {
+                point,
+                normal: contact.normal.map(|v| (f64::from(v) / length) as f32),
+            };
+            if best.is_none_or(|(nearest, _)| distance(point) < nearest) {
+                best = Some((distance(point), hit));
+            }
+        }
+        if let Some(terrain) = &query.scene.terrain {
+            // The surface is crossed where the segment's height passes the terrain's: find the
+            // sign change between the ends, then bisect to a tenth of a map unit.
+            let at = |t: f32| -> Option<(f32, [f32; 3])> {
+                let p: [f32; 3] = std::array::from_fn(|axis| {
+                    probe.start[axis] + (probe.end[axis] - probe.start[axis]) * t
+                });
+                let runtime = p.map(|v| (f64::from(v) * 256.0) as i64);
+                Some((p[1] - terrain.sample(runtime)?.height as f32, p))
+            };
+            if let (Some((first, _)), Some((last, _))) = (at(0.0), at(1.0))
+                && (first <= 0.0) != (last <= 0.0)
+            {
+                let (mut near, mut far) = (0.0f32, 1.0f32);
+                for _ in 0..24 {
+                    let middle = (near + far) / 2.0;
+                    match at(middle) {
+                        Some((above, _)) if (above <= 0.0) == (first <= 0.0) => near = middle,
+                        _ => far = middle,
+                    }
+                }
+                if let Some((_, point)) = at(far) {
+                    let runtime = point.map(|v| (f64::from(v) * 256.0) as i64);
+                    if let Some(support) = terrain.sample(runtime) {
+                        let length = support
+                            .normal
+                            .iter()
+                            .map(|&v| f64::from(v).powi(2))
+                            .sum::<f64>()
+                            .sqrt()
+                            .max(1.0);
+                        let hit = ProbeHit {
+                            point,
+                            normal: support.normal.map(|v| (f64::from(v) / length) as f32),
+                        };
+                        if best.is_none_or(|(nearest, _)| distance(point) < nearest) {
+                            best = Some((distance(point), hit));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(best.map(|(_, hit)| hit))
+    }
+
+    /// Face the heading a mod claimed.
+    fn face_claimed_heading(
+        &mut self,
+        id: super::ScriptActorId,
+        claim: crate::player::input::LocomotionClaim,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("claimed locomotion spatial registry unavailable")?
+            .actor_mut(index)?;
+        let heading = i32::from(claim.heading & 2047);
+        if spatial.local.angles[1] != heading {
+            spatial.local.angles[1] = heading;
+            spatial.refresh_transform()?;
+        }
+        Ok(())
+    }
+
+    /// One update of a mod's claimed locomotion: face the claimed heading, then, when it moves,
+    /// request the gait's animation and displace along the heading as ordinary running or
+    /// walking does. The ordinary late stages resolve the translation against the ground and
+    /// collision.
+    fn run_claimed_locomotion(
+        &mut self,
+        id: super::ScriptActorId,
+        claim: crate::player::input::LocomotionClaim,
+        armed: bool,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        use crate::player::input::Gait;
+        let index = self.resolve(id)?;
+        self.face_claimed_heading(id, claim)?;
+        // Q8 distance: map units per nominal update times the frame scale, which has eight
+        // fractional bits. A NaN speed reads as zero.
+        let distance = (claim.speed.clamp(0.0, 255.0) * timing.frame_scale as f32).round() as i32;
+        if distance <= 0 {
+            return Ok(());
+        }
+        // An armed player walks in the fight-run group and runs in the fight-forward group, as
+        // the ordinary movement natives choose them.
+        let (group, motion) = match (claim.gait, armed) {
+            (Gait::Walk, false) => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
+            (Gait::Run, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
+            (Gait::Walk, true) => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
+            (Gait::Run, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
+        };
+        let position = self.spatial(id)?.local.position;
+        let surface = self.actor_surface(id)?;
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
+        let animation = self.actors[index]
+            .animation
+            .as_mut()
+            .context("claimed locomotion animation unavailable")?;
+        let frame = animation.playback.request_with_sounds(
+            group,
+            0,
+            timing.nominal_ticks,
+            &mut |sound| {
+                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                    return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+                }
+                sounds(
+                    id,
+                    super::super::ScriptSound::Animation {
+                        sound,
+                        surface: Some(surface),
+                        position: Some(position),
+                    },
+                )
+            },
+        )?;
+        animation.frame = frame.or(animation.frame);
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("claimed locomotion control unavailable")?
+            .motion_classification = motion;
+        self.apply_ordinary_directional_motion(id, motion.byte(), distance)?;
         Ok(())
     }
 

@@ -138,6 +138,11 @@ module where it is defined and regenerate.
 - `src/packets.rs` — Sequential packets retain only the current compressed block.
 - `src/stream.rs` — Incremental movie packets retain the existing Smacker codec and validate exported metadata.
 
+## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
+
+- `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
+- `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
+
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
