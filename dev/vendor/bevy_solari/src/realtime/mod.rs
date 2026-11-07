@@ -3,8 +3,8 @@ mod node;
 mod prepare;
 
 use crate::{
-    scene::{prepare_raytracing_scene_resources, RaytracingSceneBindings},
     SolariPlugins,
+    scene::{RaytracingSceneBindings, prepare_raytracing_scene_resources},
 };
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::embedded_asset;
@@ -26,10 +26,10 @@ use bevy_ecs::{
     system::{Commands, Query},
 };
 use bevy_pbr::DefaultOpaqueRendererMethod;
-use bevy_reflect::{std_traits::ReflectDefault, Reflect};
+use bevy_reflect::{Reflect, std_traits::ReflectDefault};
 use bevy_render::{
-    init_gpu_resource, renderer::RenderDevice, ExtractSchedule, Render, RenderApp, RenderStartup,
-    RenderSystems,
+    ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems, init_gpu_resource,
+    renderer::RenderDevice,
 };
 use bevy_shader::load_shader_library;
 use extract::extract_solari_lighting;
@@ -52,6 +52,7 @@ impl Plugin for SolariLightingPlugin {
         load_shader_library!(app, "presample_light_tiles.wesl");
         load_shader_library!(app, "initial_path.wesl");
         embedded_asset!(app, "restir.wesl");
+        embedded_asset!(app, "denoise.wesl");
         embedded_asset!(app, "no_restir.wesl");
         load_shader_library!(app, "world_cache_query.wesl");
         embedded_asset!(app, "world_cache_compact.wesl");
@@ -123,6 +124,15 @@ pub struct SolariLighting {
     ///
     /// Defaults to `false`.
     pub restir: bool,
+
+    /// Filters the lighting with a spatio-temporal denoiser: the albedo is divided out, the light
+    /// is accumulated over time and filtered with an edge-stopping a-trous kernel, and the albedo
+    /// is multiplied back in. Added by this copy; upstream relies on DLSS Ray Reconstruction.
+    ///
+    /// Needs [`SolariLighting::restir`], whose previous-frame buffers it reprojects with, and
+    /// is skipped without it. Surfaces should be diffuse: specular light is filtered as if it
+    /// were.
+    pub denoise: bool,
 
     /// Maximum confidence weight (effective temporal history length) a pixel
     /// can accumulate during temporal resampling.
@@ -221,6 +231,7 @@ impl Default for SolariLighting {
     fn default() -> Self {
         Self {
             restir: false,
+            denoise: false,
             confidence_weight_cap: 8.0,
             primary_di_samples: 8,
             secondary_di_samples: 4,

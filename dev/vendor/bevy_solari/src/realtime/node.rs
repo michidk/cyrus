@@ -1,27 +1,27 @@
 use super::prepare::{
-    SolariLightingResources, LIGHT_TILE_BLOCKS, WORLD_CACHE_ACTIVE_CELLS_COUNT_OFFSET,
+    LIGHT_TILE_BLOCKS, SolariLightingResources, WORLD_CACHE_ACTIVE_CELLS_COUNT_OFFSET,
     WORLD_CACHE_SIZE,
 };
 use crate::scene::RaytracingSceneBindings;
 #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
 use bevy_anti_alias::dlss::ViewDlssRayReconstructionTextures;
-use bevy_asset::{load_embedded_asset, AssetServer, Handle};
+use bevy_asset::{AssetServer, Handle, load_embedded_asset};
 use bevy_core_pipeline::prepass::{
-    PreviousViewData, PreviousViewUniformOffset, PreviousViewUniforms, ViewPrepassTextures,
-    MOTION_VECTOR_PREPASS_FORMAT,
+    MOTION_VECTOR_PREPASS_FORMAT, PreviousViewData, PreviousViewUniformOffset,
+    PreviousViewUniforms, ViewPrepassTextures,
 };
 use bevy_ecs::{prelude::*, resource::Resource, system::Commands};
 use bevy_render::{
     diagnostic::RecordDiagnostics as _,
     render_resource::{
-        binding_types::{
-            storage_buffer_sized, texture_2d, texture_depth_2d, texture_storage_2d, uniform_buffer,
-            uniform_buffer_sized,
-        },
         BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries,
         CachedComputePipelineId, ComputePassDescriptor, ComputePipelineDescriptor, LoadOp,
         PipelineCache, RenderPassDescriptor, ShaderStages, StorageTextureAccess, TextureFormat,
         TextureFormatFeatureFlags, TextureSampleType,
+        binding_types::{
+            storage_buffer_sized, texture_2d, texture_depth_2d, texture_storage_2d, uniform_buffer,
+            uniform_buffer_sized,
+        },
     },
     renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery},
     view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
@@ -35,6 +35,7 @@ pub struct SolariLightingPipelines {
     bind_group_layout: BindGroupLayoutDescriptor,
     bind_group_layout_restir: BindGroupLayoutDescriptor,
     bind_group_layout_world_cache_active_cells_dispatch: BindGroupLayoutDescriptor,
+    bind_group_layout_denoise: BindGroupLayoutDescriptor,
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
     bind_group_layout_resolve_dlss_rr_textures: BindGroupLayoutDescriptor,
     decay_world_cache_pipeline: CachedComputePipelineId,
@@ -47,8 +48,19 @@ pub struct SolariLightingPipelines {
     presample_light_tiles_pipeline: CachedComputePipelineId,
     restir: RestirPipelines,
     no_restir: NoRestirPipelines,
+    denoise: DenoisePipelines,
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
     resolve_dlss_rr_textures_pipeline: CachedComputePipelineId,
+}
+
+/// The denoiser's passes, in dispatch order. Each needs the ReSTIR bind group.
+struct DenoisePipelines {
+    temporal: CachedComputePipelineId,
+    store_history: CachedComputePipelineId,
+    atrous_step_1: CachedComputePipelineId,
+    atrous_step_2: CachedComputePipelineId,
+    atrous_step_4: CachedComputePipelineId,
+    modulate: CachedComputePipelineId,
 }
 
 struct RestirPipelines {
@@ -249,6 +261,29 @@ pub fn solari_lighting(
             )
         });
 
+    let bind_group_denoise = solari_lighting_resources.denoise.as_ref().map(|d| {
+        render_device.create_bind_group(
+            "solari_lighting_bind_group_denoise",
+            &pipeline_cache.get_bind_group_layout(&pipelines.bind_group_layout_denoise),
+            &BindGroupEntries::sequential((&d.history, &d.ping, &d.pong)),
+        )
+    });
+    // The passes use the ReSTIR bind group, which exists once last frame's buffers do.
+    let denoise_pipelines = bind_group_denoise
+        .as_ref()
+        .zip(bind_group_restir.as_ref())
+        .and_then(|_| {
+            let p = &pipelines.denoise;
+            Some([
+                pipeline_cache.get_compute_pipeline(p.temporal)?,
+                pipeline_cache.get_compute_pipeline(p.store_history)?,
+                pipeline_cache.get_compute_pipeline(p.atrous_step_1)?,
+                pipeline_cache.get_compute_pipeline(p.atrous_step_2)?,
+                pipeline_cache.get_compute_pipeline(p.atrous_step_4)?,
+                pipeline_cache.get_compute_pipeline(p.modulate)?,
+            ])
+        });
+
     let bind_group_world_cache_active_cells_dispatch = render_device.create_bind_group(
         "solari_lighting_bind_group_world_cache_active_cells_dispatch",
         &pipeline_cache
@@ -384,6 +419,18 @@ pub fn solari_lighting(
 
     d.end(&mut pass);
 
+    if let (Some(bind_group_denoise), Some(denoise_pipelines)) =
+        (&bind_group_denoise, denoise_pipelines)
+    {
+        let d = diagnostics.time_span(&mut pass, "solari_lighting/denoise");
+        pass.set_bind_group(2, bind_group_denoise, &[]);
+        for pipeline in denoise_pipelines {
+            pass.set_pipeline(pipeline);
+            pass.dispatch_workgroups(dx, dy, 1);
+        }
+        d.end(&mut pass);
+    }
+
     drop(pass);
 
     // Active cell count readback.
@@ -462,6 +509,18 @@ pub fn init_solari_lighting_pipelines(
         &BindGroupLayoutEntries::single(ShaderStages::COMPUTE, storage_buffer_sized(false, None)),
     );
 
+    let bind_group_layout_denoise = BindGroupLayoutDescriptor::new(
+        "solari_lighting_bind_group_layout_denoise",
+        &BindGroupLayoutEntries::sequential(
+            ShaderStages::COMPUTE,
+            (
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+            ),
+        ),
+    );
+
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
     let bind_group_layout_resolve_dlss_rr_textures = BindGroupLayoutDescriptor::new(
         "solari_lighting_bind_group_layout_resolve_dlss_rr_textures",
@@ -494,6 +553,7 @@ pub fn init_solari_lighting_pipelines(
             ExtraBindGroup::WorldCacheDispatch => {
                 layout.push(bind_group_layout_world_cache_active_cells_dispatch.clone());
             }
+            ExtraBindGroup::Denoise => layout.push(bind_group_layout_denoise.clone()),
             #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
             ExtraBindGroup::DlssRrGuideBuffers => {
                 layout.push(bind_group_layout_resolve_dlss_rr_textures.clone());
@@ -515,6 +575,7 @@ pub fn init_solari_lighting_pipelines(
             ExtraBindGroup::WorldCacheDispatch => {
                 shader_defs.push("WORLD_CACHE_NON_ATOMIC_LIFE_BUFFER".into());
             }
+            ExtraBindGroup::Denoise => {}
             #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
             ExtraBindGroup::DlssRrGuideBuffers => {
                 shader_defs.push("DLSS_RR_GUIDE_BUFFERS".into());
@@ -537,6 +598,7 @@ pub fn init_solari_lighting_pipelines(
         bind_group_layout_restir: bind_group_layout_restir.clone(),
         bind_group_layout_world_cache_active_cells_dispatch:
             bind_group_layout_world_cache_active_cells_dispatch.clone(),
+        bind_group_layout_denoise: bind_group_layout_denoise.clone(),
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
         bind_group_layout_resolve_dlss_rr_textures: bind_group_layout_resolve_dlss_rr_textures
             .clone(),
@@ -650,6 +712,38 @@ pub fn init_solari_lighting_pipelines(
                 vec![],
             ),
         },
+        denoise: {
+            let denoise_pipeline = |label: &'static str, entry_point: &'static str| {
+                create_pipeline(
+                    label,
+                    entry_point,
+                    load_embedded_asset!(asset_server.as_ref(), "denoise.wesl"),
+                    true,
+                    ExtraBindGroup::Denoise,
+                    vec![],
+                )
+            };
+            DenoisePipelines {
+                temporal: denoise_pipeline("solari_denoise_temporal_pipeline", "temporal"),
+                store_history: denoise_pipeline(
+                    "solari_denoise_store_history_pipeline",
+                    "store_history",
+                ),
+                atrous_step_1: denoise_pipeline(
+                    "solari_denoise_atrous_step_1_pipeline",
+                    "atrous_step_1",
+                ),
+                atrous_step_2: denoise_pipeline(
+                    "solari_denoise_atrous_step_2_pipeline",
+                    "atrous_step_2",
+                ),
+                atrous_step_4: denoise_pipeline(
+                    "solari_denoise_atrous_step_4_pipeline",
+                    "atrous_step_4",
+                ),
+                modulate: denoise_pipeline("solari_denoise_modulate_pipeline", "modulate"),
+            }
+        },
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
         resolve_dlss_rr_textures_pipeline: create_pipeline(
             "solari_lighting_resolve_dlss_rr_textures_pipeline",
@@ -665,6 +759,7 @@ pub fn init_solari_lighting_pipelines(
 enum ExtraBindGroup {
     None,
     WorldCacheDispatch,
+    Denoise,
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
     DlssRrGuideBuffers,
 }

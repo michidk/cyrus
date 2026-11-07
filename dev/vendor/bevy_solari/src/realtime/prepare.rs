@@ -16,17 +16,15 @@ use bevy_ecs::{
 #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
 use bevy_image::ToExtents;
 use bevy_math::UVec2;
+#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+use bevy_render::texture::CachedTexture;
 use bevy_render::{
     camera::ExtractedCamera,
-    render_resource::{Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages},
-    renderer::{RenderDevice, RenderQueue},
-};
-#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
-use bevy_render::{
     render_resource::{
-        TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+        Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages, Extent3d, TextureDescriptor,
+        TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
     },
-    texture::CachedTexture,
+    renderer::{RenderDevice, RenderQueue},
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -117,9 +115,17 @@ pub struct SolariLightingResources {
     pub light_tile_samples: Buffer,
     pub light_tile_resolved_samples: Buffer,
     pub reservoirs: Option<SolariReservoirBuffers>,
+    pub denoise: Option<SolariDenoiseTextures>,
     pub world_cache: Buffer,
     pub world_cache_active_cells_dispatch: Buffer,
     pub view_size: UVec2,
+}
+
+/// Light history and filter targets of the denoiser, as RGBA16F storage textures.
+pub struct SolariDenoiseTextures {
+    pub history: TextureView,
+    pub ping: TextureView,
+    pub pong: TextureView,
 }
 
 pub struct SolariReservoirBuffers {
@@ -170,7 +176,9 @@ pub fn prepare_solari_lighting_resources(
         }
 
         let reusable = solari_lighting_resources.filter(|r| {
-            r.view_size == view_size && r.reservoirs.is_some() == solari_lighting.restir
+            r.view_size == view_size
+                && r.reservoirs.is_some() == solari_lighting.restir
+                && r.denoise.is_some() == (solari_lighting.restir && solari_lighting.denoise)
         });
         let uniforms =
             SolariLightingUniforms::new(solari_lighting, frame_count.0, reusable.is_none());
@@ -222,6 +230,32 @@ pub fn prepare_solari_lighting_resources(
             }
         });
 
+        let denoise = (solari_lighting.restir && solari_lighting.denoise).then(|| {
+            let texture = |label| {
+                render_device
+                    .create_texture(&TextureDescriptor {
+                        label: Some(label),
+                        size: Extent3d {
+                            width: view_size.x,
+                            height: view_size.y,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: TextureFormat::Rgba16Float,
+                        usage: TextureUsages::STORAGE_BINDING,
+                        view_formats: &[],
+                    })
+                    .create_view(&TextureViewDescriptor::default())
+            };
+            SolariDenoiseTextures {
+                history: texture("solari_denoise_history"),
+                ping: texture("solari_denoise_ping"),
+                pong: texture("solari_denoise_pong"),
+            }
+        });
+
         let world_cache = render_device.create_buffer(&BufferDescriptor {
             label: Some("solari_lighting_world_cache"),
             size: WORLD_CACHE_BUFFER_SIZE,
@@ -241,6 +275,7 @@ pub fn prepare_solari_lighting_resources(
             light_tile_samples,
             light_tile_resolved_samples,
             reservoirs,
+            denoise,
             world_cache,
             world_cache_active_cells_dispatch,
             view_size,

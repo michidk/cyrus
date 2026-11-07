@@ -175,7 +175,7 @@ pub use tracing::RayTracingPlugin;
 #[cfg(feature = "raytracing")]
 mod tracing {
     use super::{ActiveTier, Light, Proxy, RayTracingSupport, Tier, sync_proxies};
-    use crate::camera::ViewCamera;
+    use crate::{camera::ViewCamera, environment::EnvironmentRequest};
     use bevy::{
         camera::{CameraMainTextureUsages, Hdr},
         core_pipeline::prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass},
@@ -197,7 +197,12 @@ mod tracing {
                 .add_systems(
                     PostUpdate,
                     (
-                        (configure_camera, trace_stand_ins.after(sync_proxies)).run_if(traced),
+                        (
+                            configure_camera,
+                            trace_stand_ins.after(sync_proxies),
+                            reset_on_cut,
+                        )
+                            .run_if(traced),
                         leave_tracing.run_if(not(traced)),
                     )
                         .after(TransformSystems::Propagate)
@@ -231,13 +236,14 @@ mod tracing {
         tier.get() == Some(Tier::Traced)
     }
 
-    /// Solari settings tuned for a denoiser-free image; a Modern tuning choice. Solari's defaults
-    /// expect a denoiser, which this renderer does not have, so unlit and shadowed surfaces
-    /// would otherwise show raw per-pixel sampling noise.
+    /// Solari settings; a Modern tuning choice. Solari's own output is raw per-pixel sampling noise
+    /// that upstream expects DLSS Ray Reconstruction to clean up. This renderer filters it with the
+    /// vendored denoiser instead, which needs ReSTIR's previous-frame buffers.
     fn solari_lighting() -> SolariLighting {
         SolariLighting {
             // Reuses light samples between neighbouring pixels and frames.
             restir: true,
+            denoise: true,
             // Sun and emissive light samples per pixel, up from 8 and 4.
             primary_di_samples: 24,
             secondary_di_samples: 8,
@@ -264,6 +270,31 @@ mod tracing {
                 solari_lighting(),
                 CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING),
             ));
+        }
+    }
+
+    /// Camera translation, in world units, past which a frame is a cut and history is dropped.
+    const CUT_DISTANCE: f32 = 5.0;
+    /// Camera rotation, in radians, past which a frame is a cut and history is dropped.
+    const CUT_ANGLE: f32 = 0.8;
+
+    /// Drops the denoiser's and ReSTIR's history when the view jumps or the world changes, so the
+    /// new view is not smeared with the old one.
+    pub(super) fn reset_on_cut(
+        request: Res<EnvironmentRequest>,
+        mut cameras: Query<(&GlobalTransform, &mut SolariLighting), With<ViewCamera>>,
+        mut previous: Local<Option<Transform>>,
+    ) {
+        for (global, mut lighting) in &mut cameras {
+            let current = global.compute_transform();
+            let cut = previous.is_some_and(|previous| {
+                previous.translation.distance(current.translation) > CUT_DISTANCE
+                    || previous.rotation.angle_between(current.rotation) > CUT_ANGLE
+            });
+            *previous = Some(current);
+            if cut || request.is_changed() {
+                lighting.reset = true;
+            }
         }
     }
 
@@ -338,11 +369,46 @@ mod tests {
         let mut schedule = Schedule::default();
         schedule.add_systems((
             super::tracing::configure_camera,
+            super::tracing::reset_on_cut,
             super::tracing::trace_stand_ins,
             super::tracing::leave_tracing,
         ));
         schedule
             .initialize(&mut world)
             .expect("systems initialize without query conflicts");
+    }
+
+    #[cfg(feature = "raytracing")]
+    #[test]
+    fn a_view_jump_resets_the_lighting_history() {
+        use crate::environment::EnvironmentRequest;
+        use bevy::solari::prelude::SolariLighting;
+        let mut app = App::new();
+        app.insert_resource(EnvironmentRequest(Handle::default()))
+            .add_systems(Update, super::tracing::reset_on_cut);
+        let camera = app
+            .world_mut()
+            .spawn((
+                ViewCamera,
+                GlobalTransform::default(),
+                SolariLighting {
+                    reset: false,
+                    ..default()
+                },
+            ))
+            .id();
+        // The first frames see the new request and no previous view.
+        app.update();
+        app.update();
+        let move_to = |app: &mut App, x: f32| {
+            let mut entity = app.world_mut().entity_mut(camera);
+            entity.get_mut::<SolariLighting>().unwrap().reset = false;
+            *entity.get_mut::<GlobalTransform>().unwrap() =
+                GlobalTransform::from(Transform::from_xyz(x, 0.0, 0.0));
+            app.update();
+            app.world().get::<SolariLighting>(camera).unwrap().reset
+        };
+        assert!(!move_to(&mut app, 0.1), "walking keeps the history");
+        assert!(move_to(&mut app, 50.0), "a jump drops the history");
     }
 }

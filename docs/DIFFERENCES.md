@@ -53,10 +53,13 @@ Glide fog and clipping do not apply to the lit meshes.
 The original has no ray tracing. The debug menu's **Ray tracing** switch (the `ray_tracing` fidelity
 area, Modern only, native builds only) lights the same meshes with Bevy Solari instead of the raster
 shading above. It needs a GPU with ray-query support and is greyed out without one; where it is
-unavailable, the `lighting` area applies. Solari's output is noisy without a denoiser, so it runs with
-ReSTIR and raised sample counts, which trade frame rate for stability. The vendored `bevy_solari` in
-`dev/vendor` fixes a compaction queue that prepared a replaced mesh twice.
-**Unknown:** how the noise compares with the raster tier on other ray-query hardware.
+unavailable, the `lighting` area applies. Solari's output is noisy by design, so it runs with ReSTIR and
+raised sample counts and a denoiser of our own, in the vendored `bevy_solari` under `dev/vendor`: it
+divides the albedo out, accumulates the light over time against the previous frame's depth and normals,
+filters it with edge-stopping a-trous passes and multiplies the albedo back in. It works on any
+ray-query GPU and needs no NVIDIA SDK, but it treats all light as diffuse. History is dropped on camera
+jumps and world changes. The vendored copy also fixes a compaction queue that prepared a replaced mesh
+twice. **Unknown:** how the filtered image looks, since the denoiser has not been run on a GPU yet.
 
 ## Credits scroll pace
 
