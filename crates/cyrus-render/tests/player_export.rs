@@ -349,6 +349,7 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
             alternate_collision: false,
             sidedness: false,
             surface_update: SurfaceUpdate::Assign,
+            extent: None,
         };
         reference = walk
             .move_grounded(

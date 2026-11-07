@@ -98,6 +98,10 @@ struct TerrainExtension {
 }
 
 impl MaterialExtension for TerrainExtension {
+    // The extra vertex attributes collide with the default prepass shader's locations.
+    fn enable_prepass() -> bool {
+        false
+    }
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_render/terrain.wesl".into()
     }
@@ -199,6 +203,10 @@ impl From<&ModelExtension> for ModelKey {
 }
 
 impl MaterialExtension for ModelExtension {
+    // The extra vertex attributes collide with the default prepass shader's locations.
+    fn enable_prepass() -> bool {
+        false
+    }
     fn specialize(
         _pipeline: &bevy::pbr::MaterialExtensionPipeline,
         descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
@@ -835,6 +843,13 @@ fn prepare_model_geometry<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The ray tracing camera enables prepasses; these materials' vertex layouts cannot use them.
+    #[test]
+    fn scene_materials_stay_out_of_prepasses() {
+        assert!(!<SceneMaterial as Material>::enable_prepass());
+        assert!(!<TerrainMaterial as Material>::enable_prepass());
+    }
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
