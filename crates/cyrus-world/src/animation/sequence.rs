@@ -3,7 +3,7 @@ use super::Animations;
 use anyhow::Context;
 use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
 enum Command {
@@ -22,6 +22,8 @@ enum Command {
     Triple(Retained, [i32; 3]),
     /// Opcodes 7 and 9: one word of the position or rotation triple, by axis.
     Axis(Retained, u32, i32),
+    /// Opcode 10: switch to another group's commands at a frame (group, frame).
+    ChangeGroup(u32, u32),
     /// Opcode 13: the repeat byte.
     SetRepeat(u8),
     /// Opcode 14: step on at a zero repeat byte, otherwise decrement it and jump.
@@ -94,6 +96,12 @@ pub struct FrameSequence {
     repeat: u8,
     position: [i16; 3],
     rotation: [i16; 3],
+    /// The group whose commands are in use, by number.
+    group: u16,
+    /// Every group of the actor, for `ChangeGroup`.
+    alternates: Option<std::sync::Arc<BTreeMap<AnimationGroup, serde_json::Value>>>,
+    /// A group the last advance switched to, for the owner to adopt as its current group.
+    switched: Option<AnimationGroup>,
     type_one: bool,
     type_two: bool,
     /// Transient: whether the pending request is the actor's default group, set per advance.
@@ -205,7 +213,18 @@ impl FrameSequence {
             .iter()
             .find(|candidate| candidate["group_index"].as_u64() == Some(u64::from(group.index())))
             .with_context(|| format!("{context}: absent"))?;
-        FrameSequence::from_group(context, selected, loops, 0)
+        let alternates = std::sync::Arc::new(
+            actor["animation_groups"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|group| {
+                    let index = u16::try_from(group["group_index"].as_u64()?).ok()?;
+                    Some((AnimationGroup::from_index(index), group.clone()))
+                })
+                .collect::<BTreeMap<_, _>>(),
+        );
+        Ok(FrameSequence::from_group(context, selected, loops, 0)?.with_alternates(alternates))
     }
 }
 
@@ -309,6 +328,14 @@ impl FrameSequence {
                         value,
                     )
                 }
+                10 => {
+                    let operand = |key: &str| {
+                        command[key].as_u64().and_then(|v| u32::try_from(v).ok()).with_context(|| {
+                            format!("{context} command {index}: operand {key} absent")
+                        })
+                    };
+                    Command::ChangeGroup(operand("target_group")?, operand("target_frame")?)
+                }
                 13 => Command::SetRepeat(
                     command["value"]
                         .as_i64()
@@ -353,12 +380,29 @@ impl FrameSequence {
             repeat: 0,
             position: [0; 3],
             rotation: [0; 3],
+            group: selected["group_index"].as_u64().unwrap_or(0) as u16,
+            alternates: None,
+            switched: None,
             type_one: group_type.to_le_bytes()[0] == 1,
             type_two: group_type.to_le_bytes()[0] == 2,
             pending_default: false,
             motion_active: false,
             sound_requested: false,
         })
+    }
+
+    /// Gives the sequence the actor's group tables, which `ChangeGroup` switches between.
+    pub(super) fn with_alternates(
+        mut self,
+        alternates: std::sync::Arc<BTreeMap<AnimationGroup, serde_json::Value>>,
+    ) -> Self {
+        self.alternates = Some(alternates);
+        self
+    }
+
+    /// The group a `ChangeGroup` switched to since the last call.
+    pub(super) fn take_switch(&mut self) -> Option<AnimationGroup> {
+        self.switched.take()
     }
 
     /// Clears the BreakPoint marker and the retained translation and rotation words, which every
@@ -618,7 +662,7 @@ impl FrameSequence {
                 }
             }
             anyhow::ensure!(
-                visited.insert((self.command, self.loops, self.repeat)),
+                visited.insert((self.group, self.command, self.loops, self.repeat)),
                 "{} command {}: control cycle has no displayed frame",
                 self.context,
                 self.command
@@ -767,11 +811,38 @@ impl FrameSequence {
                 }
                 Command::Triple(..)
                 | Command::Axis(..)
+                | Command::ChangeGroup(..)
                 | Command::SetRepeat(_)
                 | Command::Repeat(_)
                     if reverse =>
                 {
                     self.command = self.command.wrapping_sub(1);
+                }
+                Command::ChangeGroup(group, frame) => {
+                    let target = AnimationGroup::from_index(group as u16);
+                    let metadata = self
+                        .alternates
+                        .as_ref()
+                        .and_then(|groups| groups.get(&target))
+                        .with_context(|| {
+                            format!(
+                                "{} command {}: group change to absent group {target}",
+                                self.context, self.command
+                            )
+                        })?;
+                    let replacement = Self::from_group(self.context.clone(), metadata, 0, 0)?;
+                    anyhow::ensure!(
+                        (frame as usize) < replacement.commands.len(),
+                        "{} command {}: group change to frame {frame} outside group {target}",
+                        self.context,
+                        self.command
+                    );
+                    self.commands = replacement.commands;
+                    self.type_one = replacement.type_one;
+                    self.type_two = replacement.type_two;
+                    self.group = replacement.group;
+                    self.command = frame as i16;
+                    self.switched = Some(target);
                 }
                 Command::Triple(kind, values) => {
                     let (words, shift) = match kind {
@@ -801,7 +872,7 @@ impl FrameSequence {
                         self.command = target as i16;
                     }
                 }
-                Command::Unsupported(opcode) if reverse && matches!(opcode, 10 | 15) => {
+                Command::Unsupported(opcode) if reverse && opcode == 15 => {
                     self.command = self.command.wrapping_sub(1);
                 }
                 Command::Unsupported(opcode) => anyhow::bail!(

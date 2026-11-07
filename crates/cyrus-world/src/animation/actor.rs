@@ -5,6 +5,7 @@ use anyhow::Context;
 use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 /// A field of the actor's animation record that script properties name. The remaining record
 /// fields (`current`, `rep_count`, `sound_handle`, `max_group`, the delta words) have other owners
@@ -46,7 +47,7 @@ pub enum PlaybackField {
 /// default selection and each advancement's original nominal-tick input.
 pub struct ActorAnimation {
     context: String,
-    groups: BTreeMap<AnimationGroup, serde_json::Value>,
+    groups: Arc<BTreeMap<AnimationGroup, serde_json::Value>>,
     default: AnimationGroup,
     current: Option<(AnimationGroup, FrameSequence)>,
     pending: Option<(AnimationGroup, u8)>,
@@ -92,7 +93,7 @@ impl ActorAnimation {
         ActorAnimationSnapshot {
             version: 3,
             context: self.context.clone(),
-            groups: self.groups.clone(),
+            groups: (*self.groups).clone(),
             default: self.default,
             current: self
                 .current
@@ -126,7 +127,7 @@ impl ActorAnimation {
                 "actor context mismatch"
             );
             anyhow::ensure!(
-                animation.groups == snapshot.groups,
+                *animation.groups == snapshot.groups,
                 "installed group content mismatch"
             );
             if let Some((group, _)) = snapshot.pending {
@@ -146,7 +147,8 @@ impl ActorAnimation {
                         format!("{} group {group}", animation.context),
                         metadata,
                         state,
-                    )?,
+                    )?
+                    .with_alternates(Arc::clone(&animation.groups)),
                 ));
             }
             animation.pending = snapshot.pending;
@@ -237,7 +239,7 @@ impl ActorAnimation {
         }
         Ok(ActorAnimation {
             context,
-            groups,
+            groups: Arc::new(groups),
             default,
             current: None,
             pending: None,
@@ -406,7 +408,8 @@ impl ActorAnimation {
             metadata,
             0,
             modifier,
-        )?;
+        )?
+        .with_alternates(Arc::clone(&self.groups));
         self.clear_current(sounds)?;
         self.pending = None;
         self.frame_progress = 0;
@@ -809,7 +812,8 @@ impl ActorAnimation {
                         metadata,
                         0,
                         modifier,
-                    )?,
+                    )?
+                    .with_alternates(Arc::clone(&self.groups)),
                 ));
             }
             if let Some((group, sequence)) = &mut self.current {
@@ -819,13 +823,19 @@ impl ActorAnimation {
                         .is_some_and(|(pending, _)| pending == self.default),
                 );
                 sequence.set_motion_active(self.motion_active);
-                if let Some(reference) = sequence.advance_with_progress(
+                let outcome = sequence.advance_with_progress(
                     ticks,
                     exiting,
                     sounds,
                     &mut self.frame_progress,
                     self.reverse,
-                )? {
+                );
+                // A `ChangeGroup` command makes its target the current group even when playback
+                // then fails or yields.
+                if let Some(switched) = sequence.take_switch() {
+                    *group = switched;
+                }
+                if let Some(reference) = outcome? {
                     return Ok(Some(reference));
                 }
                 if !sequence.is_finished() {

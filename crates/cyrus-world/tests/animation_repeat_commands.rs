@@ -111,3 +111,66 @@ fn reverse_playback_steps_over_the_new_commands_without_effect() {
     assert_eq!(actor.advance(1).unwrap(), Some(0));
     assert_eq!(actor.record_field(RepCount).unwrap(), 0);
 }
+
+#[test]
+fn change_group_switches_the_commands_in_use_and_keeps_the_other_state() {
+    let data: Animations = serde_json::from_value(json!({
+        "version": 2, "world": 17, "sections": {},
+        "metadata": {"actors": [{"script_name": "ACTOR", "animation_groups": [
+            {"group_index": 7, "anim_type": 0, "anim_id": 1, "commands": [
+                {"opcode":0,"frame_reference":0},
+                {"opcode":10,"target_group":9,"target_frame":1},
+                {"opcode":0,"frame_reference":99}, {"opcode":1}]},
+            {"group_index": 9, "anim_type": 0, "anim_id": 5, "commands": [
+                {"opcode":0,"frame_reference":10}, {"opcode":0,"frame_reference":11},
+                {"opcode":0,"frame_reference":12}, {"opcode":1}]},
+        ]}]},
+        "models": {}, "unsupported": {}
+    }))
+    .unwrap();
+    let (mut actor, first) = started(&data);
+    assert_eq!(first, Some(0));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
+    // The next step reaches the group change in the same call: group 9's frame at index 1 is
+    // shown, the current group is now 9, and the countdown/speed bytes stay group 7's.
+    assert_eq!(actor.advance(1).unwrap(), Some(11));
+    assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(9)));
+    assert_eq!(actor.record_field(Frame).unwrap(), 1);
+    assert_eq!(actor.record_field(Speed).unwrap(), 1);
+    // A save taken after the switch resumes in the new group.
+    let saved = serde_json::to_vec(&actor.snapshot()).unwrap();
+    let mut restored =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_slice(&saved).unwrap())
+            .unwrap();
+    assert_eq!(
+        restored.current_group(),
+        Some(AnimationGroup::from_index(9))
+    );
+    assert_eq!(restored.advance(1).unwrap(), Some(12));
+    // Playback continues through the new group's commands and ends with it.
+    assert_eq!(actor.advance(1).unwrap(), Some(12));
+}
+
+#[test]
+fn change_group_to_a_missing_group_or_frame_fails_playback_stickily() {
+    for (group, frame) in [(40, 0), (9, 7)] {
+        let data: Animations = serde_json::from_value(json!({
+            "version": 2, "world": 17, "sections": {},
+            "metadata": {"actors": [{"script_name": "ACTOR", "animation_groups": [
+                {"group_index": 7, "anim_type": 0, "anim_id": 1, "commands": [
+                    {"opcode":0,"frame_reference":0},
+                    {"opcode":10,"target_group":group,"target_frame":frame},
+                    {"opcode":0,"frame_reference":99}]},
+                {"group_index": 9, "anim_type": 0, "anim_id": 1, "commands": [
+                    {"opcode":0,"frame_reference":10}]},
+            ]}]},
+            "models": {}, "unsupported": {}
+        }))
+        .unwrap();
+        let (mut actor, _) = started(&data);
+        let error = actor.advance(1).unwrap_err();
+        assert!(format!("{error:#}").contains("group change"), "{error:#}");
+        assert!(actor.failure().is_some());
+        assert!(actor.advance(1).is_err());
+    }
+}
