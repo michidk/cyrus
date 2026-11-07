@@ -46,7 +46,9 @@ impl ScriptWorld {
                 .wrapping_shl(8),
             -0x3800,
         ])?;
-        let origin = spatial.query_pose()?.position;
+        // The probe's origin is the query-position selector's position (attached, else linked,
+        // else local); only its rotated offset uses the local matrix.
+        let origin = self.query_position(id)?;
         let point: [i64; 3] =
             std::array::from_fn(|axis| i64::from(origin[axis]) + i64::from(offset[axis]));
         let poses = self.ordinary_collision_poses(query.prepared)?;
