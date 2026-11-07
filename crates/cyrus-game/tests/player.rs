@@ -159,6 +159,7 @@ fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
     let wish = Wish {
         direction: Vec2::new(0.0, 0.5),
         jump: true,
+        wasd: false,
     };
     app.insert_resource(MovementWish(Some(wish)));
     app.update();
@@ -169,6 +170,7 @@ fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
     app.insert_resource(MovementWish(Some(Wish {
         direction: Vec2::ZERO,
         jump: false,
+        wasd: false,
     })));
     app.update();
     assert_eq!(look(&app), (true, None));

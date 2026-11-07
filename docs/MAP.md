@@ -264,6 +264,7 @@ module where it is defined and regenerate.
 ## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
+- `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
 
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
 

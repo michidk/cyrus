@@ -172,7 +172,7 @@ pub(super) fn sample(
     // sword key among them (S by default) does not also draw the sword.
     let sword_moves = (fidelity
         .is_some_and(|fidelity| fidelity.player_controller == crate::fidelity::Mode::Modern)
-        || wish.is_some_and(|wish| wish.0.is_some()))
+        || wish.is_some_and(|wish| wish.0.is_some_and(|wish| wish.wasd)))
         && inputs
             .bindings()
             .keyboard(Action::QuickSword)

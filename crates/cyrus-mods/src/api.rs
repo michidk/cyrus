@@ -10,7 +10,7 @@
 use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
-use cyrus_game::player::input::{MovementWish, Wish};
+use cyrus_game::player::input::{Inputs, MovementWish, PlayerInput, Wish};
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
 use std::collections::HashMap;
@@ -65,13 +65,13 @@ impl Camera {
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
 pub struct Movement {
-    wish: Option<(f32, f32, bool)>,
+    wish: Option<(f32, f32, bool, bool)>,
 }
 
 #[wasvy::methods]
 impl Movement {
-    pub fn steer(&mut self, x: f32, y: f32, jump: bool) {
-        self.wish = Some((x, y, jump));
+    pub fn steer(&mut self, x: f32, y: f32, jump: bool, wasd: bool) {
+        self.wish = Some((x, y, jump, wasd));
     }
 }
 
@@ -109,6 +109,7 @@ impl Settings {
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
 pub struct Input {
+    held: Vec<String>,
     pressed: Vec<String>,
     just_pressed: Vec<String>,
     mouse_delta: Vec<f32>,
@@ -117,6 +118,9 @@ pub struct Input {
 
 #[wasvy::methods]
 impl Input {
+    pub fn held(&self, action: String) -> bool {
+        self.held.contains(&action)
+    }
     pub fn pressed(&self, key: String) -> bool {
         self.pressed.contains(&key)
     }
@@ -158,6 +162,7 @@ pub(crate) fn exchange(
     mut takeover: ResMut<CameraTakeover>,
     view: Query<&Transform, With<ViewCamera>>,
     keys: Res<ButtonInput<KeyCode>>,
+    bindings: Inputs,
     mouse: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
@@ -201,7 +206,7 @@ pub(crate) fn exchange(
             None
         }
     });
-    movement.0 = steering.wish.take().map(|(x, y, jump)| {
+    movement.0 = steering.wish.take().map(|(x, y, jump, wasd)| {
         let direction = Vec2::new(x, y);
         Wish {
             // A mod's NaN or infinity must not become a heading.
@@ -211,6 +216,7 @@ pub(crate) fn exchange(
                 Vec2::ZERO
             },
             jump,
+            wasd,
         }
     });
     camera.pose = view.single().map_or_else(
@@ -224,6 +230,7 @@ pub(crate) fn exchange(
         },
     );
 
+    input.held = held_actions(&bindings.bindings().sample_devices(bindings.devices()));
     input.pressed = keys.get_pressed().map(|key| format!("{key:?}")).collect();
     input.just_pressed = keys
         .get_just_pressed()
@@ -231,4 +238,36 @@ pub(crate) fn exchange(
         .collect();
     input.mouse_delta = mouse.delta.to_array().to_vec();
     input.delta_seconds = time.delta_secs();
+}
+
+/// The movement actions held under the installed key bindings, by the names `input.held` takes.
+fn held_actions(input: &PlayerInput) -> Vec<String> {
+    [
+        ("forward", input.forward),
+        ("back", input.backward),
+        ("left", input.left),
+        ("right", input.right),
+        ("walk", input.walk),
+        ("jump", input.jump),
+    ]
+    .into_iter()
+    .filter(|(_, held)| *held)
+    .map(|(name, _)| name.to_owned())
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_actions_name_the_bound_actions_that_are_down() {
+        let input = PlayerInput {
+            forward: true,
+            walk: true,
+            ..default()
+        };
+        assert_eq!(held_actions(&input), ["forward", "walk"]);
+        assert!(held_actions(&PlayerInput::default()).is_empty());
+    }
 }

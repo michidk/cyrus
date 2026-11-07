@@ -43,8 +43,9 @@ interface components {
   resource movement {
     constructor(component: component);
     /// Steer toward `x` (right) and `y` (forward) relative to the camera. Zero stands still.
-    /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame.
-    steer: func(x: f32, y: f32, jump: bool);
+    /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame. Set `wasd` when
+    /// the mod reads W, A, S and D, so the game's own actions on those keys stay quiet.
+    steer: func(x: f32, y: f32, jump: bool, wasd: bool);
   }
 
   /// The player's values for the `[[setting]]` entries in mod.toml. `id` is the mod's folder
@@ -62,6 +63,9 @@ interface components {
   /// wasvy:type-path=cyrus_mods::api::Input
   resource input {
     constructor(component: component);
+    /// Whether the player holds an action under the game's own key bindings (KEYS.INI):
+    /// "forward", "back", "left", "right", "walk" (the walk/run modifier) or "jump".
+    held: func(action: string) -> bool;
     pressed: func(key: string) -> bool;
     tapped: func(key: string) -> bool;
     /// Mouse motion since the last frame in pixels: x, y.

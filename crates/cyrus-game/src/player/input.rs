@@ -109,6 +109,9 @@ pub struct Wish {
     /// Below [`RUN_TILT`] the player walks, from it the player runs.
     pub direction: Vec2,
     pub jump: bool,
+    /// The mod reads W, A, S and D for this, so an installed quick action on one of them (the
+    /// sword's S by default) stays quiet.
+    pub wasd: bool,
 }
 
 const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
