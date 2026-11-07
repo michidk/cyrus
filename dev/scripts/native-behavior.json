@@ -7765,7 +7765,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7781,7 +7781,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7797,7 +7797,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7813,7 +7813,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7829,7 +7829,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7845,7 +7845,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7861,7 +7861,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7877,7 +7877,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7893,7 +7893,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7909,7 +7909,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7925,7 +7925,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
@@ -7941,7 +7941,7 @@
       "scope": "Receiver family-composed attached pose coordinate",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial effective pose",
       "tests": [
-        "crates/cyrus-game/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::slave_position_writes_reach_the_effective_position_distance_queries_use"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
