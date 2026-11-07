@@ -13,6 +13,8 @@ pub struct PlayerDefinition {
     pub step_type: u8,
     pub positive_extent: [i32; 3],
     pub negative_extent: [i32; 3],
+    /// The authored bounds record's center offset, which the live shape starts from.
+    pub center_offset: [i32; 3],
     collision_scale: i32,
 }
 
@@ -69,10 +71,7 @@ impl PlayerDefinition {
                 .clone(),
         )
         .context("CYRUS: invalid primary MPSZ record")?;
-        anyhow::ensure!(
-            bounds.center_offset == [0; 3] && bounds.flags == 0,
-            "CYRUS MPSZ: shifted or flagged bounds unsupported"
-        );
+        anyhow::ensure!(bounds.flags == 0, "CYRUS MPSZ: flagged bounds unsupported");
         for axis in 0..3 {
             anyhow::ensure!(
                 bounds.pos_extent[axis] >= 0
@@ -96,6 +95,7 @@ impl PlayerDefinition {
             step_type: attribute("attr_step_type")?,
             positive_extent: bounds.pos_extent,
             negative_extent: bounds.neg_extent,
+            center_offset: bounds.center_offset,
             collision_scale: if scale > 0 { i32::from(scale) } else { 256 },
         })
     }

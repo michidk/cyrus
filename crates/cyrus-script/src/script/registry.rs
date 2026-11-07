@@ -5194,20 +5194,23 @@ fn control_record_property(
     })
 }
 
-/// The bounds-record extent a `size.psize.v*` or `size.msize.v*` property names: whether it is the
-/// negative extent, and the axis.
-fn collision_extent_property(name: Property) -> Option<(bool, usize)> {
-    use Property::{SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePsizeVx, SizePsizeVy, SizePsizeVz};
-    [SizePsizeVx, SizePsizeVy, SizePsizeVz]
-        .iter()
-        .position(|&n| n == name)
-        .map(|axis| (false, axis))
-        .or_else(|| {
-            [SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]
-                .iter()
-                .position(|&n| n == name)
-                .map(|axis| (true, axis))
-        })
+/// The bounds-record triple a `size.psize`, `size.msize` or `size.pos` property names, and the axis.
+enum CollisionField {
+    Positive(usize),
+    Negative(usize),
+    Center(usize),
+}
+
+fn collision_extent_property(name: Property) -> Option<CollisionField> {
+    use Property::{
+        SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePosVx, SizePosVy, SizePosVz, SizePsizeVx,
+        SizePsizeVy, SizePsizeVz,
+    };
+    let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
+    find([SizePsizeVx, SizePsizeVy, SizePsizeVz])
+        .map(CollisionField::Positive)
+        .or_else(|| find([SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]).map(CollisionField::Negative))
+        .or_else(|| find([SizePosVx, SizePosVy, SizePosVz]).map(CollisionField::Center))
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5608,7 +5611,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         }
-        if let Some((negative, axis)) = collision_extent_property(name) {
+        if let Some(field) = collision_extent_property(name) {
             let index = self.property_receiver(target)?;
             let shape = self.registry.actors[index]
                 .collision
@@ -5616,10 +5619,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| {
                     format!("property {target:?}.{name}: collision shape not prepared")
                 })?;
-            return Ok(if negative {
-                shape.negative_extent[axis]
-            } else {
-                shape.positive_extent[axis]
+            return Ok(match field {
+                CollisionField::Positive(axis) => shape.positive_extent[axis],
+                CollisionField::Negative(axis) => shape.negative_extent[axis],
+                CollisionField::Center(axis) => shape.center_offset[axis],
             });
         }
         let pose = pose_property(name)
@@ -5810,7 +5813,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
-        if let Some((negative, axis)) = collision_extent_property(name) {
+        if let Some(field) = collision_extent_property(name) {
             let index = self.property_receiver(target)?;
             let shape = self.registry.actors[index]
                 .collision
@@ -5818,10 +5821,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| {
                     format!("property {target:?}.{name}: collision shape not prepared")
                 })?;
-            if negative {
-                shape.negative_extent[axis] = value;
-            } else {
-                shape.positive_extent[axis] = value;
+            match field {
+                CollisionField::Positive(axis) => shape.positive_extent[axis] = value,
+                CollisionField::Negative(axis) => shape.negative_extent[axis] = value,
+                CollisionField::Center(axis) => shape.center_offset[axis] = value,
             }
             return Ok(());
         }

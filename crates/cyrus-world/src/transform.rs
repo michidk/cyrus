@@ -153,8 +153,7 @@ impl Matrix {
     }
 
     /// Transform original Q8 coordinates, storing inputs and each dot product as f32.
-    /// Final integer conversion rounds nearest-even; an out-of-range result is the x87 integer
-    /// indefinite, `i32::MIN`.
+    /// Final integer conversion rounds nearest-even and rejects nonfinite/overflow results.
     pub fn transform(self, position: [i32; 3]) -> Result<[i32; 3]> {
         let inputs: [X87DoubleExtended; 3] = position.map(|value| {
             let single = Single::from_i128(i128::from(value)).value;
@@ -172,12 +171,11 @@ impl Matrix {
             let single =
                 Single::from_bits(u128::from(stored((first + products[2]).value).to_bits()));
             let integer = single.to_i128_r(32, Round::NearestTiesToEven, &mut false);
-            // An out-of-range final conversion stores the x87 integer indefinite (SOUP.md).
-            result[axis] = if integer.status.contains(Status::INVALID_OP) {
-                i32::MIN
-            } else {
-                integer.value as i32
-            };
+            ensure!(
+                !integer.status.contains(Status::INVALID_OP),
+                "actor matrix transform axis {axis}: position {position:?} with row {row:?} cannot convert to i32"
+            );
+            result[axis] = integer.value as i32;
         }
         Ok(result)
     }
