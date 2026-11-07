@@ -28,6 +28,7 @@ struct AppliedScriptVisibility(Visibility);
 fn visibility(
     mut commands: Commands,
     actors: Option<Res<ScriptActors>>,
+    cheats: Option<Res<cyrus_game::cheats::Cheats>>,
     mut nodes: Query<
         (
             Entity,
@@ -46,6 +47,18 @@ fn visibility(
             }
             world.actors().get(binding.actor.index)?.control_state()
         });
+        // With the animation cheat at zero the selected player's animated body is not drawn.
+        let player_hidden = binding
+            .and_then(|binding| {
+                let world = actors.as_ref()?.current.as_ref()?;
+                (binding.actor.generation == world.generation()
+                    && world.selected_player() == Some(binding.actor))
+                .then_some(())
+            })
+            .is_some()
+            && cheats
+                .as_ref()
+                .is_some_and(|cheats| cheats.animated_player_hidden().unwrap_or(false));
         let Some(control) = control else {
             if let Some(applied) = applied {
                 *visibility = applied.0;
@@ -58,7 +71,7 @@ fn visibility(
                 .entity(entity)
                 .insert(AppliedScriptVisibility(*visibility));
         }
-        let next = if control.hidden || control.invisible {
+        let next = if control.hidden || control.invisible || player_hidden {
             Visibility::Hidden
         } else {
             Visibility::Inherited

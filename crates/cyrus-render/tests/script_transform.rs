@@ -307,3 +307,62 @@ fn script_pose_stays_at_the_exported_world_marker() {
         );
     }
 }
+
+#[test]
+fn the_animation_cheat_at_zero_hides_only_the_selected_players_body() {
+    use cyrus_game::cheats::{CheatStore, Cheats};
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let mut scripts: Scripts = serde_json::from_value(json!({
+        "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
+        "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
+        "actor_pool_capacity":10,"content_id":"","world":17,
+        "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+        "actors":{"CYRUS":{"header_index":0,"code_origin":0,"instances":1,"instance_variables":[[]],"location_offsets":[],"attributes":vec![0u8; 256],
+            "program":{"version":4,"entry":0,"steps":{"0":{"next":1,"operation":{"type":"end","target":0}}}}}},
+        "instances":[],"unsupported":{}
+    })).unwrap();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let player = world
+        .selected_player()
+        .expect("CYRUS is the selected player");
+    for (animation, expected) in [
+        (0, Visibility::Hidden),
+        (1, Visibility::Inherited),
+        (2, Visibility::Inherited),
+    ] {
+        let mut cheats = Cheats::new(Memory);
+        cheats.execute("animation", Some(animation)).unwrap();
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin, ScriptTransformPlugin));
+        let mut actors = ScriptActors::default();
+        actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
+        app.insert_resource(actors);
+        app.insert_resource(cheats);
+        let node = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                Visibility::Inherited,
+                ScriptBinding {
+                    actor: player,
+                    source: Handle::<Animations>::default(),
+                },
+            ))
+            .id();
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(node).unwrap(),
+            expected,
+            "animation {animation}"
+        );
+    }
+}

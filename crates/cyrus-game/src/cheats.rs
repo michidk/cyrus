@@ -174,6 +174,16 @@ impl Cheats {
             == 1)
     }
 
+    /// The ordinary animated-player draw is suppressed while the `animation` state is zero; it does
+    /// not keep a frozen pose. Other values leave it drawn.
+    pub fn animated_player_hidden(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
+            == 0)
+    }
+
     /// The goldfinger state for the selected player's burning torch, active for any nonzero value.
     pub fn torch_retained(&self) -> Result<bool> {
         Ok(self
