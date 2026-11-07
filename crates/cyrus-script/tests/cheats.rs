@@ -60,7 +60,7 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
     for value in [1, 42, u32::MAX] {
         assert_eq!(
             runtime.execute("drevil", Some(value)).unwrap(),
-            CheatEffect::Unsupported
+            CheatEffect::DamageSuppression
         );
         assert!(runtime.death_suppressed().unwrap());
     }

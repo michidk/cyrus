@@ -21,6 +21,7 @@ pub enum CheatEffect {
     TorchRetention,
     ActorUpdateSkip,
     MagicCarpet,
+    DamageSuppression,
     TaskSystem,
     AnimationSystem,
     Unsupported,
@@ -123,6 +124,7 @@ impl Cheats {
             "goldfinger" => CheatEffect::TorchRetention,
             "drno" => CheatEffect::ActorUpdateSkip,
             "magiccarpet" => CheatEffect::MagicCarpet,
+            "drevil" => CheatEffect::DamageSuppression,
             "task" => CheatEffect::TaskSystem,
             "animation" => CheatEffect::AnimationSystem,
             _ => CheatEffect::Unsupported,
@@ -202,8 +204,9 @@ impl Cheats {
             != 0)
     }
 
-    /// Raw nonzero drevil state for selected death-owning health. Other drevil
-    /// damage paths are not integrated, so the catalog still reports Unsupported.
+    /// Raw nonzero drevil state: the selected player takes no health change and starts no death
+    /// response from a combat hit or a direct-damage message, and its death-owning health does not
+    /// start death at zero.
     pub fn death_suppressed(&self) -> Result<bool> {
         Ok(self
             .state()?

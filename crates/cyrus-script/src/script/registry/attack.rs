@@ -183,66 +183,80 @@ impl ScriptWorld {
         if !damage_admitted {
             return Ok(());
         }
-        let (strength, damage) = {
-            let combat = self.actors[sender_index]
+        // The suppressed selected player takes no damage, no death taunts and no death response
+        // from a combat hit; the sender's charged weapon is still restored below.
+        let damage_suppressed = selected
+            && inputs
+                .death_suppressed
+                .context("combat hit damage-suppression state unavailable")?;
+        if !damage_suppressed {
+            let (strength, damage) = {
+                let combat = self.actors[sender_index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .context("hit sender combat unavailable")?;
+                // A negative attack slot reads damage zero, as the original's damage reader does.
+                let damage = if combat.retained_action_indices[1] < 0 {
+                    0
+                } else {
+                    self.current_combat_motion(sender)?
+                        .damage
+                        .context("hit motion damage unavailable")?
+                };
+                (combat.strength, damage)
+            };
+            let armor = self.actors[receiver_index]
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .context("hit sender combat unavailable")?;
-            // A negative attack slot reads damage zero, as the original's damage reader does.
-            let damage = if combat.retained_action_indices[1] < 0 {
-                0
+                .context("hit receiver combat unavailable")?
+                .armor;
+            let product = (strength.wrapping_add(100)).wrapping_mul(damage);
+            let scaled = product.wrapping_div(100);
+            let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
+            let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
+            if selected {
+                self.apply_selected_additive_health(
+                    receiver,
+                    change,
+                    inputs,
+                    Some(random),
+                    sounds,
+                )?;
             } else {
-                self.current_combat_motion(sender)?
-                    .damage
-                    .context("hit motion damage unavailable")?
-            };
-            (combat.strength, damage)
-        };
-        let armor = self.actors[receiver_index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .context("hit receiver combat unavailable")?
-            .armor;
-        let product = (strength.wrapping_add(100)).wrapping_mul(damage);
-        let scaled = product.wrapping_div(100);
-        let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
-        let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
-        if selected {
-            self.apply_selected_additive_health(receiver, change, inputs, Some(random), sounds)?;
-        } else {
-            let environment = super::transition::ObstacleEnvironment {
-                selected_player,
-                auto_grab: false,
-                item_system_ready: inputs
-                    .hud
-                    .map(|hud| hud.inventory_ready())
-                    .transpose()?
-                    .unwrap_or(false),
-                shell_execution: inputs.shell_execution.unwrap_or(false),
-                ticks,
-            };
-            self.apply_nonplayer_contact_health(receiver, change, environment)?;
-        }
-        if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
-            self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
-            self.request_timed_combat_taunt(
-                sender,
-                TauntType::KILLED_OPPONENT,
-                0,
-                inputs,
-                random,
-                sounds,
-            )?;
-            let motion_kind = self.current_combat_motion(sender)?.kind;
-            self.dispatch_combat_death(
-                receiver,
-                if motion_kind == 0 { 0 } else { 1 },
-                inputs,
-                random,
-                sounds,
-            )?;
+                let environment = super::transition::ObstacleEnvironment {
+                    selected_player,
+                    auto_grab: false,
+                    item_system_ready: inputs
+                        .hud
+                        .map(|hud| hud.inventory_ready())
+                        .transpose()?
+                        .unwrap_or(false),
+                    shell_execution: inputs.shell_execution.unwrap_or(false),
+                    ticks,
+                };
+                self.apply_nonplayer_contact_health(receiver, change, environment)?;
+            }
+            if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
+                self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
+                self.request_timed_combat_taunt(
+                    sender,
+                    TauntType::KILLED_OPPONENT,
+                    0,
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+                let motion_kind = self.current_combat_motion(sender)?.kind;
+                self.dispatch_combat_death(
+                    receiver,
+                    if motion_kind == 0 { 0 } else { 1 },
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+            }
         }
         // The original restores a charged (flaming sabre) sender through the ordinary
         // chargeWeapon(0) swap after the damage response. Keep this after health

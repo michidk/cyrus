@@ -22485,6 +22485,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             );
             data.metadata["markers"] = serde_json::json!([]);
             data.metadata["walk_node_maps"] = serde_json::json!([]);
+            data.metadata["walk_node_maps"] = serde_json::json!([]);
             let mut saved = movement_snapshot(&world, &scripts, &data);
             saved["actors"][index]["animation"]["playback"]["frame_progress"] = 0.into();
             saved["actors"][index]["animation"]["playback"]["current"][1]["command"] = 1.into();
@@ -22808,6 +22809,7 @@ fn pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration
     for (calls, swapped) in cases {
         let (_, mut world, mut data) = player_swap_fixture(calls);
         data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
         update_player_swap_world(&mut world, &data);
         let gremlin = world
@@ -36148,6 +36150,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         });
         data.metadata["markers"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         let index = world
             .actors()
             .iter()
@@ -40429,6 +40432,7 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
         });
         data.metadata["markers"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         let player = world.selected_player().context("selected player")?;
         let creator = world.id(0)?;
         let receiver = world.create_object(creator, "LOGIC", [0; 3], [0; 3])?;
@@ -41201,6 +41205,89 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
         world.actors()[receiver.index].attributes()[Attribute::Health],
         39
     );
+}
+
+#[test]
+fn a_combat_hit_on_the_suppressed_selected_player_takes_no_damage() {
+    use cyrus_script::script::{
+        CombatControlState, ScriptHud, ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    // One damage point from a sender with an attack slot: the unsuppressed player loses one
+    // health, the suppressed one keeps all of it.
+    for (suppressed, expected) in [(false, 49), (true, 50)] {
+        let (scripts, mut world, mut data, _) = player_health_fixture_with(|scripts| {
+            scripts.combat_attacks = vec![cyrus_assets::script::combat::Attack {
+                is_combo: false,
+                motions: vec![
+                    serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "damage":1,"first_collide_frame":0,"collide_duration":1
+                    }))
+                    .unwrap(),
+                ],
+                min_range: 0,
+                max_range: 100,
+            }];
+        });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][0]["control"]["combat"] = serde_json::to_value(CombatControlState {
+            attacker_selection_state: 1,
+            action: 0,
+            attack_indices: [Some(0); 9],
+            retained_action_indices: [-1, 0],
+            ..Default::default()
+        })
+        .unwrap();
+        let generation = world.generation() + 1;
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals: std::mem::take(world.globals_mut()),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let receiver = world.selected_player().unwrap();
+        let sender = world.id(0).unwrap();
+        world.ordinary_actors([0, 0]).unwrap();
+        world
+            .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+            .unwrap();
+        let hud = ScriptHud::default();
+        world
+            .process_combat_message_with_services(
+                receiver,
+                None,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    death_suppressed: Some(suppressed),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut cyrus_game::random::EngineRandom::from_state(42)),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.globals().selected_health().unwrap().displayed(),
+            expected,
+            "suppressed {suppressed}"
+        );
+    }
 }
 
 #[test]
@@ -48868,6 +48955,7 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
             ];
         });
         data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
         scene.source_identity = Some("protected-actor-taunt-fixture".into());
         scene.settings.tap_time = Some(6);
