@@ -146,7 +146,7 @@ fn try_pose_world(
         ScriptInputs {
             nominal_ticks: Some(1),
             frame_scale: Some(256),
-            player_query: Some(cyrus_game::script::QueryInputs {
+            player_query: Some(cyrus_script::script::QueryInputs {
                 player: None,
                 distance_override: None,
                 fallback_position: None,
