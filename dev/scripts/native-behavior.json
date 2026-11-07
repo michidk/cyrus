@@ -8458,6 +8458,40 @@
       "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
     },
     {
+      "property": "dead",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver killed marker KillMe sets and Resurrect clears; ordinary updates skip a receiver whose marker is set",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::dead_and_weapon_drawn_are_the_killed_marker_and_the_drawn_byte",
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::a_script_that_marks_itself_dead_is_skipped_by_later_ordinary_updates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original: killed marker KillMe sets and Resurrect clears; ordinary updates skip a receiver whose marker is set. Tag b width 1; reads give 0 or 1 because cyrus keeps a boolean and a write with a nonzero low byte sets it. A raw write runs none of the routines that normally set the byte. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "weapon_drawn",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver weapon-drawn byte set and cleared by the equipped-weapon draw and cleanup routines",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::dead_and_weapon_drawn_are_the_killed_marker_and_the_drawn_byte",
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::a_script_that_marks_itself_dead_is_skipped_by_later_ordinary_updates"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original: weapon-drawn byte set and cleared by the equipped-weapon draw and cleanup routines. Tag b width 1; reads give 0 or 1 because cyrus keeps a boolean and a write with a nonzero low byte sets it. A raw write runs none of the routines that normally set the byte. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
       "property": "task_variable[0]",
       "status": "partial",
       "owner": 5,
@@ -9403,7 +9437,6 @@
         "ai_type",
         "anchor",
         "arms_time",
-        "dead",
         "disable_script",
         "extra_time",
         "ftype",
@@ -9424,8 +9457,7 @@
         "sflags",
         "static_data",
         "surface_time",
-        "under_surface",
-        "weapon_drawn"
+        "under_surface"
       ],
       "status": "missing",
       "owner": 5,

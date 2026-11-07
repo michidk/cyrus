@@ -496,3 +496,88 @@ fn actor_held_ledge_point_survives_restores_and_wins_over_a_legacy_global() {
     assert_eq!(control["ledge_point"], serde_json::json!([1, 2, 3]));
     assert_eq!(control["motion_vector"][1], 700);
 }
+
+#[test]
+fn dead_and_weapon_drawn_are_the_killed_marker_and_the_drawn_byte() {
+    let world = pose_world(&[
+        Step3::Read(Property::Dead),
+        Step3::Read(Property::WeaponDrawn),
+        Step3::Write(Property::Dead, 0x100 + 1),
+        Step3::Write(Property::WeaponDrawn, 2),
+        Step3::Read(Property::Dead),
+        Step3::Read(Property::WeaponDrawn),
+    ]);
+    // Bytes read zero or one here, any nonzero low byte sets them.
+    assert_eq!(locals(&world), [0, 0, 1, 1]);
+    let control = world.actors()[0].control_state().unwrap();
+    assert!(control.killed && control.weapon_drawn);
+    let world = pose_world(&[
+        Step3::Write(Property::Dead, 1),
+        Step3::Write(Property::Dead, 0x200),
+        Step3::Read(Property::Dead),
+    ]);
+    assert_eq!(locals(&world), [0]);
+    assert!(!world.actors()[0].control_state().unwrap().killed);
+}
+
+#[test]
+fn a_script_that_marks_itself_dead_is_skipped_by_later_ordinary_updates() {
+    // Ordinary script updates skip a receiver whose killed marker is set, so the counter the
+    // script increments before marking itself dead stops at one.
+    let mut scripts = cache();
+    scripts.definition.references = vec![Property::Dead];
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.variables = vec![0];
+    logic.instance_variables = vec![vec![0]; 2];
+    logic.program.steps = [
+        Operation::Increment {
+            destination: Place::Local { index: 0 },
+            delta: 1,
+        },
+        Operation::Assign {
+            destination: Place::Property {
+                object: Object::Me,
+                reference: 0,
+            },
+            formula: Formula {
+                first: int(1),
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    for _ in 0..3 {
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+    }
+    assert_eq!(locals(&world), [1]);
+    assert!(world.actors()[0].control_state().unwrap().killed);
+}

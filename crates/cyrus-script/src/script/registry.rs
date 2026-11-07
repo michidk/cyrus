@@ -5211,6 +5211,9 @@ fn control_record_property(
         Property::Dnode => ControlField::Dword(&mut control.navigation.next),
         Property::Fdnode => ControlField::Dword(&mut control.navigation.destination),
         // The stable-position record the fall and recovery code restores from.
+        // KillMe's finished marker and the weapon-drawn byte of the equipped-weapon routines.
+        Property::Dead => ControlField::Flag(&mut control.killed),
+        Property::WeaponDrawn => ControlField::Flag(&mut control.weapon_drawn),
         Property::MoveVx => ControlField::Dword(&mut control.motion_vector[0]),
         Property::MoveVy => ControlField::Dword(&mut control.motion_vector[1]),
         Property::MoveVz => ControlField::Dword(&mut control.motion_vector[2]),
