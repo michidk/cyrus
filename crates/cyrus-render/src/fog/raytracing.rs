@@ -45,6 +45,7 @@ mod solari {
         asset::{RenderAssetUsages, UntypedAssetId},
         camera::{CameraMainTextureUsages, Hdr, visibility::RenderLayers},
         core_pipeline::prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass},
+        ecs::system::SystemParam,
         light::{EnvironmentMapLight, light_consts},
         material::OpaqueRendererMethod,
         mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
@@ -60,7 +61,7 @@ mod solari {
         },
         solari::prelude::{RaytracingMesh3d, SolariLighting, SolariPlugins},
     };
-    use cyrus_assets::environment::{Environment, LocalLight};
+    use cyrus_assets::environment::{Environment, LocalLight, ModelLighting};
     use cyrus_game::fidelity::{Area, Fidelity, Mode};
     use std::collections::{HashMap, HashSet};
 
@@ -274,68 +275,139 @@ mod solari {
         }
     }
 
-    // Sources are joined across both material kinds, the proxies and three asset stores.
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    /// The asset stores a stand-in is built from; all four are needed together.
+    #[derive(SystemParam)]
+    struct StandInAssets<'w> {
+        meshes: ResMut<'w, Assets<Mesh>>,
+        standard: ResMut<'w, Assets<StandardMaterial>>,
+        scene: Res<'w, Assets<SceneMaterial>>,
+        terrain: Res<'w, Assets<TerrainMaterial>>,
+    }
+
+    impl StandIns {
+        /// Animated and re-prepared source meshes are edited in place; rebuild their stand-ins.
+        fn rebuild_edited(
+            &mut self,
+            meshes: &mut Assets<Mesh>,
+            events: &mut MessageReader<AssetEvent<Mesh>>,
+        ) {
+            for event in events.read() {
+                if let AssetEvent::Modified { id } = event
+                    && let Some(handle) = self.meshes.get(id)
+                    && let Some(mesh) = meshes.get(*id).and_then(standin_mesh)
+                    && let Err(error) = meshes.insert(handle.id(), mesh)
+                {
+                    warn!("ray tracing stand-in mesh {id}: {error}");
+                }
+            }
+            self.meshes.retain(|id, _| meshes.contains(*id));
+        }
+
+        /// The stand-in mesh of a source mesh, built on first use.
+        fn mesh(
+            &mut self,
+            meshes: &mut Assets<Mesh>,
+            source: &Handle<Mesh>,
+        ) -> Option<Handle<Mesh>> {
+            if let Some(mesh) = self.meshes.get(&source.id()) {
+                return Some(mesh.clone());
+            }
+            let handle = meshes.add(meshes.get(source).and_then(standin_mesh)?);
+            self.meshes.insert(source.id(), handle.clone());
+            Some(handle)
+        }
+
+        /// The stand-in material shared by every mesh using one source material.
+        fn material(
+            &mut self,
+            standard: &mut Assets<StandardMaterial>,
+            id: UntypedAssetId,
+            base: &StandardMaterial,
+            solid: Vec4,
+        ) -> Handle<StandardMaterial> {
+            let handle = self
+                .materials
+                .entry(id)
+                .or_insert_with(|| standard.add(standin_material(base, solid)))
+                .clone();
+            // Texture animation edits the source material's base texture in place.
+            if standard
+                .get(&handle)
+                .is_some_and(|stand_in| stand_in.base_color_texture != base.base_color_texture)
+                && let Some(mut stand_in) = standard.get_mut(&handle)
+            {
+                stand_in.base_color_texture = base.base_color_texture.clone();
+            }
+            handle
+        }
+    }
+
+    type SourceData = (
+        Entity,
+        &'static Mesh3d,
+        &'static GlobalTransform,
+        &'static InheritedVisibility,
+        Option<&'static MeshMaterial3d<SceneMaterial>>,
+        Option<&'static MeshMaterial3d<TerrainMaterial>>,
+        Has<Traced>,
+        Option<&'static Hidden>,
+        Option<&'static RenderLayers>,
+    );
+    type SourceFilter = (
+        Without<Proxy>,
+        Without<Draw>,
+        Without<Flat>,
+        Or<(
+            With<MeshMaterial3d<SceneMaterial>>,
+            With<MeshMaterial3d<TerrainMaterial>>,
+        )>,
+    );
+    type ProxyData = (
+        Entity,
+        &'static StandInOf,
+        &'static mut Transform,
+        &'static mut GlobalTransform,
+        &'static mut Mesh3d,
+        &'static mut RaytracingMesh3d,
+        &'static mut MeshMaterial3d<StandardMaterial>,
+    );
+
     fn sync_proxies(
         mut commands: Commands,
-        mut meshes: ResMut<Assets<Mesh>>,
-        mut standard: ResMut<Assets<StandardMaterial>>,
-        scene_materials: Res<Assets<SceneMaterial>>,
-        terrain_materials: Res<Assets<TerrainMaterial>>,
+        mut assets: StandInAssets,
         mut mesh_events: MessageReader<AssetEvent<Mesh>>,
-        sources: Query<
-            (
-                Entity,
-                &Mesh3d,
-                &GlobalTransform,
-                &InheritedVisibility,
-                Option<&MeshMaterial3d<SceneMaterial>>,
-                Option<&MeshMaterial3d<TerrainMaterial>>,
-                Has<Traced>,
-                Option<&Hidden>,
-                Option<&RenderLayers>,
-            ),
-            (
-                Without<Proxy>,
-                Without<Draw>,
-                Without<Flat>,
-                Or<(
-                    With<MeshMaterial3d<SceneMaterial>>,
-                    With<MeshMaterial3d<TerrainMaterial>>,
-                )>,
-            ),
-        >,
-        mut proxies: Query<(
-            Entity,
-            &StandInOf,
-            &mut Transform,
-            &mut GlobalTransform,
-            &mut Mesh3d,
-            &mut RaytracingMesh3d,
-            &mut MeshMaterial3d<StandardMaterial>,
-        )>,
+        sources: Query<SourceData, SourceFilter>,
+        mut proxies: Query<ProxyData>,
         mut stand_ins: Local<StandIns>,
     ) {
-        // Animated and re-prepared source meshes are edited in place; rebuild their stand-ins.
-        for event in mesh_events.read() {
-            if let AssetEvent::Modified { id } = event
-                && let Some(handle) = stand_ins.meshes.get(id)
-                && let Some(mesh) = meshes.get(*id).and_then(standin_mesh)
-                && let Err(error) = meshes.insert(handle.id(), mesh)
-            {
-                warn!("ray tracing stand-in mesh {id}: {error}");
-            }
-        }
-        stand_ins.meshes.retain(|id, _| meshes.contains(*id));
+        stand_ins.rebuild_edited(&mut assets.meshes, &mut mesh_events);
+        let live = update_proxies(
+            &mut commands,
+            &mut assets,
+            &mut stand_ins,
+            &sources,
+            &mut proxies,
+        );
+        spawn_proxies(&mut commands, &mut assets, &mut stand_ins, &sources, &live);
+    }
 
+    /// Follows each stand-in to its source, and drops those whose source stopped being traceable.
+    /// Returns the sources that still have one.
+    fn update_proxies(
+        commands: &mut Commands,
+        assets: &mut StandInAssets,
+        stand_ins: &mut StandIns,
+        sources: &Query<SourceData, SourceFilter>,
+        proxies: &mut Query<ProxyData>,
+    ) -> HashSet<Entity> {
         let mut live = HashSet::new();
         for (entity, stand_in, mut transform, mut global, mut mesh, mut tracing, mut material) in
-            &mut proxies
+            proxies
         {
             let traceable = sources.get(stand_in.0).ok().and_then(
                 |(_, source_mesh, source_global, inherited, scene, terrain, ..)| {
                     let (id, base, solid) =
-                        traceable(scene, terrain, &scene_materials, &terrain_materials)?;
+                        traceable(scene, terrain, &assets.scene, &assets.terrain)?;
                     inherited
                         .get()
                         .then_some((source_mesh, source_global, id, base, solid))
@@ -356,55 +428,42 @@ mod solari {
                 mesh.0 = handle.clone();
                 tracing.0 = handle.clone();
             }
-            let handle = stand_ins
-                .materials
-                .entry(id)
-                .or_insert_with(|| standard.add(standin_material(base, solid)));
-            if material.0 != *handle {
-                material.0 = handle.clone();
-            }
-            // Texture animation edits the source material's base texture in place.
-            if standard
-                .get(&*handle)
-                .is_some_and(|stand_in| stand_in.base_color_texture != base.base_color_texture)
-                && let Some(mut stand_in) = standard.get_mut(&*handle)
-            {
-                stand_in.base_color_texture = base.base_color_texture.clone();
+            let handle = stand_ins.material(&mut assets.standard, id, base, solid);
+            if material.0 != handle {
+                material.0 = handle;
             }
         }
+        live
+    }
 
+    /// Gives every traceable source without a stand-in one, and hides the source's own draw.
+    fn spawn_proxies(
+        commands: &mut Commands,
+        assets: &mut StandInAssets,
+        stand_ins: &mut StandIns,
+        sources: &Query<SourceData, SourceFilter>,
+        live: &HashSet<Entity>,
+    ) {
         for (entity, source_mesh, global, inherited, scene, terrain, traced, hidden, layers) in
-            &sources
+            sources
         {
             let traceable = inherited
                 .get()
-                .then(|| traceable(scene, terrain, &scene_materials, &terrain_materials))
+                .then(|| traceable(scene, terrain, &assets.scene, &assets.terrain))
                 .flatten();
             let Some((id, base, solid)) = traceable else {
                 if traced && let Some(hidden) = hidden {
-                    unhide(&mut commands, entity, hidden);
+                    unhide(commands, entity, hidden);
                 }
                 continue;
             };
             if live.contains(&entity) {
                 continue;
             }
-            let mesh = match stand_ins.meshes.get(&source_mesh.0.id()) {
-                Some(mesh) => mesh.clone(),
-                None => {
-                    let Some(stand_in) = meshes.get(&source_mesh.0).and_then(standin_mesh) else {
-                        continue;
-                    };
-                    let handle = meshes.add(stand_in);
-                    stand_ins.meshes.insert(source_mesh.0.id(), handle.clone());
-                    handle
-                }
+            let Some(mesh) = stand_ins.mesh(&mut assets.meshes, &source_mesh.0) else {
+                continue;
             };
-            let material = stand_ins
-                .materials
-                .entry(id)
-                .or_insert_with(|| standard.add(standin_material(base, solid)))
-                .clone();
+            let material = stand_ins.material(&mut assets.standard, id, base, solid);
             commands.spawn((
                 Proxy,
                 StandInOf(entity),
@@ -444,47 +503,65 @@ mod solari {
         lights: Vec<LocalLight>,
     }
 
-    // The lights join the active environment, the retained script world and the camera.
-    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    /// The retained script world, whose object lights replace the environment's while it owns it.
+    #[derive(SystemParam)]
+    struct RetainedLights<'w> {
+        actors: Option<Res<'w, cyrus_script::script::ScriptActors>>,
+        prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
+        animation: Option<Res<'w, cyrus_world::animation::AnimationRequest>>,
+        animations: Option<Res<'w, Assets<cyrus_assets::animation::Animations>>>,
+    }
+
+    impl RetainedLights<'_> {
+        fn object_lights(
+            &self,
+            request: &EnvironmentRequest,
+            environment: &Environment,
+        ) -> Vec<LocalLight> {
+            self.actors
+                .as_ref()
+                .zip(self.prepared.as_ref())
+                .and_then(|(actors, prepared)| {
+                    let current = actors.current.as_ref()?;
+                    owns_prepared_environment(
+                        current,
+                        prepared,
+                        request,
+                        self.animation.as_deref(),
+                        self.animations.as_deref(),
+                    )
+                    .then(|| current.object_lights())
+                })
+                .unwrap_or_else(|| environment.object_lights.clone())
+        }
+    }
+
+    /// The assets lights are made of, and the environments they are read from.
+    #[derive(SystemParam)]
+    struct LightAssets<'w> {
+        environments: Res<'w, Assets<Environment>>,
+        meshes: ResMut<'w, Assets<Mesh>>,
+        materials: ResMut<'w, Assets<StandardMaterial>>,
+        images: ResMut<'w, Assets<Image>>,
+    }
+
+    fn peak(rgb: [f32; 3]) -> f32 {
+        rgb.into_iter().fold(0.0, f32::max).min(255.0)
+    }
+
     fn sync_lights(
         mut commands: Commands,
         request: Res<EnvironmentRequest>,
-        environments: Res<Assets<Environment>>,
-        mut meshes: ResMut<Assets<Mesh>>,
-        mut materials: ResMut<Assets<StandardMaterial>>,
-        mut images: ResMut<Assets<Image>>,
+        mut assets: LightAssets,
         existing: Query<Entity, With<Light>>,
         cameras: Query<(Entity, Option<&EnvironmentMapLight>), With<ViewCamera>>,
-        owners: (
-            Option<Res<cyrus_script::script::ScriptActors>>,
-            Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
-            Option<Res<cyrus_world::animation::AnimationRequest>>,
-            Option<Res<Assets<cyrus_assets::animation::Animations>>>,
-        ),
+        retained: RetainedLights,
         mut built: Local<Option<Built>>,
     ) {
-        let Some(environment) = environments.get(&request.0) else {
+        let Some(environment) = assets.environments.get(&request.0) else {
             return;
         };
-        let retained = owners
-            .0
-            .as_ref()
-            .zip(owners.1.as_ref())
-            .and_then(|(actors, prepared)| {
-                let current = actors.current.as_ref()?;
-                owns_prepared_environment(
-                    current,
-                    prepared,
-                    &request,
-                    owners.2.as_deref(),
-                    owners.3.as_deref(),
-                )
-                .then_some(current)
-            });
-        let lights = retained.map_or_else(
-            || environment.object_lights.clone(),
-            |current| current.object_lights(),
-        );
+        let lights = retained.object_lights(&request, environment);
         if !existing.is_empty()
             && cameras.iter().all(|(_, light)| light.is_some())
             && built
@@ -498,9 +575,19 @@ mod solari {
         }
         // Marks that lights were built, even for an environment that has none.
         commands.spawn(Light);
+        spawn_sun(&mut commands, &environment.model_lighting);
+        let ambient = ambient_light(&mut assets.images, &environment.model_lighting);
+        for (camera, _) in &cameras {
+            commands.entity(camera).insert(ambient.clone());
+        }
+        spawn_object_lights(&mut commands, &mut assets, &lights);
+        *built = Some(Built {
+            environment: request.0.id(),
+            lights,
+        });
+    }
 
-        let lighting = &environment.model_lighting;
-        let peak = |rgb: [f32; 3]| rgb.into_iter().fold(0.0, f32::max).min(255.0);
+    fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
         let sun = peak(lighting.directional);
         if let Ok(direction) = Dir3::new(Vec3::from(lighting.direction))
             && sun >= 1.0
@@ -520,8 +607,11 @@ mod solari {
                 Transform::IDENTITY.looking_to(direction, Vec3::Y),
             ));
         }
+    }
 
-        let ambient = lighting.ambient.map(|value| value.clamp(0.0, 255.0) as u8);
+    /// The world's ambient colour as a uniform environment cubemap.
+    fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> EnvironmentMapLight {
+        let [r, g, b] = lighting.ambient.map(|value| value.clamp(0.0, 255.0) as u8);
         let mut cube = Image::new(
             Extent3d {
                 width: 1,
@@ -529,9 +619,7 @@ mod solari {
                 depth_or_array_layers: 6,
             },
             TextureDimension::D2,
-            (0..6)
-                .flat_map(|_| [ambient[0], ambient[1], ambient[2], 255])
-                .collect(),
+            (0..6).flat_map(|_| [r, g, b, 255]).collect(),
             TextureFormat::Rgba8UnormSrgb,
             RenderAssetUsages::RENDER_WORLD,
         );
@@ -540,53 +628,47 @@ mod solari {
             ..default()
         });
         let cube = images.add(cube);
-        let environment_light = EnvironmentMapLight {
+        EnvironmentMapLight {
             diffuse_map: cube.clone(),
             specular_map: cube,
             intensity: AMBIENT_LUMINANCE * peak(lighting.ambient) / 255.0,
             ..default()
-        };
-        for (camera, _) in &cameras {
-            commands.entity(camera).insert(environment_light.clone());
         }
-
-        // Solari lights come from directional lights and emissive meshes only.
-        let sphere = Sphere::new(OBJECT_LIGHT_SIZE)
-            .mesh()
-            .ico(2)
-            .ok()
-            .map(|mesh| {
-                let count = mesh.count_vertices();
-                meshes.add(
-                    mesh.with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, vec![[0.0; 4]; count]),
-                )
-            });
-        if let Some(sphere) = sphere {
-            for light in lights
-                .iter()
-                .filter(|light| light.radius > 0 && light.rgb.iter().all(|value| *value >= 0))
-            {
-                let [x, y, z] = cyrus_game::rope::world_position(light.position.map(f64::from));
-                let radius = f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE;
-                let [r, g, b] = light.rgb.map(|value| f32::from(value) / 255.0);
-                commands.spawn((
-                    Light,
-                    RaytracingMesh3d(sphere.clone()),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: Color::BLACK,
-                        emissive: LinearRgba::rgb(r, g, b)
-                            * (OBJECT_LIGHT_LUMINANCE * radius * radius),
-                        ..default()
-                    })),
-                    Transform::from_xyz(x, y, z),
-                ));
-            }
-        }
-        *built = Some(Built {
-            environment: request.0.id(),
-            lights,
-        });
     }
+
+    /// Solari lights come from directional lights and emissive meshes only.
+    fn spawn_object_lights(
+        commands: &mut Commands,
+        assets: &mut LightAssets,
+        lights: &[LocalLight],
+    ) {
+        let Ok(sphere) = Sphere::new(OBJECT_LIGHT_SIZE).mesh().ico(2) else {
+            return;
+        };
+        let count = sphere.count_vertices();
+        let sphere = assets
+            .meshes
+            .add(sphere.with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, vec![[0.0; 4]; count]));
+        for light in lights
+            .iter()
+            .filter(|light| light.radius > 0 && light.rgb.iter().all(|value| *value >= 0))
+        {
+            let [x, y, z] = cyrus_game::rope::world_position(light.position.map(f64::from));
+            let radius = f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE;
+            let [r, g, b] = light.rgb.map(|value| f32::from(value) / 255.0);
+            commands.spawn((
+                Light,
+                RaytracingMesh3d(sphere.clone()),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    base_color: Color::BLACK,
+                    emissive: LinearRgba::rgb(r, g, b) * (OBJECT_LIGHT_LUMINANCE * radius * radius),
+                    ..default()
+                })),
+                Transform::from_xyz(x, y, z),
+            ));
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
