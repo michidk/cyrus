@@ -27,6 +27,9 @@ struct Source {
     polygons: Model,
     pixels: Option<Vec<[f32; 2]>>,
     previous: Option<(Mat4, Mat4, Vec2, AssetId<Mesh>, ModelExtension, Vec2)>,
+    /// The last preparation attempt stopped before recording `previous` for its inputs, so the
+    /// next frame must retry even if no input reports a change.
+    pending: bool,
 }
 
 #[derive(Component)]
@@ -152,6 +155,7 @@ fn bind(
                 polygons,
                 pixels,
                 previous: None,
+                pending: true,
             },
         ));
     }
@@ -162,9 +166,9 @@ fn bind(
 fn prepare(
     mut sources: Query<
         (
-            &Mesh3d,
-            &GlobalTransform,
-            &MeshMaterial3d<SceneMaterial>,
+            Ref<Mesh3d>,
+            Ref<GlobalTransform>,
+            Ref<MeshMaterial3d<SceneMaterial>>,
             &mut Source,
             Option<Ref<crate::animation::BoundFrameMesh>>,
         ),
@@ -177,7 +181,9 @@ fn prepare(
     images: Res<Assets<Image>>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
     mut image_events: MessageReader<AssetEvent<Image>>,
+    material_events: Option<MessageReader<AssetEvent<SceneMaterial>>>,
     mut clip: Local<Preparation>,
+    mut previous_view: Local<Option<(Mat4, Vec2, Vec2)>>,
 ) {
     let changed_meshes: HashSet<_> = mesh_events
         .read()
@@ -193,6 +199,16 @@ fn prepare(
             _ => None,
         })
         .collect();
+    // Without the stream nothing reports material changes, so every source is re-checked.
+    let changed_materials: Option<HashSet<_>> = material_events.map(|mut events| {
+        events
+            .read()
+            .filter_map(|event| match event {
+                AssetEvent::Modified { id } | AssetEvent::Added { id } => Some(*id),
+                _ => None,
+            })
+            .collect()
+    });
     let Ok((camera, projection, viewport_camera)) = cameras.single() else {
         return;
     };
@@ -206,7 +222,31 @@ fn prepare(
     let camera = camera.to_matrix();
     let projection = projection.get_clip_from_view();
     let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
+    // Every input of a source's key is either this view or reports its own change, so a source
+    // whose inputs are all unchanged keeps the draw it prepared last.
+    let view_unchanged =
+        previous_view.replace((camera, scale, viewport)) == Some((camera, scale, viewport));
     for (mesh, transform, material, mut source, animated) in &mut sources {
+        if view_unchanged
+            && !source.pending
+            && !source.is_added()
+            && !mesh.is_changed()
+            && !transform.is_changed()
+            && !material.is_changed()
+            && !animated.as_ref().is_some_and(|pose| pose.is_changed())
+            && !changed_meshes.contains(&mesh.0.id())
+            && changed_materials
+                .as_ref()
+                .is_some_and(|changed| !changed.contains(&material.0.id()))
+            && (changed_images.is_empty()
+                || source
+                    .previous
+                    .as_ref()
+                    .is_some_and(|previous| !changed_images.contains(&previous.4.lights.id())))
+        {
+            continue;
+        }
+        source.pending = true;
         let Some(material_asset) = materials.get(&material.0) else {
             continue;
         };
@@ -230,6 +270,7 @@ fn prepare(
             && !changed_meshes.contains(&mesh.0.id())
             && !changed_images.contains(&extension.lights.id())
         {
+            source.pending = false;
             continue;
         }
         let Some(original) = meshes.get(&mesh.0) else {
@@ -257,10 +298,12 @@ fn prepare(
                     *target = prepared;
                 }
                 source.previous = Some(key);
+                source.pending = false;
             }
             Err(error) => {
                 error!("model {:?}: camera clipping failed: {error}", mesh.0.id());
                 source.previous = Some(key);
+                source.pending = false;
             }
         }
     }
