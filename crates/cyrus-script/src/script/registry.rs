@@ -6646,6 +6646,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::Complete(0));
         }
+        // AddLightEffect(a, b, c, d, e, f, g, h) allocates a type-two light record; it returns
+        // the record (one-based slot) or zero when the pool is disabled or full.
+        if kind == CallKind::Function && function == Native::AddLightEffect {
+            let values = arguments
+                .iter()
+                .map(Argument::integer)
+                .collect::<Result<Vec<_>>>()?;
+            let values: [i32; 8] = values
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("AddLightEffect requires eight arguments"))?;
+            return Ok(CallResult::Complete(
+                self.registry.add_light_effect(values)?,
+            ));
+        }
         // OpenShell(name) starts the named shell script; it runs from the next update.
         if kind == CallKind::Function && function == Native::OpenShell {
             let [Argument::String(name)] = arguments else {

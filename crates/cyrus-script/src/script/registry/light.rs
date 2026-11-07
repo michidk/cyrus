@@ -231,7 +231,8 @@ impl super::ScriptWorld {
     /// Enabled authored object lights in original map order. Runtime mutation and
     /// region selection remain separate from this retained-state projection.
     pub fn object_lights(&self) -> Vec<cyrus_assets::environment::LocalLight> {
-        self.actors
+        let mut lights: Vec<_> = self
+            .actors
             .iter()
             .enumerate()
             .filter_map(|(index, actor)| {
@@ -246,7 +247,23 @@ impl super::ScriptWorld {
                     Err(_) => light.rendered(),
                 }
             })
-            .collect()
+            .collect();
+        // The type-two effect records submit after the object lights, through the shared local
+        // light descriptor: position and radius come from the record while the colour is whatever
+        // the last admitted object light left there, zero without one.
+        let rgb = lights.last().map_or([0; 3], |light| light.rgb);
+        lights.extend(
+            self.effects
+                .iter()
+                .flat_map(|effects| effects.light_effects())
+                .filter(|light| light.radius.current > 0)
+                .map(|light| cyrus_assets::environment::LocalLight {
+                    position: light.position,
+                    radius: light.radius.current as i16,
+                    rgb,
+                }),
+        );
+        lights
     }
 }
 

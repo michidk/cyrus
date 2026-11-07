@@ -1008,3 +1008,200 @@ fn initialization_events_allocate_before_water_model_effects_in_the_shared_pool(
         assert_eq!(slots, [(0, 0x2580), (1, 0x2500)][..capacity as usize]);
     }
 }
+
+/// A script whose actor calls `AddLightEffect(1, 2, 3, d, e, f, g, h)` and keeps the result in
+/// its first local.
+fn light_effect_scripts(arguments: [i32; 5]) -> Scripts {
+    let mut scripts = cache();
+    let function_id = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::AddLightEffect,
+        param_count: 8,
+        kind: CallKind::Function,
+    });
+    let [d, e, f, g, h] = arguments;
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Call {
+                            call: Box::new(Call {
+                                function_id,
+                                function: Native::AddLightEffect,
+                                kind: CallKind::Function,
+                                target: Object::Me,
+                                arguments: [1, 2, 3, d, e, f, g, h]
+                                    .map(|value| Value::Integer { value })
+                                    .to_vec(),
+                            }),
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+fn call_add_light_effect(world: &mut ScriptWorld) -> i32 {
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    world.actors()[0].runtime().unwrap().variables()[0]
+        .integer()
+        .unwrap()
+}
+
+#[test]
+fn add_light_effect_runs_a_type_two_record_through_lifetime_modulation_and_submission() {
+    let scripts = light_effect_scripts([100, 20, 7, 8, 10]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    world
+        .prepare_environment_effects(&source(2, false))
+        .unwrap();
+    // The record is allocated and returned; the position arguments do not place it.
+    assert_eq!(call_add_light_effect(&mut world), 1);
+    let record = *world
+        .environmental_effects()
+        .unwrap()
+        .light_effects()
+        .next()
+        .unwrap();
+    assert_eq!((record.position, record.lifetime), ([0; 3], 10));
+    assert_eq!((record.radius.current, record.secondary.current), (100, 7));
+    // It submits as a local light at the record's position with the descriptor's zero colour.
+    let lights = world.object_lights();
+    assert_eq!(
+        lights
+            .iter()
+            .map(|light| (light.position, light.radius, light.rgb))
+            .collect::<Vec<_>>(),
+        [([0; 3], 100, [0; 3])]
+    );
+    // One update: the f/g channel draws first, then the d/e channel, each from the shared
+    // generator as `start + Rnd(amplitude) - amplitude / 2`.
+    let mut random = EngineRandom::from_state(42);
+    let mut expected = EngineRandom::from_state(42);
+    let secondary = 7 + expected.rnd(8).unwrap() - 4;
+    let radius = 100 + expected.rnd(20).unwrap() - 10;
+    world.advance_light_effects(1, &mut random).unwrap();
+    let record = *world
+        .environmental_effects()
+        .unwrap()
+        .light_effects()
+        .next()
+        .unwrap();
+    assert_eq!(
+        (
+            record.secondary.current,
+            record.radius.current,
+            record.lifetime
+        ),
+        (secondary, radius, 9)
+    );
+    assert_eq!(random.state(), expected.state());
+    // The record ends once the lifetime reaches zero, before its channels advance.
+    let before = random.state();
+    world.advance_light_effects(9, &mut random).unwrap();
+    assert!(
+        world
+            .environmental_effects()
+            .unwrap()
+            .light_effects()
+            .next()
+            .is_none()
+    );
+    assert_eq!(random.state(), before, "an ended record draws nothing");
+    assert!(world.object_lights().is_empty());
+    // The freed slot is reused.
+    assert_eq!(call_add_light_effect(&mut world), 1);
+}
+
+#[test]
+fn add_light_effect_shares_the_pool_capacity_and_keeps_snapshots() {
+    let scripts = light_effect_scripts([30, 0, 0, 0, 5]);
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    world
+        .prepare_environment_effects(&source(2, false))
+        .unwrap();
+    assert_eq!(call_add_light_effect(&mut world), 1);
+    assert_eq!(call_add_light_effect(&mut world), 2);
+    // A full pool returns zero instead of a record.
+    assert_eq!(call_add_light_effect(&mut world), 0);
+    // A disabled pool never allocates.
+    let mut disabled = ScriptWorld::prepare(&scripts, 17).unwrap();
+    disabled
+        .prepare_environment_effects(&source(2, true))
+        .unwrap();
+    assert_eq!(call_add_light_effect(&mut disabled), 0);
+    // The records survive a snapshot and restore.
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id,"actors":[]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let effects = source(2, false);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: Some(&effects),
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = world.snapshot(&sources).unwrap();
+    let restored = ScriptWorld::from_snapshot(
+        saved,
+        &sources,
+        cyrus_script::script::WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        restored
+            .environmental_effects()
+            .unwrap()
+            .light_effects()
+            .copied()
+            .collect::<Vec<_>>(),
+        world
+            .environmental_effects()
+            .unwrap()
+            .light_effects()
+            .copied()
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(restored.object_lights().len(), 2);
+}
