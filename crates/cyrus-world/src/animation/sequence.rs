@@ -241,10 +241,6 @@ impl FrameSequence {
                 .with_context(|| format!("{context}: group type absent"))?,
         )
         .with_context(|| format!("{context}: group type outside u16 range"))?;
-        anyhow::ensure!(
-            group_type.to_le_bytes()[0] <= 2,
-            "{context}: group type unsupported"
-        );
         let speed = u16::try_from(
             selected["anim_id"]
                 .as_u64()

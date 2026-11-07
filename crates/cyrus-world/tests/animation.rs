@@ -267,9 +267,9 @@ fn forced_current_request_cancels_pending_without_restarting_and_other_force_rep
 }
 
 #[test]
-fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
+fn failing_replacement_is_sticky_and_empty_default_cycles_fail() {
     let mut data = request_asset();
-    data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 3.into();
+    data.metadata["actors"][0]["animation_groups"][3]["commands"] = serde_json::Value::Null;
     let mut state = cyrus_world::animation::ActorAnimation::from_asset(
         &data,
         "ACTOR",
@@ -281,7 +281,7 @@ fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
     let message = state.advance(1).unwrap_err().to_string();
     assert_eq!(
         message,
-        "world 17 actor ACTOR group 20: group type unsupported"
+        "world 17 actor ACTOR group 20: command table absent"
     );
     assert_eq!(
         state
@@ -300,6 +300,43 @@ fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
     assert_eq!(
         state.advance(0).unwrap_err().to_string(),
         "world 17 actor ACTOR group 7: replacement cycle has no displayed frame"
+    );
+}
+
+/// Plays group 7 of `anim_type` with its exit jump taken for a pending default and reports what
+/// each advance shows.
+fn exit_frames(anim_type: u32) -> Vec<Option<u32>> {
+    let mut data = asset();
+    data.metadata["actors"][0]["animation_groups"] = serde_json::json!([
+        {"group_index":7,"anim_id":1,"anim_type":anim_type,"commands":[
+            {"opcode":0,"frame_reference":70},{"opcode":3,"value":3},
+            {"opcode":2,"value":0},{"opcode":0,"frame_reference":71},{"opcode":1}]},
+        {"group_index":9,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":90},{"opcode":2,"value":0}]}
+    ]);
+    let mut state = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(9),
+    )
+    .unwrap();
+    state.request(AnimationGroup::from_index(7), 0, 1).unwrap();
+    state.request(AnimationGroup::from_index(9), 0, 1).unwrap();
+    (0..3).map(|_| state.advance(1).unwrap()).collect()
+}
+
+#[test]
+fn group_types_other_than_one_and_two_play_as_type_zero() {
+    // Only the type bytes one and two change replacement and exit rules; any other value,
+    // including ones above two, is an ordinary interruptible group.
+    let ordinary = exit_frames(0);
+    for anim_type in [3, 9, 255, 0x300] {
+        assert_eq!(exit_frames(anim_type), ordinary, "type {anim_type}");
+    }
+    assert_ne!(
+        exit_frames(2),
+        ordinary,
+        "type two skips the exit jump for a pending default"
     );
 }
 
