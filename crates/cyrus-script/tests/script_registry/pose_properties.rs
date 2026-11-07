@@ -433,3 +433,66 @@ fn slave_position_writes_reach_the_effective_position_distance_queries_use() {
     let spatial = world.spatial(world.id(0).unwrap()).unwrap();
     assert_eq!(spatial.effective.unwrap().angles[1], 1000);
 }
+/// The selected player restored in `living_state` with its saved `ov` point and `move.vy` heading,
+/// plus an optional legacy global anchor; returns the restored world and the player's `control`.
+fn restored_ledge_player(
+    living_state: u8,
+    saved: Option<([i32; 3], i32)>,
+    legacy: Option<([i32; 3], u16)>,
+) -> (serde_json::Value, usize) {
+    let (scripts, world, mut data, _) = player_health_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| {
+            matches!(
+                actor.source,
+                cyrus_script::script::ScriptActorSource::Player
+            )
+        })
+        .unwrap();
+    let mut world =
+        replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved_world| {
+            let control = &mut saved_world["actors"][index]["control"];
+            control["living_state"] = living_state.into();
+            match saved {
+                Some((point, heading)) => {
+                    control["ledge_point"] = serde_json::json!(point);
+                    control["motion_vector"][1] = heading.into();
+                }
+                // A save from before the field existed has no such key.
+                None => {
+                    control.as_object_mut().unwrap().remove("ledge_point");
+                }
+            }
+        });
+    if let Some((point, heading)) = legacy {
+        world
+            .globals_mut()
+            .set_legacy_ledge_anchor_for_test(point, heading);
+    }
+    let again = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
+    let control = movement_snapshot(&again, &scripts, &data)["actors"][index]["control"].clone();
+    (control, index)
+}
+
+#[test]
+fn legacy_saved_ledge_point_moves_into_the_players_ov_and_move_heading() {
+    // Hanging state (12) with the point and heading in the old global.
+    let (control, _) = restored_ledge_player(12, None, Some(([5120, -768, 9], 1500)));
+    assert_eq!(control["ledge_point"], serde_json::json!([5120, -768, 9]));
+    assert_eq!(control["motion_vector"][1], 1500);
+    // Outside the ledge states the stale global is ignored.
+    let (control, _) = restored_ledge_player(0, None, Some(([5120, -768, 9], 1500)));
+    assert_eq!(control["ledge_point"], serde_json::json!([0, 0, 0]));
+    assert_ne!(control["motion_vector"][1], 1500);
+}
+
+#[test]
+fn actor_held_ledge_point_survives_restores_and_wins_over_a_legacy_global() {
+    // Saved in the actor: survives a second restore into a new generation, and the global is
+    // ignored because the actor already holds a point.
+    let (control, _) = restored_ledge_player(10, Some(([1, 2, 3], 700)), Some(([9, 9, 9], 1)));
+    assert_eq!(control["ledge_point"], serde_json::json!([1, 2, 3]));
+    assert_eq!(control["motion_vector"][1], 700);
+}
